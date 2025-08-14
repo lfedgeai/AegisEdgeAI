@@ -1,0 +1,4 @@
+Flask
+requests
+#tpm2-pytss==2.1.0
+tpm2-pytss
