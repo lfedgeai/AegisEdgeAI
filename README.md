@@ -1,6 +1,6 @@
-# OpenTelemetry Microservice Architecture with TPM Security
+# OpenTelemetry‑Inspired Edge Architecture with TPM Security and Geofencing Proofs
 
-A production‑friendly prototype microservice architecture for secure, verifiable metrics collection at the edge. It combines OpenTelemetry for observability, TPM‑backed hardware security for the agent, and public‑key verification for the collector. The system delivers end‑to‑end, hardware‑anchored trust with proof of residency and geofencing controls, ensuring tamper‑resistant signatures and scalable, TPM‑resident cryptography. Designed for distributed edge environments, it enforces Zero‑Trust principles and geographic compliance from day one — while remaining agile enough for iterative development.
+A production‑friendly prototype microservice architecture for secure, verifiable metrics collection at the edge. It applies OpenTelemetry‑inspired observability patterns, TPM‑backed hardware security for the agent, and public‑key verification for the collector. The design provides hardware‑anchored trust with proof‑of‑residency and geofencing controls, delivering tamper‑resistant signatures and scalable, TPM‑resident cryptography. Built for distributed edge environments, it enforces Zero‑Trust principles and geographic compliance from the outset while supporting iterative development.
 
 ## Use Case: Edge Computing Telemetry
 
