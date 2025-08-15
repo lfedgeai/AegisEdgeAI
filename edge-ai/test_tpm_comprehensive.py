@@ -65,13 +65,13 @@ def test_signing_operations():
     print("\n=== Testing Signing Operations ===")
     
     # Create test message first
-    with open("appsig_info.bin", "w") as f:
+    with open("tpm/appsig_info.bin", "w") as f:
         f.write("test message for signing")
     
     tests = [
-        ("Message signing", "./sign_app_message.sh"),
-        ("Signature verification", "./verify_app_message_signature.sh"),
-        ("Quote generation & verification", "./generate_verify_app_quote.sh"),
+        ("Message signing", "./tpm/sign_app_message.sh"),
+        ("Signature verification", "./tpm/verify_app_message_signature.sh"),
+        ("Quote generation & verification", "./tpm/generate_verify_app_quote.sh"),
     ]
     
     success = True
@@ -119,12 +119,12 @@ def test_python_utilities():
         test_data = b"test message for verification"
         
         # Create a signature first
-        with open("appsig_info.bin", "wb") as f:
+        with open("tpm/appsig_info.bin", "wb") as f:
             f.write(test_data)
-        os.system("./sign_app_message.sh")
+        os.system("./tpm/sign_app_message.sh")
         
-        if os.path.exists("appsig.bin"):
-            with open("appsig.bin", "rb") as f:
+        if os.path.exists("tpm/appsig.bin"):
+            with open("tpm/appsig.bin", "rb") as f:
                 signature = f.read()
             
             is_valid = pk_utils.verify_signature(test_data, signature)
@@ -138,7 +138,7 @@ def test_python_utilities():
             return False
             
         # Cleanup
-        os.system("rm -f appsig_info.bin appsig.bin appsig_info.hash")
+        os.system("rm -f tpm/appsig_info.bin tpm/appsig.bin tpm/appsig_info.hash")
         
     except Exception as e:
         print(f"❌ PublicKeyUtils test - FAILED: {e}")

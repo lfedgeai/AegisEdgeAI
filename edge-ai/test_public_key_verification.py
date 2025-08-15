@@ -27,17 +27,18 @@ def test_public_key_verification():
         test_nonce = b"test_nonce_123"
         combined_data = test_data + test_nonce
         
-        # Create a signature using the TPM2 script
+        # Create a signature using the TPM2 script for the combined data
         print("Creating test signature...")
-        os.system(f"echo '{test_data.decode()}' > appsig_info.bin")
-        os.system("./sign_app_message.sh")
+        with open("tpm/appsig_info.bin", "wb") as f:
+            f.write(combined_data)
+        os.system("./tpm/sign_app_message.sh")
         
-        if not os.path.exists("appsig.bin"):
+        if not os.path.exists("tpm/appsig.bin"):
             print("❌ Failed to create signature")
             return False
         
         # Read the signature
-        with open("appsig.bin", "rb") as f:
+        with open("tpm/appsig.bin", "rb") as f:
             signature = f.read()
         
         print(f"✅ Signature created: {len(signature)} bytes")
@@ -52,7 +53,7 @@ def test_public_key_verification():
             print("❌ Signature verification failed!")
         
         # Cleanup
-        os.system("rm -f appsig_info.bin appsig.bin appsig_info.hash")
+        os.system("rm -f tpm/appsig_info.bin tpm/appsig.bin tpm/appsig_info.hash")
         
         return is_valid
         
@@ -63,6 +64,8 @@ def test_public_key_verification():
 if __name__ == "__main__":
     success = test_public_key_verification()
     sys.exit(0 if success else 1)
+
+
 
 
 

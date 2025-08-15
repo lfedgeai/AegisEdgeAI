@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-KEY_CTX="app.ctx"            # TPM key context for signing
-MESSAGE="appsig_info.bin"    # Original message file
-SIGNATURE="appsig.bin"       # Output signature file
-DIGEST="appsig_info.hash"    # SHA-256 hash file (used if signing hash)
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+KEY_CTX="$SCRIPT_DIR/app.ctx"            # TPM key context for signing
+MESSAGE="$SCRIPT_DIR/appsig_info.bin"    # Original message file
+SIGNATURE="$SCRIPT_DIR/appsig.bin"       # Output signature file
+DIGEST="$SCRIPT_DIR/appsig_info.hash"    # SHA-256 hash file (used if signing hash)
 
 # Flush TPM contexts
 tpm2 flushcontext -t

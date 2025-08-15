@@ -252,6 +252,7 @@ ALLOWED_CITIES=["Santa Clara", "San Francisco", "Austin", "New York"]
 - Python 3.11+
 - Software TPM (swtpm) - no hardware TPM required
 - TPM2 tools installed
+- all the code is in the edge-ai directory
 
 ### Software TPM (swtpm) Setup
 
@@ -262,9 +263,9 @@ Before running the microservices, ensure swtpm is properly configured with persi
 sudo apt-get install swtpm swtpm-tools tpm2-tools
 
 # Start software TPM and set up persistent keys
-./swtpm.sh
-./tpm-ek-ak-persist.sh
-./tpm-app-persist.sh
+./tpm/swtpm.sh
+./tpm/tpm-ek-ak-persist.sh
+./tpm/tpm-app-persist.sh
 
 # Verify swtpm is accessible
 TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=2321" tpm2_getcap properties-fixed
@@ -277,10 +278,10 @@ TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=2321" tpm2 getcap handles-persistent
 
 The system requires the following TPM2 context files (already present in the repository):
 
-- `app.ctx` - Application context for signing
-- `primary.ctx` - Primary key context
-- `ak.ctx` - Attestation key context
-- `ek.ctx` - Endorsement key context
+- `tpm/app.ctx` - Application context for signing
+- `tpm/primary.ctx` - Primary key context
+- `tpm/ak.ctx` - Attestation key context
+- `tpm/ek.ctx` - Endorsement key context
 
 ## Installation
 
@@ -579,7 +580,7 @@ curl https://localhost:8444/health --insecure
 | `ALLOWED_REGIONS` | `["US"]` | List of allowed regions for collector |
 | `ALLOWED_STATES` | `["California", "Texas", "New York"]` | List of allowed states for collector |
 | `ALLOWED_CITIES` | `["Santa Clara", "San Francisco", "Austin", "New York"]` | List of allowed cities for collector |
-| `PUBLIC_KEY_PATH` | `appsk_pubkey.pem` | Path to the public key for verification |
+| `PUBLIC_KEY_PATH` | `tpm/appsk_pubkey.pem` | Path to the public key for verification |
 | `VERIFY_SCRIPT_PATH` | `verify_app_message_signature.sh` | Path to the verification script |
 
 ### Configuration File
@@ -603,7 +604,7 @@ SSL_KEY_PATH=/path/to/key.pem
 
 # TPM2 Configuration
 TPM2_DEVICE=/dev/tpm0
-TPM2_APP_CTX_PATH=app.ctx
+TPM2_APP_CTX_PATH=tpm/app.ctx
 
 # OpenTelemetry Configuration
 OTEL_ENDPOINT=http://localhost:4317
@@ -695,7 +696,7 @@ python start_swtpm.py
 
 ```bash
 # Check if public key exists
-ls -la appsk_pubkey.pem
+ls -la tpm/appsk_pubkey.pem
 
 # Regenerate public key if needed
 ./get_public_key_app.sh
