@@ -292,29 +292,7 @@ def proxy_nonce():
             return jsonify({"error": "Failed to proxy nonce request"}), 500
 
 
-@app.route('/public-key', methods=['GET'])
-def proxy_public_key():
-    """Proxy public key requests to the collector."""
-    with tracer.start_as_current_span("proxy_public_key"):
-        try:
-            request_counter.add(1, {"endpoint": "public_key"})
-            proxy_counter.add(1, {"operation": "get_public_key"})
-            
-            # Validate request
-            validation = security_manager.validate_request(request)
-            if not validation["valid"]:
-                return jsonify({"error": validation["error"]}), validation["status_code"]
-            
-            # Proxy request to collector
-            response = proxy_manager.proxy_request('GET', '/public-key', headers=request.headers)
-            
-            logger.info("Public key request proxied successfully")
-            return response
-            
-        except Exception as e:
-            logger.error("Error proxying public key request", error=str(e))
-            error_counter.add(1, {"operation": "proxy_public_key", "error": str(e)})
-            return jsonify({"error": "Failed to proxy public key request"}), 500
+
 
 
 @app.route('/metrics', methods=['POST'])

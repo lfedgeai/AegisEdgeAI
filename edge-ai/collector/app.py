@@ -4,10 +4,10 @@ OpenTelemetry Collector Microservice
 This microservice is responsible for:
 1. Providing nonces to OpenTelemetry Agents
 2. Receiving metrics data from agents
-3. Verifying nonce and signature using TPM2
+3. Verifying signatures using public key verification (no TPM2 required)
 4. Processing and storing verified metrics
 
-The collector uses TPM2 for signature verification and HTTPS for all communications.
+The collector uses public key verification for signature verification and HTTPS for all communications.
 """
 
 import os
@@ -32,7 +32,7 @@ import structlog
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import settings
-from utils.tpm2_utils import TPM2Utils, TPM2Error
+from utils.public_key_utils import PublicKeyUtils, PublicKeyError
 from utils.ssl_utils import SSLUtils, SSLError
 
 # Configure structured logging
@@ -60,16 +60,15 @@ logger = structlog.get_logger(__name__)
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 
-# Initialize TPM2 utilities
+# Initialize public key utilities for signature verification
 try:
-    tpm2_utils = TPM2Utils(
-        app_ctx_path=settings.tpm2_app_ctx_path,
-        device=settings.tpm2_device,
-        use_swtpm=True  # Use software TPM
+    public_key_utils = PublicKeyUtils(
+        public_key_path=settings.public_key_path,
+        verify_script_path=settings.verify_script_path
     )
-    logger.info("TPM2 utilities initialized successfully (using software TPM)")
-except TPM2Error as e:
-    logger.error("Failed to initialize TPM2 utilities", error=str(e))
+    logger.info("Public key utilities initialized successfully")
+except PublicKeyError as e:
+    logger.error("Failed to initialize public key utilities", error=str(e))
     sys.exit(1)
 
 # Initialize OpenTelemetry
@@ -274,7 +273,7 @@ class MetricsProcessor:
     @staticmethod
     def verify_signature(payload: Dict[str, Any]) -> bool:
         """
-        Verify the signature of the metrics payload using TPM2.
+        Verify the signature of the metrics payload using public key verification.
         
         Args:
             payload: The metrics payload to verify
@@ -293,8 +292,8 @@ class MetricsProcessor:
             nonce_bytes = payload["nonce"].encode('utf-8')
             signature_bytes = bytes.fromhex(payload["signature"])
             
-            # Verify signature using TPM2
-            is_valid = tpm2_utils.verify_with_nonce(
+            # Verify signature using public key
+            is_valid = public_key_utils.verify_with_nonce(
                 data_bytes,
                 nonce_bytes,
                 signature_bytes,
@@ -359,7 +358,7 @@ def health_check():
 
 @app.route('/nonce', methods=['GET'])
 def get_nonce():
-    """Generate and return a signed nonce for agents."""
+    """Generate and return a nonce for agents."""
     with tracer.start_as_current_span("get_nonce"):
         try:
             request_counter.add(1, {"endpoint": "get_nonce"})
@@ -371,95 +370,23 @@ def get_nonce():
             nonce = NonceManager.generate_nonce()
             nonce_counter.add(1)
             
-            # Sign the nonce with TPM2
-            nonce_bytes = nonce.encode('utf-8')
-            signature = tpm2_utils.sign_data(nonce_bytes)
-            signature_hex = signature.hex()
-            
-            logger.info("Generated and signed nonce for agent", 
-                       nonce_length=len(nonce),
-                       signature_length=len(signature))
+            logger.info("Generated nonce for agent", nonce_length=len(nonce))
             
             return jsonify({
                 "nonce": nonce,
-                "nonce_signature": signature_hex,
-                "algorithm": "sha256",
                 "expires_in": "5 minutes",
                 "timestamp": datetime.utcnow().isoformat()
             })
             
         except Exception as e:
-            logger.error("Error generating signed nonce", error=str(e))
+            logger.error("Error generating nonce", error=str(e))
             error_counter.add(1, {"operation": "get_nonce", "error": str(e)})
             return jsonify({
-                "error": "Failed to generate signed nonce"
+                "error": "Failed to generate nonce"
             }), 500
 
 
-@app.route('/public-key', methods=['GET'])
-def get_public_key():
-    """Get the collector's public key for nonce signature verification."""
-    with tracer.start_as_current_span("get_public_key"):
-        try:
-            request_counter.add(1, {"endpoint": "get_public_key"})
-            
-            # Read the public key from the TPM2 context
-            import subprocess
-            import tempfile
-            import os
-            
-            # Create a temporary file for the public key
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pem') as temp_file:
-                temp_file_path = temp_file.name
-            
-            try:
-                # Export public key from TPM2 context
-                command = [
-                    "tpm2_readpublic",
-                    "-c", settings.tpm2_app_ctx_path,
-                    "-o", temp_file_path,
-                    "-f", "pem"
-                ]
-                
-                # Set environment for software TPM if needed
-                env = os.environ.copy()
-                if settings.use_swtpm:
-                    env['TPM2TOOLS_TCTI'] = settings.tpm2tools_tcti
-                
-                result = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    env=env
-                )
-                
-                if result.returncode != 0:
-                    raise Exception(f"Failed to export public key: {result.stderr}")
-                
-                # Read the public key
-                with open(temp_file_path, 'r') as key_file:
-                    public_key = key_file.read()
-                
-                logger.info("Public key exported successfully")
-                
-                return jsonify({
-                    "public_key": public_key,
-                    "algorithm": "rsa",
-                    "format": "pem",
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-                
-            finally:
-                # Clean up temporary file
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                    
-        except Exception as e:
-            logger.error("Error exporting public key", error=str(e))
-            error_counter.add(1, {"operation": "get_public_key", "error": str(e)})
-            return jsonify({
-                "error": "Failed to export public key"
-            }), 500
+
 
 
 @app.route('/metrics', methods=['POST'])

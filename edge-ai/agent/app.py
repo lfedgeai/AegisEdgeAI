@@ -186,136 +186,32 @@ class CollectorClient:
     
     def get_nonce(self) -> str:
         """
-        Get a signed nonce from the OpenTelemetry Collector and verify its signature.
+        Get a nonce from the OpenTelemetry Collector.
         
         Returns:
-            Nonce string from the collector (verified)
+            Nonce string from the collector
         """
         with tracer.start_as_current_span("get_nonce"):
             try:
-                # First, get the collector's public key
-                public_key_response = self.session.get(f"{self.base_url}/public-key")
-                public_key_response.raise_for_status()
-                
-                public_key_data = public_key_response.json()
-                public_key = public_key_data.get("public_key")
-                
-                if not public_key:
-                    raise ValueError("No public key received from collector")
-                
-                logger.info("Received public key from collector")
-                
-                # Get the signed nonce
+                # Get the nonce
                 response = self.session.get(f"{self.base_url}/nonce")
                 response.raise_for_status()
                 
                 data = response.json()
                 nonce = data.get("nonce")
-                nonce_signature = data.get("nonce_signature")
-                algorithm = data.get("algorithm", "sha256")
                 
-                if not nonce or not nonce_signature:
-                    raise ValueError("No nonce or signature received from collector")
+                if not nonce:
+                    raise ValueError("No nonce received from collector")
                 
-                # Verify the nonce signature
-                if not self._verify_nonce_signature(nonce, nonce_signature, public_key, algorithm):
-                    raise ValueError("Nonce signature verification failed")
-                
-                logger.info("Received and verified signed nonce from collector", nonce_length=len(nonce))
+                logger.info("Received nonce from collector", nonce_length=len(nonce))
                 return nonce
                 
             except Exception as e:
-                logger.error("Failed to get verified nonce from collector", error=str(e))
+                logger.error("Failed to get nonce from collector", error=str(e))
                 error_counter.add(1, {"operation": "get_nonce", "error": str(e)})
                 raise
     
-    def _verify_nonce_signature(self, nonce: str, signature_hex: str, public_key: str, algorithm: str) -> bool:
-        """
-        Verify the nonce signature using the collector's public key.
-        
-        Args:
-            nonce: The nonce string
-            signature_hex: The signature in hex format
-            public_key: The collector's public key in PEM format
-            algorithm: The signature algorithm
-            
-        Returns:
-            True if signature is valid, False otherwise
-        """
-        try:
-            import tempfile
-            import os
-            import subprocess
-            
-            logger.info("Starting nonce signature verification", 
-                       nonce_length=len(nonce),
-                       signature_length=len(signature_hex),
-                       algorithm=algorithm)
-            
-            # Create temporary files for the nonce and signature
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as nonce_file:
-                nonce_file.write(nonce.encode('utf-8'))
-                nonce_file_path = nonce_file.name
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.sig') as sig_file:
-                sig_file.write(bytes.fromhex(signature_hex))
-                sig_file_path = sig_file.name
-            
-            logger.info("Created temporary files", 
-                       nonce_file=nonce_file_path,
-                       sig_file=sig_file_path)
-            
-            try:
-                # Use the same TPM2 context as the collector for verification
-                # Since both agent and collector use the same app.ctx, we can verify directly
-                command = [
-                    "tpm2_verifysignature",
-                    "-c", settings.tpm2_app_ctx_path,
-                    "-g", algorithm,
-                    "-m", nonce_file_path,
-                    "-s", sig_file_path
-                ]
-                
-                logger.info("Running verification command", command=' '.join(command))
-                
-                # Set environment for software TPM if needed
-                env = os.environ.copy()
-                if settings.use_swtpm:
-                    env['TPM2TOOLS_TCTI'] = settings.tpm2tools_tcti
-                    logger.info("Using swtpm TCTI", tcti=env['TPM2TOOLS_TCTI'])
-                
-                result = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    env=env
-                )
-                
-                logger.info("Verification result", 
-                           return_code=result.returncode,
-                           stdout=result.stdout,
-                           stderr=result.stderr)
-                
-                success = result.returncode == 0
-                if success:
-                    logger.info("Nonce signature verification successful")
-                else:
-                    logger.error("Nonce signature verification failed", 
-                               return_code=result.returncode,
-                               stderr=result.stderr)
-                
-                return success
-                
-            finally:
-                # Clean up temporary files
-                for file_path in [nonce_file_path, sig_file_path]:
-                    if os.path.exists(file_path):
-                        os.unlink(file_path)
-                        logger.debug("Cleaned up temporary file", file_path=file_path)
-                        
-        except Exception as e:
-            logger.error("Error verifying nonce signature", error=str(e))
-            return False
+
     
     def send_metrics(self, payload: Dict[str, Any]) -> bool:
         """

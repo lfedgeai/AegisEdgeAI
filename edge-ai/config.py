@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     tpm2_ak_ctx_path: str = Field(default="ak.ctx", env="TPM2_AK_CTX_PATH")
     use_swtpm: bool = Field(default=True, env="USE_SWTPM")
     
+    # Public key configuration (for collector verification)
+    public_key_path: str = Field(default="appsk_pubkey.pem", env="PUBLIC_KEY_PATH")
+    verify_script_path: str = Field(default="verify_app_message_signature.sh", env="VERIFY_SCRIPT_PATH")
+    
     # Software TPM (swtpm) configuration
     swtpm_dir: str = Field(default="$HOME/.swtpm/ztpm", env="SWTPM_DIR")
     swtpm_port: int = Field(default=2321, env="SWTPM_PORT")
