@@ -254,7 +254,6 @@ ALLOWED_CITIES=["Santa Clara", "San Francisco", "Austin", "New York"]
 - Python 3.11+
 - Software TPM (swtpm) - no hardware TPM required
 - TPM2 tools installed
-- Docker and Docker Compose (optional)
 
 ### Software TPM (swtpm) Setup
 
@@ -287,8 +286,6 @@ The system requires the following TPM2 context files (already present in the rep
 
 ## Installation
 
-### Option 1: Direct Installation
-
 1. **Clone the repository**:
    ```bash
    git clone <repository-url>
@@ -304,22 +301,6 @@ The system requires the following TPM2 context files (already present in the rep
    ```bash
    cp .env.example .env
    # Edit .env with your configuration
-   ```
-
-### Option 2: Docker Deployment
-
-1. **Build and run with Docker Compose**:
-   ```bash
-   docker-compose up --build
-   ```
-
-2. **Or build individual container**:
-   ```bash
-   docker build -t opentelemetry-microservices .
-   docker run -d --name opentelemetry-microservices \
-     -p 8442:8442 -p 8443:8443 -p 8444:8444 \
-     --device /dev/tpm0:/dev/tpm0 \
-     opentelemetry-microservices
    ```
 
 ## Usage
@@ -798,8 +779,6 @@ The system uses structured logging with JSON format. Log levels can be controlle
 ├── test_complete_flow.py  # Complete end-to-end test
 ├── test_summary.py        # Test summary
 ├── requirements.txt       # Python dependencies
-├── Dockerfile             # Docker configuration
-├── docker-compose.yml     # Docker Compose configuration
 └── README.md              # This file
 ```
 
@@ -852,4 +831,3 @@ For support and questions:
 - OpenTelemetry project for the telemetry framework
 - TPM2 Software Stack for hardware security integration
 - Flask framework for the web services
-- Docker for containerization support
