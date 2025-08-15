@@ -287,23 +287,37 @@ def generate_and_send_metrics():
             # Get nonce from collector
             nonce = collector_client.get_nonce()
             
-            # Convert metrics to JSON string and encode
-            metrics_json = json.dumps(metrics_data, sort_keys=True)
-            metrics_bytes = metrics_json.encode('utf-8')
+            # Create geographic region data
+            geographic_region = {
+                "region": settings.geographic_region,
+                "state": settings.geographic_state,
+                "city": settings.geographic_city
+            }
+            
+            # Combine metrics and geographic region for signing
+            data_to_sign = {
+                "metrics": metrics_data,
+                "geographic_region": geographic_region
+            }
+            
+            # Convert combined data to JSON string and encode
+            data_json = json.dumps(data_to_sign, sort_keys=True)
+            data_bytes = data_json.encode('utf-8')
             nonce_bytes = nonce.encode('utf-8')
             
-            # Sign metrics with nonce using TPM2
+            # Sign combined data with nonce using TPM2
             signature_data = tpm2_utils.sign_with_nonce(
-                metrics_bytes, 
+                data_bytes, 
                 nonce_bytes, 
                 algorithm=settings.signature_algorithm
             )
             
             signature_counter.add(1, {"algorithm": settings.signature_algorithm})
             
-            # Create payload
+            # Create payload with separate fields
             payload = {
                 "metrics": metrics_data,
+                "geographic_region": geographic_region,
                 "nonce": nonce,
                 "signature": signature_data["signature"],
                 "digest": signature_data["digest"],

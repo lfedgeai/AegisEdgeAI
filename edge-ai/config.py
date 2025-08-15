@@ -59,6 +59,16 @@ class Settings(BaseSettings):
     nonce_length: int = Field(default=32, env="NONCE_LENGTH")
     signature_algorithm: str = Field(default="sha256", env="SIGNATURE_ALGORITHM")
     
+    # Geographic region configuration
+    geographic_region: str = Field(default="US", env="GEOGRAPHIC_REGION")
+    geographic_state: str = Field(default="California", env="GEOGRAPHIC_STATE")
+    geographic_city: str = Field(default="Santa Clara", env="GEOGRAPHIC_CITY")
+    
+    # Geographic policy configuration (for collector)
+    allowed_regions: list = Field(default=["US"], env="ALLOWED_REGIONS")
+    allowed_states: list = Field(default=["California", "Texas", "New York"], env="ALLOWED_STATES")
+    allowed_cities: list = Field(default=["Santa Clara", "San Francisco", "Austin", "New York"], env="ALLOWED_CITIES")
+    
     # Logging configuration
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     log_format: str = Field(default="json", env="LOG_FORMAT")

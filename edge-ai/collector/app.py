@@ -195,7 +195,7 @@ class MetricsProcessor:
         Returns:
             True if valid, False otherwise
         """
-        required_fields = ["metrics", "nonce", "signature", "algorithm", "timestamp"]
+        required_fields = ["metrics", "geographic_region", "nonce", "signature", "algorithm", "timestamp"]
         
         for field in required_fields:
             if field not in payload:
@@ -204,6 +204,10 @@ class MetricsProcessor:
         
         if not isinstance(payload["metrics"], dict):
             logger.warning("Metrics field must be a dictionary")
+            return False
+        
+        if not isinstance(payload["geographic_region"], dict):
+            logger.warning("Geographic region field must be a dictionary")
             return False
         
         if not isinstance(payload["nonce"], str):
@@ -217,6 +221,57 @@ class MetricsProcessor:
         return True
     
     @staticmethod
+    def verify_geographic_region(payload: Dict[str, Any]) -> bool:
+        """
+        Verify that the geographic region in the payload matches the allowed policy.
+        
+        Args:
+            payload: The metrics payload to verify
+            
+        Returns:
+            True if geographic region is allowed, False otherwise
+        """
+        try:
+            geographic_region = payload["geographic_region"]
+            
+            if not geographic_region:
+                logger.warning("No geographic region information found in payload")
+                return False
+            
+            region = geographic_region.get("region")
+            state = geographic_region.get("state")
+            city = geographic_region.get("city")
+            
+            # Check if region is allowed
+            if region not in settings.allowed_regions:
+                logger.warning("Geographic region not allowed", 
+                             region=region, 
+                             allowed_regions=settings.allowed_regions)
+                return False
+            
+            # Check if state is allowed (if specified)
+            if state and state not in settings.allowed_states:
+                logger.warning("Geographic state not allowed", 
+                             state=state, 
+                             allowed_states=settings.allowed_states)
+                return False
+            
+            # Check if city is allowed (if specified)
+            if city and city not in settings.allowed_cities:
+                logger.warning("Geographic city not allowed", 
+                             city=city, 
+                             allowed_cities=settings.allowed_cities)
+                return False
+            
+            logger.info("Geographic region verification successful", 
+                       region=region, state=state, city=city)
+            return True
+            
+        except Exception as e:
+            logger.error("Geographic region verification failed", error=str(e))
+            return False
+    
+    @staticmethod
     def verify_signature(payload: Dict[str, Any]) -> bool:
         """
         Verify the signature of the metrics payload using TPM2.
@@ -228,15 +283,19 @@ class MetricsProcessor:
             True if signature is valid, False otherwise
         """
         try:
-            # Convert metrics to JSON string (same format as agent)
-            metrics_json = json.dumps(payload["metrics"], sort_keys=True)
-            metrics_bytes = metrics_json.encode('utf-8')
+            # Combine metrics and geographic region (same format as agent)
+            data_to_verify = {
+                "metrics": payload["metrics"],
+                "geographic_region": payload["geographic_region"]
+            }
+            data_json = json.dumps(data_to_verify, sort_keys=True)
+            data_bytes = data_json.encode('utf-8')
             nonce_bytes = payload["nonce"].encode('utf-8')
             signature_bytes = bytes.fromhex(payload["signature"])
             
             # Verify signature using TPM2
             is_valid = tpm2_utils.verify_with_nonce(
-                metrics_bytes,
+                data_bytes,
                 nonce_bytes,
                 signature_bytes,
                 algorithm=payload["algorithm"]
@@ -336,6 +395,11 @@ def receive_metrics():
     Expected JSON payload:
     {
         "metrics": {...},
+        "geographic_region": {
+            "region": "US",
+            "state": "California", 
+            "city": "Santa Clara"
+        },
         "nonce": "...",
         "signature": "...",
         "algorithm": "sha256",
@@ -367,6 +431,13 @@ def receive_metrics():
                              service=payload["metrics"].get("service", {}).get("name"))
                 verification_counter.add(1, {"status": "failed"})
                 return jsonify({"error": "Signature verification failed"}), 400
+            
+            # Verify geographic region
+            if not MetricsProcessor.verify_geographic_region(payload):
+                logger.warning("Geographic region verification failed", 
+                             service=payload["metrics"].get("service", {}).get("name"))
+                verification_counter.add(1, {"status": "failed"})
+                return jsonify({"error": "Geographic region verification failed"}), 400
             
             # Consume nonce
             NonceManager.consume_nonce(payload["nonce"])
