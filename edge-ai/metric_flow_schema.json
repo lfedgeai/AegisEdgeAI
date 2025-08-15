@@ -1,0 +1,596 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Zero-Trust Sovereign AI Edge - End-to-End Metric Flow Schema",
+  "description": "Complete JSON schema for the secure metrics collection flow from agent to collector",
+  "definitions": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp in UTC",
+      "example": "2025-01-15T10:30:00.000000Z"
+    },
+    "service_info": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Service name identifier",
+          "example": "edge-ai-agent"
+        },
+        "version": {
+          "type": "string",
+          "description": "Service version",
+          "example": "1.0.0"
+        },
+        "instance_id": {
+          "type": "string",
+          "description": "Unique instance identifier",
+          "example": "edge-node-001"
+        }
+      },
+      "required": ["name", "version", "instance_id"]
+    },
+    "geographic_region": {
+      "type": "object",
+      "properties": {
+        "region": {
+          "type": "string",
+          "description": "Geographic region (country/continent)",
+          "example": "US"
+        },
+        "state": {
+          "type": "string",
+          "description": "State or province",
+          "example": "California"
+        },
+        "city": {
+          "type": "string",
+          "description": "City name",
+          "example": "Santa Clara"
+        }
+      },
+      "required": ["region"]
+    },
+    "system_metrics": {
+      "type": "object",
+      "properties": {
+        "cpu_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "CPU usage percentage"
+        },
+        "memory_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Memory usage percentage"
+        },
+        "disk_usage_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Disk usage percentage"
+        },
+        "network_io": {
+          "type": "object",
+          "properties": {
+            "bytes_sent": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Bytes sent over network"
+            },
+            "bytes_recv": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Bytes received over network"
+            }
+          },
+          "required": ["bytes_sent", "bytes_recv"]
+        }
+      },
+      "required": ["cpu_percent", "memory_percent", "disk_usage_percent", "network_io"]
+    },
+    "application_metrics": {
+      "type": "object",
+      "properties": {
+        "active_connections": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of active connections"
+        },
+        "requests_per_second": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Requests per second rate"
+        },
+        "error_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Error rate percentage"
+        },
+        "response_time_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Average response time in milliseconds"
+        }
+      },
+      "required": ["active_connections", "requests_per_second", "error_rate", "response_time_ms"]
+    },
+    "metrics_data": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "metrics": {
+          "oneOf": [
+            {"$ref": "#/definitions/system_metrics"},
+            {"$ref": "#/definitions/application_metrics"}
+          ]
+        },
+        "service": {
+          "$ref": "#/definitions/service_info"
+        },
+        "custom_data": {
+          "type": "object",
+          "description": "Optional custom data fields",
+          "additionalProperties": true
+        }
+      },
+      "required": ["timestamp", "metrics", "service"]
+    },
+    "signature_data": {
+      "type": "object",
+      "properties": {
+        "signature": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]+$",
+          "description": "Hexadecimal signature from TPM2"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]+$",
+          "description": "Hexadecimal digest of signed data"
+        },
+        "algorithm": {
+          "type": "string",
+          "enum": ["sha256", "sha384", "sha512"],
+          "description": "Hash algorithm used for signing"
+        }
+      },
+      "required": ["signature", "digest", "algorithm"]
+    }
+  },
+  "paths": {
+    "/nonce": {
+      "get": {
+        "summary": "Get nonce from collector",
+        "description": "Retrieve a cryptographic nonce for signature generation",
+        "responses": {
+          "200": {
+            "description": "Nonce generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nonce": {
+                      "type": "string",
+                      "minLength": 32,
+                      "description": "Cryptographic nonce for signature"
+                    },
+                    "expires_in": {
+                      "type": "string",
+                      "description": "Nonce expiration time",
+                      "example": "5 minutes"
+                    },
+                    "timestamp": {
+                      "$ref": "#/definitions/timestamp"
+                    }
+                  },
+                  "required": ["nonce", "expires_in", "timestamp"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics/generate": {
+      "post": {
+        "summary": "Generate and send metrics",
+        "description": "Generate metrics, sign with TPM2, and send to collector",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "metric_type": {
+                    "type": "string",
+                    "enum": ["system", "application"],
+                    "description": "Type of metrics to generate"
+                  },
+                  "custom_data": {
+                    "type": "object",
+                    "description": "Optional custom data to include",
+                    "additionalProperties": true
+                  }
+                },
+                "required": ["metric_type"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Metrics generated and sent successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["success"]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "payload_id": {
+                      "type": "string",
+                      "description": "Unique identifier for the payload"
+                    }
+                  },
+                  "required": ["status", "message", "payload_id"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["error"]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["status", "message"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "post": {
+        "summary": "Receive metrics from agent",
+        "description": "Receive, verify signature, and process metrics from agent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "metrics": {
+                    "$ref": "#/definitions/metrics_data"
+                  },
+                  "geographic_region": {
+                    "$ref": "#/definitions/geographic_region"
+                  },
+                  "nonce": {
+                    "type": "string",
+                    "minLength": 32,
+                    "description": "Cryptographic nonce used for signature"
+                  },
+                  "signature": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]+$",
+                    "description": "Hexadecimal signature from TPM2"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]+$",
+                    "description": "Hexadecimal digest of signed data"
+                  },
+                  "algorithm": {
+                    "type": "string",
+                    "enum": ["sha256", "sha384", "sha512"],
+                    "description": "Hash algorithm used for signing"
+                  },
+                  "timestamp": {
+                    "$ref": "#/definitions/timestamp"
+                  }
+                },
+                "required": ["metrics", "geographic_region", "nonce", "signature", "algorithm", "timestamp"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Metrics received and verified successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["success"]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "processing_id": {
+                      "type": "string",
+                      "description": "Processing timestamp as identifier"
+                    }
+                  },
+                  "required": ["status", "message", "processing_id"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation or verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "No payload provided",
+                        "Invalid payload structure",
+                        "Invalid or expired nonce",
+                        "Signature verification failed",
+                        "Geographic region verification failed"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Service health status",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["healthy"]
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "active_nonces": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "timestamp": {
+                      "$ref": "#/definitions/timestamp"
+                    }
+                  },
+                  "required": ["status", "service", "version", "active_nonces", "timestamp"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics/status": {
+      "get": {
+        "summary": "Metrics processing status",
+        "description": "Get current metrics processing status and statistics",
+        "responses": {
+          "200": {
+            "description": "Status information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "tpm2_available": {
+                      "type": "boolean"
+                    },
+                    "active_nonces": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "timestamp": {
+                      "$ref": "#/definitions/timestamp"
+                    }
+                  },
+                  "required": ["service", "version", "tpm2_available", "active_nonces", "timestamp"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "flow_steps": {
+    "1_nonce_request": {
+      "description": "Agent requests nonce from collector",
+      "endpoint": "GET /nonce",
+      "security": "HTTPS/TLS",
+      "validation": "Nonce expiration (5 minutes)"
+    },
+    "2_metrics_generation": {
+      "description": "Agent generates metrics data",
+      "types": ["system_metrics", "application_metrics"],
+      "includes": ["timestamp", "service_info", "custom_data"]
+    },
+    "3_data_signing": {
+      "description": "Agent signs combined data with TPM2",
+      "data_structure": {
+        "type": "object",
+        "properties": {
+          "metrics": {"$ref": "#/definitions/metrics_data"},
+          "geographic_region": {"$ref": "#/definitions/geographic_region"}
+        },
+        "required": ["metrics", "geographic_region"]
+      },
+      "signing_process": [
+        "JSON serialization with sort_keys=True",
+        "UTF-8 encoding",
+        "TPM2 signing with nonce",
+        "Hexadecimal signature output"
+      ]
+    },
+    "4_payload_creation": {
+      "description": "Agent creates final payload",
+      "required_fields": [
+        "metrics", "geographic_region", "nonce", 
+        "signature", "algorithm", "timestamp"
+      ]
+    },
+    "5_metrics_submission": {
+      "description": "Agent sends payload to collector",
+      "endpoint": "POST /metrics",
+      "security": "HTTPS/TLS"
+    },
+    "6_signature_verification": {
+      "description": "Collector verifies signature using public key",
+      "process": [
+        "Reconstruct exact data structure",
+        "JSON serialization with sort_keys=True",
+        "UTF-8 encoding",
+        "Public key verification with OpenSSL"
+      ]
+    },
+    "7_geographic_validation": {
+      "description": "Collector validates geographic region",
+      "checks": [
+        "Region in allowed_regions",
+        "State in allowed_states (if specified)",
+        "City in allowed_cities (if specified)"
+      ]
+    },
+    "8_metrics_processing": {
+      "description": "Collector processes verified metrics",
+      "output": {
+        "type": "object",
+        "properties": {
+          "original_metrics": {"$ref": "#/definitions/metrics_data"},
+          "processing_timestamp": {"$ref": "#/definitions/timestamp"},
+          "signature_verified": {"type": "boolean"},
+          "nonce_consumed": {"type": "boolean"},
+          "collector_id": {"type": "string"}
+        },
+        "required": ["original_metrics", "processing_timestamp", "signature_verified", "nonce_consumed", "collector_id"]
+      }
+    }
+  },
+  "security_requirements": {
+    "transport": "HTTPS/TLS 1.2+",
+    "signature_algorithm": "SHA-256/SHA-384/SHA-512",
+    "nonce_expiration": "5 minutes",
+    "geographic_policy": "Configurable region/state/city allowlists",
+    "tpm2_requirements": {
+      "agent": "Hardware TPM2 or swtpm for development",
+      "collector": "Public key verification only (no TPM2 required)"
+    }
+  },
+  "error_handling": {
+    "validation_errors": [
+      "Missing required fields",
+      "Invalid data types",
+      "Invalid geographic region",
+      "Expired nonce"
+    ],
+    "security_errors": [
+      "Signature verification failed",
+      "Invalid nonce",
+      "Geographic region not allowed"
+    ],
+    "processing_errors": [
+      "TPM2 operation failed",
+      "Public key verification failed",
+      "Metrics processing failed"
+    ]
+  }
+}
