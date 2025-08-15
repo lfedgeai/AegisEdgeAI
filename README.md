@@ -779,8 +779,6 @@ The system uses structured logging with JSON format. Log levels can be controlle
 ├── test_complete_flow.py  # Complete end-to-end test
 ├── test_summary.py        # Test summary
 ├── requirements.txt       # Python dependencies
-├── Dockerfile             # Docker configuration
-├── docker-compose.yml     # Docker Compose configuration
 └── README.md              # This file
 ```
 
@@ -833,4 +831,3 @@ For support and questions:
 - OpenTelemetry project for the telemetry framework
 - TPM2 Software Stack for hardware security integration
 - Flask framework for the web services
-- Docker for containerization support
