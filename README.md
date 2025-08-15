@@ -131,6 +131,61 @@ sequenceDiagram
 - **Nonce Management**: Time-based unique tokens
 - **Signature Algorithms**: SHA256/SHA384/SHA512 support
 
+## API Schema & Data Flow Documentation
+
+### JSON Schema for End-to-End Metric Flow
+
+The complete data flow and API specifications are documented in a comprehensive JSON schema that defines all data structures, validation rules, and security requirements:
+
+📋 **[Complete Metric Flow Schema](edge-ai/metric_flow_schema.json)**
+
+The schema includes:
+
+#### **🔧 Core Data Structures**
+- **Metrics Data**: System and application metrics with service metadata
+- **Geographic Region**: Location data for compliance verification
+- **Signature Data**: TPM2 signature information with algorithm details
+- **Service Information**: Service name, version, and instance identifiers
+
+#### **🌐 API Endpoints**
+- **`GET /nonce`**: Retrieve cryptographic nonce for signature generation
+- **`POST /metrics/generate`**: Generate and send signed metrics
+- **`POST /metrics`**: Receive and verify metrics from agents
+- **`GET /health`**: Service health check endpoints
+- **`GET /metrics/status`**: Processing status and statistics
+
+#### **🔄 8-Step Flow Process**
+1. **Nonce Request**: Agent requests nonce from collector
+2. **Metrics Generation**: Generate system or application metrics
+3. **Data Signing**: TPM2 signing with JSON serialization
+4. **Payload Creation**: Combine all required fields
+5. **Metrics Submission**: HTTPS/TLS transmission
+6. **Signature Verification**: Public key verification
+7. **Geographic Validation**: Region/state/city policy checks
+8. **Metrics Processing**: Storage and processing
+
+#### **🛡️ Security Specifications**
+- **Transport Security**: HTTPS/TLS 1.2+ requirements
+- **Signature Algorithms**: SHA-256/SHA-384/SHA-512 support
+- **Nonce Management**: 5-minute expiration with anti-replay protection
+- **Geographic Policy**: Configurable allowlists for data residency
+- **TPM2 Requirements**: Hardware TPM2 for agent, public key verification for collector
+
+#### **❌ Error Handling**
+- **Validation Errors**: Missing fields, invalid types, expired nonces
+- **Security Errors**: Signature verification failures, invalid nonces
+- **Processing Errors**: TPM2 failures, verification failures
+
+### Code References
+
+Key implementation files referenced in the schema:
+
+- **[Agent Metrics Generation](edge-ai/agent/app.py#L127-L169)**: `MetricsGenerator` class for system and application metrics
+- **[Collector Metrics Processing](edge-ai/collector/app.py#L183-L348)**: `MetricsProcessor` class for validation and verification
+- **[TPM2 Utilities](edge-ai/utils/tpm2_utils.py)**: Hardware-backed cryptographic operations
+- **[Public Key Utilities](edge-ai/utils/public_key_utils.py)**: OpenSSL-based signature verification
+- **[Configuration](edge-ai/config.py)**: Geographic region and security settings
+
 ## Geographic Region Security
 
 ### Overview
