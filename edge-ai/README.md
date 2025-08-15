@@ -4,23 +4,135 @@ A production-ready microservice architecture that implements secure metrics coll
 security, and HTTPS communication. This system provides end-to-end hardware-backed cryptographically verifiable security and
 trust with proof of residency and proof of geofencing for telemetry data collection.
 
-## Architecture Overview
+## Architecture
 
-The system consists of three main microservices:
+The system follows a microservices architecture with three main components:
 
-1. **OpenTelemetry Agent** - Generates metrics, gets nonces, signs data with TPM2, and sends to collector
-2. **OpenTelemetry Collector** - Provides nonces, receives metrics, verifies signatures using TPM2
-3. **API Gateway** - Man-in-the-middle proxy that terminates TLS from agents and reinitiates TLS to collector
+```
+┌─────────────────┐    HTTPS/TLS    ┌─────────────────┐    HTTPS/TLS    ┌─────────────────┐
+│   OpenTelemetry │ ──────────────► │   API Gateway   │ ──────────────► │   OpenTelemetry │
+│      Agent      │                 │                 │                 │    Collector    │
+│   (Port 5000)   │                 │  (Port 8443)    │                 │   (Port 8444)   │
+└─────────────────┘                 └─────────────────┘                 └─────────────────┘
+         │                                   │                                   │
+         │                                   │                                   │
+         ▼                                   ▼                                   ▼
+┌─────────────────┐                 ┌─────────────────┐                 ┌─────────────────┐
+│   TPM2 Utils    │                 │   TLS Proxy     │                 │   TPM2 Utils    │
+│   (Hardware/    │                 │   & Routing     │                 │   (Hardware/    │
+│   Software)     │                 │                 │                 │   Software)     │
+└─────────────────┘                 └─────────────────┘                 └─────────────────┘
+```
+
+### Complete Security Flow
+
+```mermaid
+sequenceDiagram
+    participant Agent as OpenTelemetry Agent
+    participant TPM2_A as Agent TPM2
+    participant Gateway as API Gateway
+    participant Collector as OpenTelemetry Collector
+    participant TPM2_C as Collector TPM2
+    participant Policy as Geographic Policy
+
+    Note over Agent,Policy: Bidirectional TPM2 Authentication Flow
+
+    %% Step 1: Agent requests Collector's public key
+    Agent->>Gateway: GET /public-key
+    Gateway->>Collector: GET /public-key
+    Collector->>TPM2_C: tpm2_readpublic -f pem
+    TPM2_C-->>Collector: Public Key (PEM)
+    Collector-->>Gateway: Public Key Response
+    Gateway-->>Agent: Public Key Response
+
+    %% Step 2: Agent requests signed nonce
+    Agent->>Gateway: GET /nonce
+    Gateway->>Collector: GET /nonce
+    Collector->>Collector: Generate Nonce
+    Collector->>TPM2_C: sign_data(nonce)
+    TPM2_C-->>Collector: Nonce Signature
+    Collector-->>Gateway: Nonce + Signature
+    Gateway-->>Agent: Nonce + Signature
+
+    %% Step 3: Agent verifies nonce signature
+    Agent->>TPM2_A: verify_signature(nonce, signature)
+    TPM2_A-->>Agent: Verification Result
+    Note over Agent: If verification fails, abort
+
+    %% Step 4: Agent generates metrics with geographic region
+    Agent->>Agent: Generate System/App Metrics
+    Agent->>Agent: Create Geographic Region Data
+    Agent->>Agent: Combine Metrics + Geographic Region
+
+    %% Step 5: Agent signs combined data with nonce
+    Agent->>TPM2_A: sign_with_nonce(data + nonce)
+    TPM2_A-->>Agent: Signature + Digest
+
+    %% Step 6: Agent sends signed payload
+    Agent->>Gateway: POST /metrics (Signed Payload)
+    Gateway->>Collector: POST /metrics (Signed Payload)
+
+    %% Step 7: Collector verifies signature
+    Collector->>TPM2_C: verify_with_nonce(data + nonce, signature)
+    TPM2_C-->>Collector: Verification Result
+    Note over Collector: If verification fails, reject
+
+    %% Step 8: Collector validates geographic region
+    Collector->>Policy: verify_geographic_region(payload)
+    Policy-->>Collector: Policy Check Result
+    Note over Collector: If region not allowed, reject
+
+    %% Step 9: Collector processes metrics
+    Collector->>Collector: Process & Store Metrics
+    Collector-->>Gateway: Success Response
+    Gateway-->>Agent: Success Response
+
+    Note over Agent,Policy: End-to-End TPM2 Protection Complete
+```
 
 ### Security Features
 
-- **TPM2 Hardware Security**: All cryptographic operations use TPM2 hardware
-- **HTTPS/TLS**: All communications are encrypted with self-signed certificates
-- **Nonce-based Authentication**: Prevents replay attacks
-- **Rate Limiting**: API Gateway implements request rate limiting
-- **Signature Verification**: All metrics are cryptographically signed and verified
-- **Geographic Region Verification**: Enforces geographic compliance and data residency requirements
-- **Geofencing**: Ensures metrics only come from authorized geographic regions
+1. **TPM2 Hardware/Software Security**: All cryptographic operations use TPM2
+2. **Bidirectional Authentication**: Both agent and collector verify each other
+3. **Nonce-based Anti-Replay**: Unique tokens prevent replay attacks
+4. **Geographic Region Verification**: Enforces data residency policies
+5. **TLS/HTTPS Encryption**: All communications are encrypted
+6. **API Gateway Security**: Centralized security and routing
+7. **Signature Verification**: All data is cryptographically signed and verified
+
+### Data Flow
+
+1. **Agent Initialization**:
+   - Agent starts with TPM2 context
+   - Connects to API Gateway via HTTPS
+
+2. **Authentication Phase**:
+   - Agent retrieves Collector's public key
+   - Agent requests signed nonce from Collector
+   - Agent verifies nonce signature using TPM2
+
+3. **Data Generation & Signing**:
+   - Agent generates system/application metrics
+   - Agent creates geographic region data
+   - Agent combines metrics + geographic region
+   - Agent signs combined data with nonce using TPM2
+
+4. **Data Transmission**:
+   - Agent sends signed payload to Gateway
+   - Gateway forwards to Collector
+
+5. **Verification & Processing**:
+   - Collector verifies signature using TPM2
+   - Collector validates geographic region against policy
+   - Collector processes and stores metrics
+
+### Key Security Components
+
+- **TPM2 Utils**: Hardware-backed cryptographic operations
+- **Shell Scripts**: `sign_app_message.sh` and `verify_app_message_signature.sh`
+- **Geographic Policy**: Configurable region/state/city allowlists
+- **Nonce Management**: Time-based unique tokens
+- **Signature Algorithms**: SHA256/SHA384/SHA512 support
 
 ## Geographic Region Security
 
