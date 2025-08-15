@@ -27,14 +27,14 @@ class Settings(BaseSettings):
     
     # TPM2 configuration
     tpm2_device: str = Field(default="/dev/tpm0", env="TPM2_DEVICE")
-    tpm2_app_ctx_path: str = Field(default="app.ctx", env="TPM2_APP_CTX_PATH")
-    tpm2_primary_ctx_path: str = Field(default="primary.ctx", env="TPM2_PRIMARY_CTX_PATH")
-    tpm2_ak_ctx_path: str = Field(default="ak.ctx", env="TPM2_AK_CTX_PATH")
+    tpm2_app_ctx_path: str = Field(default="tpm/app.ctx", env="TPM2_APP_CTX_PATH")
+    tpm2_primary_ctx_path: str = Field(default="tpm/primary.ctx", env="TPM2_PRIMARY_CTX_PATH")
+    tpm2_ak_ctx_path: str = Field(default="tpm/ak.ctx", env="TPM2_AK_CTX_PATH")
     use_swtpm: bool = Field(default=True, env="USE_SWTPM")
     
     # Public key configuration (for collector verification)
-    public_key_path: str = Field(default="appsk_pubkey.pem", env="PUBLIC_KEY_PATH")
-    verify_script_path: str = Field(default="verify_app_message_signature.sh", env="VERIFY_SCRIPT_PATH")
+    public_key_path: str = Field(default="tpm/appsk_pubkey.pem", env="PUBLIC_KEY_PATH")
+    verify_script_path: str = Field(default="tpm/verify_app_message_signature.sh", env="VERIFY_SCRIPT_PATH")
     
     # Software TPM (swtpm) configuration
     swtpm_dir: str = Field(default="$HOME/.swtpm/ztpm", env="SWTPM_DIR")

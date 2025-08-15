@@ -112,7 +112,7 @@ def test_persistent_handles() -> bool:
 
 def test_context_files() -> bool:
     """Test if required context files exist."""
-    required_files = ["ek.ctx", "ak.ctx", "app.ctx", "primary.ctx"]
+    required_files = ["tpm/ek.ctx", "tpm/ak.ctx", "tpm/app.ctx", "tpm/primary.ctx"]
     missing_files = []
     
     for file in required_files:

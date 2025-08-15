@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Configuration (update these as needed)
-PUBKEY="appsk_pubkey.pem"      # Public key file (exported)
-MESSAGE="appsig_info.bin"      # Original signed message
-SIGNATURE="appsig.bin"         # Signature to verify
-HASHFILE="appsig_info.hash"    # Temporary file for SHA-256 hash
+PUBKEY="$SCRIPT_DIR/appsk_pubkey.pem"      # Public key file (exported)
+MESSAGE="$SCRIPT_DIR/appsig_info.bin"      # Original signed message
+SIGNATURE="$SCRIPT_DIR/appsig.bin"         # Signature to verify
+HASHFILE="$SCRIPT_DIR/appsig_info.hash"    # Temporary file for SHA-256 hash
 
 echo "[INFO] Hashing the message with SHA-256..."
 openssl dgst -sha256 -binary < "$MESSAGE" > "$HASHFILE"

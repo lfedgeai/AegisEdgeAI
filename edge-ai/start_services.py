@@ -229,7 +229,7 @@ def main():
     logger.info("Starting OpenTelemetry microservice architecture...")
     
     # Check if required files exist
-    required_files = ["app.ctx", "primary.ctx", "ak.ctx", "ek.ctx"]
+    required_files = ["tpm/app.ctx", "tpm/primary.ctx", "tpm/ak.ctx", "tpm/ek.ctx"]
     missing_files = [f for f in required_files if not os.path.exists(f)]
     
     if missing_files:

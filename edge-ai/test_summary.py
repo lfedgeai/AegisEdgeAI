@@ -79,13 +79,13 @@ def test_signing_scripts():
     print("=" * 35)
     
     # Create test message
-    with open("appsig_info.bin", "w") as f:
+    with open("tpm/appsig_info.bin", "w") as f:
         f.write("test message for signing")
     
     tests = [
-        ("Message Signing", "./sign_app_message.sh"),
-        ("Signature Verification", "./verify_app_message_signature.sh"),
-        ("Quote Generation & Verification", "./generate_verify_app_quote.sh"),
+        ("Message Signing", "./tpm/sign_app_message.sh"),
+        ("Signature Verification", "./tpm/verify_app_message_signature.sh"),
+        ("Quote Generation & Verification", "./tpm/generate_verify_app_quote.sh"),
     ]
     
     passed = 0
