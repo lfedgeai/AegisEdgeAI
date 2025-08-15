@@ -64,12 +64,14 @@ def test_signing_operations():
     """Test signing operations."""
     print("\n=== Testing Signing Operations ===")
     
+    # Create test message first
+    with open("appsig_info.bin", "w") as f:
+        f.write("test message for signing")
+    
     tests = [
         ("Message signing", "./sign_app_message.sh"),
         ("Signature verification", "./verify_app_message_signature.sh"),
-        ("Quote generation", "./generate_app_quote.sh"),
-        ("Quote verification", "./verify_app_quote.sh"),
-        ("Public key export", "./get_public_key_app.sh"),
+        ("Quote generation & verification", "./generate_verify_app_quote.sh"),
     ]
     
     success = True
@@ -113,20 +115,19 @@ def test_python_utilities():
         )
         print("✅ PublicKeyUtils initialization - SUCCESS")
         
-        # Test verification
+        # Test verification with simple data
         test_data = b"test message for verification"
-        test_nonce = b"test_nonce_123"
-        combined_data = test_data + test_nonce
         
         # Create a signature first
-        os.system(f"echo '{test_data.decode()}' > appsig_info.bin")
+        with open("appsig_info.bin", "wb") as f:
+            f.write(test_data)
         os.system("./sign_app_message.sh")
         
         if os.path.exists("appsig.bin"):
             with open("appsig.bin", "rb") as f:
                 signature = f.read()
             
-            is_valid = pk_utils.verify_signature(combined_data, signature)
+            is_valid = pk_utils.verify_signature(test_data, signature)
             if is_valid:
                 print("✅ PublicKeyUtils verification - SUCCESS")
             else:

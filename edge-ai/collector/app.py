@@ -282,11 +282,15 @@ class MetricsProcessor:
             True if signature is valid, False otherwise
         """
         try:
-            # Combine metrics and geographic region (same format as agent)
+            # The agent should send the exact data that was signed
+            # We need to reconstruct the exact data structure that was signed
+            # The agent signs: {"metrics": {...}, "geographic_region": {...}}
             data_to_verify = {
                 "metrics": payload["metrics"],
                 "geographic_region": payload["geographic_region"]
             }
+            
+            # Use the exact same JSON serialization as the agent
             data_json = json.dumps(data_to_verify, sort_keys=True)
             data_bytes = data_json.encode('utf-8')
             nonce_bytes = payload["nonce"].encode('utf-8')
