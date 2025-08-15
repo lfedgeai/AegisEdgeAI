@@ -38,9 +38,6 @@ Before running the microservices, ensure swtpm is properly configured with persi
 sudo apt-get install swtpm swtpm-tools tpm2-tools
 
 # Start software TPM and set up persistent keys
-python start_swtpm.py
-
-# Or use the provided shell scripts manually
 ./swtpm.sh
 ./tpm-ek-ak-persist.sh
 ./tpm-app-persist.sh
@@ -105,15 +102,12 @@ The system requires the following TPM2 context files (already present in the rep
 #### Using the Startup Script
 
 ```bash
-# First, start the software TPM (swtpm)
-python start_swtpm.py
 
-# In another terminal, start all microservices
+# Start all microservices
 python start_services.py
 ```
 
 This will start:
-- Software TPM (swtpm) on port 2321
 - Collector on port 8444
 - Gateway on port 8443  
 - Agent on port 8442

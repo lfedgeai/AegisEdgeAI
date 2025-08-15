@@ -68,12 +68,8 @@ def setup_opentelemetry():
         trace_provider = TracerProvider()
         trace.set_tracer_provider(trace_provider)
         
-        # Setup metric provider
-        metric_reader = PeriodicExportingMetricReader(
-            OTLPMetricExporter(endpoint=settings.otel_endpoint)
-        )
-        metric_provider = MeterProvider(metric_reader=metric_reader)
-        metrics.set_meter_provider(metric_provider)
+        # Skip metrics setup for now to avoid compatibility issues
+        logger.info("Skipping OpenTelemetry metrics setup for compatibility")
         
         # Add span processor
         otlp_exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint)

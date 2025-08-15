@@ -92,8 +92,11 @@ def test_persistent_handles() -> bool:
             found_handles = [h.strip() for h in handles if h.strip()]
             
             for required in required_handles:
-                if required in found_handles:
-                    logger.info(f"  ✓ {required} (EK)")
+                # Check both with and without dash prefix, and with space after dash
+                if (required in found_handles or 
+                    f"-{required}" in found_handles or 
+                    f"- {required}" in found_handles):
+                    logger.info(f"  ✓ {required}")
                 else:
                     logger.warning(f"  ⚠ {required} not found")
             
@@ -136,7 +139,7 @@ def test_basic_operations() -> bool:
         logger.info("Testing hash operation...")
         result = subprocess.run(
             ["tpm2_hash", "-C", "o", "-g", "sha256", "-o", "test_hash.bin"],
-            input=b"test data",
+            input="test data",
             env=env,
             capture_output=True,
             text=True,

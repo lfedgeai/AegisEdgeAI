@@ -6,6 +6,7 @@ Provides functions for creating self-signed certificates and managing TLS connec
 import os
 import ssl
 import tempfile
+import ipaddress
 from datetime import datetime, timedelta
 from typing import Tuple, Optional
 from cryptography import x509
@@ -82,7 +83,7 @@ class SSLUtils:
             ).add_extension(
                 x509.SubjectAlternativeName([
                     x509.DNSName(common_name),
-                    x509.IPAddress(x509.IPv4Address("127.0.0.1")),
+                    x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
                 ]),
                 critical=False,
             ).sign(private_key, hashes.SHA256())

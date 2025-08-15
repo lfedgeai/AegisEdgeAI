@@ -20,6 +20,11 @@ from pathlib import Path
 from typing import List, Dict, Any
 import structlog
 
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from config import settings
+
 # Configure logging
 structlog.configure(
     processors=[
@@ -51,7 +56,7 @@ SERVICES = {
             "PORT": "8444",
             "COLLECTOR_HOST": "localhost",
             "COLLECTOR_PORT": "8444",
-            "OTEL_ENDPOINT": "http://localhost:4317",
+            "OTEL_ENDPOINT": settings.otel_endpoint,
             "LOG_LEVEL": "INFO"
         }
     },
@@ -64,7 +69,7 @@ SERVICES = {
             "PORT": "8443",
             "COLLECTOR_HOST": "localhost",
             "COLLECTOR_PORT": "8444",
-            "OTEL_ENDPOINT": "http://localhost:4317",
+            "OTEL_ENDPOINT": settings.otel_endpoint,
             "LOG_LEVEL": "INFO"
         }
     },
@@ -76,8 +81,8 @@ SERVICES = {
             "SERVICE_NAME": "opentelemetry-agent",
             "PORT": "8442",
             "COLLECTOR_HOST": "localhost", 
-            "COLLECTOR_PORT": "8443",  # Connect through gateway
-            "OTEL_ENDPOINT": "http://localhost:4317",
+            "COLLECTOR_PORT": "8443",
+            "OTEL_ENDPOINT": settings.otel_endpoint,
             "LOG_LEVEL": "INFO"
         }
     }

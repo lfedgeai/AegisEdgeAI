@@ -15,6 +15,7 @@ import sys
 import time
 import json
 import secrets
+import random
 import requests
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -82,12 +83,8 @@ def setup_opentelemetry():
         trace_provider = TracerProvider()
         trace.set_tracer_provider(trace_provider)
         
-        # Setup metric provider
-        metric_reader = PeriodicExportingMetricReader(
-            OTLPMetricExporter(endpoint=settings.otel_endpoint)
-        )
-        metric_provider = MeterProvider(metric_reader=metric_reader)
-        metrics.set_meter_provider(metric_provider)
+        # Skip metrics setup for now to avoid compatibility issues
+        logger.info("Skipping OpenTelemetry metrics setup for compatibility")
         
         # Add span processor
         otlp_exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint)
@@ -160,9 +157,9 @@ class MetricsGenerator:
             "timestamp": datetime.utcnow().isoformat(),
             "metrics": {
                 "active_connections": secrets.randbelow(100),
-                "requests_per_second": secrets.uniform(10.0, 100.0),
-                "error_rate": secrets.uniform(0.0, 5.0),
-                "response_time_ms": secrets.uniform(50.0, 500.0)
+                "requests_per_second": random.uniform(10.0, 100.0),
+                "error_rate": random.uniform(0.0, 5.0),
+                "response_time_ms": random.uniform(50.0, 500.0)
             },
             "service": {
                 "name": settings.service_name,
