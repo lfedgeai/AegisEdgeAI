@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     tpm2_app_ctx_path: str = Field(default="app.ctx", env="TPM2_APP_CTX_PATH")
     tpm2_primary_ctx_path: str = Field(default="primary.ctx", env="TPM2_PRIMARY_CTX_PATH")
     tpm2_ak_ctx_path: str = Field(default="ak.ctx", env="TPM2_AK_CTX_PATH")
+    use_swtpm: bool = Field(default=True, env="USE_SWTPM")
     
     # Software TPM (swtpm) configuration
     swtpm_dir: str = Field(default="$HOME/.swtpm/ztpm", env="SWTPM_DIR")
