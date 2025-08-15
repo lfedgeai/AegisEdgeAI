@@ -1,7 +1,7 @@
 # OpenTelemetry Microservice Architecture with TPM2 Security
 
 A production-ready microservice architecture that implements secure metrics collection using OpenTelemetry, TPM2 hardware
-security, and HTTPS communication. This system provides end-to-end hardware-backed cryptographically verifiable security and
+security for the agent, and public key verification for the collector. This system provides end-to-end hardware-backed cryptographically verifiable security and
 trust with proof of residency and proof of geofencing for telemetry data collection.
 
 ## Architecture
@@ -12,15 +12,15 @@ The system follows a microservices architecture with three main components:
 ┌─────────────────┐    HTTPS/TLS    ┌─────────────────┐    HTTPS/TLS    ┌─────────────────┐
 │   OpenTelemetry │ ──────────────► │   API Gateway   │ ──────────────► │   OpenTelemetry │
 │      Agent      │                 │                 │                 │    Collector    │
-│   (Port 5000)   │                 │  (Port 8443)    │                 │   (Port 8444)   │
+│   (Port 8442)   │                 │  (Port 8443)    │                 │   (Port 8444)   │
 └─────────────────┘                 └─────────────────┘                 └─────────────────┘
          │                                   │                                   │
          │                                   │                                   │
          ▼                                   ▼                                   ▼
 ┌─────────────────┐                 ┌─────────────────┐                 ┌─────────────────┐
-│   TPM2 Utils    │                 │   TLS Proxy     │                 │   TPM2 Utils    │
-│   (Hardware/    │                 │   & Routing     │                 │   (Hardware/    │
-│   Software)     │                 │                 │                 │   Software)     │
+│   TPM2 Utils    │                 │   TLS Proxy     │                 │   Public Key    │
+│   (Hardware/    │                 │   & Routing     │                 │   Verification  │
+│   Software)     │                 │                 │                 │   (OpenSSL)     │
 └─────────────────┘                 └─────────────────┘                 └─────────────────┘
 ```
 
@@ -32,68 +32,53 @@ sequenceDiagram
     participant TPM2_A as Agent TPM2
     participant Gateway as API Gateway
     participant Collector as OpenTelemetry Collector
-    participant TPM2_C as Collector TPM2
+    participant PK_Utils as Public Key Utils
     participant Policy as Geographic Policy
 
-    Note over Agent,Policy: Bidirectional TPM2 Authentication Flow
+    Note over Agent,Policy: TPM2 Agent + Public Key Collector Authentication Flow
 
-    %% Step 1: Agent requests Collector's public key
-    Agent->>Gateway: GET /public-key
-    Gateway->>Collector: GET /public-key
-    Collector->>TPM2_C: tpm2_readpublic -f pem
-    TPM2_C-->>Collector: Public Key (PEM)
-    Collector-->>Gateway: Public Key Response
-    Gateway-->>Agent: Public Key Response
-
-    %% Step 2: Agent requests signed nonce
+    %% Step 1: Agent requests nonce
     Agent->>Gateway: GET /nonce
     Gateway->>Collector: GET /nonce
     Collector->>Collector: Generate Nonce
-    Collector->>TPM2_C: sign_data(nonce)
-    TPM2_C-->>Collector: Nonce Signature
-    Collector-->>Gateway: Nonce + Signature
-    Gateway-->>Agent: Nonce + Signature
+    Collector-->>Gateway: Nonce Response
+    Gateway-->>Agent: Nonce Response
 
-    %% Step 3: Agent verifies nonce signature
-    Agent->>TPM2_A: verify_signature(nonce, signature)
-    TPM2_A-->>Agent: Verification Result
-    Note over Agent: If verification fails, abort
-
-    %% Step 4: Agent generates metrics with geographic region
+    %% Step 2: Agent generates metrics with geographic region
     Agent->>Agent: Generate System/App Metrics
     Agent->>Agent: Create Geographic Region Data
     Agent->>Agent: Combine Metrics + Geographic Region
 
-    %% Step 5: Agent signs combined data with nonce
+    %% Step 3: Agent signs combined data with nonce using TPM2
     Agent->>TPM2_A: sign_with_nonce(data + nonce)
     TPM2_A-->>Agent: Signature + Digest
 
-    %% Step 6: Agent sends signed payload
+    %% Step 4: Agent sends signed payload
     Agent->>Gateway: POST /metrics (Signed Payload)
     Gateway->>Collector: POST /metrics (Signed Payload)
 
-    %% Step 7: Collector verifies signature
-    Collector->>TPM2_C: verify_with_nonce(data + nonce, signature)
-    TPM2_C-->>Collector: Verification Result
+    %% Step 5: Collector verifies signature using public key
+    Collector->>PK_Utils: verify_signature(data + nonce, signature)
+    PK_Utils-->>Collector: Verification Result
     Note over Collector: If verification fails, reject
 
-    %% Step 8: Collector validates geographic region
+    %% Step 6: Collector validates geographic region
     Collector->>Policy: verify_geographic_region(payload)
     Policy-->>Collector: Policy Check Result
     Note over Collector: If region not allowed, reject
 
-    %% Step 9: Collector processes metrics
+    %% Step 7: Collector processes metrics
     Collector->>Collector: Process & Store Metrics
     Collector-->>Gateway: Success Response
     Gateway-->>Agent: Success Response
 
-    Note over Agent,Policy: End-to-End TPM2 Protection Complete
+    Note over Agent,Policy: End-to-End Security Protection Complete
 ```
 
 ### Security Features
 
-1. **TPM2 Hardware/Software Security**: All cryptographic operations use TPM2
-2. **Bidirectional Authentication**: Both agent and collector verify each other
+1. **TPM2 Hardware/Software Security**: Agent uses TPM2 for all cryptographic operations
+2. **Public Key Verification**: Collector uses OpenSSL-based public key verification
 3. **Nonce-based Anti-Replay**: Unique tokens prevent replay attacks
 4. **Geographic Region Verification**: Enforces data residency policies
 5. **TLS/HTTPS Encryption**: All communications are encrypted
@@ -107,9 +92,8 @@ sequenceDiagram
    - Connects to API Gateway via HTTPS
 
 2. **Authentication Phase**:
-   - Agent retrieves Collector's public key
-   - Agent requests signed nonce from Collector
-   - Agent verifies nonce signature using TPM2
+   - Agent requests nonce from Collector via Gateway
+   - Collector generates and returns nonce
 
 3. **Data Generation & Signing**:
    - Agent generates system/application metrics
@@ -122,13 +106,14 @@ sequenceDiagram
    - Gateway forwards to Collector
 
 5. **Verification & Processing**:
-   - Collector verifies signature using TPM2
+   - Collector verifies signature using public key verification
    - Collector validates geographic region against policy
    - Collector processes and stores metrics
 
 ### Key Security Components
 
-- **TPM2 Utils**: Hardware-backed cryptographic operations
+- **TPM2 Utils**: Hardware-backed cryptographic operations for the agent
+- **Public Key Utils**: OpenSSL-based signature verification for the collector
 - **Shell Scripts**: `sign_app_message.sh` and `verify_app_message_signature.sh`
 - **Geographic Policy**: Configurable region/state/city allowlists
 - **Nonce Management**: Time-based unique tokens
@@ -303,40 +288,100 @@ SERVICE_NAME=opentelemetry-gateway PORT=8443 python gateway/app.py &
 SERVICE_NAME=opentelemetry-agent PORT=8442 python agent/app.py &
 ```
 
-### Testing the System
+## Testing the System
 
-#### Test Software TPM Setup
+### Comprehensive Test Suite
 
-First, test that the software TPM is properly configured:
+The system includes a comprehensive test suite to verify all components:
+
+#### 1. Configuration Test
+```bash
+python3 test_config.py
+```
+Tests configuration loading and environment variables.
+
+#### 2. TPM Comprehensive Test
+```bash
+python3 test_tpm_comprehensive.py
+```
+Tests all TPM-related functionality:
+- Python module imports
+- TPM2 command-line tools
+- Signing shell scripts
+- Python TPM utilities
+
+#### 3. Signature Flow Test
+```bash
+python3 test_signature_flow.py
+```
+Tests the complete signature generation and verification flow:
+- Nonce retrieval
+- Data signing with TPM2
+- Payload creation
+- End-to-end transmission
+
+#### 4. Signature Verification Test
+```bash
+python3 test_signature_verification.py
+```
+Isolated test of signature verification process:
+- TPM2 signing
+- Public key verification
+- Signature validation
+
+#### 5. Complete Flow Test
+```bash
+python3 test_complete_flow.py
+```
+Tests the complete end-to-end architecture:
+- Individual component health checks
+- Complete agent → gateway → collector flow
+- Metrics generation and transmission
+
+#### 6. Summary Test
+```bash
+python3 test_summary.py
+```
+Provides a comprehensive overview of all test categories:
+- Services health
+- TPM2 basic operations
+- Signing scripts
+- Python imports and utilities
+- End-to-end functionality
+
+### Running All Tests
+
+To run the complete test suite:
 
 ```bash
-python test_swtpm_setup.py
+# Start services first
+python3 start_services.py
+
+# Run all tests
+python3 test_config.py
+python3 test_tpm_comprehensive.py
+python3 test_signature_flow.py
+python3 test_signature_verification.py
+python3 test_complete_flow.py
+python3 test_summary.py
 ```
 
-This will test:
-- swtpm accessibility
-- TPM2 initialization
-- Persistent key handles
-- Basic TPM2 operations
-- Key operations
+### Test Results
 
-#### Test Microservices
+All tests should pass with the following expected output:
 
-Then test the complete microservice architecture:
+```
+✅ Configuration Test: PASS
+✅ TPM Comprehensive Test: PASS
+✅ Signature Flow Test: PASS
+✅ Signature Verification Test: PASS
+✅ Complete Flow Test: PASS
+✅ Summary Test: PASS
 
-```bash
-python test_client.py
+🎉 ALL TESTS PASSED! System is working correctly.
 ```
 
-This will test:
-- Health endpoints
-- Nonce generation
-- Metrics generation and signing
-- Signature verification
-- Rate limiting
-- System status endpoints
-
-#### Test Geographic Region Functionality
+### Testing Geographic Region Functionality
 
 Test the geographic region verification and policy enforcement:
 
@@ -488,6 +533,8 @@ curl https://localhost:8444/health --insecure
 | `ALLOWED_REGIONS` | `["US"]` | List of allowed regions for collector |
 | `ALLOWED_STATES` | `["California", "Texas", "New York"]` | List of allowed states for collector |
 | `ALLOWED_CITIES` | `["Santa Clara", "San Francisco", "Austin", "New York"]` | List of allowed cities for collector |
+| `PUBLIC_KEY_PATH` | `appsk_pubkey.pem` | Path to the public key for verification |
+| `VERIFY_SCRIPT_PATH` | `verify_app_message_signature.sh` | Path to the verification script |
 
 ### Configuration File
 
@@ -533,12 +580,19 @@ ALLOWED_CITIES=["Santa Clara", "San Francisco", "Austin", "New York"]
 
 ## Security Considerations
 
-### TPM2 Security
+### TPM2 Security (Agent)
 
 - All cryptographic operations use software TPM (swtpm)
 - Private keys never leave the TPM2 environment
 - Signatures are TPM-backed and tamper-resistant
 - Nonce-based authentication prevents replay attacks
+
+### Public Key Verification (Collector)
+
+- Collector uses OpenSSL-based public key verification
+- Signature verification is performed using external shell scripts
+- Public key is securely stored and verified
+- Verification process is isolated and secure
 
 ### Geographic Region Security
 
@@ -591,14 +645,19 @@ TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=2321" tpm2 getcap handles-persistent
 python start_swtpm.py
 ```
 
-#### SSL Certificate Issues
+#### Public Key Verification Issues
 
 ```bash
-# Generate new certificates
-python -c "
-from utils.ssl_utils import SSLUtils
-SSLUtils.generate_certificate_files('localhost', 'cert.pem', 'key.pem')
-"
+# Check if public key exists
+ls -la appsk_pubkey.pem
+
+# Regenerate public key if needed
+./get_public_key_app.sh
+
+# Test verification script
+echo "test message" > appsig_info.bin
+./sign_app_message.sh
+./verify_app_message_signature.sh
 ```
 
 #### Service Connection Issues
@@ -612,29 +671,23 @@ tail -f logs/*.log
 
 # Test service health
 curl https://localhost:8442/health --insecure
+curl https://localhost:8443/health --insecure
+curl https://localhost:8444/health --insecure
 ```
 
-#### Geographic Region Issues
+#### Test Failures
 
 ```bash
-# Check geographic region configuration
-echo "Agent region: $GEOGRAPHIC_REGION"
-echo "Agent state: $GEOGRAPHIC_STATE"
-echo "Agent city: $GEOGRAPHIC_CITY"
+# Run individual tests to isolate issues
+python3 test_config.py
+python3 test_tpm_comprehensive.py
+python3 test_signature_flow.py
+python3 test_signature_verification.py
+python3 test_complete_flow.py
+python3 test_summary.py
 
-# Check collector geographic policy
-echo "Allowed regions: $ALLOWED_REGIONS"
-echo "Allowed states: $ALLOWED_STATES"
-echo "Allowed cities: $ALLOWED_CITIES"
-
-# Test geographic region verification
-curl -X POST https://localhost:8442/metrics/generate \
-  -H "Content-Type: application/json" \
-  -d '{"metric_type": "system"}' \
-  --insecure
-
-# Check for geographic region errors in logs
-grep -i "geographic" logs/*.log
+# Check for specific error messages
+grep -i "error" logs/*.log
 ```
 
 ### Logging
@@ -662,14 +715,21 @@ The system uses structured logging with JSON format. Log levels can be controlle
 ├── utils/                 # Shared utilities
 │   ├── __init__.py
 │   ├── tpm2_utils.py      # TPM2 operations (uses shell scripts)
+│   ├── public_key_utils.py # Public key verification utilities
 │   └── ssl_utils.py       # SSL/TLS utilities
 ├── config.py              # Configuration management (includes geographic settings)
 ├── start_services.py      # Service startup script
 ├── start_swtpm.py         # Software TPM startup script
 ├── sign_app_message.sh    # TPM2 signing script
 ├── verify_app_message_signature.sh # TPM2 verification script
-├── test_client.py         # Test client
-├── test_swtpm_setup.py    # Software TPM setup test
+├── generate_verify_app_quote.sh # TPM2 quote generation and verification
+├── get_public_key_app.sh  # Public key export script
+├── test_config.py         # Configuration test
+├── test_tpm_comprehensive.py # Comprehensive TPM test
+├── test_signature_flow.py # Signature flow test
+├── test_signature_verification.py # Signature verification test
+├── test_complete_flow.py  # Complete end-to-end test
+├── test_summary.py        # Test summary
 ├── requirements.txt       # Python dependencies
 ├── Dockerfile             # Docker configuration
 ├── docker-compose.yml     # Docker Compose configuration
