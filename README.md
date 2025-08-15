@@ -2,7 +2,19 @@
 
 A production-ready microservice architecture that implements secure metrics collection using OpenTelemetry, TPM2 hardware
 security for the agent, and public key verification for the collector. This system provides end-to-end hardware-backed cryptographically verifiable security and
-trust with proof of residency and proof of geofencing for telemetry data collection.
+trust with proof of residency and proof of geofencing for telemetry data collection. Designed specifically for edge computing environments, it offers zero-trust security through tamper-resistant signatures, scalable TPM resident cryptography, and built-in geographic compliance for distributed edge deployments.
+
+## Use Case: Edge Computing Telemetry
+
+This architecture is specifically designed for **edge computing environments** where OpenTelemetry agents run on distributed edge nodes (IoT devices, edge servers, field deployments) and need to securely transmit telemetry data to centralized collectors. The system addresses key edge computing challenges:
+
+- **Hardware Security**: TPM2 ensures cryptographic operations are hardware-backed, protecting against software-based attacks common in edge environments
+- **Geographic Compliance**: Enforces data residency requirements critical for edge deployments across different regions and jurisdictions
+- **Zero-Trust Security**: Eliminates the need for traditional network-based security, essential for edge nodes that may be in untrusted networks
+- **Tamper-Resistant Signatures**: Provides cryptographically verifiable proof that telemetry data originated from authorized edge devices
+- **Bandwidth Efficiency**: Optimized for edge-to-cloud communication with minimal overhead while maintaining security
+- **Periodic Telemetry**: Designed for periodic data collection (every few minutes/hours) typical of edge environments, not continuous streaming
+- **Scalable Crypto**: TPM resident keys scale efficiently across thousands of edge nodes without key management overhead
 
 ## Architecture
 
