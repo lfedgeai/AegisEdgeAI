@@ -71,7 +71,8 @@ def test_signing_operations():
     tests = [
         ("Message signing", "./tpm/sign_app_message.sh"),
         ("Signature verification", "./tpm/verify_app_message_signature.sh"),
-        ("Quote generation & verification", "./tpm/generate_verify_app_quote.sh"),
+        ("Quote generation", "./tpm/generate_quote.sh"),
+        ("Quote verification", "./tpm/verify_quote.sh"),
     ]
     
     success = True

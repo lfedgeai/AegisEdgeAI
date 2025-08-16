@@ -85,7 +85,8 @@ def test_signing_scripts():
     tests = [
         ("Message Signing", "./tpm/sign_app_message.sh"),
         ("Signature Verification", "./tpm/verify_app_message_signature.sh"),
-        ("Quote Generation & Verification", "./tpm/generate_verify_app_quote.sh"),
+        ("Quote Generation", "./tpm/generate_quote.sh"),
+        ("Quote Verification", "./tpm/verify_quote.sh"),
     ]
     
     passed = 0

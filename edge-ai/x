@@ -1,0 +1,294 @@
+TPM2_PT_FAMILY_INDICATOR:
+  raw: 0x322E3000
+  value: "2.0"
+TPM2_PT_LEVEL:
+  raw: 0
+TPM2_PT_REVISION:
+  raw: 0xA4
+  value: 1.64
+TPM2_PT_DAY_OF_YEAR:
+  raw: 0x4B
+TPM2_PT_YEAR:
+  raw: 0x7E5
+TPM2_PT_MANUFACTURER:
+  raw: 0x49424D00
+  value: "IBM"
+TPM2_PT_VENDOR_STRING_1:
+  raw: 0x53572020
+  value: "SW"
+TPM2_PT_VENDOR_STRING_2:
+  raw: 0x2054504D
+  value: "TPM"
+TPM2_PT_VENDOR_STRING_3:
+  raw: 0x0
+  value: ""
+TPM2_PT_VENDOR_STRING_4:
+  raw: 0x0
+  value: ""
+TPM2_PT_VENDOR_TPM_TYPE:
+  raw: 0x1
+TPM2_PT_FIRMWARE_VERSION_1:
+  raw: 0x20191023
+TPM2_PT_FIRMWARE_VERSION_2:
+  raw: 0x163636
+TPM2_PT_INPUT_BUFFER:
+  raw: 0x400
+TPM2_PT_HR_TRANSIENT_MIN:
+  raw: 0x3
+TPM2_PT_HR_PERSISTENT_MIN:
+  raw: 0x7
+TPM2_PT_HR_LOADED_MIN:
+  raw: 0x3
+TPM2_PT_ACTIVE_SESSIONS_MAX:
+  raw: 0x40
+TPM2_PT_PCR_COUNT:
+  raw: 0x18
+TPM2_PT_PCR_SELECT_MIN:
+  raw: 0x3
+TPM2_PT_CONTEXT_GAP_MAX:
+  raw: 0xFFFF
+TPM2_PT_NV_COUNTERS_MAX:
+  raw: 0x0
+TPM2_PT_NV_INDEX_MAX:
+  raw: 0x800
+TPM2_PT_MEMORY:
+  raw: 0x6
+TPM2_PT_CLOCK_UPDATE:
+  raw: 0x1000
+TPM2_PT_CONTEXT_HASH:
+  raw: 0xD
+TPM2_PT_CONTEXT_SYM:
+  raw: 0x6
+TPM2_PT_CONTEXT_SYM_SIZE:
+  raw: 0x100
+TPM2_PT_ORDERLY_COUNT:
+  raw: 0xFF
+TPM2_PT_MAX_COMMAND_SIZE:
+  raw: 0x1000
+TPM2_PT_MAX_RESPONSE_SIZE:
+  raw: 0x1000
+TPM2_PT_MAX_DIGEST:
+  raw: 0x40
+TPM2_PT_MAX_OBJECT_CONTEXT:
+  raw: 0xA84
+TPM2_PT_MAX_SESSION_CONTEXT:
+  raw: 0x194
+TPM2_PT_PS_FAMILY_INDICATOR:
+  raw: 0x322E3000
+TPM2_PT_PS_LEVEL:
+  raw: 0x0
+TPM2_PT_PS_REVISION:
+  raw: 0xA4
+TPM2_PT_PS_DAY_OF_YEAR:
+  raw: 0x4B
+TPM2_PT_PS_YEAR:
+  raw: 0x7E5
+TPM2_PT_SPLIT_MAX:
+  raw: 0x80
+TPM2_PT_TOTAL_COMMANDS:
+  raw: 0x6E
+TPM2_PT_LIBRARY_COMMANDS:
+  raw: 0x6E
+TPM2_PT_VENDOR_COMMANDS:
+  raw: 0x0
+TPM2_PT_NV_BUFFER_MAX:
+  raw: 0x400
+TPM2_PT_MODES:
+  raw: 0x0
+[STEP] Using TPM2TOOLS_TCTI=swtpm:host=127.0.0.1,port=2321
+[STEP] EK handle will be 0x81010001
+[STEP] AK handle will be 0x8101000A
+[STEP] Flushing transient/session handles...
+[STEP] Evicting existing EK/AK persistent handles (if any)...
+[INFO] Handle 0x81010001 not listed; forcing eviction to clear phantom state
+[INFO] Handle 0x8101000A not listed; forcing eviction to clear phantom state
+[STEP] Creating EK...
+persistent-handle: 0x81010001
+action: persisted
+[STEP] Flushing again after EK creation...
+[INFO] Flushing handles-transient handle 0x80000000
+[INFO] Flushing handles-transient handle 0x80000001
+[STEP] Creating AK using EK handle 0x81010001...
+loaded-key:
+  name: 000b9f1409a344897057b3d29759a7e9270480fed64385c09c7fff7c5111b1790353
+  qualified name: 000b2294b1547f828174b018ec4cced09cbe1517b58b6a85a26b98ebfc8cdf932eba
+persistent-handle: 0x8101000a
+action: persisted
+[STEP] Exporting AK public key for verification...
+name: 000b9f1409a344897057b3d29759a7e9270480fed64385c09c7fff7c5111b1790353
+qualified name: 000b2294b1547f828174b018ec4cced09cbe1517b58b6a85a26b98ebfc8cdf932eba
+name-alg:
+  value: sha256
+  raw: 0xb
+attributes:
+  value: fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign
+  raw: 0x50072
+type:
+  value: rsa
+  raw: 0x1
+exponent: 65537
+bits: 2048
+scheme:
+  value: rsassa
+  raw: 0x14
+scheme-halg:
+  value: sha256
+  raw: 0xb
+sym-alg:
+  value: null
+  raw: 0x10
+sym-mode:
+  value: (null)
+  raw: 0x0
+sym-keybits: 0
+rsa: a9a835ddcba4bdef61307c065696c33f8feae9a4806c3ad1f90d01cf6ab6ba653c881933d44d6f52b2ca3e8d9b5ffb64af510483a6df9012c730fe9180fdc59d267034e1e9e7d9a83352a7dcc1cbf5d27238f0ff8d81989a31440ec811e8c1d500ed62e31113ebdd6a1aace0595533482e3ca0ffc6b09b0dbf1dcc4a79975ebf8e8c11bbc5a1f9dd8d7fc8f0381e2035c2375e5cced0a2b16acdb226658909d50451695c6474aa0e371b95c66fdcdfac9859f3fe3141d5af8d0d2dadf9173ad33207c2d625b9de6ead6c28fc25407fe38ed8552a5a306b19ac8cf6425074acf6ccdd861299139d5a47024744a3d7c81a45c8296aeaf9a8a032c0e9d295dec27d
+[SUCCESS] AK Public Key exported to ak_pub.pem
+[STEP] Persistent handles now present:
+- 0x81010001
+- 0x8101000A
+[STEP] Flushing ALL stale contexts...
+[STEP] Creating primary...
+name-alg:
+  value: sha256
+  raw: 0xb
+attributes:
+  value: fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|decrypt
+  raw: 0x30072
+type:
+  value: rsa
+  raw: 0x1
+exponent: 65537
+bits: 2048
+scheme:
+  value: null
+  raw: 0x10
+scheme-halg:
+  value: (null)
+  raw: 0x0
+sym-alg:
+  value: aes
+  raw: 0x6
+sym-mode:
+  value: cfb
+  raw: 0x43
+sym-keybits: 128
+rsa: bd4f5edbb0a60c7ae09d683eec271ccb5dc8fd9140070de3f0aebc4cb56160688bf3d12067b22028550ffa1f9a8465dc4f54ed19f604eea07b87518ef3720f2e3eb815c8ac703150027e0d109080fec997492b84ac2f41d9adc3ee2eb4ea4518d0e398314870585cdfab3e8624964c8c58b219789bcbd4a735ffed168adf75f2324df6bc68be8bed5650065e81fbd7019228cf7b6583c5bf0e0bd888585353c981af8eb791d118c9609a2c9af9a0c4c437dc3e2409d78fa513e14d6fb6d5b565398451af945c4f0f71ccfbe7cb741a452a7c05668660b7047df1764e7a52c31258b061961bd6419f429223a0ac7b6bbf4b4001ecaea179a20b5d8c78857fecd1
+[STEP] Creating AppSK under primary...
+name-alg:
+  value: sha256
+  raw: 0xb
+attributes:
+  value: fixedtpm|fixedparent|sensitivedataorigin|userwithauth|decrypt|sign
+  raw: 0x60072
+type:
+  value: rsa
+  raw: 0x1
+exponent: 65537
+bits: 2048
+scheme:
+  value: null
+  raw: 0x10
+scheme-halg:
+  value: (null)
+  raw: 0x0
+sym-alg:
+  value: null
+  raw: 0x10
+sym-mode:
+  value: (null)
+  raw: 0x0
+sym-keybits: 0
+rsa: 90026457ae60912c0b71edccadc46ded87bdf4325b90adae84f6929342ee67e53b53ee86642a4bde9ac2dcf9c16df76d6aa00438edbeb1a72cf4c72ff93d947e9db41425d097628e91f7f32dab96fa41e18040afa1bcc55c48d0bf490b1836f5c11e0a5402a2f51c146af18c62c1a5b5c15bc3a98f510d4d713c46ed4a171192fb429f2c527c04ce33373acb59844b26abf78f36f66a2f9fa5e1d727e8cdc393440fbaa56f327d12158a6570322f344a97eae5921a679bf6078e189ab01507b06808c66eeb42372184dc5cdfe644f4110534c07c4e86116a32feb31a18f0d35f1cf484fd5ce01c880f1faab20aae2aa17b24fde29eec565323b4a5d9b6f85adf
+[STEP] Flushing all extra transients...
+[STEP] Loading AppSK...
+name: 000b330990e7a4483081b31dc6fe7eff4be9e6e3bee8bccb5a8d20c7d383b9b9b3aa
+[DEBUG] AppSK transient handle: 0x80000001
+[STEP] Persisting AppSK at 0x8101000B...
+persistent-handle: 0x8101000b
+action: persisted
+[CLEANUP] Flushing primary and any remaining transients...
+[DEBUG] Persistent handles now:
+- 0x81010001
+- 0x8101000A
+- 0x8101000B
+[STEP] Certifying AppSK with AK at 0x8101000A...
+[INFO] Using -o/-s syntax for certify
+[INFO] Residency proof written: appsig_info.bin / appsig_cert.sig
+[SUCCESS] AppSK persisted at 0x8101000B.
+name: 000b330990e7a4483081b31dc6fe7eff4be9e6e3bee8bccb5a8d20c7d383b9b9b3aa
+qualified name: 000b036aafb370f7b7648218009ba8208c4abcd19a564b53616d49e175595836c39d
+name-alg:
+  value: sha256
+  raw: 0xb
+attributes:
+  value: fixedtpm|fixedparent|sensitivedataorigin|userwithauth|decrypt|sign
+  raw: 0x60072
+type:
+  value: rsa
+  raw: 0x1
+exponent: 65537
+bits: 2048
+scheme:
+  value: null
+  raw: 0x10
+scheme-halg:
+  value: (null)
+  raw: 0x0
+sym-alg:
+  value: null
+  raw: 0x10
+sym-mode:
+  value: (null)
+  raw: 0x0
+sym-keybits: 0
+rsa: 90026457ae60912c0b71edccadc46ded87bdf4325b90adae84f6929342ee67e53b53ee86642a4bde9ac2dcf9c16df76d6aa00438edbeb1a72cf4c72ff93d947e9db41425d097628e91f7f32dab96fa41e18040afa1bcc55c48d0bf490b1836f5c11e0a5402a2f51c146af18c62c1a5b5c15bc3a98f510d4d713c46ed4a171192fb429f2c527c04ce33373acb59844b26abf78f36f66a2f9fa5e1d727e8cdc393440fbaa56f327d12158a6570322f344a97eae5921a679bf6078e189ab01507b06808c66eeb42372184dc5cdfe644f4110534c07c4e86116a32feb31a18f0d35f1cf484fd5ce01c880f1faab20aae2aa17b24fde29eec565323b4a5d9b6f85adf
+[INFO] Exported TPM public key to appsk_pubkey.pem
+[INFO] APP certification by AK complete
+[INFO] TPM contexts flushed.
+[INFO] Generating SHA-256 hash of message to sign...
+[INFO] Signing precomputed hash with rsassa scheme...
+[INFO] Signature generated: /home/ubuntu/zero-trust-sovereign-ai/edge-ai/tpm/appsig.bin
+[INFO] TPM Quote Generation Script
+[INFO] TPM2TOOLS_TCTI: swtpm:host=127.0.0.1,port=2321
+[INFO] AK handle: 0x8101000A
+[INFO] Using nonce: 12
+[STEP] Checking if AK exists at handle 0x8101000A...
+[STEP] Flushing TPM contexts...
+[STEP] Generating TPM quote...
+[INFO] Quote will be saved to:
+[INFO]   - Message: appsk_quote.msg
+[INFO]   - Signature: appsk_quote.sig
+[INFO]   - PCRs: appsk_quote.pcrs
+quoted: ff54434780180022000b2294b1547f828174b018ec4cced09cbe1517b58b6a85a26b98ebfc8cdf932eba000112000000000000185d000000010000000001201910230016363600000001000b030300000020f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b
+signature:
+  alg: rsassa
+  sig: 0249fab5d553bf1336f79c6fff5bea1be0194cde9233ec5ece40793eec3f34e1129328ba86cbf3f8fa105d26c158e8d80bb73932eb27f5d54a038711aac6f1ba4b705dc106a04b72915fe32aa7d83fc9194f9dd922c0c7145c8831f6696d316f01582d69343a0a2857997914449808a3dd85d4d2c523218ca38cd81a806d550f70c266a5cbc0a8ba20d36e64c3186d04bf51641c825c244483c0a469a8baae4c3c3c4f50d02387acc8982e45c92e21c4cb7b9eb838a4ec584ba81ff089136b9b0bf520907429198eb2590f53ca5d2781eada9b28646feeb7e960388cceb5992a32593e8648ae1508319bf95b775486b36a860345bbae73933a3911d6be0a6654
+pcrs:
+  sha256:
+    0 : 0x0000000000000000000000000000000000000000000000000000000000000000
+    1 : 0x0000000000000000000000000000000000000000000000000000000000000000
+calcDigest: f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b
+[SUCCESS] TPM quote generated successfully
+[INFO] Quote files:
+[INFO]   - Message: appsk_quote.msg
+[INFO]   - Signature: appsk_quote.sig
+[INFO]   - PCRs: appsk_quote.pcrs
+[INFO]   - Nonce used: 12
+[INFO] Using nonce: 12
+[STEP] Verifying TPM quote signature...
+pcrs:
+  sha256:
+    0 : 0x0000000000000000000000000000000000000000000000000000000000000000
+    1 : 0x0000000000000000000000000000000000000000000000000000000000000000
+sig: 0249fab5d553bf1336f79c6fff5bea1be0194cde9233ec5ece40793eec3f34e1129328ba86cbf3f8fa105d26c158e8d80bb73932eb27f5d54a038711aac6f1ba4b705dc106a04b72915fe32aa7d83fc9194f9dd922c0c7145c8831f6696d316f01582d69343a0a2857997914449808a3dd85d4d2c523218ca38cd81a806d550f70c266a5cbc0a8ba20d36e64c3186d04bf51641c825c244483c0a469a8baae4c3c3c4f50d02387acc8982e45c92e21c4cb7b9eb838a4ec584ba81ff089136b9b0bf520907429198eb2590f53ca5d2781eada9b28646feeb7e960388cceb5992a32593e8648ae1508319bf95b775486b36a860345bbae73933a3911d6be0a6654
+[SUCCESS] TPM Quote verified successfully
+[STEP] Verifying AppSK certification signature...
+[SUCCESS] AppSK certification signature verified
+[SUCCESS] All verifications completed successfully
+[INFO] TPM Quote: VERIFIED
+[INFO] AppSK Certification: VERIFIED
+[INFO] AppSK public key is now trusted through TPM AK and EK chain
+[INFO] Hashing the message with SHA-256...
+[INFO] Verifying signature with OpenSSL pkeyutl...
+Signature Verified Successfully
+[INFO] Signature valid!
