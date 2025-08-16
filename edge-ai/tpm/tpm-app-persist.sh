@@ -107,3 +107,10 @@ PUB_PEM="appsk_pubkey.pem"
 # Extract public part and convert to PEM (done on device with TPM)
 tpm2_readpublic -c "$KEY_CTX" -f pem -o "$PUB_PEM"
 echo "[INFO] Exported TPM public key to $PUB_PEM"
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+tpm2 flushcontext -t
+tpm2_certify -C "$SCRIPT_DIR/ak.ctx" -c "$SCRIPT_DIR/app.ctx" -g sha256 -o "$SCRIPT_DIR/app_certify.out" -s "$SCRIPT_DIR/app_certify.sig"
+echo "[INFO] APP certification by AK complete"
