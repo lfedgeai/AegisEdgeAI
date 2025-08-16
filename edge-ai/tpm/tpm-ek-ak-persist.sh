@@ -61,7 +61,13 @@ tpm2 createak -C "$EK_HANDLE" -c ak.ctx \
   --hash-alg sha256 --signing-alg rsassa --key-alg rsa
 tpm2 evictcontrol -C o -c ak.ctx "$AK_HANDLE"
 
-# --- 6. Final state ---
+# --- 6. Export AK public key PEM (for verifier) ---
+tpm2 flushcontext -t
+echo "[STEP] Exporting AK public key for verification..."
+tpm2_readpublic -c ak.ctx -f pem -o ak_pub.pem
+echo "[SUCCESS] AK Public Key exported to ak_pub.pem"
+
+# --- 7. Final state ---
 echo "[STEP] Persistent handles now present:"
 tpm2 getcap handles-persistent
 
