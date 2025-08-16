@@ -1,37 +1,35 @@
-# OpenTelemetry‑Inspired Edge Architecture with TPM Security and Geofencing Proofs
+# TPM‑Anchored Edge Architecture with Geofencing Proofs
 
-A production‑friendly prototype microservice architecture for secure, verifiable metrics collection at the edge. It applies OpenTelemetry‑inspired observability patterns, TPM‑backed hardware security for the agent, and public‑key verification for the collector. The design provides hardware‑anchored trust with proof‑of‑residency and geofencing controls, delivering tamper‑resistant signatures and scalable, TPM‑resident cryptography. Built for distributed edge environments, it enforces Zero‑Trust principles and geographic compliance from the outset while supporting iterative development.
+A production‑friendly prototype microservice architecture for secure, verifiable metrics collection at the edge, with a primary focus on TPM‑backed hardware trust and cryptographically verifiable geofencing and residency proofs.
 
-## Use Case: Edge Computing Telemetry
+**Security foundation**: TPM‑anchored keys and signing ensure tamper‑resistant attestations and scalable, hardware‑resident cryptography.
 
-This architecture is specifically designed for **edge computing environments** where OpenTelemetry agents run on distributed edge nodes (IoT devices, edge servers, field deployments) and need to securely transmit telemetry data to centralized collectors. The system addresses key edge computing challenges:
+**Geofencing & residency**: Built‑in controls validate geographic compliance at the point of measurement, enforcing Zero‑Trust boundaries from the start.
 
-- **Hardware Security**: TPM ensures cryptographic operations are hardware-backed, protecting against software-based attacks common in edge environments
-- **Geographic Compliance**: Enforces data residency requirements critical for edge deployments across different regions and jurisdictions
-- **Zero-Trust Security**: Eliminates the need for traditional network-based security, essential for edge nodes that may be in untrusted networks
-- **Tamper-Resistant Signatures**: Provides cryptographically verifiable proof that telemetry data originated from authorized edge devices
-- **Bandwidth Efficiency**: Optimized for edge-to-cloud communication with minimal overhead while maintaining security
-- **Periodic Telemetry**: Designed for periodic data collection (every few minutes/hours) typical of edge environments, not continuous streaming
-- **Scalable Crypto**: TPM resident keys scale efficiently across thousands of edge nodes without key management overhead
+**Edge telemetry**: Supports integration of telemetry frameworks — for example, OpenTelemetry patterns — to capture operational metrics and trust events alongside the proof data.
+
+Designed for distributed edge environments, the architecture balances strong compliance guarantees with agility for iterative development. It draws on the concepts defined in the IETF Verifiable Geofencing draft (https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) to ensure alignment with emerging standards.
 
 ## Architecture
 
 The system follows a microservices architecture with three main components:
 
 ```
-┌─────────────────┐    HTTPS/TLS    ┌─────────────────┐    HTTPS/TLS    ┌─────────────────┐
-│   OpenTelemetry │ ──────────────► │   API Gateway   │ ──────────────► │   OpenTelemetry │
-│      Agent      │                 │                 │                 │    Collector    │
-│   (Port 8442)   │                 │  (Port 8443)    │                 │   (Port 8444)   │
-└─────────────────┘                 └─────────────────┘                 └─────────────────┘
-         │                                   │                                   │
-         │                                   │                                   │
-         ▼                                   ▼                                   ▼
-┌─────────────────┐                 ┌─────────────────┐                 ┌─────────────────┐
-│   TPM2 Utils    │                 │   TLS Proxy     │                 │   Public Key    │
-│   (Hardware/    │                 │   & Routing     │                 │   Verification  │
-│   Software)     │                 │                 │                 │   (OpenSSL)     │
-└─────────────────┘                 └─────────────────┘                 └─────────────────┘
+┌─────────────────────────────────┐    HTTPS/TLS    ┌─────────────────────────────────┐    HTTPS/TLS    ┌─────────────────────────────────┐
+│  **Edge OpenTelemetry Agent**   │ ──────────────► │        **API Gateway**          │ ──────────────► │**Cloud OpenTelemetry Collector**│
+│        **+ TPM2 Utils**         │                 │       **+ TLS Proxy**           │                 │ **+ Public Key Verification**   |
+│                                 │                 │                                 │                 │                                 │
+│  ┌─────────────────────────┐    │                 │  ┌─────────────────────────┐    │                 │  ┌─────────────────────────┐    │
+│  │   OpenTelemetry Agent   │    │                 │  │     API Gateway         │    │                 │  │  OpenTelemetry Collector│    │
+│  │     (Port 8401)         │    │                 │  │      (Port 9000)        │    │                 │  │      (Port 8500)        │    │
+│  └─────────────────────────┘    │                 │  └─────────────────────────┘    │                 │  └─────────────────────────┘    │
+│           │                     │                 │           │                     │                 │           │                     │
+│           ▼                     │                 │           ▼                     │                 │           ▼                     │
+│  ┌─────────────────────────┐    │                 │  ┌─────────────────────────┐    │                 │  ┌─────────────────────────┐    │
+│  │      TPM2 Utils         │    │                 │  │      TLS Proxy          │    │                 │  │  Public Key Verification│    │
+│  │    (Hardware/Software)  │    │                 │  │      & Routing          │    │                 │  │       (OpenSSL)         │    │
+│  └─────────────────────────┘    │                 │  └─────────────────────────┘    │                 │  └─────────────────────────┘    │
+└─────────────────────────────────┘                 └─────────────────────────────────┘                 └─────────────────────────────────┘
 ```
 
 ### Complete Security Flow
