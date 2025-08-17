@@ -373,7 +373,7 @@ class MetricsProcessor:
         Returns:
             True if valid, False otherwise
         """
-        required_fields = ["agent_name", "tpm_public_key", "geolocation", "metrics", "geographic_region", "nonce", "signature", "algorithm", "timestamp"]
+        required_fields = ["agent_name", "tpm_public_key_hash", "geolocation", "metrics", "geographic_region", "nonce", "signature", "algorithm", "timestamp"]
         
         for field in required_fields:
             if field not in payload:
@@ -384,8 +384,8 @@ class MetricsProcessor:
             logger.warning("Agent name field must be a string")
             return False
         
-        if not isinstance(payload["tpm_public_key"], str):
-            logger.warning("TPM public key field must be a string")
+        if not isinstance(payload["tpm_public_key_hash"], str):
+            logger.warning("TPM public key hash field must be a string")
             return False
         
         if not isinstance(payload["geolocation"], dict):
@@ -716,28 +716,30 @@ def get_nonce():
         try:
             request_counter.add(1, {"endpoint": "get_nonce"})
             
-            # Get public key from request
-            public_key = request.args.get("public_key")
-            if not public_key:
-                logger.warning("No public key provided for nonce request")
-                return jsonify({"error": "public_key parameter is required"}), 400
+            # Get public key hash from request
+            public_key_hash = request.args.get("public_key_hash")
+            if not public_key_hash:
+                logger.warning("No public key hash provided for nonce request")
+                return jsonify({"error": "public_key_hash parameter is required"}), 400
             
-            # The agent sends raw base64 public key content (no PEM headers)
-            # URL-decode it in case it was URL-encoded during transmission
-            import urllib.parse
-            raw_public_key = urllib.parse.unquote(public_key)
-            
-            # Check if this public key belongs to an agent in the allowlist
+            # Find the agent by public key hash
             agent_found = False
+            agent_name = None
+            raw_public_key = None
+            
             for agent in agent_verification_utils.allowed_agents:
-                if agent.get('tpm_public_key') == raw_public_key:
-                    agent_found = True
-                    agent_name = agent.get('agent_name')
-                    break
+                agent_raw_key = agent.get('tpm_public_key')
+                if agent_raw_key:
+                    agent_key_hash = hashlib.sha256(agent_raw_key.encode('utf-8')).hexdigest()
+                    if agent_key_hash == public_key_hash:
+                        agent_found = True
+                        agent_name = agent.get('agent_name')
+                        raw_public_key = agent_raw_key
+                        break
             
             if not agent_found:
                 logger.warning("❌ [COLLECTOR] Nonce request from unauthorized agent", 
-                             agent_public_key_fingerprint=raw_public_key[:16] + "...",
+                             agent_public_key_hash=public_key_hash[:16] + "...",
                              request_ip=request.remote_addr)
                 return jsonify({"error": "Agent not found in allowlist"}), 403
             
@@ -786,7 +788,7 @@ def receive_metrics():
     Expected JSON payload:
     {
         "agent_name": "agent-001",
-        "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...",
+        "tpm_public_key_hash": "a1b2c3d4e5f6...",
         "geolocation": {
             "country": "US",
             "state": "California", 
@@ -832,27 +834,22 @@ def receive_metrics():
             # Convert raw public key to PEM format for signature verification
             agent_public_key_pem = f"-----BEGIN PUBLIC KEY-----\n{agent_raw_public_key}\n-----END PUBLIC KEY-----"
             
-            # Get the raw public key from the payload for nonce validation
-            payload_raw_public_key = payload.get("tpm_public_key")
-            if not payload_raw_public_key:
-                logger.error("No TPM public key in payload", agent_name=payload["agent_name"])
-                return jsonify({"error": "No TPM public key in payload"}), 400
+            # Get the public key hash from the payload for validation
+            payload_public_key_hash = payload.get("tpm_public_key_hash")
+            if not payload_public_key_hash:
+                logger.error("No TPM public key hash in payload", agent_name=payload["agent_name"])
+                return jsonify({"error": "No TPM public key hash in payload"}), 400
             
-            # URL-decode the public key from the payload (in case it was URL-encoded)
-            import urllib.parse
-            payload_raw_public_key = urllib.parse.unquote(payload_raw_public_key)
+            # Generate hash from the allowlist public key for comparison
+            allowlist_public_key_hash = hashlib.sha256(agent_raw_public_key.encode('utf-8')).hexdigest()
             
-            # Validate that the public key in the payload matches the one in the allowlist
-            if payload_raw_public_key != agent_raw_public_key:
-                logger.error("Public key mismatch between payload and allowlist", 
+            # Validate that the public key hash in the payload matches the one in the allowlist
+            if payload_public_key_hash != allowlist_public_key_hash:
+                logger.error("Public key hash mismatch between payload and allowlist", 
                            agent_name=payload["agent_name"],
-                           payload_key_length=len(payload_raw_public_key),
-                           allowlist_key_length=len(agent_raw_public_key),
-                           payload_key_start=payload_raw_public_key[:20] + "...",
-                           allowlist_key_start=agent_raw_public_key[:20] + "...",
-                           payload_key_full=payload_raw_public_key,
-                           allowlist_key_full=agent_raw_public_key)
-                return jsonify({"error": "Public key mismatch"}), 400
+                           payload_hash=payload_public_key_hash[:16] + "...",
+                           allowlist_hash=allowlist_public_key_hash[:16] + "...")
+                return jsonify({"error": "Public key hash mismatch"}), 400
             
             # Validate nonce for this specific agent (using raw public key for tracking)
             logger.info("🔍 [COLLECTOR] Validating nonce for agent", 

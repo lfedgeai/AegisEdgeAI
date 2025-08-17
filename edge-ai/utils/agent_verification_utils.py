@@ -136,15 +136,15 @@ class AgentVerificationUtils:
         try:
             # Extract agent information from payload
             agent_name = payload.get('agent_name')
-            tpm_public_key = payload.get('tpm_public_key')  # Now contains raw public key content
+            tpm_public_key_hash = payload.get('tpm_public_key_hash')  # Now contains public key hash
             geolocation = payload.get('geolocation', {})
             
             if not agent_name:
                 logger.warning("No agent name in payload")
                 return False
             
-            if not tpm_public_key:
-                logger.warning("No TPM public key in payload")
+            if not tpm_public_key_hash:
+                logger.warning("No TPM public key hash in payload")
                 return False
             
             if not geolocation:
@@ -157,11 +157,11 @@ class AgentVerificationUtils:
                 logger.warning("Agent not found in allowlist", agent_name=agent_name)
                 return False
             
-            # Verify TPM public key content
-            if not self._verify_tpm_public_key(agent_config, tpm_public_key):
-                logger.warning("TPM public key verification failed", 
+            # Verify TPM public key hash
+            if not self._verify_tpm_public_key_hash(agent_config, tpm_public_key_hash):
+                logger.warning("TPM public key hash verification failed", 
                              agent_name=agent_name,
-                             received_key_length=len(tpm_public_key))
+                             received_hash=tpm_public_key_hash[:16] + "...")
                 return False
             
             # Verify geolocation
@@ -196,6 +196,45 @@ class AgentVerificationUtils:
             if agent.get('agent_name') == agent_name:
                 return agent
         return None
+    
+    def _verify_tpm_public_key_hash(self, agent_config: Dict[str, Any], received_public_key_hash: str) -> bool:
+        """
+        Verify TPM public key hash matches the expected public key hash.
+        
+        Args:
+            agent_config: Agent configuration from allowlist
+            received_public_key_hash: TPM public key hash from payload
+            
+        Returns:
+            True if public key hashes match, False otherwise
+        """
+        try:
+            # Get the expected public key content from allowlist
+            expected_public_key = agent_config.get('tpm_public_key')
+            if not expected_public_key:
+                logger.warning("No public key content in agent config")
+                return False
+            
+            # Generate hash from the expected public key
+            import hashlib
+            expected_public_key_hash = hashlib.sha256(expected_public_key.encode('utf-8')).hexdigest()
+            
+            # Verify that the received public key hash matches the expected one
+            if received_public_key_hash != expected_public_key_hash:
+                logger.warning("Public key hash mismatch", 
+                             agent_name=agent_config.get('agent_name'),
+                             expected_hash=expected_public_key_hash[:16] + "...",
+                             received_hash=received_public_key_hash[:16] + "...")
+                return False
+            
+            logger.info("TPM public key hash verification successful", 
+                       agent_name=agent_config.get('agent_name'))
+            
+            return True
+            
+        except Exception as e:
+            logger.error("TPM public key hash verification failed", error=str(e))
+            return False
     
     def _verify_tpm_public_key(self, agent_config: Dict[str, Any], received_public_key: str) -> bool:
         """

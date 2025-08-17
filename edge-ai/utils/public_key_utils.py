@@ -10,12 +10,26 @@ import subprocess
 import tempfile
 import structlog
 import logging
+import hashlib
 from typing import Dict, Any, Optional
 
 # Set log level to DEBUG
 logging.basicConfig(level=logging.DEBUG)
 
 logger = structlog.get_logger(__name__)
+
+
+def generate_public_key_hash(public_key_content: str) -> str:
+    """
+    Generate a SHA-256 hash of the public key content.
+    
+    Args:
+        public_key_content: Raw public key content (base64 without PEM headers)
+        
+    Returns:
+        SHA-256 hash of the public key content
+    """
+    return hashlib.sha256(public_key_content.encode('utf-8')).hexdigest()
 
 
 class PublicKeyUtils:
