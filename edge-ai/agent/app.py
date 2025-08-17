@@ -17,6 +17,7 @@ import json
 import secrets
 import random
 import requests
+import hashlib
 from datetime import datetime
 from typing import Dict, Any, Optional
 from flask import Flask, jsonify, request
@@ -281,16 +282,15 @@ class CollectorClient:
                 if not raw_public_key:
                     raise ValueError(f"No tpm_public_key found in agent config: {config_path}")
                 
-                # The raw public key is already in the correct format (base64 without PEM headers)
-                public_key_b64 = raw_public_key
+                # Generate public key hash for secure transmission
+                public_key_hash = hashlib.sha256(raw_public_key.encode('utf-8')).hexdigest()
                 
                 logger.info("📤 [AGENT] Sending nonce request to gateway", 
                            agent_name=agent_name,
-                           public_key_length=len(public_key_b64),
-                           public_key_fingerprint=public_key_b64[:16] + "...")
+                           public_key_hash=public_key_hash[:16] + "...")
                 
-                # Get the nonce with public key parameter
-                response = self.session.get(f"{self.base_url}/nonce", params={"public_key": public_key_b64})
+                # Get the nonce with public key hash parameter
+                response = self.session.get(f"{self.base_url}/nonce", params={"public_key_hash": public_key_hash})
                 response.raise_for_status()
                 
                 data = response.json()
@@ -303,9 +303,26 @@ class CollectorClient:
                            nonce_length=len(nonce),
                            nonce_value=nonce[:16] + "...",
                            agent_name=agent_name,
-                           public_key_fingerprint=public_key_b64[:16] + "...",
+                           public_key_hash=public_key_hash[:16] + "...",
                            response_status=response.status_code)
                 return nonce
+                
+            except requests.exceptions.HTTPError as e:
+                # Handle HTTP errors with detailed error messages
+                error_details = "Unknown error"
+                try:
+                    error_response = e.response.json()
+                    if "error" in error_response:
+                        error_details = error_response["error"]
+                except:
+                    error_details = e.response.text if e.response.text else str(e)
+                
+                logger.error("❌ [AGENT] HTTP error from collector during nonce request", 
+                           status_code=e.response.status_code,
+                           error_details=error_details,
+                           response_text=e.response.text[:200] if e.response.text else "No response text")
+                error_counter.add(1, {"operation": "get_nonce", "error": error_details})
+                raise ValueError(f"Nonce request failed: {error_details}")
                 
             except Exception as e:
                 logger.error("Failed to get nonce from collector", error=str(e))
@@ -528,10 +545,13 @@ def generate_and_send_metrics():
                 config = json.load(f)
             raw_public_key = config.get("tpm_public_key")
             
+            # Generate public key hash for secure transmission
+            public_key_hash = hashlib.sha256(raw_public_key.encode('utf-8')).hexdigest()
+            
             # Create payload with agent information
             payload = {
                 "agent_name": agent_name,
-                "tpm_public_key": raw_public_key,  # Include raw public key in payload
+                "tpm_public_key_hash": public_key_hash,  # Include public key hash in payload
                 "geolocation": {
                     "country": geographic_region["region"],
                     "state": geographic_region["state"],
@@ -580,6 +600,14 @@ def generate_and_send_metrics():
                     "details": error_message
                 }), 500
                 
+        except ValueError as e:
+            # Handle specific error messages from get_nonce
+            logger.error("❌ [AGENT] Nonce request failed", error=str(e))
+            error_counter.add(1, {"operation": "generate_and_send_metrics", "error": str(e)})
+            return jsonify({
+                "status": "error",
+                "message": str(e)
+            }), 400
         except Exception as e:
             logger.error("Error in generate_and_send_metrics", error=str(e))
             error_counter.add(1, {"operation": "generate_and_send_metrics", "error": str(e)})
