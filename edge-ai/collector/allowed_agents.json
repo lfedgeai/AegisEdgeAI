@@ -1,7 +1,7 @@
 [
   {
     "agent_name": "agent-001",
-    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv99UzWDJg5UNyNmct/M0OrsxzGLtnUs2tpq/T+1j81yRn14zZzHrsHhCvYOzhlngdHQK20GPoHD4USQ6aIKdz89jtJnMbgz/4Mg3EaLM4C7SBib9xOIRjcejwBcyMcv6vAiTBSbtDJKG7pZP+WZP1AM11jbIvqmXv0D/kzJWJUBl+JUrMx6krP747CC+CvWqvJqWPw3G2ePl5pcRXYwat0zxUH05Ro6BrWVe5q9EUGgGJi5L6nRwQVFTRwIjkepxavRLKim8zVyrqRsjq28h6iC5W5nlRJ3xhEwemw7CiAOuVKduT70gla0MymQrr5XZGJyGq6HR1W4TVYIcc9Z2BQIDAQAB",
+    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1pBojJHEiZnaXx4mKkYYOAxBQ6CN96oEYGxLScYtn64nl+MaVH6+QBTpzXXBZYqIlZv5ECleKwygXOQSOiHEYCGWRaI1pgzWMKktUj6hvyd3Tc6NgMKvIfvX4/MJ/4aFsSjP/dS3h0nZIB1s+ncEK4diuHzzOg23yFdHGRqEcagZ/GZtu2815QFn092VPFg2KfGvM8M7CcLCGdPy7IatT2TJQTvf+sCXcDCk4XUentesfJtmJuOwPxmz89J/TL/MvEDjxADRCiMzHSAEDfbz33lgNo03yPuddECLKMdNt63Q/AHWg/Qd0PAmpY/jydyTga3XEBA0H/G8T7SsnqUYswIDAQAB",
     "geolocation": {
       "country": "US",
       "state": "California",
@@ -12,7 +12,7 @@
   },
   {
     "agent_name": "agent-002",
-    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArkZdfKx+K4Esn4e+u/bcD8niU9z8ks86w+dPowlQ2SyS8+Mh2naCQuHV+Z0m1l/iSyghupxrkS9a+G77/CNmkLllNasq1TtpN1ys6kOtLo6G2IrzxhU1zP4hg2IMw3x/8MV4qBUF2a9TnhEs/8Pu1HrqjaBIXrjQ6e/yJwr9cO8B1RNsc+pXUW+w87VpIRGtjJWAtEyzCAD8jRHVeWCyNVzxORUDMRqKVF+fhvCH+jLw3mYGtxwL8DOYUyo6iK/updjMr2OtG9qxvNYuo+/8XW0z0EZixCvlP6HnBKeK1zES6V5b7hLac0IGD1i1EkgHgU6lRA+J+iDVsCD93GeR8wIDAQAB",
+    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsz7O3VMaENQhaH7/i/hd3j5KNZrBX2c36HZTO3lSRELt3HU6r3Dbik5lu1XXFNoMQLIgku/Crngb6x6k0PO6tbsLg2JnTqbaSZ7i1XY7pCwyGfmoaBEMHsrZ3kL7NEOh1qALI251OyHctBRFxBCbLS55n+bEpFQzcz1Y/QkGaIYetK9vHJB/d7mrHgrl/3sOrDYb1XQ2U9EFLkmENA/B8RWzXz8s8lcX9NhpduzGvAq9d9mVFI2QeVpMBH0MqWuzHs1LRvXlJ+8vBywr25r6dk2boY9KrHaxUbjQvJ67kKh5e10x2rVCessXdx7VL8ZZh2BnbG7XQmF5LTxDHz+OxwIDAQAB",
     "geolocation": {
       "country": "US",
       "state": "California",
