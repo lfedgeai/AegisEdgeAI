@@ -1,7 +1,18 @@
 [
   {
     "agent_name": "agent-001",
-    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2+KYeHAdGUxWu7GCYBcg2ZzfrX073EIj5Zb9QldEnIiktQGMsu0R1atLVcC0TlB27UqZiEIksquby3bqynxBZiGF5QK8FJm10VqusRM+0QqAl0O6d87i7RksCJ++XcbZq6LLytFq7LMzTaz/PjHbwtrmomlzf1veWIl16Cn3kOX0nMMykmm3m6XcLC8YtTNFQrqDHbBEJh9kjbZWfuYgHW2xYzFlMBXOUdIy7TI2ZGWgECX+5wLetdz3Cuh7a1lD8JW75XpxIYUdSyV0M/DHeg4SlSo0WUMgbJ9cXE0YT44m0gaiNBJLrVB3+ZFiMTTvHjQyLgQl77BmrUr37MYBlwIDAQAB",
+    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv99UzWDJg5UNyNmct/M0OrsxzGLtnUs2tpq/T+1j81yRn14zZzHrsHhCvYOzhlngdHQK20GPoHD4USQ6aIKdz89jtJnMbgz/4Mg3EaLM4C7SBib9xOIRjcejwBcyMcv6vAiTBSbtDJKG7pZP+WZP1AM11jbIvqmXv0D/kzJWJUBl+JUrMx6krP747CC+CvWqvJqWPw3G2ePl5pcRXYwat0zxUH05Ro6BrWVe5q9EUGgGJi5L6nRwQVFTRwIjkepxavRLKim8zVyrqRsjq28h6iC5W5nlRJ3xhEwemw7CiAOuVKduT70gla0MymQrr5XZGJyGq6HR1W4TVYIcc9Z2BQIDAQAB",
+    "geolocation": {
+      "country": "US",
+      "state": "California",
+      "city": "Santa Clara"
+    },
+    "status": "active",
+    "created_at": "2025-08-15T18:00:00Z"
+  },
+  {
+    "agent_name": "agent-002",
+    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArkZdfKx+K4Esn4e+u/bcD8niU9z8ks86w+dPowlQ2SyS8+Mh2naCQuHV+Z0m1l/iSyghupxrkS9a+G77/CNmkLllNasq1TtpN1ys6kOtLo6G2IrzxhU1zP4hg2IMw3x/8MV4qBUF2a9TnhEs/8Pu1HrqjaBIXrjQ6e/yJwr9cO8B1RNsc+pXUW+w87VpIRGtjJWAtEyzCAD8jRHVeWCyNVzxORUDMRqKVF+fhvCH+jLw3mYGtxwL8DOYUyo6iK/updjMr2OtG9qxvNYuo+/8XW0z0EZixCvlP6HnBKeK1zES6V5b7hLac0IGD1i1EkgHgU6lRA+J+iDVsCD93GeR8wIDAQAB",
     "geolocation": {
       "country": "US",
       "state": "California",
