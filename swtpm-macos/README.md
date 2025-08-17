@@ -1,4 +1,4 @@
-# Value of Enabling tpm2-tools on MacOS
+# Value of Enabling swtpm and tpm2-tools on MacOS
 1. Wider Developer Access and Platform Inclusivity
 Many developers and researchers use macOS as their primary OS. Supporting tpm2-tools would remove the need for Linux VMs, Docker, or WSL, reducing overhead and attracting more contributors and testers.
 
