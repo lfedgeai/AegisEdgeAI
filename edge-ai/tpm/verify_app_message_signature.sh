@@ -4,11 +4,14 @@ set -euo pipefail
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Configuration (update these as needed)
-PUBKEY="$SCRIPT_DIR/appsk_pubkey.pem"      # Public key file (exported)
-MESSAGE="$SCRIPT_DIR/appsig_info.bin"      # Original signed message
-SIGNATURE="$SCRIPT_DIR/appsig.bin"         # Signature to verify
-HASHFILE="$SCRIPT_DIR/appsig_info.hash"    # Temporary file for SHA-256 hash
+# Accept parameters for agent-specific files
+PUBKEY="${1:-$SCRIPT_DIR/appsk_pubkey.pem}"      # Public key file (exported)
+MESSAGE="${2:-$SCRIPT_DIR/appsig_info.bin}"      # Original signed message
+SIGNATURE="${3:-$SCRIPT_DIR/appsig.bin}"         # Signature to verify
+
+# Extract agent name from signature file path for unique hash file
+AGENT_NAME=$(basename "$SIGNATURE" _appsig.bin)
+HASHFILE="$SCRIPT_DIR/${AGENT_NAME}_appsig_info.hash"    # Temporary file for SHA-256 hash
 
 echo "[INFO] Hashing the message with SHA-256..."
 openssl dgst -sha256 -binary < "$MESSAGE" > "$HASHFILE"

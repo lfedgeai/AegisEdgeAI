@@ -1,7 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Parse command line arguments
 FORCE=${1:-}
+AGENT_CTX=${2:-}
+AGENT_PUBKEY=${3:-}
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Define TPM handles
+export AK_HANDLE="${AK_HANDLE:-0x8101000A}"
+export APP_HANDLE="${APP_HANDLE:-0x8101000B}"
+
+echo "[INFO] AK handle: $AK_HANDLE"
+echo "[INFO] App handle: $APP_HANDLE"
+
+# Use agent-specific files if provided, otherwise use defaults
+if [[ -n "$AGENT_CTX" && -n "$AGENT_PUBKEY" ]]; then
+    AGENT_CTX_PATH="$SCRIPT_DIR/$AGENT_CTX"
+    AGENT_PUBKEY_PATH="$SCRIPT_DIR/$AGENT_PUBKEY"
+    echo "[INFO] Using agent-specific TPM files:"
+    echo "[INFO]   Context file: $AGENT_CTX_PATH"
+    echo "[INFO]   Public key: $AGENT_PUBKEY_PATH"
+else
+    # Use default hardcoded values for simple testing
+    AGENT_CTX_PATH="$SCRIPT_DIR/app.ctx"
+    AGENT_PUBKEY_PATH="$SCRIPT_DIR/appsk_pubkey.pem"
+    echo "[INFO] Using default TPM files:"
+    echo "[INFO]   Context file: $AGENT_CTX_PATH"
+    echo "[INFO]   Public key: $AGENT_PUBKEY_PATH"
+fi
 
 # [0] Optional force‑rotate AppSK
 if [[ "$FORCE" == "--force" ]]; then
@@ -12,9 +41,9 @@ fi
 # [1] Guard: skip if already exists
 if tpm2 readpublic -c $APP_HANDLE >/dev/null 2>&1; then
     # Export the public key in PEM format from a TPM key context
-    # Replace KEY_CTX with your actual key context (private/public)
-    KEY_CTX="app.ctx"
-    PUB_PEM="appsk_pubkey.pem"
+    # Use agent-specific context and public key files
+    KEY_CTX="$AGENT_CTX_PATH"
+    PUB_PEM="$AGENT_PUBKEY_PATH"
 
     # Extract public part and convert to PEM (done on device with TPM)
     tpm2_readpublic -c "$KEY_CTX" -f pem -o "$PUB_PEM"
@@ -32,11 +61,11 @@ tpm2 flushcontext --saved-session || true
 
 # [3] Create primary
 echo "[STEP] Creating primary..."
-tpm2 createprimary -C o -G rsa -c primary.ctx
+tpm2 createprimary -C o -G rsa -c "$SCRIPT_DIR/primary.ctx"
 
 # [4] Create AppSK blobs
 echo "[STEP] Creating AppSK under primary..."
-tpm2 create -C primary.ctx -G rsa -u app.pub -r app.priv
+tpm2 create -C "$SCRIPT_DIR/primary.ctx" -G rsa -u "$SCRIPT_DIR/app.pub" -r "$SCRIPT_DIR/app.priv"
 
 # [5] Keep primary, drop other transients
 echo "[STEP] Flushing all extra transients..."
@@ -47,7 +76,7 @@ done
 
 # [6] Load AppSK
 echo "[STEP] Loading AppSK..."
-tpm2 load -C primary.ctx -u app.pub -r app.priv -c app.ctx
+tpm2 load -C "$SCRIPT_DIR/primary.ctx" -u "$SCRIPT_DIR/app.pub" -r "$SCRIPT_DIR/app.priv" -c "$AGENT_CTX_PATH"
 
 # Capture AppSK transient
 APPSK_HANDLE=$(tpm2 getcap handles-transient | grep -Eo '0x[0-9a-fA-F]+$' | grep -v "$PRIMARY_HANDLE" | head -n1)
@@ -77,16 +106,16 @@ if tpm2 readpublic -c $AK_HANDLE >/dev/null 2>&1; then
     if grep -q -- '-o' <<<"$HELP" && grep -q -- '-s' <<<"$HELP"; then
         echo "[INFO] Using -o/-s syntax for certify"
         tpm2 certify -C $AK_HANDLE -c $APP_HANDLE -g sha256 \
-            -o appsig_info.bin -s appsig_cert.sig
+            -o "$SCRIPT_DIR/appsig_info.bin" -s "$SCRIPT_DIR/appsig_cert.sig"
     elif grep -q -- '--attest-file' <<<"$HELP"; then
         echo "[INFO] Using long-option syntax for certify"
         tpm2 certify -C $AK_HANDLE -c $APP_HANDLE -g sha256 \
-            --attest-file appsig_info.bin \
-            --signature-file appsig_cert.sig
+            --attest-file "$SCRIPT_DIR/appsig_info.bin" \
+            --signature-file "$SCRIPT_DIR/appsig_cert.sig"
     elif grep -q '^-m' <<<"$HELP"; then
         echo "[INFO] Using -m/-s syntax for certify (old)"
         tpm2 certify -C $AK_HANDLE -c $APP_HANDLE -g sha256 \
-            -m appsig_info.bin -s appsig_cert.sig
+            -m "$SCRIPT_DIR/appsig_info.bin" -s "$SCRIPT_DIR/appsig_cert.sig"
     else
         echo "[WARN] Unknown certify syntax — not writing output files"
         exit 1
@@ -100,9 +129,9 @@ fi
 echo "[SUCCESS] AppSK persisted at $APP_HANDLE."
 
 # Export the public key in PEM format from a TPM key context
-# Replace KEY_CTX with your actual key context (private/public)
-KEY_CTX="app.ctx"
-PUB_PEM="appsk_pubkey.pem"
+# Use agent-specific or default files
+KEY_CTX="$AGENT_CTX_PATH"
+PUB_PEM="$AGENT_PUBKEY_PATH"
 
 # Extract public part and convert to PEM (done on device with TPM)
 tpm2_readpublic -c "$KEY_CTX" -f pem -o "$PUB_PEM"
@@ -112,5 +141,5 @@ echo "[INFO] Exported TPM public key to $PUB_PEM"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 tpm2 flushcontext -t
-tpm2_certify -C "$SCRIPT_DIR/ak.ctx" -c "$SCRIPT_DIR/app.ctx" -g sha256 -o "$SCRIPT_DIR/app_certify.out" -s "$SCRIPT_DIR/app_certify.sig"
+tpm2_certify -C "$SCRIPT_DIR/ak.ctx" -c "$AGENT_CTX_PATH" -g sha256 -o "$SCRIPT_DIR/app_certify.out" -s "$SCRIPT_DIR/app_certify.sig"
 echo "[INFO] APP certification by AK complete"

@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", env="HOST")
     port: int = Field(default=5000, env="PORT")
     
+    # Agent port allocation (for multi-agent support)
+    agent_base_port: int = Field(default=8401, env="AGENT_BASE_PORT")
+    agent_port_offset: int = Field(default=0, env="AGENT_PORT_OFFSET")
+    
+    # Agent TPM handle allocation (for multi-agent support)
+    agent_base_app_handle: str = Field(default="0x8101000B", env="AGENT_BASE_APP_HANDLE")
+    
     # TLS/SSL configuration
     ssl_enabled: bool = Field(default=True, env="SSL_ENABLED")
     ssl_cert_path: Optional[str] = Field(default=None, env="SSL_CERT_PATH")
@@ -52,12 +59,12 @@ class Settings(BaseSettings):
     
     # API Gateway configuration
     gateway_host: str = Field(default="localhost", env="GATEWAY_HOST")
-    gateway_port: int = Field(default=8443, env="GATEWAY_PORT")
+    gateway_port: int = Field(default=9000, env="GATEWAY_PORT")
     gateway_ssl_verify: bool = Field(default=False, env="GATEWAY_SSL_VERIFY")
     
     # Collector configuration
     collector_host: str = Field(default="localhost", env="COLLECTOR_HOST")
-    collector_port: int = Field(default=8444, env="COLLECTOR_PORT")
+    collector_port: int = Field(default=8500, env="COLLECTOR_PORT")
     collector_ssl_verify: bool = Field(default=False, env="COLLECTOR_SSL_VERIFY")
     
     # Security configuration

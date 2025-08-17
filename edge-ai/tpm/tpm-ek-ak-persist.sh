@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # --- CONFIG ---
 export SWTPM_PORT=2321
 export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=${SWTPM_PORT}"
@@ -48,8 +51,8 @@ safe_evict "$AK_HANDLE"
 
 # --- 3. Create & persist EK ---
 echo "[STEP] Creating EK..."
-tpm2 createek -G rsa -c ek.ctx -u ek.pub
-tpm2 evictcontrol -C o -c ek.ctx "$EK_HANDLE"
+tpm2 createek -G rsa -c "$SCRIPT_DIR/ek.ctx" -u "$SCRIPT_DIR/ek.pub"
+tpm2 evictcontrol -C o -c "$SCRIPT_DIR/ek.ctx" "$EK_HANDLE"
 
 # --- 4. Flush again to free transient slots ---
 echo "[STEP] Flushing again after EK creation..."
@@ -57,15 +60,15 @@ flush_all
 
 # --- 5. Create & persist AK using persisted EK handle ---
 echo "[STEP] Creating AK using EK handle $EK_HANDLE..."
-tpm2 createak -C "$EK_HANDLE" -c ak.ctx \
+tpm2 createak -C "$EK_HANDLE" -c "$SCRIPT_DIR/ak.ctx" \
   --hash-alg sha256 --signing-alg rsassa --key-alg rsa
-tpm2 evictcontrol -C o -c ak.ctx "$AK_HANDLE"
+tpm2 evictcontrol -C o -c "$SCRIPT_DIR/ak.ctx" "$AK_HANDLE"
 
 # --- 6. Export AK public key PEM (for verifier) ---
 tpm2 flushcontext -t
 echo "[STEP] Exporting AK public key for verification..."
-tpm2_readpublic -c ak.ctx -f pem -o ak_pub.pem
-echo "[SUCCESS] AK Public Key exported to ak_pub.pem"
+tpm2_readpublic -c "$SCRIPT_DIR/ak.ctx" -f pem -o "$SCRIPT_DIR/ak_pub.pem"
+echo "[SUCCESS] AK Public Key exported to $SCRIPT_DIR/ak_pub.pem"
 
 # --- 7. Final state ---
 echo "[STEP] Persistent handles now present:"

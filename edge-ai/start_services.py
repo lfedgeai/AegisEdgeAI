@@ -35,7 +35,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        structlog.dev.ConsoleRenderer()  # Use console renderer for better readability
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -43,47 +43,78 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
+# Set up basic logging based on environment variables
+import logging
+
+# Check for debug logging environment variables
+DEBUG_ALL = os.environ.get("DEBUG_ALL", "false").lower() == "true"
+DEBUG_COLLECTOR = os.environ.get("DEBUG_COLLECTOR", "false").lower() == "true"
+DEBUG_GATEWAY = os.environ.get("DEBUG_GATEWAY", "false").lower() == "true"
+DEBUG_AGENT = os.environ.get("DEBUG_AGENT", "false").lower() == "true"
+
+# Check for quiet mode
+QUIET_MODE = os.environ.get("QUIET_MODE", "false").lower() == "true"
+
+# Set log level based on debug flags
+if DEBUG_ALL or DEBUG_COLLECTOR or DEBUG_GATEWAY or DEBUG_AGENT:
+    log_level = logging.DEBUG
+else:
+    log_level = logging.INFO
+
+logging.basicConfig(level=log_level)
+
+# Log debug configuration
 logger = structlog.get_logger(__name__)
+logger.info("Logging configuration", 
+           debug_all=DEBUG_ALL,
+           debug_collector=DEBUG_COLLECTOR,
+           debug_gateway=DEBUG_GATEWAY,
+           debug_agent=DEBUG_AGENT,
+           quiet_mode=QUIET_MODE,
+           log_level=logging.getLevelName(log_level))
 
 # Service configurations
 SERVICES = {
     "collector": {
         "name": "OpenTelemetry Collector",
         "script": "collector/app.py",
-        "port": 8444,
+        "port": settings.collector_port,
         "env": {
             "SERVICE_NAME": "opentelemetry-collector",
-            "PORT": "8444",
+            "PORT": str(settings.collector_port),
             "COLLECTOR_HOST": "localhost",
-            "COLLECTOR_PORT": "8444",
+            "COLLECTOR_PORT": str(settings.collector_port),
             "OTEL_ENDPOINT": settings.otel_endpoint,
-            "LOG_LEVEL": "INFO"
+            "LOG_LEVEL": "DEBUG" if DEBUG_ALL or DEBUG_COLLECTOR else "INFO"
         }
     },
     "gateway": {
         "name": "API Gateway",
         "script": "gateway/app.py", 
-        "port": 8443,
+        "port": settings.gateway_port,
         "env": {
             "SERVICE_NAME": "opentelemetry-gateway",
-            "PORT": "8443",
+            "PORT": str(settings.gateway_port),
             "COLLECTOR_HOST": "localhost",
-            "COLLECTOR_PORT": "8444",
+            "COLLECTOR_PORT": str(settings.collector_port),
             "OTEL_ENDPOINT": settings.otel_endpoint,
-            "LOG_LEVEL": "INFO"
+            "LOG_LEVEL": "DEBUG" if DEBUG_ALL or DEBUG_GATEWAY else "INFO"
         }
     },
     "agent": {
         "name": "OpenTelemetry Agent",
         "script": "agent/app.py",
-        "port": 8442,
+        "port": settings.agent_base_port,
         "env": {
             "SERVICE_NAME": "opentelemetry-agent",
-            "PORT": "8442",
-            "COLLECTOR_HOST": "localhost", 
-            "COLLECTOR_PORT": "8443",
+            "PORT": str(settings.agent_base_port),
+            "GATEWAY_HOST": "localhost", 
+            "GATEWAY_PORT": str(settings.gateway_port),
+            "COLLECTOR_HOST": "localhost",
+            "COLLECTOR_PORT": str(settings.gateway_port),  # Agent should connect to gateway, not collector
             "OTEL_ENDPOINT": settings.otel_endpoint,
-            "LOG_LEVEL": "INFO"
+            "LOG_LEVEL": "DEBUG" if DEBUG_ALL or DEBUG_AGENT else "INFO",
+            "AGENT_NAME": "agent-001"  # Set default agent name
         }
     }
 }
@@ -168,18 +199,53 @@ def monitor_service(service_name: str, process: subprocess.Popen):
         process: Subprocess process object
     """
     try:
-        # Monitor stdout
-        for line in iter(process.stdout.readline, ''):
-            if line:
-                logger.info(f"[{service_name}] {line.strip()}")
+        # Skip monitoring if quiet mode is enabled
+        if QUIET_MODE:
+            logger.info(f"Quiet mode enabled - skipping output monitoring for {service_name}")
+            return
+            
+        # Monitor stdout and stderr in a non-blocking way
+        import threading
         
-        # Monitor stderr
-        for line in iter(process.stderr.readline, ''):
-            if line:
-                logger.error(f"[{service_name}] {line.strip()}")
+        def monitor_output(stream, log_func, stream_type):
+            try:
+                for line in iter(stream.readline, ''):
+                    if line and line.strip():
+                        # Filter out some noisy messages
+                        line_stripped = line.strip()
+                        if any(skip in line_stripped for skip in [
+                            "Resetting dropped connection",
+                            "Starting new HTTPS connection",
+                            "WARNING: This is a development server",
+                            "Press CTRL+C to quit",
+                            "Running on all addresses",
+                            "Running on https://",
+                            "Serving Flask app",
+                            "Debug mode:",
+                            "INFO:werkzeug:"
+                        ]):
+                            continue
+                        log_func(f"[{service_name}] {stream_type}: {line_stripped}")
+            except Exception as e:
+                logger.error(f"Error monitoring {service_name} {stream_type}", error=str(e))
+        
+        # Start monitoring threads
+        stdout_thread = threading.Thread(
+            target=monitor_output, 
+            args=(process.stdout, logger.info, "STDOUT"),
+            daemon=True
+        )
+        stderr_thread = threading.Thread(
+            target=monitor_output, 
+            args=(process.stderr, logger.info, "STDERR"),  # Use info instead of warning for stderr
+            daemon=True
+        )
+        
+        stdout_thread.start()
+        stderr_thread.start()
                 
     except Exception as e:
-        logger.error(f"Error monitoring {service_name}", error=str(e))
+        logger.error(f"Error setting up monitoring for {service_name}", error=str(e))
 
 
 def wait_for_service(service_name: str, port: int, timeout: int = 30) -> bool:
@@ -265,6 +331,33 @@ def main():
         logger.error(f"Error checking swtpm status: {e}")
         sys.exit(1)
     
+    # Check if agent-001 exists, create if not
+    logger.info("Checking if agent-001 exists...")
+    agent_config_path = "agents/agent-001/config.json"
+    if not os.path.exists(agent_config_path):
+        logger.info("Agent-001 not found, creating it...")
+        try:
+            # Import AgentCreator class
+            from create_agent import AgentCreator
+            
+            # Create agent-001 with default location
+            creator = AgentCreator("agent-001", "US/California/Santa Clara")
+            success = creator.create_agent()
+            
+            if success:
+                logger.info("Agent-001 created successfully")
+                # Small delay to ensure files are written
+                time.sleep(1)
+            else:
+                raise Exception("Agent creation returned False")
+                
+        except Exception as e:
+            logger.error(f"Failed to create agent-001: {e}")
+            logger.error("Please create agent-001 manually: python create_agent.py agent-001")
+            sys.exit(1)
+    else:
+        logger.info("Agent-001 already exists")
+    
     # Start services in order (collector first, then gateway, then agent)
     startup_order = ["collector", "gateway", "agent"]
     
@@ -280,13 +373,8 @@ def main():
             process = start_service(service_name, service_config)
             processes.append(process)
             
-            # Start monitoring thread
-            monitor_thread = threading.Thread(
-                target=monitor_service,
-                args=(service_name, process),
-                daemon=True
-            )
-            monitor_thread.start()
+            # Start monitoring (non-blocking)
+            monitor_service(service_name, process)
             
             # Wait for service to be ready (except for agent which depends on others)
             if service_name != "agent":
@@ -302,11 +390,14 @@ def main():
         if not wait_for_service("agent", SERVICES["agent"]["port"]):
             logger.warning("Agent service may not be fully ready")
         
-        logger.info("All services started successfully!")
-        logger.info("Service endpoints:")
-        logger.info(f"  Collector: https://localhost:{SERVICES['collector']['port']}")
-        logger.info(f"  Gateway:   https://localhost:{SERVICES['gateway']['port']}")
-        logger.info(f"  Agent:     https://localhost:{SERVICES['agent']['port']}")
+        logger.info("🎉 All services started successfully!")
+        logger.info("📡 Service endpoints:")
+        logger.info(f"  🔍 Collector: https://localhost:{SERVICES['collector']['port']}")
+        logger.info(f"  🌐 Gateway:   https://localhost:{SERVICES['gateway']['port']}")
+        logger.info(f"  🤖 Agent:     https://localhost:{SERVICES['agent']['port']}")
+        logger.info("")
+        logger.info("✅ System is ready for testing!")
+        logger.info("   Run: ./test_end_to_end_flow.sh")
         
         # Keep the main thread alive
         while True:
