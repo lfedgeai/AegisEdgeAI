@@ -69,6 +69,12 @@ else:
 
 logging.basicConfig(level=log_level)
 
+# Filter out urllib3 DEBUG messages in non-debug mode
+if not (DEBUG_ALL or DEBUG_GATEWAY):
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
 logger = structlog.get_logger(__name__)
 logger.info("Gateway logging configuration", 
            debug_all=DEBUG_ALL,

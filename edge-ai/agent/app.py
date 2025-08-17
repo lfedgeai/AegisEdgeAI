@@ -72,6 +72,12 @@ else:
 
 logging.basicConfig(level=log_level)
 
+# Filter out urllib3 DEBUG messages in non-debug mode
+if not (DEBUG_ALL or DEBUG_AGENT):
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
 logger = structlog.get_logger(__name__)
 logger.info("Agent logging configuration", 
            debug_all=DEBUG_ALL,
@@ -254,19 +260,34 @@ class CollectorClient:
         """
         with tracer.start_as_current_span("get_nonce"):
             try:
-                # Read agent's public key content
+                # Get agent's raw public key from config
                 agent_name = os.environ.get("AGENT_NAME", settings.service_name)
-                tpm_public_key_path = os.environ.get("PUBLIC_KEY_PATH", settings.public_key_path)
+                config_path = f"agents/{agent_name}/config.json"
                 
-                if not os.path.exists(tpm_public_key_path):
-                    raise FileNotFoundError(f"Public key file not found: {tpm_public_key_path}")
+                logger.info("🔄 [AGENT] Starting nonce request", 
+                           agent_name=agent_name,
+                           config_path=config_path,
+                           gateway_url=self.base_url)
                 
-                # Read the public key content and encode as base64
-                with open(tpm_public_key_path, 'rb') as f:
-                    public_key_bytes = f.read()
+                if not os.path.exists(config_path):
+                    raise FileNotFoundError(f"Agent config file not found: {config_path}")
                 
-                import base64
-                public_key_b64 = base64.b64encode(public_key_bytes).decode('utf-8')
+                # Read the raw public key from agent config
+                import json
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                
+                raw_public_key = config.get("tpm_public_key")
+                if not raw_public_key:
+                    raise ValueError(f"No tpm_public_key found in agent config: {config_path}")
+                
+                # The raw public key is already in the correct format (base64 without PEM headers)
+                public_key_b64 = raw_public_key
+                
+                logger.info("📤 [AGENT] Sending nonce request to gateway", 
+                           agent_name=agent_name,
+                           public_key_length=len(public_key_b64),
+                           public_key_fingerprint=public_key_b64[:16] + "...")
                 
                 # Get the nonce with public key parameter
                 response = self.session.get(f"{self.base_url}/nonce", params={"public_key": public_key_b64})
@@ -278,10 +299,12 @@ class CollectorClient:
                 if not nonce:
                     raise ValueError("No nonce received from collector")
                 
-                logger.info("Received nonce from collector", 
+                logger.info("✅ [AGENT] Nonce received successfully", 
                            nonce_length=len(nonce),
+                           nonce_value=nonce[:16] + "...",
                            agent_name=agent_name,
-                           public_key_fingerprint=public_key_b64[:16] + "...")
+                           public_key_fingerprint=public_key_b64[:16] + "...",
+                           response_status=response.status_code)
                 return nonce
                 
             except Exception as e:
@@ -310,7 +333,9 @@ class CollectorClient:
                 )
                 response.raise_for_status()
                 
-                logger.info("Metrics sent successfully to collector")
+                logger.info("✅ [AGENT] Metrics sent successfully to collector", 
+                           response_status=response.status_code,
+                           response_size=len(response.content))
                 return True
                 
             except Exception as e:
@@ -349,6 +374,9 @@ def generate_and_send_metrics():
         try:
             request_counter.add(1, {"endpoint": "generate_and_send_metrics"})
             
+            # Get agent name first (needed for logging)
+            agent_name = os.environ.get("AGENT_NAME", settings.service_name)
+            
             # Parse request
             data = request.get_json()
             metric_type = data.get("metric_type", "system")
@@ -367,10 +395,18 @@ def generate_and_send_metrics():
                 metrics_data["custom_data"] = custom_data
             
             # Get nonce from collector
+            logger.info("🔄 [AGENT] Initiating nonce retrieval for metrics", 
+                       agent_name=agent_name,
+                       metric_type=metric_type)
+            
             nonce = collector_client.get_nonce()
             
+            logger.info("✅ [AGENT] Nonce retrieved for metrics processing", 
+                       agent_name=agent_name,
+                       nonce_value=nonce[:16] + "...",
+                       nonce_length=len(nonce))
+            
             # Get geographic region from environment variables only
-            agent_name = os.environ.get("AGENT_NAME", settings.service_name)
             
             # Environment variables with agent-specific prefixes
             agent_prefix = f"{agent_name.upper().replace('-', '_')}_"
@@ -439,14 +475,19 @@ def generate_and_send_metrics():
             
             signature_counter.add(1, {"algorithm": settings.signature_algorithm})
             
-            # Get agent information from environment
+            # Get agent information from environment and config
             agent_name = os.environ.get("AGENT_NAME", settings.service_name)
-            tpm_public_key_path = os.environ.get("PUBLIC_KEY_PATH", settings.public_key_path)
+            
+            # Read raw public key from agent config
+            config_path = f"agents/{agent_name}/config.json"
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            raw_public_key = config.get("tpm_public_key")
             
             # Create payload with agent information
             payload = {
                 "agent_name": agent_name,
-                "tpm_public_key_path": tpm_public_key_path,
+                "tpm_public_key": raw_public_key,  # Include raw public key in payload
                 "geolocation": {
                     "country": geographic_region["region"],
                     "state": geographic_region["state"],
@@ -468,16 +509,26 @@ def generate_and_send_metrics():
                        payload_timestamp=payload["timestamp"])
             
             # Send to collector
+            logger.info("📤 [AGENT] Sending signed metrics to collector", 
+                       agent_name=agent_name,
+                       payload_size=len(json.dumps(payload)),
+                       signature_length=len(signature_data["signature"]))
+            
             success = collector_client.send_metrics(payload)
             
             if success:
-                logger.info("Metrics generation and sending completed successfully")
+                logger.info("🎉 [AGENT] Metrics generation and sending completed successfully", 
+                           agent_name=agent_name,
+                           payload_id=signature_data["digest"][:16],
+                           total_processing_time="completed")
                 return jsonify({
                     "status": "success",
                     "message": "Metrics generated, signed, and sent successfully",
                     "payload_id": signature_data["digest"][:16]  # Use first 16 chars of digest as ID
                 })
             else:
+                logger.error("❌ [AGENT] Failed to send metrics to collector", 
+                           agent_name=agent_name)
                 return jsonify({
                     "status": "error",
                     "message": "Failed to send metrics to collector"

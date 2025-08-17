@@ -186,8 +186,11 @@ class PublicKeyUtils:
         logger.info("🔍 [PUBLIC_KEY_UTILS] Combined data for verification", 
                    combined_data_length=len(combined_data))
         
+        # Convert hex signature to bytes for verification
+        signature_bytes = bytes.fromhex(signature)
+        
         # Use pure OpenSSL verification with specific public key
-        result = self.verify_signature_pure_openssl_with_key(combined_data, signature, public_key_content, algorithm)
+        result = self.verify_signature_pure_openssl_with_key(combined_data, signature_bytes, public_key_content, algorithm)
         
         logger.info("🔍 [PUBLIC_KEY_UTILS] Verification result", result=result)
         
@@ -344,6 +347,68 @@ class PublicKeyUtils:
                 "public_key_path": self.public_key_path,
                 "error": str(e)
             }
+
+    def extract_raw_public_key_content(self, pem_content: str) -> str:
+        """
+        Extract raw public key content from PEM format.
+        
+        Args:
+            pem_content: PEM formatted public key
+            
+        Returns:
+            Raw base64-encoded public key content (without headers)
+        """
+        try:
+            # Remove PEM headers and footers
+            lines = pem_content.strip().split('\n')
+            content_lines = []
+            in_content = False
+            
+            for line in lines:
+                if line.startswith('-----BEGIN PUBLIC KEY-----'):
+                    in_content = True
+                    continue
+                elif line.startswith('-----END PUBLIC KEY-----'):
+                    break
+                elif in_content:
+                    content_lines.append(line)
+            
+            # Join all content lines and remove any remaining whitespace
+            raw_content = ''.join(content_lines).strip()
+            
+            logger.info("🔧 [PUBLIC_KEY_UTILS] Extracted raw public key content", 
+                       original_length=len(pem_content),
+                       raw_length=len(raw_content))
+            
+            return raw_content
+            
+        except Exception as e:
+            logger.error("Error extracting raw public key content", error=str(e))
+            raise
+    
+    def raw_to_pem_format(self, raw_content: str) -> str:
+        """
+        Convert raw base64 public key content to PEM format.
+        
+        Args:
+            raw_content: Raw base64-encoded public key content
+            
+        Returns:
+            PEM formatted public key
+        """
+        try:
+            # Add PEM headers and format with line breaks
+            pem_content = f"-----BEGIN PUBLIC KEY-----\n{raw_content}\n-----END PUBLIC KEY-----"
+            
+            logger.info("🔧 [PUBLIC_KEY_UTILS] Converted raw content to PEM format", 
+                       raw_length=len(raw_content),
+                       pem_length=len(pem_content))
+            
+            return pem_content
+            
+        except Exception as e:
+            logger.error("Error converting raw content to PEM format", error=str(e))
+            raise
 
 
 class PublicKeyError(Exception):

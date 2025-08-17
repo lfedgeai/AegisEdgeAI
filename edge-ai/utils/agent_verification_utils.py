@@ -37,11 +37,21 @@ class AgentVerificationUtils:
         Args:
             allowed_agents_path: Path to the allowed agents JSON file
         """
-        self.allowed_agents_path = allowed_agents_path
+        # Resolve the path relative to the project root
+        if not os.path.isabs(allowed_agents_path):
+            # Get the directory where this script is located
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Go up one level to the project root
+            project_root = os.path.dirname(script_dir)
+            # Construct the full path
+            self.allowed_agents_path = os.path.join(project_root, allowed_agents_path)
+        else:
+            self.allowed_agents_path = allowed_agents_path
+            
         self.allowed_agents = self._load_allowed_agents()
         
         logger.info("AgentVerificationUtils initialized", 
-                   allowed_agents_path=os.path.abspath(allowed_agents_path),
+                   allowed_agents_path=os.path.abspath(self.allowed_agents_path),
                    agent_count=len(self.allowed_agents))
     
     def _load_allowed_agents(self) -> List[Dict[str, Any]]:
@@ -55,11 +65,17 @@ class AgentVerificationUtils:
             AgentVerificationError: If file cannot be loaded or parsed
         """
         try:
+            logger.debug("Loading allowed agents", file_path=self.allowed_agents_path)
+            
             if not os.path.exists(self.allowed_agents_path):
                 raise AgentVerificationError(f"Allowed agents file not found: {self.allowed_agents_path}")
             
             with open(self.allowed_agents_path, 'r') as f:
-                agents = json.load(f)
+                content = f.read()
+                logger.debug("File content loaded", content_length=len(content))
+                agents = json.loads(content)
+            
+            logger.debug("JSON parsed successfully", agents_type=type(agents), agents_length=len(agents) if isinstance(agents, list) else "not a list")
             
             if not isinstance(agents, list):
                 raise AgentVerificationError("Allowed agents file must contain a JSON array")
@@ -75,8 +91,10 @@ class AgentVerificationUtils:
             return agents
             
         except json.JSONDecodeError as e:
+            logger.error("JSON decode error", error=str(e), file_path=self.allowed_agents_path)
             raise AgentVerificationError(f"Invalid JSON in allowed agents file: {e}")
         except Exception as e:
+            logger.error("Failed to load allowed agents", error=str(e), file_path=self.allowed_agents_path)
             raise AgentVerificationError(f"Failed to load allowed agents: {e}")
     
     def _validate_agent_config(self, agent: Dict[str, Any], index: int) -> None:
@@ -118,15 +136,15 @@ class AgentVerificationUtils:
         try:
             # Extract agent information from payload
             agent_name = payload.get('agent_name')
-            tpm_public_key_path = payload.get('tpm_public_key_path')
+            tpm_public_key = payload.get('tpm_public_key')  # Now contains raw public key content
             geolocation = payload.get('geolocation', {})
             
             if not agent_name:
                 logger.warning("No agent name in payload")
                 return False
             
-            if not tpm_public_key_path:
-                logger.warning("No TPM public key path in payload")
+            if not tpm_public_key:
+                logger.warning("No TPM public key in payload")
                 return False
             
             if not geolocation:
@@ -140,10 +158,10 @@ class AgentVerificationUtils:
                 return False
             
             # Verify TPM public key content
-            if not self._verify_tpm_public_key(agent_config, tpm_public_key_path):
+            if not self._verify_tpm_public_key(agent_config, tpm_public_key):
                 logger.warning("TPM public key verification failed", 
                              agent_name=agent_name,
-                             received_path=tpm_public_key_path)
+                             received_key_length=len(tpm_public_key))
                 return False
             
             # Verify geolocation
@@ -179,13 +197,13 @@ class AgentVerificationUtils:
                 return agent
         return None
     
-    def _verify_tpm_public_key(self, agent_config: Dict[str, Any], received_path: str) -> bool:
+    def _verify_tpm_public_key(self, agent_config: Dict[str, Any], received_public_key: str) -> bool:
         """
         Verify TPM public key content matches the expected public key.
         
         Args:
             agent_config: Agent configuration from allowlist
-            received_path: TPM public key path from payload (not used, we use the allowlist content)
+            received_public_key: TPM public key content from payload
             
         Returns:
             True if public keys match, False otherwise
@@ -197,14 +215,15 @@ class AgentVerificationUtils:
                 logger.warning("No public key content in agent config")
                 return False
             
-            # For now, just verify that the agent sent a public key path
-            # The actual public key content is already verified during signature verification
-            # which uses the public key from the allowlist
-            if not received_path:
-                logger.warning("No public key path in payload")
+            # Verify that the received public key matches the expected one
+            if received_public_key != expected_public_key:
+                logger.warning("Public key content mismatch", 
+                             agent_name=agent_config.get('agent_name'),
+                             expected_length=len(expected_public_key),
+                             received_length=len(received_public_key))
                 return False
             
-            logger.info("TPM public key verification successful (using allowlist content)", 
+            logger.info("TPM public key verification successful", 
                        agent_name=agent_config.get('agent_name'))
             
             return True
