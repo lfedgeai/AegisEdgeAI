@@ -727,12 +727,27 @@ def get_nonce():
             import urllib.parse
             raw_public_key = urllib.parse.unquote(public_key)
             
+            # Check if this public key belongs to an agent in the allowlist
+            agent_found = False
+            for agent in agent_verification_utils.allowed_agents:
+                if agent.get('tpm_public_key') == raw_public_key:
+                    agent_found = True
+                    agent_name = agent.get('agent_name')
+                    break
+            
+            if not agent_found:
+                logger.warning("❌ [COLLECTOR] Nonce request from unauthorized agent", 
+                             agent_public_key_fingerprint=raw_public_key[:16] + "...",
+                             request_ip=request.remote_addr)
+                return jsonify({"error": "Agent not found in allowlist"}), 403
+            
             # Clean up expired nonces
             NonceManager.cleanup_expired_nonces()
             
             # Generate cryptographically secure random nonce for this agent
             # The raw public key is used only for tracking which agent the nonce belongs to
             logger.info("🔄 [COLLECTOR] Starting nonce generation", 
+                       agent_name=agent_name,
                        agent_public_key_fingerprint=raw_public_key[:16] + "...",
                        request_ip=request.remote_addr)
             
@@ -865,10 +880,41 @@ def receive_metrics():
                 verification_counter.add(1, {"status": "failed"})
                 return jsonify({"error": "Signature verification failed"}), 400
             
-            # Verify agent information
+            # Verify agent information with detailed error checking
+            agent_name = payload.get("agent_name")
+            geolocation = payload.get("geolocation", {})
+            
+            # Check if agent exists in allowlist
+            agent_config = agent_verification_utils.get_agent_info(agent_name)
+            if not agent_config:
+                logger.warning("Agent not found in allowlist", agent_name=agent_name)
+                verification_counter.add(1, {"status": "failed"})
+                return jsonify({"error": f"Agent '{agent_name}' not found in allowlist"}), 400
+            
+            # Check geolocation specifically
+            expected_geo = agent_config.get('geolocation', {})
+            if (expected_geo.get('country') != geolocation.get('country') or
+                expected_geo.get('state') != geolocation.get('state') or
+                expected_geo.get('city') != geolocation.get('city')):
+                
+                logger.warning("Geolocation mismatch", 
+                             agent_name=agent_name,
+                             expected_geo=expected_geo,
+                             received_geo=geolocation)
+                verification_counter.add(1, {"status": "failed"})
+                return jsonify({
+                    "error": "Geolocation verification failed",
+                    "details": {
+                        "expected": expected_geo,
+                        "received": geolocation,
+                        "agent_name": agent_name
+                    }
+                }), 400
+            
+            # Verify agent information (this will check public key and other details)
             if not agent_verification_utils.verify_agent(payload):
                 logger.warning("Agent verification failed", 
-                             agent_name=payload.get("agent_name"),
+                             agent_name=agent_name,
                              service=payload["metrics"].get("service", {}).get("name"))
                 verification_counter.add(1, {"status": "failed"})
                 return jsonify({"error": "Agent verification failed"}), 400

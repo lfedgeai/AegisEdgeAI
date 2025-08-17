@@ -1,0 +1,62 @@
+Window 1 - main
+--------
+./initall.sh
+python3 create_agent.py agent-001
+python3 create_agent.py agent-002
+
+Window 2
+--------
+PORT=8500 python collector/app.py
+
+Window 3
+--------
+PORT=9000 python gateway/app.py
+
+Window 4
+--------
+python start_agent.py agent-001
+
+Window 5
+--------
+python start_agent.py agent-002
+
+---------------------------------------------------
+test 1 - happy path
+---------------------------------------------------
+Window 1 - main
+------
+curl -X POST "https://localhost:8401/metrics/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"metric_type": "application"}' \
+  --insecure
+curl -X POST "https://localhost:8402/metrics/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"metric_type": "application"}' \
+  --insecure
+
+---------------------------------------------------
+test 2 - demo agent-002 does not meet gelocation policy
+---------------------------------------------------
+window 5
+--------
+stop agent 2
+export AGENT_002_GEOGRAPHIC_REGION=EU/Germany/Berlin
+python start_agent.py agent-002 
+
+---------------------------------------------------
+test 3 - demo agent-003 not in collector allow list
+---------------------------------------------------
+window 1 - main
+--------
+python3 create_agent.py agent-003
+
+window 6
+--------
+python start_agent.py agent-003 
+
+window 1 - main
+--------
+curl -X POST "https://localhost:8403/metrics/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"metric_type": "application"}' \
+  --insecure

@@ -1,8 +1,0 @@
-{
-  "agent_name": "agent-001",
-  "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1pBojJHEiZnaXx4mKkYYOAxBQ6CN96oEYGxLScYtn64nl+MaVH6+QBTpzXXBZYqIlZv5ECleKwygXOQSOiHEYCGWRaI1pgzWMKktUj6hvyd3Tc6NgMKvIfvX4/MJ/4aFsSjP/dS3h0nZIB1s+ncEK4diuHzzOg23yFdHGRqEcagZ/GZtu2815QFn092VPFg2KfGvM8M7CcLCGdPy7IatT2TJQTvf+sCXcDCk4XUentesfJtmJuOwPxmz89J/TL/MvEDjxADRCiMzHSAEDfbz33lgNo03yPuddECLKMdNt63Q/AHWg/Qd0PAmpY/jydyTga3XEBA0H/G8T7SsnqUYswIDAQAB",
-  "tpm_context_file": "tpm/agent-001.ctx",
-  "description": "Edge AI agent for Santa Clara, California deployment",
-  "created_at": "2025-08-15T18:00:00Z",
-  "status": "active"
-}
