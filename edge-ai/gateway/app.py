@@ -46,7 +46,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        structlog.dev.ConsoleRenderer()  # Use dev console renderer for screen output
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -54,7 +54,26 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
+# Set up basic logging based on environment variables
+import logging
+
+# Check for debug logging environment variables
+DEBUG_ALL = os.environ.get("DEBUG_ALL", "false").lower() == "true"
+DEBUG_GATEWAY = os.environ.get("DEBUG_GATEWAY", "false").lower() == "true"
+
+# Set log level based on debug flags
+if DEBUG_ALL or DEBUG_GATEWAY:
+    log_level = logging.DEBUG
+else:
+    log_level = logging.INFO
+
+logging.basicConfig(level=log_level)
+
 logger = structlog.get_logger(__name__)
+logger.info("Gateway logging configuration", 
+           debug_all=DEBUG_ALL,
+           debug_gateway=DEBUG_GATEWAY,
+           log_level=logging.getLevelName(log_level))
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -71,16 +90,16 @@ def setup_opentelemetry():
         # Skip metrics setup for now to avoid compatibility issues
         logger.info("Skipping OpenTelemetry metrics setup for compatibility")
         
-        # Add span processor
-        otlp_exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint)
-        span_processor = BatchSpanProcessor(otlp_exporter)
-        trace_provider.add_span_processor(span_processor)
+        # Disable OTLP exporter to avoid warnings about missing collector
+        # otlp_exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint)
+        # span_processor = BatchSpanProcessor(otlp_exporter)
+        # trace_provider.add_span_processor(span_processor)
         
         # Instrument Flask and requests
         FlaskInstrumentor().instrument_app(app)
         RequestsInstrumentor().instrument()
         
-        logger.info("OpenTelemetry setup completed")
+        logger.info("OpenTelemetry setup completed (OTLP export disabled)")
         
     except Exception as e:
         logger.error("Failed to setup OpenTelemetry", error=str(e))
@@ -132,16 +151,17 @@ class ProxyManager:
             'X-Gateway-ID': os.getenv('GATEWAY_ID', 'unknown')
         })
     
-    def proxy_request(self, method: str, path: str, data: Optional[Dict] = None, 
-                     headers: Optional[Dict] = None) -> Response:
+    def proxy_request(self, method: str, path: str, data: Optional[Any] = None, 
+                     headers: Optional[Dict] = None, params: Optional[Dict] = None) -> Response:
         """
-        Proxy a request to the collector.
+        Proxy a request to the collector as-is.
         
         Args:
             method: HTTP method
             path: Request path
-            data: Request data
-            headers: Request headers
+            data: Request data (JSON dict, raw bytes, or None)
+            headers: Request headers (all headers proxied as-is)
+            params: Query parameters
             
         Returns:
             Flask Response object
@@ -149,24 +169,33 @@ class ProxyManager:
         try:
             url = f"{self.collector_url}{path}"
             
-            # Prepare headers
-            proxy_headers = {}
-            if headers:
-                # Filter out headers that shouldn't be proxied
-                allowed_headers = ['Content-Type', 'Accept', 'Authorization']
-                for key, value in headers.items():
-                    if key in allowed_headers:
-                        proxy_headers[key] = value
+            # Proxy all headers as-is (no filtering)
+            proxy_headers = dict(headers) if headers else {}
             
             # Make request to collector
             if method.upper() == 'GET':
-                response = self.session.get(url, headers=proxy_headers)
+                response = self.session.get(url, headers=proxy_headers, params=params)
             elif method.upper() == 'POST':
-                response = self.session.post(url, json=data, headers=proxy_headers)
+                if isinstance(data, dict):
+                    response = self.session.post(url, json=data, headers=proxy_headers, params=params)
+                else:
+                    response = self.session.post(url, data=data, headers=proxy_headers, params=params)
+            elif method.upper() == 'PUT':
+                if isinstance(data, dict):
+                    response = self.session.put(url, json=data, headers=proxy_headers, params=params)
+                else:
+                    response = self.session.put(url, data=data, headers=proxy_headers, params=params)
+            elif method.upper() == 'DELETE':
+                response = self.session.delete(url, headers=proxy_headers, params=params)
+            elif method.upper() == 'PATCH':
+                if isinstance(data, dict):
+                    response = self.session.patch(url, json=data, headers=proxy_headers, params=params)
+                else:
+                    response = self.session.patch(url, data=data, headers=proxy_headers, params=params)
             else:
                 return jsonify({"error": f"Unsupported method: {method}"}), 405
             
-            # Create Flask response
+            # Create Flask response with all original headers
             flask_response = Response(
                 response.content,
                 status=response.status_code,
@@ -280,8 +309,10 @@ def proxy_nonce():
             if not validation["valid"]:
                 return jsonify({"error": validation["error"]}), validation["status_code"]
             
-            # Proxy request to collector
-            response = proxy_manager.proxy_request('GET', '/nonce', headers=request.headers)
+            # Proxy request to collector as-is (all query params, headers, etc.)
+            response = proxy_manager.proxy_request('GET', '/nonce', 
+                                                  headers=request.headers, 
+                                                  params=request.args)
             
             logger.info("Nonce request proxied successfully")
             return response
@@ -311,8 +342,11 @@ def proxy_metrics():
             # Get request data
             data = request.get_json()
             
-            # Proxy request to collector
-            response = proxy_manager.proxy_request('POST', '/metrics', data=data, headers=request.headers)
+            # Proxy request to collector as-is
+            response = proxy_manager.proxy_request('POST', '/metrics', 
+                                                 data=data, 
+                                                 headers=request.headers,
+                                                 params=request.args)
             
             logger.info("Metrics request proxied successfully")
             return response
@@ -336,8 +370,10 @@ def proxy_metrics_status():
             if not validation["valid"]:
                 return jsonify({"error": validation["error"]}), validation["status_code"]
             
-            # Proxy request to collector
-            response = proxy_manager.proxy_request('GET', '/metrics/status', headers=request.headers)
+            # Proxy request to collector as-is
+            response = proxy_manager.proxy_request('GET', '/metrics/status', 
+                                                 headers=request.headers,
+                                                 params=request.args)
             
             logger.info("Metrics status request proxied successfully")
             return response
@@ -346,6 +382,33 @@ def proxy_metrics_status():
             logger.error("Error proxying metrics status request", error=str(e))
             error_counter.add(1, {"operation": "proxy_metrics_status", "error": str(e)})
             return jsonify({"error": "Failed to proxy metrics status request"}), 500
+
+
+@app.route('/nonces/stats', methods=['GET'])
+def proxy_nonce_stats():
+    """Proxy nonce statistics requests to the collector."""
+    with tracer.start_as_current_span("proxy_nonce_stats"):
+        try:
+            request_counter.add(1, {"endpoint": "nonces_stats"})
+            proxy_counter.add(1, {"operation": "get_nonce_stats"})
+            
+            # Validate request
+            validation = security_manager.validate_request(request)
+            if not validation["valid"]:
+                return jsonify({"error": validation["error"]}), validation["status_code"]
+            
+            # Proxy request to collector as-is
+            response = proxy_manager.proxy_request('GET', '/nonces/stats', 
+                                                 headers=request.headers,
+                                                 params=request.args)
+            
+            logger.info("Nonce statistics request proxied successfully")
+            return response
+            
+        except Exception as e:
+            logger.error("Error proxying nonce statistics request", error=str(e))
+            error_counter.add(1, {"operation": "proxy_nonce_stats", "error": str(e)})
+            return jsonify({"error": "Failed to proxy nonce statistics request"}), 500
 
 
 @app.route('/nonces/cleanup', methods=['POST'])
@@ -361,8 +424,14 @@ def proxy_nonces_cleanup():
             if not validation["valid"]:
                 return jsonify({"error": validation["error"]}), validation["status_code"]
             
-            # Proxy request to collector
-            response = proxy_manager.proxy_request('POST', '/nonces/cleanup', headers=request.headers)
+            # Get request data if any
+            data = request.get_json() if request.is_json else None
+            
+            # Proxy request to collector as-is
+            response = proxy_manager.proxy_request('POST', '/nonces/cleanup', 
+                                                 data=data,
+                                                 headers=request.headers,
+                                                 params=request.args)
             
             logger.info("Nonce cleanup request proxied successfully")
             return response
@@ -412,6 +481,44 @@ def get_rate_limits():
         "remaining_requests": max(0, security_manager.rate_limit_requests - request_count),
         "timestamp": datetime.utcnow().isoformat()
     })
+
+
+@app.route('/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+def proxy_all_other_routes(subpath):
+    """Generic proxy for all other routes to the collector."""
+    with tracer.start_as_current_span("proxy_generic"):
+        try:
+            method = request.method
+            path = f"/{subpath}"
+            
+            request_counter.add(1, {"endpoint": f"proxy_{method.lower()}"})
+            proxy_counter.add(1, {"operation": f"proxy_{method.lower()}"})
+            
+            # Validate request
+            validation = security_manager.validate_request(request)
+            if not validation["valid"]:
+                return jsonify({"error": validation["error"]}), validation["status_code"]
+            
+            # Get request data if any
+            data = None
+            if method in ['POST', 'PUT', 'PATCH'] and request.is_json:
+                data = request.get_json()
+            elif method in ['POST', 'PUT', 'PATCH'] and request.data:
+                data = request.data
+            
+            # Proxy request to collector as-is
+            response = proxy_manager.proxy_request(method, path, 
+                                                 data=data,
+                                                 headers=request.headers,
+                                                 params=request.args)
+            
+            logger.info(f"Generic {method} request proxied successfully", path=path)
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error proxying {method} request", path=path, error=str(e))
+            error_counter.add(1, {"operation": f"proxy_{method.lower()}", "error": str(e)})
+            return jsonify({"error": f"Failed to proxy {method} request"}), 500
 
 
 @app.errorhandler(404)

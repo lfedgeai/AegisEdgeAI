@@ -33,7 +33,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import settings
 from utils.public_key_utils import PublicKeyUtils, PublicKeyError
+# TPM2Utils not needed in collector - uses pure OpenSSL verification
 from utils.ssl_utils import SSLUtils, SSLError
+from utils.agent_verification_utils import AgentVerificationUtils, AgentVerificationError
 
 # Configure structured logging
 structlog.configure(
@@ -46,7 +48,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        structlog.dev.ConsoleRenderer()  # Use dev console renderer for screen output
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -54,7 +56,26 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
+# Set up basic logging based on environment variables
+import logging
+
+# Check for debug logging environment variables
+DEBUG_ALL = os.environ.get("DEBUG_ALL", "false").lower() == "true"
+DEBUG_COLLECTOR = os.environ.get("DEBUG_COLLECTOR", "false").lower() == "true"
+
+# Set log level based on debug flags
+if DEBUG_ALL or DEBUG_COLLECTOR:
+    log_level = logging.DEBUG
+else:
+    log_level = logging.INFO
+
+logging.basicConfig(level=log_level)
+
 logger = structlog.get_logger(__name__)
+logger.info("Collector logging configuration", 
+           debug_all=DEBUG_ALL,
+           debug_collector=DEBUG_COLLECTOR,
+           log_level=logging.getLevelName(log_level))
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -71,6 +92,17 @@ except PublicKeyError as e:
     logger.error("Failed to initialize public key utilities", error=str(e))
     sys.exit(1)
 
+# Note: Collector does not use TPM2Utils - it uses pure OpenSSL verification
+# via PublicKeyUtils for remote signature verification
+
+# Initialize agent verification utilities
+try:
+    agent_verification_utils = AgentVerificationUtils()
+    logger.info("Agent verification utilities initialized successfully")
+except AgentVerificationError as e:
+    logger.error("Failed to initialize agent verification utilities", error=str(e))
+    sys.exit(1)
+
 # Initialize OpenTelemetry
 def setup_opentelemetry():
     """Setup OpenTelemetry tracing and metrics."""
@@ -82,15 +114,15 @@ def setup_opentelemetry():
         # Skip metrics setup for now to avoid compatibility issues
         logger.info("Skipping OpenTelemetry metrics setup for compatibility")
         
-        # Add span processor
-        otlp_exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint)
-        span_processor = BatchSpanProcessor(otlp_exporter)
-        trace_provider.add_span_processor(span_processor)
+        # Disable OTLP exporter to avoid warnings about missing collector
+        # otlp_exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint)
+        # span_processor = BatchSpanProcessor(otlp_exporter)
+        # trace_provider.add_span_processor(span_processor)
         
         # Instrument Flask
         FlaskInstrumentor().instrument_app(app)
         
-        logger.info("OpenTelemetry setup completed")
+        logger.info("OpenTelemetry setup completed (OTLP export disabled)")
         
     except Exception as e:
         logger.error("Failed to setup OpenTelemetry", error=str(e))
@@ -126,17 +158,38 @@ error_counter = meter.create_counter(
 # In-memory storage for nonces (in production, use a proper database)
 active_nonces: Set[str] = set()
 nonce_timestamps: Dict[str, datetime] = {}
+# Track nonces per agent public key
+nonce_agent_mapping: Dict[str, str] = {}  # nonce -> agent_public_key
+agent_nonce_counts: Dict[str, int] = {}  # agent_public_key -> count
 
 
 class NonceManager:
-    """Manages nonce generation and validation."""
+    """Manages nonce generation and validation per agent."""
     
     @staticmethod
-    def generate_nonce() -> str:
-        """Generate a cryptographically secure nonce."""
+    def generate_nonce(agent_public_key: str) -> str:
+        """
+        Generate a cryptographically secure nonce for a specific agent.
+        
+        Args:
+            agent_public_key: The agent's public key (base64 encoded)
+            
+        Returns:
+            Generated nonce string
+        """
         nonce = secrets.token_hex(settings.nonce_length // 2)
         active_nonces.add(nonce)
         nonce_timestamps[nonce] = datetime.utcnow()
+        nonce_agent_mapping[nonce] = agent_public_key
+        
+        # Track nonce count per agent
+        agent_nonce_counts[agent_public_key] = agent_nonce_counts.get(agent_public_key, 0) + 1
+        
+        logger.info("Generated nonce for agent", 
+                   nonce_length=len(nonce),
+                   agent_public_key_fingerprint=agent_public_key[:16] + "...",
+                   agent_nonce_count=agent_nonce_counts[agent_public_key])
+        
         return nonce
     
     @staticmethod
@@ -148,8 +201,7 @@ class NonceManager:
         # Check if nonce is expired (5 minutes)
         timestamp = nonce_timestamps.get(nonce)
         if timestamp and datetime.utcnow() - timestamp > timedelta(minutes=5):
-            active_nonces.discard(nonce)
-            nonce_timestamps.pop(nonce, None)
+            NonceManager._remove_nonce(nonce)
             return False
         
         return True
@@ -158,10 +210,25 @@ class NonceManager:
     def consume_nonce(nonce: str) -> bool:
         """Consume a nonce (remove it from active nonces)."""
         if nonce in active_nonces:
-            active_nonces.discard(nonce)
-            nonce_timestamps.pop(nonce, None)
+            NonceManager._remove_nonce(nonce)
             return True
         return False
+    
+    @staticmethod
+    def _remove_nonce(nonce: str):
+        """Remove a nonce and update tracking."""
+        if nonce in active_nonces:
+            agent_public_key = nonce_agent_mapping.get(nonce)
+            if agent_public_key:
+                # Decrease count for this agent
+                if agent_public_key in agent_nonce_counts:
+                    agent_nonce_counts[agent_public_key] = max(0, agent_nonce_counts[agent_public_key] - 1)
+                
+                # Remove from mappings
+                nonce_agent_mapping.pop(nonce, None)
+            
+            active_nonces.discard(nonce)
+            nonce_timestamps.pop(nonce, None)
     
     @staticmethod
     def cleanup_expired_nonces():
@@ -173,11 +240,19 @@ class NonceManager:
         ]
         
         for nonce in expired_nonces:
-            active_nonces.discard(nonce)
-            nonce_timestamps.pop(nonce, None)
+            NonceManager._remove_nonce(nonce)
         
         if expired_nonces:
             logger.info("Cleaned up expired nonces", count=len(expired_nonces))
+    
+    @staticmethod
+    def get_agent_nonce_stats() -> Dict[str, Any]:
+        """Get statistics about nonce usage per agent."""
+        return {
+            "total_active_nonces": len(active_nonces),
+            "agent_nonce_counts": agent_nonce_counts.copy(),
+            "total_agents_with_nonces": len(agent_nonce_counts)
+        }
 
 
 class MetricsProcessor:
@@ -194,12 +269,24 @@ class MetricsProcessor:
         Returns:
             True if valid, False otherwise
         """
-        required_fields = ["metrics", "geographic_region", "nonce", "signature", "algorithm", "timestamp"]
+        required_fields = ["agent_name", "tpm_public_key_path", "geolocation", "metrics", "geographic_region", "nonce", "signature", "algorithm", "timestamp"]
         
         for field in required_fields:
             if field not in payload:
                 logger.warning("Missing required field in payload", field=field)
                 return False
+        
+        if not isinstance(payload["agent_name"], str):
+            logger.warning("Agent name field must be a string")
+            return False
+        
+        if not isinstance(payload["tpm_public_key_path"], str):
+            logger.warning("TPM public key path field must be a string")
+            return False
+        
+        if not isinstance(payload["geolocation"], dict):
+            logger.warning("Geolocation field must be a dictionary")
+            return False
         
         if not isinstance(payload["metrics"], dict):
             logger.warning("Metrics field must be a dictionary")
@@ -273,7 +360,7 @@ class MetricsProcessor:
     @staticmethod
     def verify_signature(payload: Dict[str, Any]) -> bool:
         """
-        Verify the signature of the metrics payload using public key verification.
+        Verify the signature of the metrics payload using the agent's specific public key.
         
         Args:
             payload: The metrics payload to verify
@@ -282,6 +369,26 @@ class MetricsProcessor:
             True if signature is valid, False otherwise
         """
         try:
+            logger.info("🔍 [COLLECTOR] Starting signature verification", 
+                       agent_name=payload.get("agent_name"),
+                       nonce=payload.get("nonce", "")[:16] + "...",
+                       signature=payload.get("signature", "")[:32] + "...")
+            
+            # Get agent's public key from allowlist
+            agent_info = agent_verification_utils.get_agent_info(payload["agent_name"])
+            if not agent_info:
+                logger.error("Agent not found in allowlist", agent_name=payload["agent_name"])
+                return False
+            
+            agent_public_key = agent_info.get("tpm_public_key")
+            if not agent_public_key:
+                logger.error("Agent public key not found in allowlist", agent_name=payload["agent_name"])
+                return False
+            
+            logger.info("🔍 [COLLECTOR] Found agent in allowlist", 
+                       agent_name=payload["agent_name"],
+                       public_key_length=len(agent_public_key))
+            
             # The agent should send the exact data that was signed
             # We need to reconstruct the exact data structure that was signed
             # The agent signs: {"metrics": {...}, "geographic_region": {...}}
@@ -294,20 +401,30 @@ class MetricsProcessor:
             data_json = json.dumps(data_to_verify, sort_keys=True)
             data_bytes = data_json.encode('utf-8')
             nonce_bytes = payload["nonce"].encode('utf-8')
-            signature_bytes = bytes.fromhex(payload["signature"])
             
-            # Verify signature using public key
-            is_valid = public_key_utils.verify_with_nonce(
+            logger.info("🔍 [COLLECTOR] Reconstructed data for verification", 
+                       data_json=data_json,
+                       data_length=len(data_bytes),
+                       nonce=payload["nonce"])
+            
+            # Verify signature using agent's specific public key
+            # Pass signature as hex string (not bytes)
+            is_valid = public_key_utils.verify_with_nonce_and_public_key(
                 data_bytes,
                 nonce_bytes,
-                signature_bytes,
+                payload["signature"],  # Pass as hex string
+                agent_public_key,
                 algorithm=payload["algorithm"]
             )
+            
+            logger.info("🔍 [COLLECTOR] Signature verification result", 
+                       is_valid=is_valid,
+                       agent_name=payload["agent_name"])
             
             return is_valid
             
         except Exception as e:
-            logger.error("Signature verification failed", error=str(e))
+            logger.error("🔍 [COLLECTOR] Signature verification failed", error=str(e))
             return False
     
     @staticmethod
@@ -360,6 +477,32 @@ def health_check():
     })
 
 
+@app.route('/nonces/stats', methods=['GET'])
+def get_nonce_stats():
+    """Get nonce statistics per agent."""
+    with tracer.start_as_current_span("get_nonce_stats"):
+        try:
+            request_counter.add(1, {"endpoint": "get_nonce_stats"})
+            
+            stats = NonceManager.get_agent_nonce_stats()
+            
+            logger.info("Retrieved nonce statistics", 
+                       total_active_nonces=stats["total_active_nonces"],
+                       total_agents=stats["total_agents_with_nonces"])
+            
+            return jsonify({
+                "nonce_statistics": stats,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+        except Exception as e:
+            logger.error("Error getting nonce statistics", error=str(e))
+            error_counter.add(1, {"operation": "get_nonce_stats", "error": str(e)})
+            return jsonify({
+                "error": "Failed to get nonce statistics"
+            }), 500
+
+
 @app.route('/nonce', methods=['GET'])
 def get_nonce():
     """Generate and return a nonce for agents."""
@@ -367,19 +510,28 @@ def get_nonce():
         try:
             request_counter.add(1, {"endpoint": "get_nonce"})
             
+            # Get public key from request
+            public_key = request.args.get("public_key")
+            if not public_key:
+                logger.warning("No public key provided for nonce request")
+                return jsonify({"error": "public_key parameter is required"}), 400
+            
             # Clean up expired nonces
             NonceManager.cleanup_expired_nonces()
             
-            # Generate new nonce
-            nonce = NonceManager.generate_nonce()
+            # Generate new nonce for this agent
+            nonce = NonceManager.generate_nonce(public_key)
             nonce_counter.add(1)
             
-            logger.info("Generated nonce for agent", nonce_length=len(nonce))
+            logger.info("Generated nonce for agent", 
+                       nonce_length=len(nonce),
+                       agent_public_key_fingerprint=public_key[:16] + "...")
             
             return jsonify({
                 "nonce": nonce,
                 "expires_in": "5 minutes",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
+                "agent_public_key_fingerprint": public_key[:16] + "..."
             })
             
         except Exception as e:
@@ -400,6 +552,13 @@ def receive_metrics():
     
     Expected JSON payload:
     {
+        "agent_name": "agent-001",
+        "tpm_public_key_path": "tpm/appsk_pubkey.pem",
+        "geolocation": {
+            "country": "US",
+            "state": "California", 
+            "city": "Santa Clara"
+        },
         "metrics": {...},
         "geographic_region": {
             "region": "US",
@@ -437,6 +596,14 @@ def receive_metrics():
                              service=payload["metrics"].get("service", {}).get("name"))
                 verification_counter.add(1, {"status": "failed"})
                 return jsonify({"error": "Signature verification failed"}), 400
+            
+            # Verify agent information
+            if not agent_verification_utils.verify_agent(payload):
+                logger.warning("Agent verification failed", 
+                             agent_name=payload.get("agent_name"),
+                             service=payload["metrics"].get("service", {}).get("name"))
+                verification_counter.add(1, {"status": "failed"})
+                return jsonify({"error": "Agent verification failed"}), 400
             
             # Verify geographic region
             if not MetricsProcessor.verify_geographic_region(payload):
@@ -480,6 +647,46 @@ def get_metrics_status():
         "active_nonces": len(active_nonces),
         "timestamp": datetime.utcnow().isoformat()
     })
+
+
+@app.route('/agents', methods=['GET'])
+def list_allowed_agents():
+    """List all allowed agents."""
+    try:
+        agent_names = agent_verification_utils.list_allowed_agents()
+        return jsonify({
+            "status": "success",
+            "allowed_agents": agent_names,
+            "count": len(agent_names),
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        logger.error("Error listing allowed agents", error=str(e))
+        return jsonify({
+            "error": "Failed to list allowed agents"
+        }), 500
+
+
+@app.route('/agents/<agent_name>', methods=['GET'])
+def get_agent_info(agent_name):
+    """Get information about a specific agent."""
+    try:
+        agent_info = agent_verification_utils.get_agent_info(agent_name)
+        if agent_info:
+            return jsonify({
+                "status": "success",
+                "agent_info": agent_info,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        else:
+            return jsonify({
+                "error": "Agent not found"
+            }), 404
+    except Exception as e:
+        logger.error("Error getting agent info", error=str(e))
+        return jsonify({
+            "error": "Failed to get agent info"
+        }), 500
 
 
 @app.route('/nonces/cleanup', methods=['POST'])

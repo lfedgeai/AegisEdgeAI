@@ -167,7 +167,19 @@
     "/nonce": {
       "get": {
         "summary": "Get nonce from collector",
-        "description": "Retrieve a cryptographic nonce for signature generation",
+        "description": "Retrieve a cryptographic nonce for signature generation. Requires agent public key for multi-agent tracking.",
+        "parameters": [
+          {
+            "name": "public_key",
+            "in": "query",
+            "required": true,
+            "description": "Base64-encoded agent public key for nonce tracking",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Nonce generated successfully",
@@ -188,9 +200,30 @@
                     },
                     "timestamp": {
                       "$ref": "#/definitions/timestamp"
+                    },
+                    "agent_public_key_fingerprint": {
+                      "type": "string",
+                      "description": "First 16 characters of the agent's public key for verification"
                     }
                   },
-                  "required": ["nonce", "expires_in", "timestamp"]
+                  "required": ["nonce", "expires_in", "timestamp", "agent_public_key_fingerprint"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing public_key parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "public_key parameter is required"
+                    }
+                  },
+                  "required": ["error"]
                 }
               }
             }

@@ -49,7 +49,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        structlog.dev.ConsoleRenderer()  # Use dev console renderer for screen output
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -57,23 +57,84 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
+# Set up basic logging based on environment variables
+import logging
+
+# Check for debug logging environment variables
+DEBUG_ALL = os.environ.get("DEBUG_ALL", "false").lower() == "true"
+DEBUG_AGENT = os.environ.get("DEBUG_AGENT", "false").lower() == "true"
+
+# Set log level based on debug flags
+if DEBUG_ALL or DEBUG_AGENT:
+    log_level = logging.DEBUG
+else:
+    log_level = logging.INFO
+
+logging.basicConfig(level=log_level)
+
 logger = structlog.get_logger(__name__)
+logger.info("Agent logging configuration", 
+           debug_all=DEBUG_ALL,
+           debug_agent=DEBUG_AGENT,
+           log_level=logging.getLevelName(log_level))
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 
+# Initialize TPM2 utilities with agent-specific context file
+def initialize_tpm2_utils():
+    """Initialize TPM2 utilities with agent-specific context file."""
+    try:
+        # Get agent name from environment
+        agent_name = os.environ.get("AGENT_NAME", settings.service_name)
+        agent_config_path = f"agents/{agent_name}/config.json"
+        
+        # Default context path
+        context_path = settings.tpm2_app_ctx_path
+        
+        # Try to load agent-specific context file from config
+        try:
+            with open(agent_config_path, 'r') as f:
+                agent_config = json.load(f)
+            
+            # Use agent-specific context file if available
+            if 'tpm_context_file' in agent_config:
+                context_path = agent_config['tpm_context_file']
+                logger.info("Using agent-specific TPM context file", 
+                           agent_name=agent_name,
+                           context_path=context_path)
+            else:
+                logger.info("Using default TPM context file", 
+                           agent_name=agent_name,
+                           context_path=context_path)
+                
+        except Exception as e:
+            logger.warning("Failed to load agent config for TPM context, using default", 
+                          agent_name=agent_name,
+                          error=str(e),
+                          context_path=context_path)
+        
+        # Initialize TPM2Utils with the context file
+        tpm2_utils = TPM2Utils(
+            app_ctx_path=context_path,
+            device=settings.tpm2_device,
+            use_swtpm=True  # Use software TPM
+        )
+        
+        logger.info("TPM2 utilities initialized successfully", 
+                   agent_name=agent_name,
+                   context_path=context_path,
+                   use_swtpm=True)
+        
+        return tpm2_utils
+        
+    except TPM2Error as e:
+        logger.error("Failed to initialize TPM2 utilities", error=str(e))
+        sys.exit(1)
+
 # Initialize TPM2 utilities
-try:
-    tpm2_utils = TPM2Utils(
-        app_ctx_path=settings.tpm2_app_ctx_path,
-        device=settings.tpm2_device,
-        use_swtpm=True  # Use software TPM
-    )
-    logger.info("TPM2 utilities initialized successfully (using software TPM)")
-except TPM2Error as e:
-    logger.error("Failed to initialize TPM2 utilities", error=str(e))
-    sys.exit(1)
+tpm2_utils = initialize_tpm2_utils()
 
 # Initialize OpenTelemetry
 def setup_opentelemetry():
@@ -86,16 +147,16 @@ def setup_opentelemetry():
         # Skip metrics setup for now to avoid compatibility issues
         logger.info("Skipping OpenTelemetry metrics setup for compatibility")
         
-        # Add span processor
-        otlp_exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint)
-        span_processor = BatchSpanProcessor(otlp_exporter)
-        trace_provider.add_span_processor(span_processor)
+        # Disable OTLP exporter to avoid warnings about missing collector
+        # otlp_exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint)
+        # span_processor = BatchSpanProcessor(otlp_exporter)
+        # trace_provider.add_span_processor(span_processor)
         
         # Instrument Flask and requests
         FlaskInstrumentor().instrument_app(app)
         RequestsInstrumentor().instrument()
         
-        logger.info("OpenTelemetry setup completed")
+        logger.info("OpenTelemetry setup completed (OTLP export disabled)")
         
     except Exception as e:
         logger.error("Failed to setup OpenTelemetry", error=str(e))
@@ -193,8 +254,22 @@ class CollectorClient:
         """
         with tracer.start_as_current_span("get_nonce"):
             try:
-                # Get the nonce
-                response = self.session.get(f"{self.base_url}/nonce")
+                # Read agent's public key content
+                agent_name = os.environ.get("AGENT_NAME", settings.service_name)
+                tpm_public_key_path = os.environ.get("PUBLIC_KEY_PATH", settings.public_key_path)
+                
+                if not os.path.exists(tpm_public_key_path):
+                    raise FileNotFoundError(f"Public key file not found: {tpm_public_key_path}")
+                
+                # Read the public key content and encode as base64
+                with open(tpm_public_key_path, 'rb') as f:
+                    public_key_bytes = f.read()
+                
+                import base64
+                public_key_b64 = base64.b64encode(public_key_bytes).decode('utf-8')
+                
+                # Get the nonce with public key parameter
+                response = self.session.get(f"{self.base_url}/nonce", params={"public_key": public_key_b64})
                 response.raise_for_status()
                 
                 data = response.json()
@@ -203,7 +278,10 @@ class CollectorClient:
                 if not nonce:
                     raise ValueError("No nonce received from collector")
                 
-                logger.info("Received nonce from collector", nonce_length=len(nonce))
+                logger.info("Received nonce from collector", 
+                           nonce_length=len(nonce),
+                           agent_name=agent_name,
+                           public_key_fingerprint=public_key_b64[:16] + "...")
                 return nonce
                 
             except Exception as e:
@@ -291,12 +369,43 @@ def generate_and_send_metrics():
             # Get nonce from collector
             nonce = collector_client.get_nonce()
             
-            # Create geographic region data
+            # Get geographic region from environment variables only
+            agent_name = os.environ.get("AGENT_NAME", settings.service_name)
+            
+            # Environment variables with agent-specific prefixes
+            agent_prefix = f"{agent_name.upper().replace('-', '_')}_"
+            
+            # Default values (fallback if no env vars set)
+            default_region = "US"
+            default_state = "California"
+            default_city = "Santa Clara"
+            
             geographic_region = {
-                "region": settings.geographic_region,
-                "state": settings.geographic_state,
-                "city": settings.geographic_city
+                "region": os.environ.get(f"{agent_prefix}GEOGRAPHIC_REGION", 
+                                       os.environ.get("GEOGRAPHIC_REGION", default_region)),
+                "state": os.environ.get(f"{agent_prefix}GEOGRAPHIC_STATE", 
+                                      os.environ.get("GEOGRAPHIC_STATE", default_state)),
+                "city": os.environ.get(f"{agent_prefix}GEOGRAPHIC_CITY", 
+                                     os.environ.get("GEOGRAPHIC_CITY", default_city))
             }
+            
+            # Check if any environment variables are set (agent-specific or global)
+            env_override = any([
+                os.environ.get(f"{agent_prefix}GEOGRAPHIC_REGION"),
+                os.environ.get(f"{agent_prefix}GEOGRAPHIC_STATE"),
+                os.environ.get(f"{agent_prefix}GEOGRAPHIC_CITY"),
+                os.environ.get("GEOGRAPHIC_REGION"),
+                os.environ.get("GEOGRAPHIC_STATE"),
+                os.environ.get("GEOGRAPHIC_CITY")
+            ])
+            
+            logger.info("Geographic region configuration", 
+                       agent_name=agent_name,
+                       region=geographic_region["region"],
+                       state=geographic_region["state"],
+                       city=geographic_region["city"],
+                       agent_prefix=agent_prefix,
+                       source="env_override" if env_override else "default")
             
             # Combine metrics and geographic region for signing
             data_to_sign = {
@@ -309,6 +418,12 @@ def generate_and_send_metrics():
             data_bytes = data_json.encode('utf-8')
             nonce_bytes = nonce.encode('utf-8')
             
+            logger.info("🔍 [AGENT] Data prepared for signing", 
+                       agent_name=agent_name,
+                       data_json=data_json,
+                       data_length=len(data_bytes),
+                       nonce=nonce)
+            
             # Sign combined data with nonce using TPM2
             signature_data = tpm2_utils.sign_with_nonce(
                 data_bytes, 
@@ -316,10 +431,27 @@ def generate_and_send_metrics():
                 algorithm=settings.signature_algorithm
             )
             
+            logger.info("🔍 [AGENT] Data signed successfully", 
+                       agent_name=agent_name,
+                       signature=signature_data["signature"][:32] + "...",
+                       digest=signature_data["digest"][:32] + "...",
+                       algorithm=signature_data["algorithm"])
+            
             signature_counter.add(1, {"algorithm": settings.signature_algorithm})
             
-            # Create payload with separate fields
+            # Get agent information from environment
+            agent_name = os.environ.get("AGENT_NAME", settings.service_name)
+            tpm_public_key_path = os.environ.get("PUBLIC_KEY_PATH", settings.public_key_path)
+            
+            # Create payload with agent information
             payload = {
+                "agent_name": agent_name,
+                "tpm_public_key_path": tpm_public_key_path,
+                "geolocation": {
+                    "country": geographic_region["region"],
+                    "state": geographic_region["state"],
+                    "city": geographic_region["city"]
+                },
                 "metrics": metrics_data,
                 "geographic_region": geographic_region,
                 "nonce": nonce,
@@ -328,6 +460,12 @@ def generate_and_send_metrics():
                 "algorithm": signature_data["algorithm"],
                 "timestamp": datetime.utcnow().isoformat()
             }
+            
+            logger.info("🔍 [AGENT] Payload created for sending", 
+                       agent_name=agent_name,
+                       payload_fields=list(payload.keys()),
+                       metrics_timestamp=metrics_data.get("timestamp"),
+                       payload_timestamp=payload["timestamp"])
             
             # Send to collector
             success = collector_client.send_metrics(payload)

@@ -29,9 +29,9 @@ def test_services():
     print("=" * 30)
     
     services = [
-        ("Agent (8442)", "https://localhost:8442/health"),
-        ("Gateway (8443)", "https://localhost:8443/health"),
-        ("Collector (8444)", "https://localhost:8444/health")
+        ("Agent (8401)", "https://localhost:8401/health"),
+        ("Gateway (9000)", "https://localhost:9000/health"),
+        ("Collector (8500)", "https://localhost:8500/health")
     ]
     
     all_healthy = True
@@ -164,38 +164,174 @@ def test_python_utilities():
     print("Python Utilities: All tests passed")
     return True
 
-def test_end_to_end():
-    """Test end-to-end functionality."""
-    print("\n🔍 Testing End-to-End Functionality")
+def test_end_to_end_multi_agent_nonce_and_sig_verification():
+    """Test end-to-end multi-agent nonce handling and signature verification."""
+    print("\n🔍 Testing End-to-End Multi-Agent Nonce & Signature Verification")
     print("=" * 40)
     
+    import base64
+    
     try:
-        # Test nonce generation
-        response = requests.get("https://localhost:8443/nonce", verify=False, timeout=5)
-        if response.status_code == 200:
-            print("✅ Nonce generation")
+        # Test 1: FAILURE - Nonce request without public key (should be rejected)
+        print("🔍 Test 1: Nonce request without public key (should fail)")
+        response = requests.get("https://localhost:9000/nonce", verify=False, timeout=5)
+        if response.status_code == 400:
+            print("✅ Correctly rejected nonce request without public key")
         else:
-            print("❌ Nonce generation")
+            print(f"❌ Expected 400, got {response.status_code}")
             return False
         
-        # Test metrics generation (this might fail due to signature issues)
-        response = requests.post(
-            "https://localhost:8442/metrics/generate",
-            json={"metric_type": "system"},
-            headers={"Content-Type": "application/json"},
-            verify=False,
-            timeout=10
-        )
+        # Test 2: SUCCESS - Nonce request with valid public key
+        print("🔍 Test 2: Nonce request with valid public key (should succeed)")
+        # Read agent-001's public key
+        with open("tpm/agent-001_pubkey.pem", 'rb') as f:
+            public_key_bytes = f.read()
+        public_key_b64 = base64.b64encode(public_key_bytes).decode('utf-8')
         
+        response = requests.get(f"https://localhost:9000/nonce?public_key={public_key_b64}", 
+                              verify=False, timeout=5)
         if response.status_code == 200:
-            print("✅ Metrics generation and sending")
-            return True
+            data = response.json()
+            if data.get("nonce") and data.get("agent_public_key_fingerprint"):
+                print("✅ Successfully got nonce with valid public key")
+                nonce = data.get("nonce")
+            else:
+                print("❌ Missing nonce or fingerprint in response")
+                return False
         else:
-            print(f"⚠️  Metrics generation failed (expected due to signature issues): {response.status_code}")
+            print(f"❌ Failed to get nonce: {response.status_code}")
             return False
+        
+        # Test 3: SUCCESS - Check nonce statistics
+        print("🔍 Test 3: Nonce statistics (should show agent-001)")
+        response = requests.get("https://localhost:9000/nonces/stats", verify=False, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            stats = data.get("nonce_statistics", {})
+            agent_counts = stats.get("agent_nonce_counts", {})
+            if len(agent_counts) > 0:
+                print(f"✅ Nonce statistics show {len(agent_counts)} agent(s) with nonces")
+            else:
+                print("❌ No agents found in nonce statistics")
+                return False
+        else:
+            print(f"❌ Failed to get nonce statistics: {response.status_code}")
+            return False
+        
+        # Test 4: FAILURE - Metrics with invalid signature (should fail)
+        print("🔍 Test 4: Metrics with invalid signature (should fail)")
+        payload = {
+            "agent_name": "agent-001",
+            "tpm_public_key_path": "tpm/agent-001_pubkey.pem",
+            "geolocation": {"country": "US", "state": "California", "city": "Santa Clara"},
+            "metrics": {"service": {"name": "test-service"}, "timestamp": "2025-01-16T18:00:00Z"},
+            "geographic_region": {"region": "US", "state": "California", "city": "Santa Clara"},
+            "nonce": nonce,
+            "signature": "invalid-signature",
+            "digest": "invalid-digest",
+            "algorithm": "sha256",
+            "timestamp": "2025-01-16T18:00:00Z"
+        }
+        
+        response = requests.post("https://localhost:9000/metrics", json=payload, verify=False, timeout=10)
+        if response.status_code == 400:
+            print("✅ Correctly rejected metrics with invalid signature")
+        else:
+            print(f"❌ Expected 400 for invalid signature, got {response.status_code}")
+            return False
+        
+        # Test 4b: FAILURE - Metrics with wrong geolocation (should fail)
+        print("🔍 Test 4b: Metrics with wrong geolocation (should fail)")
+        payload = {
+            "agent_name": "agent-001",
+            "tpm_public_key_path": "tpm/agent-001_pubkey.pem",
+            "geolocation": {"country": "EU", "state": "Germany", "city": "Berlin"},  # Wrong location
+            "metrics": {"service": {"name": "test-service"}, "timestamp": "2025-01-16T18:00:00Z"},
+            "geographic_region": {"region": "EU", "state": "Germany", "city": "Berlin"},
+            "nonce": nonce,
+            "signature": "invalid-signature",
+            "digest": "invalid-digest", 
+            "algorithm": "sha256",
+            "timestamp": "2025-01-16T18:00:00Z"
+        }
+        
+        response = requests.post("https://localhost:9000/metrics", json=payload, verify=False, timeout=10)
+        if response.status_code == 400:
+            print("✅ Correctly rejected metrics with wrong geolocation")
+        else:
+            print(f"❌ Expected 400 for wrong geolocation, got {response.status_code}")
+            return False
+        
+        # Test 5: SUCCESS - Verify agent is in allowlist
+        print("🔍 Test 5: Agent allowlist verification")
+        response = requests.get("https://localhost:9000/agents", verify=False, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            allowed_agents = data.get("allowed_agents", [])
+            agent_001_found = "agent-001" in allowed_agents
+            if agent_001_found:
+                print("✅ Agent-001 found in collector allowlist")
+            else:
+                print("❌ Agent-001 not found in collector allowlist")
+                return False
+        else:
+            print(f"❌ Failed to get agents list: {response.status_code}")
+            return False
+        
+        # Test 6: SUCCESS - Verify agent creation and setup
+        print("🔍 Test 6: Agent creation and setup verification")
+        # Check if agent config file exists
+        agent_config_path = "agents/agent-001/config.json"
+        if os.path.exists(agent_config_path):
+            print("✅ Agent config file exists")
+        else:
+            print("❌ Agent config file not found")
+            return False
+        
+        # Check if agent TPM files exist
+        tpm_context_path = "tpm/agent-001.ctx"
+        tpm_pubkey_path = "tpm/agent-001_pubkey.pem"
+        if os.path.exists(tpm_context_path):
+            print("✅ Agent TPM context file exists")
+        else:
+            print("❌ Agent TPM context file not found")
+            return False
+        
+        if os.path.exists(tpm_pubkey_path):
+            print("✅ Agent TPM public key file exists")
+        else:
+            print("❌ Agent TPM public key file not found")
+            return False
+        
+        # Test 7: SUCCESS - Real end-to-end metrics generation (should succeed)
+        print("🔍 Test 7: Real end-to-end metrics generation (should succeed)")
+        try:
+            # Call the agent's metrics generation endpoint
+            response = requests.post("https://localhost:8401/metrics/generate", 
+                                   json={"metric_type": "system"}, 
+                                   verify=False, timeout=15)
             
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == "success":
+                    print("✅ Real end-to-end metrics generation succeeded")
+                    print(f"   Payload ID: {data.get('payload_id', 'N/A')}")
+                else:
+                    print(f"❌ Metrics generation failed: {data.get('message', 'Unknown error')}")
+                    return False
+            else:
+                print(f"❌ Metrics generation request failed: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Real end-to-end test failed: {e}")
+            return False
+        
+        print("✅ All end-to-end multi-agent nonce & signature verification tests passed!")
+        return True
+        
     except Exception as e:
-        print(f"❌ End-to-end test: {e}")
+        print(f"❌ End-to-end multi-agent nonce & signature verification test: {e}")
         return False
 
 def main():
@@ -211,7 +347,7 @@ def main():
     test_results.append(("Signing Scripts", test_signing_scripts()))
     test_results.append(("Python Imports", test_python_imports()))
     test_results.append(("Python Utilities", test_python_utilities()))
-    test_results.append(("End-to-End", test_end_to_end()))
+    test_results.append(("End-to-End Multi-Agent Nonce & Sig Verification", test_end_to_end_multi_agent_nonce_and_sig_verification()))
     
     # Summary
     print("\n" + "=" * 50)

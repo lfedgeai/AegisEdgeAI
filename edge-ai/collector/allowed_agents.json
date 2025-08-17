@@ -1,0 +1,13 @@
+[
+  {
+    "agent_name": "agent-001",
+    "tpm_public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA19n6kjWk+dnG8Degb+nj\nsehqg+WwZdIAdeGIY/dCeC1nmOomIbEHM/E6LV1+KuLJe80M+So9p6/mecLF4Vgg\nXhOWy97Zcgw1tcAh725J63W756EMy60uzUKpb7LAJGyVmeJUJcTLE0mPTkWqHxwy\nEune0dcVigCrOyu2yjUwzO8XBHiYU6Ta2oNgYdSYlZL1dUhXHESIJr4yF0cGbZ7k\n+MpNZZ5jSDBTFrsY0cFLh12Mh42WHZlvF0wWsZ90qOh5+dUi0PvhR3lax0QYpHgA\nU1FL2ZYu8XjgQJbB+kxd9d7DdS/Q4nwuVGse6HBfrGpbYR1tvhFRmI+9Vtv6CELn\n6QIDAQAB\n-----END PUBLIC KEY-----",
+    "geolocation": {
+      "country": "US",
+      "state": "California",
+      "city": "Santa Clara"
+    },
+    "status": "active",
+    "created_at": "2025-08-15T18:00:00Z"
+  }
+]

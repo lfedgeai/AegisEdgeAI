@@ -1,0 +1,8 @@
+{
+  "agent_name": "agent-001",
+  "tpm_public_key_path": "tpm/agent-001_pubkey.pem",
+  "tpm_context_file": "tpm/agent-001.ctx",
+  "description": "Edge AI agent for Santa Clara, California deployment",
+  "created_at": "2025-08-15T18:00:00Z",
+  "status": "active"
+}

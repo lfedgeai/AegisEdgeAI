@@ -9,7 +9,11 @@ import os
 import subprocess
 import tempfile
 import structlog
+import logging
 from typing import Dict, Any, Optional
+
+# Set log level to DEBUG
+logging.basicConfig(level=logging.DEBUG)
 
 logger = structlog.get_logger(__name__)
 
@@ -152,8 +156,169 @@ class PublicKeyUtils:
         # Combine data and nonce (same as agent's signing process)
         combined_data = data + nonce
         
-        # Verify the signature
-        return self.verify_signature(combined_data, signature, algorithm)
+        # Use pure OpenSSL verification (no TPM files required)
+        return self.verify_signature_pure_openssl(combined_data, signature, algorithm)
+    
+    def verify_with_nonce_and_public_key(self, data: bytes, nonce: bytes, signature: bytes, 
+                                        public_key_content: str, algorithm: str = "sha256") -> bool:
+        """
+        Verify signature with nonce using a specific public key content.
+        
+        Args:
+            data: Original data
+            nonce: Nonce used in signature
+            signature: Signature to verify
+            public_key_content: Raw public key content (PEM format)
+            algorithm: Signature algorithm
+            
+        Returns:
+            True if signature is valid, False otherwise
+        """
+        logger.info("🔍 [PUBLIC_KEY_UTILS] Starting verification with nonce and public key", 
+                   data_length=len(data),
+                   nonce_length=len(nonce),
+                   signature_length=len(signature),
+                   public_key_length=len(public_key_content))
+        
+        # Combine data and nonce (same as agent's signing process)
+        combined_data = data + nonce
+        
+        logger.info("🔍 [PUBLIC_KEY_UTILS] Combined data for verification", 
+                   combined_data_length=len(combined_data))
+        
+        # Use pure OpenSSL verification with specific public key
+        result = self.verify_signature_pure_openssl_with_key(combined_data, signature, public_key_content, algorithm)
+        
+        logger.info("🔍 [PUBLIC_KEY_UTILS] Verification result", result=result)
+        
+        return result
+    
+    def verify_signature_pure_openssl(self, data: bytes, signature: bytes, 
+                                    algorithm: str = "sha256") -> bool:
+        """
+        Verify signature using pure OpenSSL (no TPM files required).
+        
+        Args:
+            data: Data to verify
+            signature: Signature to verify
+            algorithm: Signature algorithm
+            
+        Returns:
+            True if signature is valid, False otherwise
+        """
+        try:
+            import hashlib
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa, padding
+            
+            # Read the public key
+            with open(self.public_key_path, 'rb') as f:
+                public_key = serialization.load_pem_public_key(f.read())
+            
+            # Hash the data
+            if algorithm == "sha256":
+                hash_algorithm = hashes.SHA256()
+            elif algorithm == "sha384":
+                hash_algorithm = hashes.SHA384()
+            elif algorithm == "sha512":
+                hash_algorithm = hashes.SHA512()
+            else:
+                logger.error("Unsupported algorithm", algorithm=algorithm)
+                return False
+            
+            # Verify the signature
+            try:
+                public_key.verify(
+                    signature,
+                    data,
+                    padding.PKCS1v15(),
+                    hash_algorithm
+                )
+                logger.info("Pure OpenSSL signature verification successful")
+                return True
+            except Exception as e:
+                logger.warning("Pure OpenSSL signature verification failed", error=str(e))
+                return False
+                
+        except Exception as e:
+            logger.error("Error in pure OpenSSL verification", error=str(e))
+            return False
+    
+    def verify_signature_pure_openssl_with_key(self, data: bytes, signature: bytes, 
+                                             public_key_content: str, algorithm: str = "sha256") -> bool:
+        """
+        Verify signature using pure OpenSSL with specific public key content.
+        Uses the same technique as verify_app_message_signature.sh.
+        
+        Args:
+            data: Data to verify
+            signature: Signature to verify (hex string)
+            public_key_content: Raw public key content (PEM format)
+            algorithm: Signature algorithm
+            
+        Returns:
+            True if signature is valid, False otherwise
+        """
+        try:
+            import tempfile
+            import subprocess
+            import hashlib
+            
+            # Create temporary files for the verification process
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as pubkey_file, \
+                 tempfile.NamedTemporaryFile(mode='wb', suffix='.bin', delete=False) as data_file, \
+                 tempfile.NamedTemporaryFile(mode='wb', suffix='.bin', delete=False) as sig_file, \
+                 tempfile.NamedTemporaryFile(mode='wb', suffix='.hash', delete=False) as hash_file:
+                
+                # Write public key content to temporary file
+                pubkey_file.write(public_key_content)
+                pubkey_file.flush()
+                
+                # Write data to temporary file
+                data_file.write(data)
+                data_file.flush()
+                
+                # Convert hex signature to binary and write to temporary file
+                signature_bytes = bytes.fromhex(signature)
+                sig_file.write(signature_bytes)
+                sig_file.flush()
+                
+                # Hash the data with SHA-256 (same as the shell script)
+                hash_obj = hashlib.sha256()
+                hash_obj.update(data)
+                hash_bytes = hash_obj.digest()
+                hash_file.write(hash_bytes)
+                hash_file.flush()
+                
+                # Use openssl pkeyutl -verify (same as the shell script)
+                cmd = [
+                    'openssl', 'pkeyutl', '-verify',
+                    '-pubin', '-inkey', pubkey_file.name,
+                    '-sigfile', sig_file.name,
+                    '-in', hash_file.name,
+                    '-pkeyopt', 'digest:sha256'
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                # Clean up temporary files
+                for temp_file in [pubkey_file.name, data_file.name, sig_file.name, hash_file.name]:
+                    try:
+                        os.unlink(temp_file)
+                    except:
+                        pass
+                
+                if result.returncode == 0:
+                    logger.info("🔍 [PUBLIC_KEY_UTILS] OpenSSL pkeyutl signature verification successful")
+                    return True
+                else:
+                    logger.warning("🔍 [PUBLIC_KEY_UTILS] OpenSSL pkeyutl signature verification failed", 
+                                 stderr=result.stderr, stdout=result.stdout)
+                    return False
+                    
+        except Exception as e:
+            logger.error("Error in OpenSSL pkeyutl verification", error=str(e))
+            return False
     
     def get_public_key_info(self) -> Dict[str, Any]:
         """
