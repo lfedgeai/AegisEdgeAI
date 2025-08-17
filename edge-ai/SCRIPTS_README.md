@@ -9,6 +9,7 @@ This document describes the essential scripts for the multi-agent zero-trust sov
 **Purpose**: Initialize SWTPM
 **What it does**:
 - Ensure TPM is setup properly and TPM AK is created
+- Note: These software versions have been tested on Ubuntu Linux 22.04 and Windows Subsystem for Linux
 
 ## 🚀 Quick Start
 
@@ -32,6 +33,14 @@ python start_services.py
 - Starts agent-001 on port 8401
 - Starts gateway on port 9000  
 - Starts collector on port 8500
+
+OR start individually
+```bash
+PORT=8500 python collector/app.py
+PORT=9000 python gateway/app.py
+python create_agent.py agent-001
+python start_agent.py agent-001
+```
 
 ### 3. Start Individual Agent
 ```bash

@@ -68,7 +68,7 @@ class AgentConfig:
                 config = json.load(f)
             
             # Validate required fields
-            required_fields = ['agent_name', 'tpm_public_key_path', 'tpm_context_file']
+            required_fields = ['agent_name', 'tpm_public_key', 'tpm_context_file']
             for field in required_fields:
                 if field not in config:
                     raise ValueError(f"Missing required field in config: {field}")
@@ -156,7 +156,7 @@ class AgentConfig:
             # Agent-specific configuration
             "AGENT_NAME": self.config['agent_name'],
             "TPM2_APP_CTX_PATH": self.config['tpm_context_file'],
-            "PUBLIC_KEY_PATH": self.config['tpm_public_key_path'],
+            # Note: We no longer need PUBLIC_KEY_PATH since the agent reads from config
             # Agent-specific TPM handle
             "APP_HANDLE": agent_app_handle,
             # Note: Geographic region is now loaded from agent config at runtime

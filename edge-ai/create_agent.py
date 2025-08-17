@@ -75,9 +75,12 @@ class AgentCreator:
         """Create agent configuration file."""
         logger.info("Creating agent configuration", agent_name=self.agent_name)
         
+        # Get the raw public key content
+        raw_public_key = self._read_public_key_content()
+        
         config = {
             "agent_name": self.agent_name,
-            "tpm_public_key_path": f"tpm/{self.agent_name}_pubkey.pem",
+            "tpm_public_key": raw_public_key,  # Store raw public key content directly
             "tpm_context_file": f"tpm/{self.agent_name}.ctx",
             "description": f"Edge AI agent for {self.city}, {self.state} deployment",
             "created_at": "2025-08-15T18:00:00Z",
@@ -122,6 +125,20 @@ class AgentCreator:
         try:
             import subprocess
             
+            # Calculate agent-specific APP_HANDLE
+            agent_number = int(self.agent_name.split('-')[-1])
+            base_handle = int("0x8101000B", 16)
+            agent_handle = base_handle + agent_number - 1
+            agent_app_handle = f"0x{agent_handle:08X}"
+            
+            logger.info("Using agent-specific APP_HANDLE", 
+                       agent_name=self.agent_name,
+                       app_handle=agent_app_handle)
+            
+            # Set environment variable for the script
+            env = os.environ.copy()
+            env['APP_HANDLE'] = agent_app_handle
+            
             # Run tpm-app-persist.sh with agent-specific parameters
             cmd = [
                 "bash", "tpm/tpm-app-persist.sh", 
@@ -130,7 +147,7 @@ class AgentCreator:
                 f"{self.agent_name}_pubkey.pem"
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=".")
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=".", env=env)
             
             if result.returncode == 0:
                 logger.info("TPM persistence setup completed", agent_name=self.agent_name)
@@ -157,8 +174,8 @@ class AgentCreator:
         else:
             allowed_agents = []
         
-        # Read the actual public key content
-        public_key_content = self._read_public_key_content()
+        # Get the raw public key content (already extracted in create_agent_config)
+        raw_public_key = self._read_public_key_content()
         
         # Check if agent already exists and update it
         for i, agent in enumerate(allowed_agents):
@@ -167,7 +184,7 @@ class AgentCreator:
                 # Update the existing agent entry
                 allowed_agents[i] = {
                     "agent_name": self.agent_name,
-                    "tpm_public_key": public_key_content,  # Store actual public key content
+                    "tpm_public_key": raw_public_key,  # Store raw public key content
                     "geolocation": {
                         "country": self.country,
                         "state": self.state,
@@ -187,7 +204,7 @@ class AgentCreator:
         # Add new agent entry
         new_agent = {
             "agent_name": self.agent_name,
-            "tpm_public_key": public_key_content,  # Store actual public key content
+            "tpm_public_key": raw_public_key,  # Store raw public key content
             "geolocation": {
                 "country": self.country,
                 "state": self.state,
@@ -206,7 +223,7 @@ class AgentCreator:
         logger.info("Agent added to collector allowlist", agent_name=self.agent_name)
         
     def _read_public_key_content(self):
-        """Read the raw public key content from the TPM public key file."""
+        """Read and extract raw public key content from the TPM public key file."""
         public_key_file = f"tpm/{self.agent_name}_pubkey.pem"
         
         if not os.path.exists(public_key_file):
@@ -214,20 +231,62 @@ class AgentCreator:
             public_key_file = "tpm/appsk_pubkey.pem"
         
         try:
-            # Read the raw public key content
+            # Read the PEM formatted public key content
             with open(public_key_file, 'r') as f:
-                public_key_content = f.read().strip()
+                pem_content = f.read().strip()
             
-            logger.info("Public key content read successfully", 
+            # Extract raw public key content (remove PEM headers)
+            raw_content = self._extract_raw_public_key_content(pem_content)
+            
+            logger.info("Raw public key content extracted successfully", 
                        public_key_file=public_key_file,
-                       key_size_chars=len(public_key_content))
+                       pem_length=len(pem_content),
+                       raw_length=len(raw_content))
             
-            return public_key_content
+            return raw_content
             
         except Exception as e:
             logger.error("Failed to read public key content", 
                         public_key_file=public_key_file,
                         error=str(e))
+            raise
+    
+    def _extract_raw_public_key_content(self, pem_content: str) -> str:
+        """
+        Extract raw public key content from PEM format.
+        
+        Args:
+            pem_content: PEM formatted public key
+            
+        Returns:
+            Raw base64-encoded public key content (without headers)
+        """
+        try:
+            # Remove PEM headers and footers
+            lines = pem_content.strip().split('\n')
+            content_lines = []
+            in_content = False
+            
+            for line in lines:
+                if line.startswith('-----BEGIN PUBLIC KEY-----'):
+                    in_content = True
+                    continue
+                elif line.startswith('-----END PUBLIC KEY-----'):
+                    break
+                elif in_content:
+                    content_lines.append(line)
+            
+            # Join all content lines and remove any remaining whitespace
+            raw_content = ''.join(content_lines).strip()
+            
+            logger.info("🔧 [AGENT_CREATOR] Extracted raw public key content", 
+                       original_length=len(pem_content),
+                       raw_length=len(raw_content))
+            
+            return raw_content
+            
+        except Exception as e:
+            logger.error("Error extracting raw public key content", error=str(e))
             raise
         
     def create_agent(self):
@@ -238,14 +297,14 @@ class AgentCreator:
             # Step 1: Create directory structure
             self.create_agent_directory()
             
-            # Step 2: Create agent configuration
-            self.create_agent_config()
-            
-            # Step 3: Create TPM files
+            # Step 2: Create TPM files (before config so we can read the agent-specific key)
             self.create_tpm_files()
             
-            # Step 4: Setup TPM persistence (optional)
+            # Step 3: Setup TPM persistence (this generates the agent-specific public key)
             self.setup_tpm_persistence()
+            
+            # Step 4: Create agent configuration (now we can read the agent-specific key)
+            self.create_agent_config()
             
             # Step 5: Add to collector allowlist
             self.add_to_collector_allowlist()

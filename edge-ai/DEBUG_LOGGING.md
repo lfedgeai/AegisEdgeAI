@@ -103,6 +103,8 @@ The following noisy messages are automatically filtered out:
 - `Resetting dropped connection` (urllib3)
 - `Starting new HTTPS connection` (urllib3)
 - `WARNING: This is a development server` (Werkzeug)
+- All urllib3 DEBUG messages (in non-debug mode)
+- All werkzeug DEBUG messages (in non-debug mode)
 
 ## Examples
 
