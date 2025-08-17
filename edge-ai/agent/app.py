@@ -314,7 +314,7 @@ class CollectorClient:
     
 
     
-    def send_metrics(self, payload: Dict[str, Any]) -> bool:
+    def send_metrics(self, payload: Dict[str, Any]) -> tuple[bool, str]:
         """
         Send signed metrics payload to the OpenTelemetry Collector.
         
@@ -322,7 +322,7 @@ class CollectorClient:
             payload: Signed metrics payload
             
         Returns:
-            True if successful, False otherwise
+            Tuple of (success: bool, error_message: str)
         """
         with tracer.start_as_current_span("send_metrics"):
             try:
@@ -336,12 +336,31 @@ class CollectorClient:
                 logger.info("✅ [AGENT] Metrics sent successfully to collector", 
                            response_status=response.status_code,
                            response_size=len(response.content))
-                return True
+                return True, ""
+                
+            except requests.exceptions.HTTPError as e:
+                # Handle HTTP errors with detailed error messages
+                error_details = "Unknown error"
+                try:
+                    error_response = e.response.json()
+                    if "error" in error_response:
+                        error_details = error_response["error"]
+                        if "details" in error_response:
+                            error_details += f" - {error_response['details']}"
+                except:
+                    error_details = e.response.text if e.response.text else str(e)
+                
+                logger.error("❌ [AGENT] HTTP error from collector", 
+                           status_code=e.response.status_code,
+                           error_details=error_details,
+                           response_text=e.response.text[:200] if e.response.text else "No response text")
+                error_counter.add(1, {"operation": "send_metrics", "error": error_details})
+                return False, error_details
                 
             except Exception as e:
                 logger.error("Failed to send metrics to collector", error=str(e))
                 error_counter.add(1, {"operation": "send_metrics", "error": str(e)})
-                return False
+                return False, str(e)
 
 
 # Initialize collector client
@@ -416,14 +435,39 @@ def generate_and_send_metrics():
             default_state = "California"
             default_city = "Santa Clara"
             
-            geographic_region = {
-                "region": os.environ.get(f"{agent_prefix}GEOGRAPHIC_REGION", 
-                                       os.environ.get("GEOGRAPHIC_REGION", default_region)),
-                "state": os.environ.get(f"{agent_prefix}GEOGRAPHIC_STATE", 
-                                      os.environ.get("GEOGRAPHIC_STATE", default_state)),
-                "city": os.environ.get(f"{agent_prefix}GEOGRAPHIC_CITY", 
+            # Get geographic region from environment variables
+            env_region = os.environ.get(f"{agent_prefix}GEOGRAPHIC_REGION", 
+                                       os.environ.get("GEOGRAPHIC_REGION", default_region))
+            env_state = os.environ.get(f"{agent_prefix}GEOGRAPHIC_STATE", 
+                                      os.environ.get("GEOGRAPHIC_STATE", default_state))
+            env_city = os.environ.get(f"{agent_prefix}GEOGRAPHIC_CITY", 
                                      os.environ.get("GEOGRAPHIC_CITY", default_city))
-            }
+            
+            # Parse geographic region if it's in "Country/State/City" format
+            if '/' in env_region:
+                # Parse "Country/State/City" format
+                parts = env_region.split('/')
+                if len(parts) == 3:
+                    country, state, city = parts
+                    geographic_region = {
+                        "region": country,
+                        "state": state,
+                        "city": city
+                    }
+                else:
+                    # Fallback to default parsing
+                    geographic_region = {
+                        "region": env_region,
+                        "state": env_state,
+                        "city": env_city
+                    }
+            else:
+                # Use individual environment variables
+                geographic_region = {
+                    "region": env_region,
+                    "state": env_state,
+                    "city": env_city
+                }
             
             # Check if any environment variables are set (agent-specific or global)
             env_override = any([
@@ -514,7 +558,7 @@ def generate_and_send_metrics():
                        payload_size=len(json.dumps(payload)),
                        signature_length=len(signature_data["signature"]))
             
-            success = collector_client.send_metrics(payload)
+            success, error_message = collector_client.send_metrics(payload)
             
             if success:
                 logger.info("🎉 [AGENT] Metrics generation and sending completed successfully", 
@@ -528,10 +572,12 @@ def generate_and_send_metrics():
                 })
             else:
                 logger.error("❌ [AGENT] Failed to send metrics to collector", 
-                           agent_name=agent_name)
+                           agent_name=agent_name,
+                           error_message=error_message)
                 return jsonify({
                     "status": "error",
-                    "message": "Failed to send metrics to collector"
+                    "message": "Failed to send metrics to collector",
+                    "details": error_message
                 }), 500
                 
         except Exception as e:

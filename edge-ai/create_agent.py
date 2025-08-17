@@ -347,8 +347,7 @@ def main():
             print(f"   1. Start the agent: python start_agent.py {args.agent_name}")
             print(f"   2. Agent will run on port: {agent_port}")
             print(f"   3. Agent will use APP_HANDLE: {agent_app_handle}")
-            print(f"   4. Set geographic region: export {args.agent_name.upper().replace('-', '_')}_GEOGRAPHIC_REGION=EU")
-            print(f"   5. Check agent status: curl https://localhost:{agent_port}/metrics/status")
+            print(f"   4. Check agent status: curl https://localhost:{agent_port}/metrics/status")
         else:
             print(f"\n❌ Failed to create agent '{args.agent_name}'")
             sys.exit(1)
