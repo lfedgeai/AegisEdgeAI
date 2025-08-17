@@ -108,19 +108,6 @@ python manage_agents.py
 ./cleanup_all_agents.sh --force  # Force cleanup without confirmation
 ```
 
-## 🧪 Testing
-
-### Comprehensive Test Suite
-```bash
-python test_summary.py
-```
-**Purpose**: Runs comprehensive test suite
-**What it does**:
-- Tests all system components
-- Validates security features
-- Tests multi-agent scenarios
-- Verifies end-to-end flows
-
 ## 📁 System Architecture
 
 ```
@@ -155,6 +142,12 @@ Agent (8401) → Gateway (9000) → Collector (8500)
 ```bash
 # Test the complete system
 ./test_end_to_end_flow.sh
+
+# Test agent-001 critical flow
+curl -X POST "https://localhost:8401/metrics/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"metric_type": "application"}' \
+  --insecure
 
 # Start all services
 python start_services.py
