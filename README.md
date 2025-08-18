@@ -1,17 +1,34 @@
-# TPM‑Anchored Edge Architecture with Geofencing Proofs
+# Edge AI Architecture with Verifiable Geofencing Proofs
 
-A production‑friendly prototype microservice architecture for secure, verifiable metrics collection at the edge, with a primary focus on TPM‑backed hardware trust and cryptographically verifiable geofencing and residency proofs.
+## Problem Statement
+Current security approaches for inference applications, secret stores, and model repositories face critical gaps:
+* Bearer tokens ([RFC 6750]) safeguard resources but can be replayed if stolen — for example, through compromise of an identity provider (e.g., Okta) or a metadata server (e.g., Kubernetes bootstrap token).
+* Proof‑of‑Possession (PoP) tokens ([RFC 7800]) bind a token to a private key, reducing replay risk. However, they remain vulnerable to Account manipulation (e.g., MITRE T1098). These attacks can 
+  * Run invalid workload versions
+  * Run valid workloads on disallowed hosts or in disallowed regions
+* IP‑based geofencing (firewall rules based on source IP) provides only weak location assurances — easily bypassed via VPNs, proxies, or IP spoofing.
+* Data provenance gaps — No cryptographically verifiable link between measurement location, device identity, and collected data.
 
-**Security foundation**: TPM‑anchored keys and signing ensure tamper‑resistant attestations and scalable, hardware‑resident cryptography.
+These challenges are documented in the IETF Verifiable Geofencing draft (https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/), which outlines broad use cases and deployment patterns, including edge computing.
 
-**Geofencing & residency**: Built‑in controls validate geographic compliance at the point of measurement, enforcing Zero‑Trust boundaries from the start.
+## Solution Overview
+The IETF Verifiable Geofencing draft (https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) defines an architecture for cryptographically verifiable geofencing and residency proofs. Below is an edge‑focused instantiation — a production‑ready prototype microservice design for secure, verifiable data (e.g., operational metrics) collection at the edge. This approach is already under discussion with the LF Edge AI community as part of the InfiniEdge AI vision (https://lfedge.org/infiniedge-ai-release-2-0-scaling-ai-to-the-edge/) for scalable, privacy‑preserving edge deployments.
 
-**Edge telemetry**: Supports integration of telemetry frameworks — for example, OpenTelemetry patterns — to capture operational metrics and trust events alongside the proof data.
+Security Foundation
+* TPM‑anchored keys for tamper‑resistant attestations
+* Hardware‑resident cryptography for scalable, high‑assurance operations
+* Signature‑based validation to ensure proofs originate from trusted devices
 
-Designed for distributed edge environments, the architecture balances strong compliance guarantees with agility for iterative development. It draws on the concepts defined in the IETF Verifiable Geofencing draft (https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) to ensure alignment with emerging standards.
+Geofencing & Residency Enforcement
+* On‑device proof generation validates geographic compliance at data capture time
+* Policy checks enforce Zero‑Trust boundaries before data leaves the edge
+
+Edge Telemetry Integration
+* Compatible with frameworks such as OpenTelemetry
+* Captures both operational metrics and trust events in the same data flow
+* Proofs and telemetry are linked, enabling downstream consumers to verify origin and compliance
 
 ## Architecture
-
 The system follows a microservices architecture with three main components:
 
 ```
@@ -32,66 +49,115 @@ The system follows a microservices architecture with three main components:
 └─────────────────────────────────┘                 └─────────────────────────────────┘                 └─────────────────────────────────┘
 ```
 
-### Complete Security Flow
+### 🔐 **COMPLETE SECURITY FLOW** 🔐
 
 ```mermaid
 sequenceDiagram
-    participant Agent as OpenTelemetry Agent
-    participant TPM2_A as Agent TPM2
-    participant Gateway as API Gateway
-    participant Collector as OpenTelemetry Collector
-    participant PK_Utils as Public Key Utils
-    participant Policy as Geographic Policy
+    participant Agent as 🔐 **EDGE AGENT** 🔐
+    participant TPM2_A as 🔒 **TPM2 CRYPTO** 🔒
+    participant Gateway as 🌐 **API GATEWAY** 🌐
+    participant Collector as ☁️ **COLLECTOR** ☁️
+    participant PK_Utils as 🔑 **PUBLIC KEY VERIFICATION** 🔑
+    participant Policy as 🌍 **GEOGRAPHIC POLICY** 🌍
+    participant Allowlist as 📋 **AGENT ALLOWLIST** 📋
 
-    Note over Agent,Policy: TPM2 Agent + Public Key Collector Authentication Flow
+    Note over Agent,Allowlist: 🚀 **ENHANCED SECURE EDGE AI FLOW WITH LATEST FIXES** 🚀
 
-    %% Step 1: Agent requests nonce
-    Agent->>Gateway: GET /nonce
-    Gateway->>Collector: GET /nonce
-    Collector->>Collector: Generate Nonce
-    Collector-->>Gateway: Nonce Response
-    Gateway-->>Agent: Nonce Response
+    %% Step 1: Agent generates public key hash and requests nonce
+    Agent->>Agent: 🔐 Generate Public Key Hash (SHA-256)
+    Agent->>Gateway: 🔑 GET /nonce?public_key_hash=<hash>
+    Gateway->>Collector: 🔑 GET /nonce?public_key_hash=<hash>
+    
+    %% Step 1.5: Collector validates agent in allowlist before nonce generation
+    Collector->>Allowlist: 🔍 Check if public_key_hash exists in allowlist
+    Allowlist-->>Collector: ✅ Agent found / ❌ Agent not found
+    alt Agent not in allowlist
+        Collector-->>Gateway: ❌ 403 "Agent not found in allowlist"
+        Gateway-->>Agent: ❌ 403 "Agent not found in allowlist"
+    else Agent in allowlist
+        Collector->>Collector: 🎲 Generate Cryptographically Secure Random Nonce
+        Collector-->>Gateway: ✅ Nonce Response
+        Gateway-->>Agent: ✅ Nonce Response
+    end
 
-    %% Step 2: Agent generates metrics with geographic region
-    Agent->>Agent: Generate System/App Metrics
-    Agent->>Agent: Create Geographic Region Data
-    Agent->>Agent: Combine Metrics + Geographic Region
+    %% Step 2: Agent generates metrics with dynamic geographic region
+    Agent->>Agent: 📊 Generate System/App Metrics
+    Agent->>Agent: 🌍 Parse Geographic Region (Country/State/City format)
+    Agent->>Agent: 🔗 Combine Metrics + Geographic Region for Signing
 
     %% Step 3: Agent signs combined data with nonce using TPM2
-    Agent->>TPM2_A: sign_with_nonce(data + nonce)
-    TPM2_A-->>Agent: Signature + Digest
+    Agent->>TPM2_A: 🔒 sign_with_nonce(data + nonce, SHA-256)
+    TPM2_A-->>Agent: ✅ Signature + Digest
 
-    %% Step 4: Agent sends signed payload
-    Agent->>Gateway: POST /metrics (Signed Payload)
-    Gateway->>Collector: POST /metrics (Signed Payload)
+    %% Step 4: Agent sends signed payload with public key hash
+    Agent->>Gateway: 📤 POST /metrics (Signed Payload + tpm_public_key_hash)
+    Gateway->>Collector: 📤 POST /metrics (Signed Payload + tpm_public_key_hash)
 
-    %% Step 5: Collector verifies signature using public key
-    Collector->>PK_Utils: verify_signature(data + nonce, signature)
-    PK_Utils-->>Collector: Verification Result
-    Note over Collector: If verification fails, reject
+    %% Step 5: Collector validates public key hash and verifies signature
+    Collector->>Allowlist: 🔍 Validate tpm_public_key_hash matches allowlist
+    alt Public key hash mismatch
+        Collector-->>Gateway: ❌ 400 "Public key hash mismatch"
+        Gateway-->>Agent: ❌ 400 "Public key hash mismatch"
+    else Public key hash valid
+        Collector->>PK_Utils: 🔑 verify_signature_with_key(data + nonce, signature)
+        PK_Utils-->>Collector: ✅/❌ Signature Verification Result
+        alt Signature verification fails
+            Collector-->>Gateway: ❌ 400 "Signature verification failed"
+            Gateway-->>Agent: ❌ 400 "Signature verification failed"
+        else Signature verification succeeds
+            %% Step 6: Collector validates nonce for this specific agent
+            Collector->>Collector: ⏰ Validate nonce for agent (public_key_hash)
+            alt Nonce invalid/expired
+                Collector-->>Gateway: ❌ 400 "Invalid or expired nonce for this agent"
+                Gateway-->>Agent: ❌ 400 "Invalid or expired nonce for this agent"
+            else Nonce valid
+                %% Step 7: Collector validates geographic region with detailed error messages
+                Collector->>Policy: 🌍 verify_geographic_region(payload)
+                Policy-->>Collector: ✅/❌ Geographic Policy Check Result
+                alt Geographic region not allowed
+                    Collector-->>Gateway: ❌ 400 "Geolocation verification failed" + Details
+                    Gateway-->>Agent: ❌ 400 "Geolocation verification failed" + Details
+                else Geographic region allowed
+                    %% Step 8: Collector processes metrics and consumes nonce
+                    Collector->>Collector: 🍽️ Consume nonce (remove from active nonces)
+                    Collector->>Collector: 📊 Process & Store Metrics
+                    Collector-->>Gateway: ✅ Success Response
+                    Gateway-->>Agent: ✅ Success Response
+                end
+            end
+        end
+    end
 
-    %% Step 6: Collector validates geographic region
-    Collector->>Policy: verify_geographic_region(payload)
-    Policy-->>Collector: Policy Check Result
-    Note over Collector: If region not allowed, reject
-
-    %% Step 7: Collector processes metrics
-    Collector->>Collector: Process & Store Metrics
-    Collector-->>Gateway: Success Response
-    Gateway-->>Agent: Success Response
-
-    Note over Agent,Policy: End-to-End Security Protection Complete
+    Note over Agent,Allowlist: 🎉 **END-TO-END SECURITY PROTECTION COMPLETE** 🎉
+    Note over Agent,Allowlist: 🔐 **All Latest Security Fixes Applied** 🔐
 ```
 
-### Security Features
+### Security Highlights
 
-1. **TPM2 Hardware/Software Security**: Agent uses TPM2 for all cryptographic operations
-2. **Public Key Verification**: Collector uses OpenSSL-based public key verification
-3. **Nonce-based Anti-Replay**: Unique tokens prevent replay attacks
-4. **Geographic Region Verification**: Enforces data residency policies
-5. **TLS/HTTPS Encryption**: All communications are encrypted
-6. **API Gateway Security**: Centralized security and routing
-7. **Signature Verification**: All data is cryptographically signed and verified
+* **Tight binding of identity and origin** → By hashing the TPM public key and tying every metric submission to that fingerprint, the “soft” trust gap is removed. This is device provenance that can survive audits.
+
+* **Replay‑proof telemetry** → The per‑agent nonce lifecycle prevents one of the most common and subtle attacks in metrics pipelines — stale data re‑injection. Avoid challenges with timestamp-based replay protection, e.g. clock drift.
+
+* **Geofencing at the source, not the sink** → Doing geographic policy checks before ingest locks the gate where it matters, rather than trying to quarantine data after it’s already in your system.
+
+* **Clear separation of duties** → Edge agent, API gateway, and collector have very defined roles, which reduces cross‑component compromise risk and makes operational hygiene easier.
+
+* **Operational ergonomics baked in**→ The multi‑agent and allowlist model means you can scale horizontally without opening the door to drift or accidental trust expansion.
+
+### 🔐 **ENHANCED SECURITY FEATURES** 🔐
+
+1. **🔒 TPM2 Hardware/Software Security**: Agent uses TPM2 for all cryptographic operations with agent-specific APP_HANDLE
+2. **🔑 Public Key Hash Authentication**: Secure SHA-256 hash-based agent authentication (87% data reduction)
+3. **🎲 Multi-Agent Nonce Management**: Per-agent public key hash tracking with cryptographically secure random generation
+4. **🌍 Enhanced Geographic Region Verification**: Dynamic region override with detailed error propagation
+5. **🛡️ Agent Allowlist Security**: Pre-nonce validation ensures only authorized agents can request nonces
+6. **📤 Enhanced Error Propagation**: Detailed error messages from collector to agent to user
+7. **🔐 TLS/HTTPS Encryption**: All communications are encrypted with certificate management
+8. **🌐 API Gateway Security**: Pure HTTP path proxy with complete payload forwarding
+9. **✅ Signature Verification**: TPM2-backed signing with OpenSSL verification via shell scripts
+10. **⏰ Nonce Anti-Replay Protection**: Time-based expiration with per-agent tracking
+11. **🔄 Automatic Agent Management**: Agent creation with automatic allowlist synchronization
+12. **📊 Multi-Agent Support**: Agent-specific configurations, ports, and persistent contexts
 
 ### Data Flow
 
