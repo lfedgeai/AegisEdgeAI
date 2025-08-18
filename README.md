@@ -9,19 +9,18 @@ Current security approaches for inference applications, secret stores, system ag
 * IP‑based geofencing (firewall rules based on source IP) provides only weak location assurances — easily bypassed via VPNs, proxies, or IP spoofing.
 * Data provenance gaps — No cryptographically verifiable link between measurement location, device identity, and collected data.
 
-These challenges are documented in the IETF Verifiable Geofencing draft (https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/), which outlines broad use cases and deployment patterns, including edge computing.
+These challenges are documented in the [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/), which outlines broad use cases and deployment patterns, including edge computing.
 
 ## Solution Overview
-The IETF Verifiable Geofencing draft (https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) defines an architecture for cryptographically verifiable geofencing and residency proofs. Below is an edge‑focused instantiation — a production‑ready prototype microservice design for secure, verifiable data (e.g., operational metrics) collection at the edge. This approach is already under discussion with the LF Edge AI community as part of the InfiniEdge AI vision (https://lfedge.org/infiniedge-ai-release-2-0-scaling-ai-to-the-edge/) for scalable, privacy‑preserving edge deployments.
+The [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) defines an architecture for cryptographically verifiable geofencing and residency proofs. Below is an edge‑focused instantiation — a production‑ready prototype microservice design for secure, verifiable data (e.g., operational metrics) collection at the edge. This approach is already under discussion with the LF Edge AI community as part of the [InfiniEdge AI vision](https://lfedge.org/infiniedge-ai-release-2-0-scaling-ai-to-the-edge/) for scalable, privacy‑preserving edge deployments.
 
-Address Bearer/Proof of possession token issue by Proof of Residency (PoR) 
-* For metrics agent in the edge, Cryptographically bind (vs convention & configuration) Workload identity (executable code hash etc.) + Approved host platform hardware identity (TPM PKI key etc.)/platform policy (Linux kernel version etc.) to generate a PoR workload certificate/token.
+**Address Bearer/Proof of possession token issue by Proof of Residency (PoR)** 
+* For system agents (e.g., kubelet, metrics gathering, etc.) in the edge, Cryptographically bind (vs convention & configuration) Workload identity (executable code hash etc.) + Approved host platform hardware identity (TPM PKI key etc.)/platform policy (Linux kernel version etc.) to generate a PoR workload certificate/token.
 
-Address Bearer/Proof of possession token and Source IP issue by Proof of Geofencing (PoG)
-* For metrics agent in the edge, Cryptographically bind PoR + Approved host platform location hardware identity (GNSS or mobile sensor hardware/firmware version) to generate a PoG workload certificate/token.
+**Address Bearer/Proof of possession token and Source IP issue by Proof of Geofencing (PoG)**
+* For system agents in the edge, Cryptographically bind PoR + Approved host platform location hardware identity (GNSS or mobile sensor hardware/firmware version) to generate a PoG workload certificate/token.
 
 ### Security Highlights for Edge AI for the first iteration
-
 * **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector.
 
 * **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system. 
