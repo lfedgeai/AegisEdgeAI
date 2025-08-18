@@ -35,16 +35,16 @@ curl -X POST "https://localhost:8402/metrics/generate" \
   --insecure
 
 ---------------------------------------------------
-test 2 - demo agent-002 does not meet gelocation policy
+test 2 - demo agent-geo-policy-violation-002 does not meet gelocation policy
 ---------------------------------------------------
 window 5
 --------
 stop agent 2
-export AGENT_002_GEOGRAPHIC_REGION=EU/Germany/Berlin
-python start_agent.py agent-002 
+export AGENT_GEO_POLICY_VIOLATION_002_GEOGRAPHIC_REGION=EU/Germany/Berlin
+python start_agent.py agent-geo-policy-violation-002
 
 ---------------------------------------------------
-test 3 - demo agent-003 not in collector allow list
+test 3 - demo agent-malicious-003 not in collector allow list
 ---------------------------------------------------
 window 1 - main
 --------
@@ -52,7 +52,7 @@ python3 create_agent.py agent-003
 
 window 6
 --------
-python start_agent.py agent-003 
+python start_agent.py agent-malicious-003 
 
 window 1 - main
 --------
