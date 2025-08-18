@@ -1,4 +1,7 @@
-# Value of Enabling swtpm and tpm2-tools on MacOS
+# Goal
+Make software TPM and TPM tools available for MAC developer community
+
+# Benefits of Software TPM and TPM tools for MAC developer community
 1. Wider Developer Access and Platform Inclusivity
 Many developers and researchers use macOS as their primary OS. Supporting tpm2-tools would remove the need for Linux VMs, Docker, or WSL, reducing overhead and attracting more contributors and testers.
 
