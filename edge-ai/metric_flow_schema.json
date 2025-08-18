@@ -167,16 +167,16 @@
     "/nonce": {
       "get": {
         "summary": "Get nonce from collector",
-        "description": "Retrieve a cryptographic nonce for signature generation. Requires agent public key for multi-agent tracking.",
+        "description": "Retrieve a cryptographic nonce for signature generation. Requires the agent's public key hash for allowlist validation and per-agent tracking.",
         "parameters": [
           {
-            "name": "public_key",
+            "name": "public_key_hash",
             "in": "query",
             "required": true,
-            "description": "Base64-encoded agent public key for nonce tracking",
+            "description": "SHA-256 hex digest of the agent's raw public key",
             "schema": {
               "type": "string",
-              "minLength": 1
+              "minLength": 64
             }
           }
         ],
@@ -212,7 +212,7 @@
             }
           },
           "400": {
-            "description": "Bad request - missing public_key parameter",
+            "description": "Bad request - missing public_key_hash parameter",
             "content": {
               "application/json": {
                 "schema": {
@@ -220,7 +220,25 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "example": "public_key parameter is required"
+                      "example": "public_key_hash parameter is required"
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          
+          "403": {
+            "description": "Forbidden - agent not in allowlist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Agent not found in allowlist"
                     }
                   },
                   "required": ["error"]
@@ -268,7 +286,7 @@
                     "additionalProperties": true
                   }
                 },
-                "required": ["metric_type"]
+                "required": []
               }
             }
           }
@@ -347,6 +365,24 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "agent_name": {
+                    "type": "string",
+                    "description": "Agent identifier matching allowlist"
+                  },
+                  "tpm_public_key_hash": {
+                    "type": "string",
+                    "description": "SHA-256 hex digest of the agent's raw public key"
+                  },
+                  "geolocation": {
+                    "type": "object",
+                    "description": "Agent geolocation used for allowlist verification",
+                    "properties": {
+                      "country": { "type": "string" },
+                      "state": { "type": "string" },
+                      "city": { "type": "string" }
+                    },
+                    "required": ["country"]
+                  },
                   "metrics": {
                     "$ref": "#/definitions/metrics_data"
                   },
@@ -377,7 +413,7 @@
                     "$ref": "#/definitions/timestamp"
                   }
                 },
-                "required": ["metrics", "geographic_region", "nonce", "signature", "algorithm", "timestamp"]
+                "required": ["agent_name", "tpm_public_key_hash", "geolocation", "metrics", "geographic_region", "nonce", "signature", "algorithm", "timestamp"]
               }
             }
           }
@@ -419,9 +455,14 @@
                       "enum": [
                         "No payload provided",
                         "Invalid payload structure",
-                        "Invalid or expired nonce",
+                        "Invalid or expired nonce for this agent",
                         "Signature verification failed",
-                        "Geographic region verification failed"
+                        "Geographic region verification failed",
+                        "Public key hash mismatch",
+                        "Agent not found in allowlist",
+                        "Agent public key not found",
+                        "Agent verification failed",
+                        "Geolocation verification failed"
                       ]
                     }
                   },
@@ -523,6 +564,144 @@
           }
         }
       }
+    },
+    "/nonces/stats": {
+      "get": {
+        "summary": "Nonce statistics per agent",
+        "description": "Retrieve nonce usage statistics across agents",
+        "responses": {
+          "200": {
+            "description": "Statistics retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nonce_statistics": {
+                      "type": "object",
+                      "properties": {
+                        "total_active_nonces": { "type": "integer", "minimum": 0 },
+                        "agent_nonce_counts": { "type": "object", "additionalProperties": { "type": "integer" } },
+                        "total_agents_with_nonces": { "type": "integer", "minimum": 0 },
+                        "agent_details": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "nonce_count": { "type": "integer", "minimum": 0 },
+                              "public_key_fingerprint": { "type": "string" }
+                            },
+                            "required": ["nonce_count", "public_key_fingerprint"]
+                          }
+                        }
+                      },
+                      "required": ["total_active_nonces", "agent_nonce_counts", "total_agents_with_nonces", "agent_details"]
+                    },
+                    "timestamp": { "$ref": "#/definitions/timestamp" }
+                  },
+                  "required": ["nonce_statistics", "timestamp"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string" } }, "required": ["error"] } } }
+          }
+        }
+      }
+    },
+    "/nonces/cleanup": {
+      "post": {
+        "summary": "Cleanup expired nonces",
+        "description": "Manually trigger cleanup of expired nonces",
+        "responses": {
+          "200": {
+            "description": "Cleanup completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "cleaned_count": { "type": "integer", "minimum": 0 },
+                    "remaining_count": { "type": "integer", "minimum": 0 }
+                  },
+                  "required": ["status", "cleaned_count", "remaining_count"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string" } }, "required": ["error"] } } }
+          }
+        }
+      }
+    },
+    "/agents": {
+      "get": {
+        "summary": "List allowed agents",
+        "description": "Retrieve the list of agent names from allowlist",
+        "responses": {
+          "200": {
+            "description": "List retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "allowed_agents": { "type": "array", "items": { "type": "string" } },
+                    "count": { "type": "integer", "minimum": 0 },
+                    "timestamp": { "$ref": "#/definitions/timestamp" }
+                  },
+                  "required": ["status", "allowed_agents", "count", "timestamp"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string" } }, "required": ["error"] } } }
+          }
+        }
+      }
+    },
+    "/agents/{agent_name}": {
+      "get": {
+        "summary": "Get agent info",
+        "description": "Retrieve allowlist information for a specific agent",
+        "parameters": [
+          { "name": "agent_name", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent info retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "agent_info": { "type": "object" },
+                    "timestamp": { "$ref": "#/definitions/timestamp" }
+                  },
+                  "required": ["status", "agent_info", "timestamp"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string", "example": "Agent not found" } }, "required": ["error"] } } }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string" } }, "required": ["error"] } } }
+          }
+        }
+      }
     }
   },
   "flow_steps": {
@@ -530,7 +709,8 @@
       "description": "Agent requests nonce from collector",
       "endpoint": "GET /nonce",
       "security": "HTTPS/TLS",
-      "validation": "Nonce expiration (5 minutes)"
+      "validation": "Allowlist check + Nonce expiration (5 minutes)",
+      "agent_binding": "Nonce is bound to the requesting agent's public key"
     },
     "2_metrics_generation": {
       "description": "Agent generates metrics data",
@@ -557,6 +737,7 @@
     "4_payload_creation": {
       "description": "Agent creates final payload",
       "required_fields": [
+        "agent_name", "tpm_public_key_hash", "geolocation",
         "metrics", "geographic_region", "nonce", 
         "signature", "algorithm", "timestamp"
       ]
@@ -569,10 +750,11 @@
     "6_signature_verification": {
       "description": "Collector verifies signature using public key",
       "process": [
+        "Match tpm_public_key_hash in payload against allowlist",
         "Reconstruct exact data structure",
         "JSON serialization with sort_keys=True",
         "UTF-8 encoding",
-        "Public key verification with OpenSSL"
+        "Public key verification with OpenSSL/TPM verify script"
       ]
     },
     "7_geographic_validation": {
