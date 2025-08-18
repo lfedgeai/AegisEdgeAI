@@ -24,7 +24,7 @@ Address Bearer/Proof of possession token and Source IP issue by Proof of Geofenc
 
 * **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector.
 
-* **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done before collector ingest to lock the gate where it matters, rather than trying to quarantine data after it’s already in your system. 
+* **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done before collector before data is ingested into the system. 
 
 ## Architecture
 The system follows a microservices architecture with three main components:
