@@ -1,0 +1,8 @@
+{
+  "agent_name": "agent-002-geopolicy-violation",
+  "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqwUfRLSXvkQfTR2ntgO8yE5VeD4AJllfLBiqZZzijZNQwjLShbI9l0Ow4dc9gzFqwVP2IykXVUwWC6v7AUzo/MCsm0d1p1gq11RCqxdWodK8NdXMp/T1s+p32Mxe07NXtbnuGmctbaP6Z2JX0bFVHxA/ex24g3FGvc4nPmp+rTPo6Lp5/IM5IImX5gJjdcyHH876vuPqjItWgqqF2iJ/qnYU7VIX02I+H2CItzoMDHLMG9OmC9dUBJ/Ug2RzfXie4PQZR+zEfF0MLxwTjojuMVYfnUgvHiI8tlNPna5raEIK6wsO54tdEsF635dVeUPqi9+USrRb8xfzYrTe92+ZGQIDAQAB",
+  "tpm_context_file": "tpm/agent-002-geopolicy-violation.ctx",
+  "description": "Edge AI agent for Santa Clara, California deployment",
+  "created_at": "2025-08-15T18:00:00Z",
+  "status": "active"
+}
