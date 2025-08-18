@@ -50,13 +50,14 @@ The system follows a microservices architecture with three main components:
 
 ```mermaid
 sequenceDiagram
-    participant **Agent** as 🔐 **EDGE AGENT** 🔐
-    participant TPM2_A as 🔒 TPM2 CRYPTO 🔒
-    participant **Gateway** as 🌐 **API GATEWAY** 🌐
-    participant **Collector** as ☁️ **COLLECTOR** ☁️
-    participant PK_Utils as 🔑 PUBLIC KEY VERIFICATION 🔑
-    participant Policy as 🌍 GEOGRAPHIC POLICY 🌍
-    participant Allowlist as 📋 AGENT ALLOWLIST 📋
+    participant TPM2_A as 🔒 EDGE AGENT, TPM2 CRYPTO 🔒
+    participant PK_Utils as 🔑 COLLECTOR, PUBLIC KEY VERIFICATION 🔑
+    participant Policy as 🌍 COLLECTOR, GEOGRAPHIC POLICY 🌍
+    participant Allowlist as 📋 COLLECTOR, AGENT ALLOWLIST 📋
+
+    Note over **Agent**: #lightblue
+    Note over **Gateway**: #lightgreen  
+    Note over **Collector**: #lightcoral
 
     Note over Agent,Allowlist: 🚀 **ENHANCED SECURE EDGE AI FLOW WITH LATEST FIXES** 🚀
 
