@@ -15,17 +15,17 @@ These challenges are documented in the [IETF Verifiable Geofencing draft](https:
 The [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) defines an architecture for cryptographically verifiable geofencing and residency proofs. Below is an edge‑focused instantiation — a production‑ready prototype microservice design for secure, verifiable data (e.g., operational metrics, federated learning, etc.) collection at the edge. This approach is already under discussion with the LF Edge AI community as part of the [InfiniEdge AI vision](https://lfedge.org/infiniedge-ai-release-2-0-scaling-ai-to-the-edge/) for scalable, privacy‑preserving edge deployments.
 
 **Address Bearer/Proof of possession token issue by Proof of Residency (PoR)** 
-* For system agents (e.g., kubelet, metrics gathering, etc.) in the edge, Cryptographically bind (vs convention & configuration) Workload identity (executable code hash etc.) + Approved host platform hardware identity (TPM PKI key etc.)/platform policy (Linux kernel version etc.) to generate a PoR workload certificate/token.
+* For system agents (e.g., Kubelet, metrics gathering, etc.) and AI agents handling sensitive data (e.g., Federated Learning participants, etc.) in the edge, Cryptographically bind (vs convention & configuration) Workload identity (executable code hash etc.) + Approved host platform hardware identity (TPM PKI key etc.)/platform policy (Linux kernel version etc.) to generate a PoR workload certificate/token.
 
 **Address Bearer/Proof of possession token and Source IP issue by Proof of Geofencing (PoG)**
-* For system agents in the edge, Cryptographically bind PoR + Approved host platform location hardware identity (GNSS or mobile sensor hardware/firmware version) to generate a PoG workload certificate/token.
+* For system agents (e.g., Kubelet, metrics gathering, etc.) and AI agents handling sensitive data (e.g., Federated Learning participants, etc.) in the edge, Cryptographically bind PoR + Approved host platform location hardware identity (GNSS or mobile sensor hardware/firmware version) to generate a PoG workload certificate/token.
 
 ## Security Highlights for Edge AI for the first iteration
 * **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector. The host TPM resident signing key is certified by the host TPM attestation key (AK) which is certified by the host TPM endorsement key (EK). TPM AK is a ephemeral host identity. TPM EK is the permanent host identity.
 
 * **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system. 
 
-## Architecture
+## Architecture for the first iteration
 The system follows a microservices architecture with three main components:
 
 ```
