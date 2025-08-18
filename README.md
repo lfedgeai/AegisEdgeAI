@@ -54,7 +54,7 @@ sequenceDiagram
     participant TPM2_A as 🔒 EDGE AGENT, TPM2 CRYPTO 🔒
     participant Gateway as 🌐 **API GATEWAY** 🌐
     participant Collector as ☁️ **COLLECTOR** ☁️
-    participant PK_Utils as 🔑 COLLECTOR, PUBLIC KEY VERIFICATION 🔑
+    participant PK_Utils as 🔑 COLLECTOR, SIGNATURE VERIFICATION 🔑
     participant Policy as 🌍 COLLECTOR, GEOGRAPHIC POLICY 🌍
     participant Allowlist as 📋 COLLECTOR, AGENT ALLOWLIST 📋
 
