@@ -65,7 +65,11 @@ tpm2 createprimary -C o -G rsa -c "$SCRIPT_DIR/primary.ctx"
 
 # [4] Create AppSK blobs
 echo "[STEP] Creating AppSK under primary..."
-tpm2 create -C "$SCRIPT_DIR/primary.ctx" -G rsa -u "$SCRIPT_DIR/app.pub" -r "$SCRIPT_DIR/app.priv"
+# Generate unique key files for this agent
+AGENT_PUB_FILE="$SCRIPT_DIR/${AGENT_CTX%.ctx}.pub"
+AGENT_PRIV_FILE="$SCRIPT_DIR/${AGENT_CTX%.ctx}.priv"
+
+tpm2 create -C "$SCRIPT_DIR/primary.ctx" -G rsa -u "$AGENT_PUB_FILE" -r "$AGENT_PRIV_FILE"
 
 # [5] Keep primary, drop other transients
 echo "[STEP] Flushing all extra transients..."
@@ -76,7 +80,7 @@ done
 
 # [6] Load AppSK
 echo "[STEP] Loading AppSK..."
-tpm2 load -C "$SCRIPT_DIR/primary.ctx" -u "$SCRIPT_DIR/app.pub" -r "$SCRIPT_DIR/app.priv" -c "$AGENT_CTX_PATH"
+tpm2 load -C "$SCRIPT_DIR/primary.ctx" -u "$AGENT_PUB_FILE" -r "$AGENT_PRIV_FILE" -c "$AGENT_CTX_PATH"
 
 # Capture AppSK transient
 APPSK_HANDLE=$(tpm2 getcap handles-transient | grep -Eo '0x[0-9a-fA-F]+$' | grep -v "$PRIMARY_HANDLE" | head -n1)

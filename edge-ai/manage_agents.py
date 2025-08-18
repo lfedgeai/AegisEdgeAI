@@ -70,8 +70,8 @@ class AgentManager:
             # Create agent config
             config = {
                 "agent_name": agent_name,
-                "tpm_public_key_path": "tpm/appsk_pubkey.pem",
-                "tpm_context_file": "tpm/app.ctx",
+                "tpm_public_key_path": f"tpm/{agent_name}_pubkey.pem",
+                "tpm_context_file": f"tpm/{agent_name}.ctx",
                 "geolocation": {
                     "country": country,
                     "state": state,

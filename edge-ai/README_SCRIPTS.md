@@ -2,6 +2,14 @@
 
 This document describes the essential scripts for the multi-agent zero-trust sovereign AI system.
 
+## System Setup
+```bash
+./system-setup.sh
+```
+**Purpose**: Install required components
+**What it does**:
+- Ensure swtpm, tpm2-tools and python packages are setup. (Note: currently tested with WSL linux)
+
 ## System Initialization
 ```bash
 ./initall.sh
@@ -10,6 +18,15 @@ This document describes the essential scripts for the multi-agent zero-trust sov
 **What it does**:
 - Ensure TPM is setup properly and TPM AK is created
 - Note: These software versions have been tested on Ubuntu Linux 22.04 and Windows Subsystem for Linux
+
+### Changes to .bashrc
+export SWTPM_DIR="$HOME/.swtpm/ztpm"
+export SWTPM_PORT=2321
+export SWTPM_CTRL=2322
+export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=2321"
+export EK_HANDLE=0x81010001
+export AK_HANDLE=0x8101000A
+export APP_HANDLE=0x8101000B
 
 ## 🚀 Quick Start
 
