@@ -20,7 +20,7 @@ The [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-kl
 **Address Bearer/Proof of possession token and Source IP issue by Proof of Geofencing (PoG)**
 * For system agents in the edge, Cryptographically bind PoR + Approved host platform location hardware identity (GNSS or mobile sensor hardware/firmware version) to generate a PoG workload certificate/token.
 
-### Security Highlights for Edge AI for the first iteration
+## Security Highlights for Edge AI for the first iteration
 * **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector. The host TPM resident signing key is certified by the host TPM attestation key (AK) which is certified by the host TPM endorsement key (EK). TPM AK is a ephemeral host identity. TPM EK is the permanent host identity.
 
 * **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system. 
