@@ -1,7 +1,7 @@
 # Edge AI Architecture with Verifiable Geofencing Proofs
 
 ## Problem Statement
-Current security approaches for inference applications, secret stores, and model repositories face critical gaps:
+Current security approaches for inference applications, secret stores, system agents, and model repositories face critical gaps:
 * Bearer tokens ([RFC 6750]) safeguard resources but can be replayed if stolen — for example, through compromise of an identity provider (e.g., Okta) or a metadata server (e.g., Kubernetes bootstrap token).
 * Proof‑of‑Possession (PoP) tokens ([RFC 7800]) bind a token to a private key, reducing replay risk. However, they remain vulnerable to Account manipulation (e.g., MITRE T1098). These attacks can 
   * Run invalid workload versions
@@ -14,30 +14,28 @@ These challenges are documented in the IETF Verifiable Geofencing draft (https:/
 ## Solution Overview
 The IETF Verifiable Geofencing draft (https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) defines an architecture for cryptographically verifiable geofencing and residency proofs. Below is an edge‑focused instantiation — a production‑ready prototype microservice design for secure, verifiable data (e.g., operational metrics) collection at the edge. This approach is already under discussion with the LF Edge AI community as part of the InfiniEdge AI vision (https://lfedge.org/infiniedge-ai-release-2-0-scaling-ai-to-the-edge/) for scalable, privacy‑preserving edge deployments.
 
-Security Foundation
-* TPM‑anchored keys for tamper‑resistant attestations
-* Hardware‑resident cryptography for scalable, high‑assurance operations
-* Signature‑based validation to ensure proofs originate from trusted devices
+Address Bearer/Proof of possession token issue by Proof of Residency (PoR) 
+* For metrics agent in the edge, Cryptographically bind (vs convention & configuration) Workload identity (executable code hash etc.) + Approved host platform hardware identity (TPM PKI key etc.)/platform policy (Linux kernel version etc.) to generate a PoR workload certificate/token.
 
-Geofencing & Residency Enforcement
-* On‑device proof generation validates geographic compliance at data capture time
-* Policy checks enforce Zero‑Trust boundaries before data leaves the edge
+Address Bearer/Proof of possession token and Source IP issue by Proof of Geofencing (PoG)
+* For metrics agent in the edge, Cryptographically bind PoR + Approved host platform location hardware identity (GNSS or mobile sensor hardware/firmware version) to generate a PoG workload certificate/token.
 
-Edge Telemetry Integration
-* Compatible with frameworks such as OpenTelemetry
-* Captures both operational metrics and trust events in the same data flow
-* Proofs and telemetry are linked, enabling downstream consumers to verify origin and compliance
+### Security Highlights for Edge AI for the first iteration
+
+* **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector.
+
+* **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done before collector ingest to lock the gate where it matters, rather than trying to quarantine data after it’s already in your system. 
 
 ## Architecture
 The system follows a microservices architecture with three main components:
 
 ```
 ┌─────────────────────────────────┐    HTTPS/TLS    ┌─────────────────────────────────┐    HTTPS/TLS    ┌─────────────────────────────────┐
-│  **Edge OpenTelemetry Agent**   │ ──────────────► │        **API Gateway**          │ ──────────────► │**Cloud OpenTelemetry Collector**│
+│    **Edge Metrics Agent**       │──────────────>  │         **API Gateway**         │ ──────────────> │  **Cloud Metrics Collector**    │
 │        **+ TPM2 Utils**         │                 │       **+ TLS Proxy**           │                 │ **+ Public Key Verification**   |
 │                                 │                 │                                 │                 │                                 │
 │  ┌─────────────────────────┐    │                 │  ┌─────────────────────────┐    │                 │  ┌─────────────────────────┐    │
-│  │   OpenTelemetry Agent   │    │                 │  │     API Gateway         │    │                 │  │  OpenTelemetry Collector│    │
+│  │   Metrics Agent         │    │                 │  │     API Gateway         │    │                 │  │    Metrics Collector    │    │
 │  │     (Port 8401)         │    │                 │  │      (Port 9000)        │    │                 │  │      (Port 8500)        │    │
 │  └─────────────────────────┘    │                 │  └─────────────────────────┘    │                 │  └─────────────────────────┘    │
 │           │                     │                 │           │                     │                 │           │                     │
@@ -53,13 +51,13 @@ The system follows a microservices architecture with three main components:
 
 ```mermaid
 sequenceDiagram
-    participant Agent as 🔐 **EDGE AGENT** 🔐
-    participant TPM2_A as 🔒 **TPM2 CRYPTO** 🔒
-    participant Gateway as 🌐 **API GATEWAY** 🌐
-    participant Collector as ☁️ **COLLECTOR** ☁️
-    participant PK_Utils as 🔑 **PUBLIC KEY VERIFICATION** 🔑
-    participant Policy as 🌍 **GEOGRAPHIC POLICY** 🌍
-    participant Allowlist as 📋 **AGENT ALLOWLIST** 📋
+    participant **Agent** as 🔐 **EDGE AGENT** 🔐
+    participant TPM2_A as 🔒 TPM2 CRYPTO 🔒
+    participant **Gateway** as 🌐 **API GATEWAY** 🌐
+    participant **Collector** as ☁️ **COLLECTOR** ☁️
+    participant PK_Utils as 🔑 PUBLIC KEY VERIFICATION 🔑
+    participant Policy as 🌍 GEOGRAPHIC POLICY 🌍
+    participant Allowlist as 📋 AGENT ALLOWLIST 📋
 
     Note over Agent,Allowlist: 🚀 **ENHANCED SECURE EDGE AI FLOW WITH LATEST FIXES** 🚀
 
@@ -131,34 +129,6 @@ sequenceDiagram
     Note over Agent,Allowlist: 🎉 **END-TO-END SECURITY PROTECTION COMPLETE** 🎉
     Note over Agent,Allowlist: 🔐 **All Latest Security Fixes Applied** 🔐
 ```
-
-### Security Highlights
-
-* **Tight binding of identity and origin** → By hashing the TPM public key and tying every metric submission to that fingerprint, the “soft” trust gap is removed. This is device provenance that can survive audits.
-
-* **Replay‑proof telemetry** → The per‑agent nonce lifecycle prevents one of the most common and subtle attacks in metrics pipelines — stale data re‑injection. Avoid challenges with timestamp-based replay protection, e.g. clock drift.
-
-* **Geofencing at the source, not the sink** → Doing geographic policy checks before ingest locks the gate where it matters, rather than trying to quarantine data after it’s already in your system.
-
-* **Clear separation of duties** → Edge agent, API gateway, and collector have very defined roles, which reduces cross‑component compromise risk and makes operational hygiene easier.
-
-* **Operational ergonomics baked in**→ The multi‑agent and allowlist model means you can scale horizontally without opening the door to drift or accidental trust expansion.
-
-### 🔐 **ENHANCED SECURITY FEATURES** 🔐
-
-1. **🔒 TPM2 Hardware/Software Security**: Agent uses TPM2 for all cryptographic operations with agent-specific APP_HANDLE
-2. **🔑 Public Key Hash Authentication**: Secure SHA-256 hash-based agent authentication (87% data reduction)
-3. **🎲 Multi-Agent Nonce Management**: Per-agent public key hash tracking with cryptographically secure random generation
-4. **🌍 Enhanced Geographic Region Verification**: Dynamic region override with detailed error propagation
-5. **🛡️ Agent Allowlist Security**: Pre-nonce validation ensures only authorized agents can request nonces
-6. **📤 Enhanced Error Propagation**: Detailed error messages from collector to agent to user
-7. **🔐 TLS/HTTPS Encryption**: All communications are encrypted with certificate management
-8. **🌐 API Gateway Security**: Pure HTTP path proxy with complete payload forwarding
-9. **✅ Signature Verification**: TPM2-backed signing with OpenSSL verification via shell scripts
-10. **⏰ Nonce Anti-Replay Protection**: Time-based expiration with per-agent tracking
-11. **🔄 Automatic Agent Management**: Agent creation with automatic allowlist synchronization
-12. **📊 Multi-Agent Support**: Agent-specific configurations, ports, and persistent contexts
-
 ### Data Flow
 
 1. **Agent Initialization**:
