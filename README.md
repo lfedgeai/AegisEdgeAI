@@ -21,7 +21,7 @@ The [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-kl
 * For system agents in the edge, Cryptographically bind PoR + Approved host platform location hardware identity (GNSS or mobile sensor hardware/firmware version) to generate a PoG workload certificate/token.
 
 ### Security Highlights for Edge AI for the first iteration
-* **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector.
+* **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector. The host TPM resident signing key is certified by the host TPM attestation key (AK) which is certified by the host TPM endorsement key (EK). TPM AK is a ephemeral host identity. TPM EK is the permanent host identity.
 
 * **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system. 
 
@@ -184,6 +184,17 @@ The schema includes:
 - **`POST /metrics`**: Receive and verify metrics from agents
 - **`GET /health`**: Service health check endpoints
 - **`GET /metrics/status`**: Processing status and statistics
+ 
+#### Updated endpoint details
+ - **GET `/nonce` (collector, gateway proxies it)**
+   - **query**: `public_key_hash` (SHA-256 hex of the agent's raw public key)
+   - **errors**: `400 public_key_hash parameter is required`, `403 Agent not found in allowlist`
+ - **POST `/metrics` (collector)**
+   - **required fields**: `agent_name`, `tpm_public_key_hash`, `geolocation{country,state,city}`, `metrics`, `geographic_region{region,state,city}`, `nonce`, `signature`, `algorithm`, `timestamp`
+   - **notes**: Nonce is validated per-agent; `tpm_public_key_hash` must match allowlist; signature verified against agent key
+   - **possible 400s**: `Invalid or expired nonce for this agent`, `Signature verification failed`, `Geographic region verification failed`, `Public key hash mismatch`, `Agent not found in allowlist`, `Agent public key not found`, `Agent verification failed`, `Geolocation verification failed`
+ - **POST `/metrics/generate` (agent)**
+   - **metric_type** optional; defaults to `system` when omitted
 
 #### **🔄 8-Step Flow Process**
 1. **Nonce Request**: Agent requests nonce from collector
@@ -525,6 +536,9 @@ curl -X POST https://localhost:8442/metrics/generate \
 - `POST /metrics` - Receive and verify metrics (includes geographic region verification)
 - `GET /metrics/status` - Collector status
 - `POST /nonces/cleanup` - Clean up expired nonces
+ - `GET /nonces/stats` - Nonce statistics per agent
+ - `GET /agents` - List allowed agents
+ - `GET /agents/{agent_name}` - Get details for a specific agent
 
 ### Example API Usage
 
