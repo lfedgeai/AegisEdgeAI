@@ -25,6 +25,9 @@ The [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-kl
 
 * **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system. 
 
+## How to test Edge AI prototype
+Refer [edge-ai/README.md](edge-ai/README.md)
+
 ## Architecture for the first iteration
 The system follows a microservices architecture with three main components:
 

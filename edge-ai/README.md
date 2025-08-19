@@ -2,37 +2,72 @@
 
 This document provides a step-by-step guide to demonstrate the Edge AI zero-trust system with multiple agents and various security scenarios.
 
-## Setup Instructions
+## Pre-requisites (./system-setup.sh will install swtpm, tpm2-tools; check the below step)
+| Environment        | swtpm Version                                              | tpm2-tools Version                                                         | Python Version  |
+|--------------------|-----------------------------------------------------------|----------------------------------------------------------------------------|-----------------|
+| **Ubuntu 22.04.5** | TPM emulator version 0.6.3, Copyright (c) 2014-2021 IBM Corp. | tool="flushcontext" version="5.2" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.11.13  |
+| **WSL**            | TPM emulator version 0.6.3, Copyright (c) 2014-2021 IBM Corp. | tool="flushcontext" version="5.2" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.10.12  |
 
-### Window 1 - Main Terminal
+###  Command to get swtpm version
 ```bash
+swtpm --version
+```
+### Command to get tpm2-tools version
+```bash
+tpm2_print --version
+```
+### Command to get Python3 version
+```bash
+python3 --version
+```
+
+## Window 1 - Main Terminal
+### Install swtpm, tpm2-tools, python packages and initialize system
+```bash
+./system-setup.sh
+
 # Initialize the system
 ./initall.sh
+
+# Append SWTPM environment variables to ~/.bashrc
+cat <<'EOF' >> ~/.bashrc
+
+# SWTPM and TPM2TOOLS environment variables
+export SWTPM_DIR="$HOME/.swtpm/ztpm"
+export SWTPM_PORT=2321
+export SWTPM_CTRL=2322
+export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=2321"
+export EK_HANDLE=0x81010001
+export AK_HANDLE=0x8101000A
+export APP_HANDLE=0x8101000B
+EOF
+
+source ~/.bashrc
 
 # Create test agents
 python3 create_agent.py agent-001
 python3 create_agent.py agent-geo-policy-violation-002
 ```
 
-### Window 2 - Collector Service
+## Window 2 - Collector Service
 ```bash
 # Start the collector service
 PORT=8500 python collector/app.py
 ```
 
-### Window 3 - Gateway Service
+## Window 3 - Gateway Service
 ```bash
 # Start the gateway service
 PORT=9000 python gateway/app.py
 ```
 
-### Window 4 - Agent 001
+## Window 4 - Agent 001
 ```bash
 # Start the first agent
 python start_agent.py agent-001
 ```
 
-### Window 5 - Agent Geo Policy Violation
+## Window 5 - Agent Geo Policy Violation 002
 ```bash
 # Start the second agent (geo policy violation test)
 python start_agent.py agent-geo-policy-violation-002
@@ -46,12 +81,6 @@ python start_agent.py agent-geo-policy-violation-002
 ```bash
 # Test agent-001 metrics generation
 curl -X POST "https://localhost:8401/metrics/generate" \
-  -H "Content-Type: application/json" \
-  -d '{"metric_type": "application"}' \
-  --insecure
-
-# Test agent-geo-policy-violation-002 metrics generation
-curl -X POST "https://localhost:8402/metrics/generate" \
   -H "Content-Type: application/json" \
   -d '{"metric_type": "application"}' \
   --insecure
@@ -75,6 +104,13 @@ export AGENT_GEO_POLICY_VIOLATION_002_GEOGRAPHIC_REGION=EU/Germany/Berlin
 
 # Restart agent with policy violation
 python start_agent.py agent-geo-policy-violation-002
+
+**Window 1 - Main Terminal**
+# Test agent-geo-policy-violation-002 metrics generation
+curl -X POST "https://localhost:8402/metrics/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"metric_type": "application"}' \
+  --insecure
 ```
 
 **Expected Result**: The agent should be rejected due to geographic policy violation.
@@ -108,28 +144,7 @@ curl -X POST "https://localhost:8403/metrics/generate" \
 
 **Expected Result**: The unregistered agent should be rejected by the collector.
 
-## System Architecture
+## For Utils and Debugging 
+Refer [README_utils.md](README_utils.md)
 
-- **Agents**: Edge AI agents running on different ports:
-  - `agent-001` (port 8401) - Normal agent
-  - `agent-geo-policy-violation-002` (port 8402) - Geographic policy violation test
-  - `agent-unregistered-003` (port 8403) - Unregistered agent test
-- **Collector**: Central service collecting and validating metrics (port 8500)
-- **Gateway**: API gateway for external access (port 9000)
-- **TPM**: Trusted Platform Module for secure key management
-- **Zero-Trust**: Each agent must be individually authenticated and authorized
 
-## Security Features Demonstrated
-
-1. **Agent Authentication**: TPM-based cryptographic identity verification
-2. **Geographic Policy Enforcement**: Location-based access control
-3. **Allowlist Management**: Only pre-approved agents can send metrics
-4. **Secure Communication**: TLS/SSL encrypted communication channels
-5. **Unique Key Management**: Each agent has its own unique TPM keys
-
-## Troubleshooting
-
-- Ensure all services are running before testing
-- Check logs for detailed error messages
-- Verify TPM setup and key generation
-- Confirm network connectivity between services
