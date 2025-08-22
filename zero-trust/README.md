@@ -2,7 +2,7 @@
 
 This document provides a step-by-step guide to demonstrate the Edge AI zero-trust system with multiple agents and various security scenarios.
 
-## Pre-requisites (./system-setup.sh will install swtpm, tpm2-tools; check the below step)
+## Pre-requisites (./system-setup.sh will install swtpm, tpm2-tools; check the below steps)
 | Environment        | swtpm Version                                              | tpm2-tools Version                                                         | Python Version  |
 |--------------------|-----------------------------------------------------------|----------------------------------------------------------------------------|-----------------|
 | **Ubuntu 22.04.5** | TPM emulator version 0.6.3, Copyright (c) 2014-2021 IBM Corp. | tool="flushcontext" version="5.2" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.11.13  |
@@ -26,9 +26,6 @@ python3 --version
 ```bash
 ./system-setup.sh
 
-# Initialize the system
-./initall.sh
-
 # Append SWTPM environment variables to ~/.bashrc
 cat <<'EOF' >> ~/.bashrc
 
@@ -43,6 +40,9 @@ export APP_HANDLE=0x8101000B
 EOF
 
 source ~/.bashrc
+
+# Initialize the system
+./initall.sh
 
 # Create test agents
 python3 create_agent.py agent-001
