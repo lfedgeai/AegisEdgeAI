@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "agent_name": "agent-001",
+    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6dhd/tgxmrt1/z+aRArQJsPNNdO3GLtF6eM8guHa57JyiJ8xNX6SeajvW2itcM7I6VmXt4Ucj4kOj9wrRl/H9YaKeMkPEdqsNDyM+3sGUidccUz3JmP1xzYxMhRwLKZQAce2FlZUD5CDmXPGMMMhlJ4KtQ5KSbOFDZ6ePJ9MqtlNN9fsY/Pc6o9aR66xWFA/nzHFr6f51Ipkjqol/lkSQGK+tG4uLt9cqgr+29W+wAJxBLTeOaheHQ3szKs90xmHrwwQSQ/kNLbXj6snEoSdspjEXKCu+9aZTlcktlYe5cR3SqH417BOp9prtjmm+vUK2IE+5oSCy9aCv8OuClkLiQIDAQAB",
+    "geolocation": {
+      "country": "US",
+      "state": "California",
+      "city": "Santa Clara"
+    },
+    "status": "active",
+    "created_at": "2025-08-15T18:00:00Z"
+  },
+  {
+    "agent_name": "agent-geo-policy-violation-002",
+    "tpm_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnw+HIyx8eh17l/LO3lSJ7WcTWTiUvlzxA5mbSRoxTvUUfdq6IiuAiU4b6nikL9TzLRfbP+lmLCOJ9VGejekeG+u/0gc3CCVViAcPylAedPIFN5iFCaPJtVmWkpkpgMnB+Gib60g6ZoFUa4bwpoQZIK+Uf3acUUnKfxZyuof2c8fPC5/MUHHXOVXLapDCMo+IbWc3Mfg/Em0eU4Wy5UU8AzDYDu90NxOwKskjzrVY5Q/AawYBdmtaMfwybdllqPrWdB+aQhsP+0Ab1uvp0JZcR5nlCiUUTvACA7u+hjEyO5pKB5RRilQgusPfDeZysYGJrpgPtRR06XO19RnCWbiZawIDAQAB",
+    "geolocation": {
+      "country": "US",
+      "state": "California",
+      "city": "Santa Clara"
+    },
+    "status": "active",
+    "created_at": "2025-08-15T18:00:00Z"
+  }
+]

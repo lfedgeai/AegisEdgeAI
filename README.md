@@ -26,7 +26,7 @@ The [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-kl
 * **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system. 
 
 ## How to test Edge AI prototype
-Refer [edge-ai/README.md](edge-ai/README.md)
+Refer [zero-trust/README.md](zero-trust/README.md)
 
 ## Architecture for the first iteration
 The system follows a microservices architecture with three main components:
@@ -175,7 +175,7 @@ sequenceDiagram
 
 The complete data flow and API specifications are documented in a comprehensive JSON schema that defines all data structures, validation rules, and security requirements:
 
-📋 **[Complete Metric Flow Schema](edge-ai/metric_flow_schema.json)**
+📋 **[Complete Metric Flow Schema](zero-trust/metric_flow_schema.json)**
 
 The schema includes:
 
@@ -229,11 +229,11 @@ The schema includes:
 
 Key implementation files referenced in the schema:
 
-- **[Agent Metrics Generation](edge-ai/agent/app.py#L127-L169)**: `MetricsGenerator` class for system and application metrics
-- **[Collector Metrics Processing](edge-ai/collector/app.py#L183-L348)**: `MetricsProcessor` class for validation and verification
-- **[TPM2 Utilities](edge-ai/utils/tpm2_utils.py)**: Hardware-backed cryptographic operations
-- **[Public Key Utilities](edge-ai/utils/public_key_utils.py)**: OpenSSL-based signature verification
-- **[Configuration](edge-ai/config.py)**: Geographic region and security settings
+- **[Agent Metrics Generation](zero-trust/agent/app.py#L127-L169)**: `MetricsGenerator` class for system and application metrics
+- **[Collector Metrics Processing](zero-trust/collector/app.py#L183-L348)**: `MetricsProcessor` class for validation and verification
+- **[TPM2 Utilities](zero-trust/utils/tpm2_utils.py)**: Hardware-backed cryptographic operations
+- **[Public Key Utilities](zero-trust/utils/public_key_utils.py)**: OpenSSL-based signature verification
+- **[Configuration](zero-trust/config.py)**: Geographic region and security settings
 
 ## Geographic Region Security
 
@@ -303,7 +303,7 @@ ALLOWED_CITIES=["Santa Clara", "San Francisco", "Austin", "New York"]
 - Python 3.11+
 - Software TPM (swtpm) - no hardware TPM required
 - TPM2 tools installed
-- all the code is in the edge-ai directory
+- all the code is in the zero-trust directory
 
 ### Software TPM (swtpm) Setup
 
@@ -339,7 +339,7 @@ The system requires the following TPM2 context files (already present in the rep
 1. **Clone the repository**:
    ```bash
    git clone <repository-url>
-   cd edge-ai
+   cd zero-trust
    ```
 
 2. **Install Python dependencies**:
