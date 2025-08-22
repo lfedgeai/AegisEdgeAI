@@ -117,7 +117,7 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 
 ## Stakeholders
 
-- [Ramki Krishnan](https://lf-edge.atlassian.net/wiki/people/557058:c8c42130-9c8b-41ae-b9e2-058af2eff879?ref=confluence) (Independent)
+- [Ramki Krishnan](https://lf-edge.atlassian.net/wiki/people/557058:c8c42130-9c8b-41ae-b9e2-058af2eff879?ref=confluence) (Independent) (Lead)
 - [Andreas Spanner](https://lf-edge.atlassian.net/wiki/people/59fc56048499730e3412487a?ref=confluence) (Red Hat)
 - Michael Epley (Red Hat)
 - A. Prasad (Oracle)
