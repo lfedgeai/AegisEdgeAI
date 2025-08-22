@@ -1,0 +1,10 @@
+./zero-trust/tpm/*.ctx
+./zero-trust/tpm/*.pem
+./zero-trust/tpm/*.pub
+./zero-trust/tpm/*.priv
+./zero-trust/tpm/*.bin
+./zero-trust/tpm/*.sig
+./zero-trust/tpm/*.out
+./zero-trust/tpm/*.msg
+./zero-trust/tpm/*.pcrs
+./zero-trust/tpm/*.hash

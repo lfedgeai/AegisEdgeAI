@@ -1,0 +1,12 @@
+cd tpm
+rm *.ctx
+rm *.pem
+rm *.pub
+rm *.priv
+rm *.bin
+rm *.sig
+rm *.out
+rm *.msg
+rm *.pcrs
+rm *.hash
+cd ..
