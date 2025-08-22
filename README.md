@@ -6,7 +6,7 @@ Current security approaches for inference applications, secret stores, system ag
 
 ### Token Replay and Identity Abuse
 
-- **Bearer tokens** ([RFC 6750]) safeguard resources but can be replayed if stolen — e.g., via compromise of an identity provider (Okta) or a metadata server (Kubernetes bootstrap token).
+- **Bearer tokens** ([RFC 6750]) safeguard resources but can be replayed if stolen — e.g., via compromise of an identity provider (Okta) or a metadata server (Kubernetes bootstrap token, Spiffe/Spire bootstrap token).
 
 - **Proof‑of‑Possession (PoP) tokens** ([RFC 7800]) bind a token to a private key, reducing replay risk, but remain vulnerable to **account manipulation** (MITRE T1098), enabling:
   - Execution of **invalid workload versions**
