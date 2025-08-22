@@ -1,7 +1,23 @@
+#!/bin/bash
+
 # install swtpm
-sudo apt install swtpm
 # install tpm2-tools
-sudo apt install tpm2-tools
+
+if [ -f /etc/redhat-release ]; then
+  echo "RHEL system setup..."
+  sudo dnf install -y swtpm
+  sudo dnf install -y tpm2-tools
+  sudo dnf install -y vim-common
+elif [ -f /etc/lsb-release ]; then
+  echo "Ubuntu system setup..."
+  sudo apt update
+  sudo apt install -y swtpm
+  sudo apt install -y tpm2-tools
+else
+  echo "Unsupported or unknown Linux distribution."
+  exit 1
+fi
+
 # install python packages
 pip install -r requirements.txt
 
