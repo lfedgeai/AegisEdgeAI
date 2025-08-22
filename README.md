@@ -123,7 +123,7 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 - A. Prasad (Oracle)
 - Srini Addepalli (Aryaka)
 - Vijaya Prakash Masilamani (Fidelity)
-- Akhil Malepati (Independent)
+- [Akhil Malepati] https://github.com/saiakhil2012) (Independent)
 
 ## Progress
 
