@@ -5,6 +5,7 @@ This document provides a step-by-step guide to demonstrate the Edge AI zero-trus
 ## Pre-requisites (./system-setup.sh will install swtpm, tpm2-tools; check the below steps)
 | Environment        | swtpm Version                                              | tpm2-tools Version                                                         | Python Version  |
 |--------------------|-----------------------------------------------------------|----------------------------------------------------------------------------|-----------------|
+| **RHEL 10.0 (Coughlan)**   | TPM emulator version 0.9.0, Copyright (c) 2014-2022 IBM Corp. and others | tool="tpm2_print" version="5.7" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.12.9  |
 | **Ubuntu 22.04.5** | TPM emulator version 0.6.3, Copyright (c) 2014-2021 IBM Corp. | tool="flushcontext" version="5.2" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.11.13  |
 | **WSL**            | TPM emulator version 0.6.3, Copyright (c) 2014-2021 IBM Corp. | tool="flushcontext" version="5.2" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.10.12  |
 
