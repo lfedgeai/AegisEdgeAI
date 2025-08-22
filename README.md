@@ -126,9 +126,11 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 
 ## Progress
 
-### Edge data collection - [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/zero-trust/README.md)
+### Edge data collection
 
 A production‑ready prototype microservice design for secure, verifiable data (e.g., operational metrics etc.) collection at the edge.
+
+Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/zero-trust/README.md)
 
 #### Security Highlights
 
@@ -140,4 +142,6 @@ A production‑ready prototype microservice design for secure, verifiable data (
 
 - Refer [README_demo.md](https://github.com/lfedgeai/CitadelAI/tree/main/zero-trust/README_demo.md)
 
-### TPM tools for macOS - [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/swtpm-macos/README.md) - In progress
+### TPM tools for macOS 
+
+Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/swtpm-macos/README.md)
