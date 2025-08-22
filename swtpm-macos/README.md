@@ -22,3 +22,6 @@ TPM2 tools enable key management, attestation, and trusted execution flows. Addi
 
 7. Reduced Context Switching
 Developers who primarily work on macOS wouldn’t need to dual-boot or constantly shift to Linux just for TPM workloads, making daily workflows more efficient.
+
+# Progress
+In progress
