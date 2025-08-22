@@ -121,6 +121,7 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 - [Andreas Spanner](https://lf-edge.atlassian.net/wiki/people/59fc56048499730e3412487a?ref=confluence) (Red Hat)
 - Michael Epley (Red Hat)
 - A. Prasad (Oracle)
+- Srini Addepalli (Aryaka)
 - Vijaya Prakash Masilamani (Fidelity)
 - Akhil Malepati (Independent)
 
