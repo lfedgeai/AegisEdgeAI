@@ -53,7 +53,7 @@ Current security approaches for inference applications, secret stores, system ag
 
 *(Model and agent co‑located within the same process, device, or trusted compute base)*
 
-- **Single trust‑anchor exposure** Host compromise hands an attacker control over both orchestration logic and model runtime — maximising blast radius.
+- **Single trust‑anchor exposure** Host compromise hands an attacker control over both orchestration logic and model runtime — maximizing blast radius.
 
 - **Unified compromise path** Malicious code, model‑weight swaps, or data‑flow manipulation require no network breach — they happen inside one trust zone.
 
@@ -79,7 +79,7 @@ Current security approaches for inference applications, secret stores, system ag
 
 ### Why These Challenges Are **Critical** in Edge AI
 
-- **Distributed, physically exposed nodes** Edge deployments lack the hardened perimeters of centralised data centres, making them more susceptible to physical and side‑channel attacks.
+- **Distributed, physically exposed nodes** Edge deployments lack the hardened perimeters of centralized data centres, making them more susceptible to physical and side‑channel attacks.
 
 - **Jurisdictional and sovereignty constraints** Edge nodes often operate across regulated borders, amplifying the impact of uncontrolled model invocation or data egress.
 
@@ -90,15 +90,32 @@ Current security approaches for inference applications, secret stores, system ag
 - **Attack surface diversity** Edge systems integrate heterogeneous hardware, firmware, and software stacks — creating multiple, intersecting vectors for compromise.
 
 ## Problem Statement – Hardware and Software Supply Chain
+
 ### Hardware Supply Chain Threats
-- **Unverified hardware enrollment** — Edge nodes can be racked with counterfeit or rogue chassis/TPMs if enrollment isn’t bound to manufacturer‑issued TPM Endorsement Keys (EKs). Impact: Compromised trust anchors at the very start of the lifecycle undermine all downstream attestation and geofencing.
+
+- **Unverified hardware enrollment** — Nodes can be racked with counterfeit or rogue chassis/TPMs if enrollment isn’t bound to manufacturer‑issued TPM Endorsement Keys (EKs). Impact: Compromised trust anchors at the very start of the lifecycle undermine all downstream attestation and geofencing.
+
 - **Component and firmware substitution** — NICs, GPUs, DIMMs, or firmware can be swapped or downgraded between factory and deployment. TPM PCRs may not reflect all FRU changes. Impact: Introduces malicious firmware or side‑channel vectors into heterogeneous edge hardware, bypassing OS‑level controls.
+
 - **Out‑of‑band compromise** — Attackers with physical access can alter hardware inventory without touching the host OS, evading in‑band detection. Impact: Breaks provenance guarantees for AI workloads and telemetry.
 
-## Software Supply Chain Threats
-- Post‑enrollment drift/tampering — Even on genuine hardware, OS, kernel, or critical binaries can be altered after deployment. Impact: Malicious changes persist undetected without continuous runtime attestation, corrupting AI inference or control loops.
-- Golden‑image poisoning — Build pipelines or update channels can be compromised to distribute backdoored images. Impact: Every node that “successfully” attests to a poisoned baseline becomes an attacker’s foothold.
-- Dependency and model repository compromise — Inference agents or system components may pull from unverified registries or repos. Impact: Injects malicious code or altered models into production without triggering signature mismatches if signing keys are stolen.
+### Software Supply Chain Threats
+
+- **Post‑enrollment drift/tampering** — Even on genuine hardware, OS, kernel, or critical binaries can be altered after deployment. Impact: Malicious changes persist undetected without continuous runtime attestation, corrupting AI inference or control loops.
+
+- **Golden‑image poisoning** — Build pipelines or update channels can be compromised to distribute backdoored images. Impact: Every node that “successfully” attests to a poisoned baseline becomes an attacker’s foothold.
+
+- **Dependency and model repository compromise** — Inference agents or system components may pull from unverified registries or repos. Impact: Injects malicious code or altered models into production without triggering signature mismatches if signing keys are stolen.
+
+### Why These Gaps Are Critical for Edge AI Deployments
+
+- **Physical exposure of trust anchors** — Edge nodes live in uncontrolled environments (factory floors, roadside cabinets, retail stores). Hardware swaps or firmware downgrades can happen without triggering cloud‑style perimeter defenses.
+
+- **Weaker identity provider perimeter** — At the edge, bootstrap and discovery flows may traverse untrusted networks or run without HSM‑grade protection, making key theft and enrollment abuse more feasible.
+
+- **Policy enforcement drift** — Without hardware‑rooted identity and continuous attestation, workloads can be silently relocated or modified, breaking compliance and safety guarantees.
+
+- **Data provenance blind spots** — AI outputs lose regulatory and operational value if the hardware and software state producing them can’t be cryptographically tied to a known‑good baseline.
 
 ## Solution Overview
 
@@ -126,6 +143,33 @@ This approach begins addressing the critical security gaps in current inference,
 
 This produces a PoG workload certificate/token, enabling verifiable enforcement of geographic policy at the workload level.
 
+### 3. Addressing Hardware and Software Supply Chain Threats (work in progress)
+To mitigate the hardware and software supply chain threats above, CitadelAI adopts a layered trust model that binds device identity, hardware integrity, and runtime state into a continuous attestation chain from manufacturing through operation.
+
+**Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
+
+- **Approach:** At boot, the server's hardware management plane—anchored by the BMC—collects a signed inventory of components and firmware (NICs, GPUs, DIMMs, BIOS, etc.) via secure, out‑of‑band protocols (e.g., Redfish + Secured Component Verification). This inventory is compared against a purchase‑order‑bound allowlist maintained in the attestation policy service.
+
+- **Effect:** Detects component swaps, firmware downgrades, or unauthorized additions, independently of the host OS state, leveraging the isolated hardware management plane's visibility and integrity.
+
+- **Edge Benefit:** Preserves hardware provenance across heterogeneous, multi‑vendor edge stacks, ensuring trust is established before in‑band software attestation begins.
+
+**Hardware Identity Gate – Remote boot attestation and runtime integrity measurement (Keylime etc.) TPM EK Allowlist**
+
+- **Approach:** Preload manufacturer‑issued TPM Endorsement Key certificates (e.g., Server manufacturer TPM EK certs from the Purchase Order) into the Keylime registrar's allowlist.
+
+- **Effect:** Enrollment is cryptographically tied to known manufacturing batches. Unknown chassis/TPMs are blocked before any attestation begins.
+
+- **Edge Benefit:** Defeats rogue node onboarding in physically exposed, perimeter‑less deployments.
+
+**Runtime Integrity Attestation – Remote boot attestation and runtime integrity measurement (Keylime etc.)**
+
+- **Approach:** Continuous TPM quotes plus IMA/EVM measurement of kernel and file integrity against golden baselines.
+
+- **Effect:** Identifies software drift or tampering post‑enrollment, with automated policy responses (alert, quarantine, rebuild).
+
+- **Edge Benefit:** Sustains runtime trust for AI workloads, ensuring inference and control loops run on verified software stacks.
+
 ## Stakeholders
 
 - [Ramki Krishnan](https://lf-edge.atlassian.net/wiki/people/557058:c8c42130-9c8b-41ae-b9e2-058af2eff879?ref=confluence) (Independent) (Lead)
@@ -134,7 +178,7 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 - A. Prasad (Oracle)
 - Srini Addepalli (Aryaka)
 - [Vijaya Prakash Masilamani](https://lf-edge.atlassian.net/wiki/people/712020:4ffd801f-be21-429e-b9b8-d8cc749364a9?ref=confluence) (Fidelity)
-- [Akhil Malepati] (https://github.com/saiakhil2012) (Independent)
+- [Akhil Malepati](https://github.com/saiakhil2012) (Independent)
 
 ## Progress
 
@@ -160,3 +204,4 @@ Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/swtpm-macos
 
 ## References
 (1) https://simplynuc.com/blog/banks-data-closer-to-customers/
+(2) https://keylime.readthedocs.io/en/latest/
