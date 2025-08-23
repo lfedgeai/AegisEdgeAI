@@ -89,6 +89,17 @@ Current security approaches for inference applications, secret stores, system ag
 
 - **Attack surface diversity** Edge systems integrate heterogeneous hardware, firmware, and software stacks — creating multiple, intersecting vectors for compromise.
 
+## Problem Statement – Hardware and Software Supply Chain
+### Hardware Supply Chain Threats
+- **Unverified hardware enrollment** — Edge nodes can be racked with counterfeit or rogue chassis/TPMs if enrollment isn’t bound to manufacturer‑issued TPM Endorsement Keys (EKs). Impact: Compromised trust anchors at the very start of the lifecycle undermine all downstream attestation and geofencing.
+- **Component and firmware substitution** — NICs, GPUs, DIMMs, or firmware can be swapped or downgraded between factory and deployment. TPM PCRs may not reflect all FRU changes. Impact: Introduces malicious firmware or side‑channel vectors into heterogeneous edge hardware, bypassing OS‑level controls.
+- **Out‑of‑band compromise** — Attackers with physical access can alter hardware inventory without touching the host OS, evading in‑band detection. Impact: Breaks provenance guarantees for AI workloads and telemetry.
+
+## Software Supply Chain Threats
+- Post‑enrollment drift/tampering — Even on genuine hardware, OS, kernel, or critical binaries can be altered after deployment. Impact: Malicious changes persist undetected without continuous runtime attestation, corrupting AI inference or control loops.
+- Golden‑image poisoning — Build pipelines or update channels can be compromised to distribute backdoored images. Impact: Every node that “successfully” attests to a poisoned baseline becomes an attacker’s foothold.
+- Dependency and model repository compromise — Inference agents or system components may pull from unverified registries or repos. Impact: Injects malicious code or altered models into production without triggering signature mismatches if signing keys are stolen.
+
 ## Solution Overview
 
 Building on the [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) — which defines an architecture for cryptographically verifiable geofencing and residency proofs — this design offers an **edge‑focused, production‑ready microservice blueprint** for secure, verifiable data flows (e.g., operational metrics, federated learning) at the edge.
