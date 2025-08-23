@@ -1,14 +1,14 @@
 # "CitadelAI" - Securing AI at the Edge
 
-CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads only run on approved, uncompromised devices in approved locations. It combines continuous identity, integrity, and location verification to give customers and regulators clear proof that systems haven’t been tampered with from manufacture through runtime. This approach closes supply‑chain and provenance gaps, streamlines audits, and opens access to regulated markets — turning complex hardware‑rooted security into a differentiator you can build into your roadmap.
+CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads only run on approved, uncompromised devices in approved locations — and by going beyond today’s siloed identity models. Where typical approaches verify **only** the user, the device, or the workload in isolation, CitadelAI takes a **holistic approach**, cryptographically binding **user, device, and workload identities together**. This continuous chain of identity, integrity, and location assurance gives customers and regulators clear proof that systems haven’t been tampered with from manufacture through runtime. The result: supply‑chain and provenance gaps are closed, audits are streamlined, and regulated markets open up — turning complex hardware‑rooted security into a differentiator which vendors can build into their roadmap.
 
 **Why it matters**
 
-- **Unlock regulated markets** – Meet location and integrity compliance requirements with verifiable, automated proof.
+- **Unlock regulated markets** – Meet location and integrity compliance requirements with verifiable, automated proof that spans user, device, and workload.
 
-- **Reduce audit friction** – Provide clear, end‑to‑end evidence that systems are authentic and uncompromised.
+- **Reduce audit friction** – Provide clear, end‑to‑end evidence that all three identity pillars are authentic and uncompromised.
 
-- **Differentiate the product** – Turn hardware‑rooted, continuous trust into a visible customer‑facing advantage.
+- **Differentiate the product** – Make holistic, hardware‑rooted trust a customer‑visible advantage.
 
 ## Problem Statement - Common Threats
 
