@@ -1,5 +1,15 @@
 # "CitadelAI" - Securing AI at the Edge
 
+CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads only run on approved, uncompromised devices in approved locations. It combines continuous identity, integrity, and location verification to give customers and regulators clear proof that systems haven’t been tampered with from manufacture through runtime. This approach closes supply‑chain and provenance gaps, streamlines audits, and opens access to regulated markets — turning complex hardware‑rooted security into a differentiator you can build into your roadmap.
+
+# Why it matters
+
+- **Unlock regulated markets** – Meet location and integrity compliance requirements with verifiable, automated proof.
+
+- **Reduce audit friction** – Provide clear, end‑to‑end evidence that systems are authentic and uncompromised.
+
+- **Differentiate the product** – Turn hardware‑rooted, continuous trust into a visible customer‑facing advantage.
+
 ## Problem Statement - Common Threats
 
 Current security approaches for inference applications, secret stores, system agents, AI agents, and model repositories face **critical gaps** — gaps amplified in **edge AI** deployments and further complicated by emerging **multi‑agent** and **Model Context Protocol (MCP)** interoperability patterns. These challenges — documented in the [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/), and summarize below, which outlines broad use cases and deployment patterns, including edge computing — are summarized below.
@@ -53,7 +63,7 @@ Current security approaches for inference applications, secret stores, system ag
 
 *(Model and agent co‑located within the same process, device, or trusted compute base)*
 
-- **Single trust‑anchor exposure** Host compromise hands an attacker control over both orchestration logic and model runtime — maximizing blast radius.
+- **Single trust‑anchor exposure** Host compromise hands an attacker control over both orchestration logic and model runtime — maximising blast radius.
 
 - **Unified compromise path** Malicious code, model‑weight swaps, or data‑flow manipulation require no network breach — they happen inside one trust zone.
 
@@ -75,11 +85,11 @@ Current security approaches for inference applications, secret stores, system ag
 
 - **Endpoint impersonation / model substitution** Weak endpoint verification allows redirection to compromised or malicious model services.
 
-- **Prompt / input tampering at a distance** For LLMs (and other models sensitive to crafted inputs), unprotected transit can permit injection or alteration that changes downstream system behaviour.
+- **Prompt / input tampering at a distance** For LLMs (and other models sensitive to crafted inputs), unprotected transit can permit injection or alteration that changes downstream system behavior.
 
 ### Why These Challenges Are **Critical** in Edge AI
 
-- **Distributed, physically exposed nodes** Edge deployments lack the hardened perimeters of centralized data centres, making them more susceptible to physical and side‑channel attacks.
+- **Distributed, physically exposed nodes** Edge deployments lack the hardened perimeters of centralised data centres, making them more susceptible to physical and side‑channel attacks.
 
 - **Jurisdictional and sovereignty constraints** Edge nodes often operate across regulated borders, amplifying the impact of uncontrolled model invocation or data egress.
 
@@ -188,7 +198,7 @@ Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/zero-trust/
 
 #### Security Highlights
 
-- **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector. The host TPM resident signing key is certified by the host TPM attestation key (AK) which is certified by the host TPM endorsement key (EK). TPM AK is a ephemeral host identity. TPM EK is the permanent host identity.
+- **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector. The host TPM resident signing key is certified by the host TPM attestation key (AK) which is certified by the host TPM endorsement key (EK). TPM AK is an ephemeral host identity. TPM EK is the permanent host identity.
 
 - **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system.
 
