@@ -146,3 +146,6 @@ Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/zero-trust/
 ### TPM tools for macOS - In progress
 
 Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/swtpm-macos/README.md)
+
+## References
+(1) https://simplynuc.com/blog/banks-data-closer-to-customers/
