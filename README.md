@@ -2,7 +2,7 @@
 
 CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads only run on approved, uncompromised devices in approved locations. It combines continuous identity, integrity, and location verification to give customers and regulators clear proof that systems haven’t been tampered with from manufacture through runtime. This approach closes supply‑chain and provenance gaps, streamlines audits, and opens access to regulated markets — turning complex hardware‑rooted security into a differentiator you can build into your roadmap.
 
-# Why it matters
+**Why it matters**
 
 - **Unlock regulated markets** – Meet location and integrity compliance requirements with verifiable, automated proof.
 
