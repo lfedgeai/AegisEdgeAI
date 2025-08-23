@@ -103,8 +103,6 @@ Current security approaches for inference applications, secret stores, system ag
 
 - **Post‑enrollment drift/tampering** — Even on genuine hardware, OS, kernel, or critical binaries can be altered after deployment. Impact: Malicious changes persist undetected without continuous runtime attestation, corrupting AI inference or control loops.
 
-- **Golden‑image poisoning** — Build pipelines or update channels can be compromised to distribute backdoored images. Impact: Every node that “successfully” attests to a poisoned baseline becomes an attacker’s foothold.
-
 - **Dependency and model repository compromise** — Inference agents or system components may pull from unverified registries or repos. Impact: Injects malicious code or altered models into production without triggering signature mismatches if signing keys are stolen.
 
 ### Why These Gaps Are Critical for Edge AI Deployments
