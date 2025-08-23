@@ -122,8 +122,8 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 - Michael Epley (Red Hat)
 - A. Prasad (Oracle)
 - Srini Addepalli (Aryaka)
-- Vijaya Prakash Masilamani (Fidelity)
-- [Akhil Malepati](https://github.com/saiakhil2012) (Independent)
+- [Vijaya Prakash Masilamani](https://lf-edge.atlassian.net/wiki/people/712020:4ffd801f-be21-429e-b9b8-d8cc749364a9?ref=confluence) (Fidelity)
+- [Akhil Malepati] (https://github.com/saiakhil2012) (Independent)
 
 ## Progress
 
