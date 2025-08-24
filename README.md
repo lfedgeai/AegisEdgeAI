@@ -10,6 +10,16 @@ CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads onl
 
 - **Differentiate the product** – Make holistic, hardware‑rooted trust a customer‑visible advantage.
 
+## Stakeholders
+
+- [Ramki Krishnan](https://lf-edge.atlassian.net/wiki/people/557058:c8c42130-9c8b-41ae-b9e2-058af2eff879?ref=confluence) (Independent) (Lead)
+- [Andreas Spanner](https://lf-edge.atlassian.net/wiki/people/59fc56048499730e3412487a?ref=confluence) (Red Hat)
+- Michael Epley (Red Hat)
+- A. Prasad (Oracle)
+- Srini Addepalli (Aryaka)
+- [Vijaya Prakash Masilamani](https://lf-edge.atlassian.net/wiki/people/712020:4ffd801f-be21-429e-b9b8-d8cc749364a9?ref=confluence) (Fidelity)
+- [Akhil Malepati](https://github.com/saiakhil2012) (Independent)
+  
 ## Problem Statement - Common Threats
 
 Current security approaches for inference applications, secret stores, system agents, AI agents, and model repositories face **critical gaps** — gaps amplified in **edge AI** deployments and further complicated by emerging **multi‑agent** and **Model Context Protocol (MCP)** interoperability patterns. These challenges — documented in the [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/), and summarize below, which outlines broad use cases and deployment patterns, including edge computing — are summarized below.
@@ -177,16 +187,6 @@ To mitigate the hardware and software supply chain threats above, CitadelAI adop
 - **Effect:** Identifies software drift or tampering post‑enrollment, with automated policy responses (alert, quarantine, rebuild).
 
 - **Edge Benefit:** Sustains runtime trust for AI workloads, ensuring inference and control loops run on verified software stacks.
-
-## Stakeholders
-
-- [Ramki Krishnan](https://lf-edge.atlassian.net/wiki/people/557058:c8c42130-9c8b-41ae-b9e2-058af2eff879?ref=confluence) (Independent) (Lead)
-- [Andreas Spanner](https://lf-edge.atlassian.net/wiki/people/59fc56048499730e3412487a?ref=confluence) (Red Hat)
-- Michael Epley (Red Hat)
-- A. Prasad (Oracle)
-- Srini Addepalli (Aryaka)
-- [Vijaya Prakash Masilamani](https://lf-edge.atlassian.net/wiki/people/712020:4ffd801f-be21-429e-b9b8-d8cc749364a9?ref=confluence) (Fidelity)
-- [Akhil Malepati](https://github.com/saiakhil2012) (Independent)
 
 ## Progress
 
