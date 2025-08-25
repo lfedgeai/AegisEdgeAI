@@ -4,19 +4,19 @@
 
 ## Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement
 
-**Hardware Manufacturing Trust:** *Permanent hardware identity*  
+**Hardware Manufacturing Trust:** <sub>Permanent hardware identity</sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies  
 
-**Platform Onboarding/Runtime Trust:** *Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement*  
+**Platform Onboarding/Runtime Trust:** <sub>Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement</sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Enables 
 
-**Software Supply Chain Trust:** *Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement*  
+**Software Supply Chain Trust:** <sub>Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement</sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Locks
 
-**Application Deployment/Runtime Trust:** *Hardware‑attested workload identity/integrity with runtime geofencing enforcement*  
+**Application Deployment/Runtime Trust:** <sub>Hardware‑attested workload identity/integrity with runtime geofencing enforcement</sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Proves
 
-**Operations Trust:** *Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement*
+**Operations Trust:** <sub>Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement</sub>
 
 ## Why it matters
 
