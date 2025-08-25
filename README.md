@@ -2,19 +2,19 @@
 
 **CitadelAI** delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, CitadelAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: CitadelAI makes it impossible for an AI workload to run on the wrong machine, in the wrong place, or in a compromised state — and cryptographically proves it.**
 
-## **Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement**
+## Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement
 
-&nbsp;&nbsp;&nbsp;&nbsp;**Hardware Manufacturing Trust:** Permanent hardware identity  
+**Hardware Manufacturing Trust:** Permanent hardware identity  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies  
-&nbsp;&nbsp;&nbsp;&nbsp;**Platform Onboarding/Runtime Trust:** Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement  
+**Platform Onboarding/Runtime Trust:** Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Enables  
-&nbsp;&nbsp;&nbsp;&nbsp;**Software Supply Chain Trust:** Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement  
+**Software Supply Chain Trust:** Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Locks  
-&nbsp;&nbsp;&nbsp;&nbsp;**Application Deployment/Runtime Trust:** Hardware‑attested workload identity/integrity with runtime geofencing enforcement  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Records  
-&nbsp;&nbsp;&nbsp;&nbsp;**Operations Trust:** Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement
+**Application Deployment/Runtime Trust:** Hardware‑attested workload identity/integrity with runtime geofencing enforcement  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Proves 
+**Operations Trust:** Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement
 
-## **Why it matters**
+## Why it matters
 
 - **Unlock regulated markets** – Meet location and integrity compliance requirements with verifiable, automated proof that spans user, device, and workload.
 
