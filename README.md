@@ -7,16 +7,16 @@
 **Hardware Manufacturing Trust** - <sub><sup>Permanent hardware identity</sup></sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies  
 
-**Platform Onboarding/Runtime Trust** - <sub><sup>Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement</sup></sub>  
+**Platform Onboarding/Runtime Trust** - <sub><sup>**Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement**</sup></sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Enables 
 
-**Software Supply Chain Trust** - <sub><sup>Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement</sup></sub>  
+**Software Supply Chain Trust** - <sub><sup>**Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement**</sup></sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Locks
 
-**Application Deployment/Runtime Trust** - <sub><sup>Hardware‑attested workload identity/integrity with runtime geofencing enforcement</sup></sub>  
+**Application Deployment/Runtime Trust** - <sub><sup>**Hardware‑attested workload identity/integrity with runtime geofencing enforcement**</sup></sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Proves
 
-**Operations Trust** - <sub><sup>Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement</sup></sub>
+**Operations Trust** - <sub><sup>**Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement**</sup></sub>
 
 ## Why it matters
 
