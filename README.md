@@ -31,6 +31,8 @@
 - Srini Addepalli (Aryaka)
 - [Vijaya Prakash Masilamani](https://lf-edge.atlassian.net/wiki/people/712020:4ffd801f-be21-429e-b9b8-d8cc749364a9?ref=confluence) (Fidelity)
 - [Bala Siva Sai Akhil Malepati](https://github.com/saiakhil2012) (Independent)
+- [Pranav Kirtani](https://github.com/pranavkirtani) (Independent)
+- [Clyde D'Cruz](https://github.com/clydedacruz) (Independent)
   
 ## Problem Statement - Common Threats
 
