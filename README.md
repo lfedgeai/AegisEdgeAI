@@ -10,15 +10,17 @@ CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads onl
 
 - **Differentiate the product** – Make holistic, hardware‑rooted trust a customer‑visible advantage.
 
-Hardware Trust (TPM EK) 
+```
+**HARDWARE TRUST** (Permanent hardware identity)
    ↓ certifies
-Platform Trust (TPM AK + PCR measurements, secure boot evidence)
+**PLATFORM TRUST** (Ephemeral hardware identity + Hardware-rooted measurements, secure boot evidence)
    ↓ enables
-Software Supply Chain (artifact provenance, signatures, policy)
+**SOFTWARE SUPPLY CHAIN** (artifact provenance, signatures, policy)
    ↓ enforced at
-Deployment / Runtime (admission, workload identity, runtime attestation)
+**DEPLOYMENT / RUNTIME** (admission, workload identity, runtime attestation)
    ↓ recorded in
-Operations (signed telemetry, incident forensics)
+**OPERATIONS** (signed telemetry, incident forensics)
+```
 
 ## Stakeholders
 
