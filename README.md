@@ -1,6 +1,8 @@
 # "CitadelAI" - Securing AI at the Edge
 
-CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads only run on approved, uncompromised devices in approved locations — and by going beyond today’s siloed identity models. Where typical approaches verify **only** the user, the device, or the workload in isolation, CitadelAI takes a **holistic approach**, cryptographically binding **user, device, and workload identities together**. This continuous chain of identity, integrity, and location assurance gives customers and regulators clear proof that systems haven’t been tampered with from manufacture through runtime. The result: supply‑chain and provenance gaps are closed, audits are streamlined, and regulated markets open up — turning complex hardware‑rooted security into a differentiator which vendors can build into their roadmap.
+**CitadelAI** delivers verifiable trust for AI at the edge by ensuring workloads only run on approved, uncompromised devices in approved locations — and by going beyond today’s siloed identity models. Where typical approaches verify **only** the user, the device, or the workload in isolation, CitadelAI takes a **holistic approach**, cryptographically binding **user, device, and workload identities together**. This continuous chain of identity, integrity, and location assurance gives customers and regulators clear proof that systems haven’t been tampered with from manufacture through runtime. The result: supply‑chain and provenance gaps are closed, audits are streamlined, and regulated markets open up — turning complex hardware‑rooted security into a differentiator which vendors can build into their roadmap.
+
+**Holistic approach across user, device, and workload identities**
 
 **Hardware Trust** (Permanent hardware identity)  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ certifies  
