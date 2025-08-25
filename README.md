@@ -18,7 +18,7 @@ CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads onl
 - A. Prasad (Oracle)
 - Srini Addepalli (Aryaka)
 - [Vijaya Prakash Masilamani](https://lf-edge.atlassian.net/wiki/people/712020:4ffd801f-be21-429e-b9b8-d8cc749364a9?ref=confluence) (Fidelity)
-- [Akhil Malepati](https://github.com/saiakhil2012) (Independent)
+- [Bala Siva Sai Akhil Malepati](https://github.com/saiakhil2012) (Independent)
   
 ## Problem Statement - Common Threats
 
