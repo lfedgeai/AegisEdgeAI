@@ -10,17 +10,15 @@ CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads onl
 
 - **Differentiate the product** – Make holistic, hardware‑rooted trust a customer‑visible advantage.
 
-```
-HARDWARE TRUST (Permanent hardware identity)
-   ↓ certifies
-PLATFORM TRUST (Ephemeral hardware identity + Hardware-rooted measurements, secure boot evidence)
-   ↓ enables
-SOFTWARE SUPPLY CHAIN (artifact provenance, signatures, policy)
-   ↓ enforced at
-DEPLOYMENT / RUNTIME (admission, workload identity, runtime attestation)
-   ↓ recorded in
-OPERATIONS (signed telemetry, incident forensics)
-```
+**HARDWARE TRUST** (Permanent hardware identity)  
+   ↓ certifies  
+**PLATFORM TRUST** (Ephemeral hardware identity + Hardware-rooted measurements, secure boot evidence)  
+   ↓ enables  
+**SOFTWARE SUPPLY CHAIN** (artifact provenance, signatures, policy)  
+   ↓ enforced at  
+**DEPLOYMENT / RUNTIME** (admission, workload identity, runtime attestation)  
+   ↓ recorded in  
+**OPERATIONS** (signed telemetry, incident forensics)
 
 ## Stakeholders
 
