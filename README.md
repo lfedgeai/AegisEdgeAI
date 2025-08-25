@@ -4,7 +4,7 @@
 
 ## Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement
 
-**Hardware Manufacturing Trust** - <sub><sup>Permanent hardware identity</sup></sub>  
+**Hardware Manufacturing Trust** - <sub><sup>**Permanent hardware identity**</sup></sub>  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies  
 
 **Platform Onboarding/Runtime Trust** - <sub><sup>**Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement**</sup></sub>  
