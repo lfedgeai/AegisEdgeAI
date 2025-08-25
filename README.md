@@ -4,19 +4,15 @@
 
 ## **Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement**
 
-```mermaid
-flowchart TD
-    A["🔧 **Hardware Manufacturing Trust**<br/>Permanent hardware identity"] -->|Certifies| B["🏭 **Platform Onboarding/Runtime Trust**<br/>Hardware‑rooted platform artifact provenance/integrity<br/>with on-boarding geofencing enforcement"]
-    B -->|Enables| C["📦 **Software Supply Chain Trust**<br/>Hardware‑attested application artifact provenance/integrity<br/>with build‑location geofencing enforcement"]
-    C -->|Locks| D["🚀 **Application Deployment/Runtime Trust**<br/>Hardware‑attested workload identity/integrity<br/>with runtime geofencing enforcement"]
-    D -->|Records| E["📊 **Operations Trust**<br/>Hardware‑attested telemetry provenance/integrity<br/>with data‑origin geofencing enforcement"]
-    
-    style A fill:#e1f5fe,stroke:#01579b,stroke-width:3px
-    style B fill:#f3e5f5,stroke:#4a148c,stroke-width:3px
-    style C fill:#e8f5e8,stroke:#1b5e20,stroke-width:3px
-    style D fill:#fff3e0,stroke:#e65100,stroke-width:3px
-    style E fill:#fce4ec,stroke:#880e4f,stroke-width:3px
-```
+&nbsp;&nbsp;&nbsp;&nbsp;**Hardware Manufacturing Trust:** Permanent hardware identity  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies  
+&nbsp;&nbsp;&nbsp;&nbsp;**Platform Onboarding/Runtime Trust:** Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Enables  
+&nbsp;&nbsp;&nbsp;&nbsp;**Software Supply Chain Trust:** Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Locks  
+&nbsp;&nbsp;&nbsp;&nbsp;**Application Deployment/Runtime Trust:** Hardware‑attested workload identity/integrity with runtime geofencing enforcement  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Records  
+&nbsp;&nbsp;&nbsp;&nbsp;**Operations Trust:** Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement
 
 ## **Why it matters**
 
