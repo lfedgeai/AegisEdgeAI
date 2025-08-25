@@ -4,15 +4,15 @@ CitadelAI delivers verifiable trust for AI at the edge — from manufacturing to
 
 **Binding user, device, and workload identities from manufacture through runtime — with hardware‑rooted trust and geofencing enforcement at build, runtime, and data‑origin**
 
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Hardware Manufacturing Trust:** Permanent hardware identity
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Platform Onboarding/Runtime Trust:** Hardware‑rooted platform artifact provenance/integrity with geofencing enforcement
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Enables
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Software Supply Chain Trust:** Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Locks
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Application Deployment/Runtime Trust:** Hardware‑attested workload identity/integrity with runtime geofencing enforcement
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Records
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Operations Trust:** Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement
+**Hardware Manufacturing Trust:** Permanent hardware identity  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies  
+**Platform Onboarding/Runtime Trust:** Hardware‑rooted platform artifact provenance/integrity with geofencing enforcement  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Enables  
+**Software Supply Chain Trust:** Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Locks  
+**Application Deployment/Runtime Trust:** Hardware‑attested workload identity/integrity with runtime geofencing enforcement  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Records  
+**Operations Trust:** Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement
 
 **Why it matters**
 
