@@ -1,18 +1,18 @@
 # "CitadelAI" - Securing AI at the Edge
 
-**CitadelAI** delivers verifiable trust for AI at the edge by ensuring workloads only run on approved, uncompromised devices in approved locations — and by going beyond today’s siloed identity models. Where typical approaches verify **only** the user, the device, or the workload in isolation, CitadelAI takes a **holistic approach**, cryptographically binding **user, device, and workload identities together**. This continuous chain of identity, integrity, and location assurance gives customers and regulators clear proof that systems haven’t been tampered with from manufacture through runtime. The result: supply‑chain and provenance gaps are closed, audits are streamlined, and regulated markets open up — turning complex hardware‑rooted security into a differentiator which vendors can build into their roadmap.
+CitadelAI delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, CitadelAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: CitadelAI makes it impossible for an AI workload to run on the wrong machine, in the wrong place, or in a compromised state — and proves it.**
 
-**Holistic approach across user, device, and workload identities**
+**Binding user, device, and workload identities from manufacture through runtime — with hardware‑rooted trust and geofencing enforcement at build, runtime, and data‑origin**
 
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Hardware Trust** (Permanent hardware identity)  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ certifies  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Platform Trust** (Ephemeral hardware identity + Hardware-rooted measurements, secure boot evidence)  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ enables  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Software Supply Chain** (artifact provenance, signatures, policy)  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ enforced at  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Deployment / Runtime** (admission, workload identity, runtime attestation)  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ recorded in  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Operations** (signed telemetry, incident forensics)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Hardware Manufacturing Trust:** Permanent hardware identity
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Platform Onboarding/Runtime Trust:** Hardware‑rooted platform artifact provenance/integrity with geofencing enforcement
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Enables 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Software Supply Chain Trust:** Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Locks 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Application Deployment/Runtime Trust:** Hardware‑attested workload identity/integrity with runtime geofencing enforcement
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Records
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**Operations Trust:** Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement
 
 **Why it matters**
 
@@ -20,7 +20,7 @@
 
 - **Reduce audit friction** – Provide clear, end‑to‑end evidence that all three identity pillars are authentic and uncompromised.
 
-- **Differentiate the product** – Make holistic, hardware‑rooted trust a customer‑visible advantage.
+- **Turn trust into a feature** – Make holistic, hardware‑rooted trust a customer‑visible advantage.
 
 ## Stakeholders
 
@@ -31,7 +31,7 @@
 - Srini Addepalli (Aryaka)
 - [Vijaya Prakash Masilamani](https://lf-edge.atlassian.net/wiki/people/712020:4ffd801f-be21-429e-b9b8-d8cc749364a9?ref=confluence) (Fidelity)
 - [Bala Siva Sai Akhil Malepati](https://github.com/saiakhil2012) (Independent)
-- [Pranav Kirtani](https://github.com/pranavkirtani) (Independent)
+- [Pranav Kirtani](https://github.com/pranavkirtani) (Independent) 
 - [Clyde D'Cruz](https://github.com/clydedacruz) (Independent)
   
 ## Problem Statement - Common Threats
