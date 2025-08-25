@@ -3,13 +3,13 @@
 CitadelAI delivers verifiable trust for AI at the edge by ensuring workloads only run on approved, uncompromised devices in approved locations — and by going beyond today’s siloed identity models. Where typical approaches verify **only** the user, the device, or the workload in isolation, CitadelAI takes a **holistic approach**, cryptographically binding **user, device, and workload identities together**. This continuous chain of identity, integrity, and location assurance gives customers and regulators clear proof that systems haven’t been tampered with from manufacture through runtime. The result: supply‑chain and provenance gaps are closed, audits are streamlined, and regulated markets open up — turning complex hardware‑rooted security into a differentiator which vendors can build into their roadmap.
 
 **Hardware Trust** (Permanent hardware identity)  
-         ↓ certifies  
+- ↓ certifies  
 **Platform Trust** (Ephemeral hardware identity + Hardware-rooted measurements, secure boot evidence)  
-         ↓ enables  
+- ↓ enables  
 **Software Supply Chain** (artifact provenance, signatures, policy)  
-         ↓ enforced at  
+- ↓ enforced at  
 **Deployment / Runtime** (admission, workload identity, runtime attestation)  
-         ↓ recorded in  
+- ↓ recorded in  
 **Operations** (signed telemetry, incident forensics)
 
 **Why it matters**
