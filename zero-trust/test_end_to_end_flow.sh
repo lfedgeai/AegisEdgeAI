@@ -3,8 +3,21 @@
 # Test End-to-End Flow Script
 # This script demonstrates the complete flow using curl commands
 
-echo "🚀 Testing End-to-End Multi-Agent Zero-Trust Flow (README_demo.md Workflow)"
-echo "=========================================================================="
+# Parse command line arguments
+TEST_TYPE=${1:-"full"}
+if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
+    echo "🔐 Testing Gateway Allowlist Functionality"
+    echo "=========================================="
+    echo "Key Feature: Gateway also has an allowlist (dual-layer security)"
+elif [[ "$TEST_TYPE" == "full" ]]; then
+    echo "🚀 Testing End-to-End Multi-Agent Zero-Trust Flow (README_demo.md Workflow)"
+    echo "=========================================================================="
+else
+    echo "Usage: $0 [full|gateway-allowlist]"
+    echo "  full: Run complete end-to-end test (default)"
+    echo "  gateway-allowlist: Run all tests with gateway allowlist enabled"
+    exit 1
+fi
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -94,6 +107,7 @@ echo "   Gateway URL: $GATEWAY_URL"
 echo "   Collector URL: $COLLECTOR_URL"
 echo ""
 
+# Main test logic - runs for both full and gateway-allowlist modes
 # Step 1: Create agents and start services (README_demo.md workflow)
 echo -e "${YELLOW}1. Creating agents and starting services...${NC}"
 
@@ -105,7 +119,14 @@ python3 create_agent.py agent-geo-policy-violation-002 >/dev/null 2>&1 || cleanu
 
 # Start services
 echo "   Starting gateway..."
-SERVICE_NAME=opentelemetry-gateway PORT=9000 python3 gateway/app.py >logs/gateway.log 2>&1 &
+if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
+    # Enable gateway allowlist functionality
+    GATEWAY_VALIDATE_PUBLIC_KEY_HASH=true GATEWAY_VALIDATE_SIGNATURE=true GATEWAY_VALIDATE_GEOLOCATION=true SERVICE_NAME=opentelemetry-gateway PORT=9000 python3 gateway/app.py >logs/gateway.log 2>&1 &
+    echo "   ✅ Gateway started with allowlist enabled"
+else
+    SERVICE_NAME=opentelemetry-gateway PORT=9000 python3 gateway/app.py >logs/gateway.log 2>&1 &
+    echo "   ✅ Gateway started with standard configuration"
+fi
 echo "   Starting collector..."
 SERVICE_NAME=opentelemetry-collector PORT=8500 python3 collector/app.py >logs/collector.log 2>&1 &
 
@@ -256,8 +277,79 @@ fi
 
 echo ""
 
-# Step 2.4: Monitoring and Debugging Information
-echo -e "${YELLOW}2.4 Monitoring and Debugging Information...${NC}"
+# Step 2.4: Gateway Allowlist Functionality Testing
+echo -e "${YELLOW}2.4 Gateway Allowlist Functionality Testing...${NC}"
+
+# Test 1: Check gateway health and allowlist status
+echo -e "${BLUE}Test 1: Gateway Health and Allowlist Status${NC}"
+GATEWAY_HEALTH=$(curl -s -k "$GATEWAY_URL/health" 2>/dev/null)
+if [[ $? -eq 0 ]]; then
+    echo "   ✅ Gateway is running"
+    ALLOWLIST_ENABLED=$(echo "$GATEWAY_HEALTH" | grep -o '"enabled":true' || true)
+    if [[ -n "$ALLOWLIST_ENABLED" ]]; then
+        echo "   ✅ Gateway allowlist is enabled"
+    else
+        echo "   ❌ Gateway allowlist is disabled"
+    fi
+    AGENT_COUNT=$(echo "$GATEWAY_HEALTH" | grep -o '"agent_count":[0-9]*' | grep -o '[0-9]*' || echo "0")
+    echo "   📊 Agents in allowlist: $AGENT_COUNT"
+else
+    echo "   ❌ Gateway is not running"
+fi
+echo ""
+
+# Test 2: Test allowlist reload functionality
+echo -e "${BLUE}Test 2: Allowlist Reload Functionality${NC}"
+RELOAD_RESPONSE=$(curl -s -k -X POST "$GATEWAY_URL/reload-allowlist" 2>/dev/null)
+if [[ $? -eq 0 ]]; then
+    echo "   ✅ Allowlist reload endpoint is working"
+    RELOAD_STATUS=$(echo "$RELOAD_RESPONSE" | grep -o '"status":"success"' || true)
+    if [[ -n "$RELOAD_STATUS" ]]; then
+        echo "   ✅ Allowlist reloaded successfully"
+    else
+        echo "   ❌ Allowlist reload failed"
+    fi
+else
+    echo "   ❌ Allowlist reload endpoint failed"
+fi
+echo ""
+
+# Test 3: Check allowlist file contents
+echo -e "${BLUE}Test 3: Allowlist File Contents${NC}"
+if [[ -f "gateway/allowed_agents.json" ]]; then
+    echo "   ✅ Gateway allowlist file exists"
+    ALLOWLIST_CONTENT=$(cat gateway/allowed_agents.json 2>/dev/null)
+    if [[ -n "$ALLOWLIST_CONTENT" && "$ALLOWLIST_CONTENT" != "[]" ]]; then
+        echo "   ✅ Gateway allowlist contains agents"
+        echo "   📋 Allowlist contents:"
+        echo "$ALLOWLIST_CONTENT" | sed 's/^/      /'
+    else
+        echo "   ❌ Gateway allowlist is empty"
+    fi
+else
+    echo "   ❌ Gateway allowlist file not found"
+fi
+echo ""
+
+# Test 4: Compare with collector allowlist
+echo -e "${BLUE}Test 4: Collector vs Gateway Allowlist Comparison${NC}"
+if [[ -f "collector/allowed_agents.json" && -f "gateway/allowed_agents.json" ]]; then
+    COLLECTOR_AGENTS=$(cat collector/allowed_agents.json | grep -o '"agent_name":"[^"]*"' | wc -l)
+    GATEWAY_AGENTS=$(cat gateway/allowed_agents.json | grep -o '"agent_name":"[^"]*"' | wc -l)
+    echo "   📊 Collector allowlist agents: $COLLECTOR_AGENTS"
+    echo "   📊 Gateway allowlist agents: $GATEWAY_AGENTS"
+    if [[ "$COLLECTOR_AGENTS" == "$GATEWAY_AGENTS" ]]; then
+        echo "   ✅ Allowlists are synchronized"
+    else
+        echo "   ❌ Allowlists are not synchronized"
+    fi
+else
+    echo "   ❌ One or both allowlist files not found"
+fi
+echo ""
+
+# Step 2.5: Monitoring and Debugging Information
+echo -e "${YELLOW}2.5 Monitoring and Debugging Information...${NC}"
 
 echo "   📊 Gateway Header Logs (last 5 entries):"
 if [[ -f "$HEADER_LOG" ]]; then
@@ -362,6 +454,7 @@ echo "      • Nonce-based anti-replay protection"
 echo "      • Geographic compliance verification"
 echo "      • Agent allowlist validation"
 echo "      • OpenSSL signature verification"
+echo "      • Gateway allowlist management"
 
 echo -e "${BLUE}   🌐 Network Architecture:${NC}"
 echo "      • Agent-001 (port 8401): Normal operation & metrics generation"
@@ -383,11 +476,12 @@ echo -e "${BLUE}System Features:${NC}"
 echo "   ✅ Multi-agent orchestration with automatic allowlist management"
 echo "   ✅ Comprehensive testing framework with geographic policy enforcement"
 echo "   ✅ Detailed monitoring and logging with real-time header validation"
+echo "   ✅ Gateway allowlist functionality with reload capability"
 echo "   ✅ Zero-trust security model with TPM2 hardware-backed signing"
 
-# Step 4: Stop services (all agents, gateway, collector)
+# Step 5: Stop services (all agents, gateway, collector)
 echo ""
-echo -e "${YELLOW}4. Stopping services (all agents, gateway, collector)...${NC}"
+echo -e "${YELLOW}5. Stopping services (all agents, gateway, collector)...${NC}"
 
 # Try graceful shutdown by port
 kill_by_port 8401  # agent-001
@@ -414,9 +508,9 @@ done
 
 echo -e "${GREEN}   ✅ Services stopped (or stop attempted)${NC}"
 
-# Step 5: Cleanup (remove agents and reset allowlist)
+# Step 6: Cleanup (remove agents and reset allowlist)
 echo ""
-echo -e "${YELLOW}5. Cleaning up test artifacts (agents, allowlist, TPM files)...${NC}"
+echo -e "${YELLOW}6. Cleaning up test artifacts (agents, allowlist, TPM files)...${NC}"
 
 if [[ -f "cleanup_all_agents.sh" ]]; then
   bash cleanup_all_agents.sh --force >/dev/null 2>&1

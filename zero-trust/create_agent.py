@@ -114,9 +114,20 @@ class AgentCreator:
             from shutil import copyfile
             
             # Calculate agent-specific APP_HANDLE
-            agent_number = int(self.agent_name.split('-')[-1])
-            base_handle = int("0x8101000B", 16)
-            agent_handle = base_handle + agent_number - 1
+            # Handle different agent naming patterns
+            if self.agent_name.startswith('agent-') and self.agent_name.split('-')[-1].isdigit():
+                # Standard pattern: agent-XXX where XXX is a number
+                agent_number = int(self.agent_name.split('-')[-1])
+                base_handle = int("0x8101000B", 16)
+                agent_handle = base_handle + agent_number - 1
+            else:
+                # Non-standard pattern: use a hash of the agent name for consistent handle
+                import hashlib
+                agent_hash = hashlib.md5(self.agent_name.encode()).hexdigest()
+                agent_number = int(agent_hash[:8], 16) % 1000  # Use first 8 chars of hash, modulo 1000
+                base_handle = int("0x8101000B", 16)
+                agent_handle = base_handle + agent_number
+                
             agent_app_handle = f"0x{agent_handle:08X}"
             
             logger.info("Using agent-specific APP_HANDLE", 
@@ -176,6 +187,10 @@ class AgentCreator:
         # Get the raw public key content (already extracted in create_agent_config)
         raw_public_key = self._read_public_key_content()
         
+        # Generate public key hash for gateway allowlist
+        import hashlib
+        public_key_hash = hashlib.sha256(raw_public_key.encode()).hexdigest()
+        
         # Check if agent already exists and update it
         for i, agent in enumerate(allowed_agents):
             if agent.get('agent_name') == self.agent_name:
@@ -198,6 +213,9 @@ class AgentCreator:
                     json.dump(allowed_agents, f, indent=2)
                 
                 logger.info("Agent updated in collector allowlist", agent_name=self.agent_name)
+                
+                # Also update gateway allowlist
+                self.add_to_gateway_allowlist(raw_public_key, public_key_hash)
                 return
         
         # Add new agent entry
@@ -220,6 +238,69 @@ class AgentCreator:
             json.dump(allowed_agents, f, indent=2)
         
         logger.info("Agent added to collector allowlist", agent_name=self.agent_name)
+        
+        # Also add to gateway allowlist
+        self.add_to_gateway_allowlist(raw_public_key, public_key_hash)
+    
+    def add_to_gateway_allowlist(self, raw_public_key: str, public_key_hash: str):
+        """Add agent to gateway allowlist."""
+        logger.info("Adding agent to gateway allowlist", agent_name=self.agent_name)
+        
+        allowlist_path = "gateway/allowed_agents.json"
+        
+        # Load existing allowlist
+        if os.path.exists(allowlist_path):
+            with open(allowlist_path, 'r') as f:
+                allowed_agents = json.load(f)
+        else:
+            allowed_agents = []
+        
+        # Check if agent already exists and update it
+        for i, agent in enumerate(allowed_agents):
+            if agent.get('agent_name') == self.agent_name:
+                logger.info("Agent already exists in gateway allowlist, updating", agent_name=self.agent_name)
+                # Update the existing agent entry
+                allowed_agents[i] = {
+                    "agent_name": self.agent_name,
+                    "tpm_public_key": raw_public_key,  # Store raw public key content
+                    "tpm_public_key_hash": public_key_hash,  # Store hash for quick lookup
+                    "geolocation": {
+                        "country": self.country,
+                        "state": self.state,
+                        "city": self.city
+                    },
+                    "status": "active",
+                    "created_at": "2025-08-15T18:00:00Z"
+                }
+                
+                # Write back to allowlist
+                with open(allowlist_path, 'w') as f:
+                    json.dump(allowed_agents, f, indent=2)
+                
+                logger.info("Agent updated in gateway allowlist", agent_name=self.agent_name)
+                return
+        
+        # Add new agent entry
+        new_agent = {
+            "agent_name": self.agent_name,
+            "tpm_public_key": raw_public_key,  # Store raw public key content
+            "tpm_public_key_hash": public_key_hash,  # Store hash for quick lookup
+            "geolocation": {
+                "country": self.country,
+                "state": self.state,
+                "city": self.city
+            },
+            "status": "active",
+            "created_at": "2025-08-15T18:00:00Z"
+        }
+        
+        allowed_agents.append(new_agent)
+        
+        # Write back to allowlist
+        with open(allowlist_path, 'w') as f:
+            json.dump(allowed_agents, f, indent=2)
+        
+        logger.info("Agent added to gateway allowlist", agent_name=self.agent_name)
         
     def _read_public_key_content(self):
         """Read and extract raw public key content from the TPM public key file."""
@@ -337,10 +418,22 @@ def main():
         
         if success:
             # Calculate agent port and APP_HANDLE for display
-            agent_number = int(args.agent_name.split('-')[-1])
-            agent_port = 8401 + agent_number - 1
-            base_handle = int("0x8101000B", 16)
-            agent_handle = base_handle + agent_number - 1
+            # Handle different agent naming patterns
+            if args.agent_name.startswith('agent-') and args.agent_name.split('-')[-1].isdigit():
+                # Standard pattern: agent-XXX where XXX is a number
+                agent_number = int(args.agent_name.split('-')[-1])
+                agent_port = 8401 + agent_number - 1
+                base_handle = int("0x8101000B", 16)
+                agent_handle = base_handle + agent_number - 1
+            else:
+                # Non-standard pattern: use a hash of the agent name for consistent port and handle
+                import hashlib
+                agent_hash = hashlib.md5(args.agent_name.encode()).hexdigest()
+                agent_number = int(agent_hash[:8], 16) % 1000  # Use first 8 chars of hash, modulo 1000
+                agent_port = 8401 + agent_number
+                base_handle = int("0x8101000B", 16)
+                agent_handle = base_handle + agent_number
+                
             agent_app_handle = f"0x{agent_handle:08X}"
             
             print(f"\n✅ Agent '{args.agent_name}' created successfully!")

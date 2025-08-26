@@ -138,6 +138,24 @@ else
     echo "   No allowlist file found."
 fi
 
+# Clean up gateway allowlist
+echo -e "${BLUE}Cleaning up gateway allowlist...${NC}"
+
+if [ -f "gateway/allowed_agents.json" ]; then
+    echo -n "   Resetting allowlist... "
+    
+    # Create empty allowlist
+    echo '[]' > "gateway/allowed_agents.json"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅${NC}"
+    else
+        echo -e "${RED}❌${NC}"
+    fi
+else
+    echo "   No allowlist file found."
+fi
+
 echo ""
 
 # Clean up temporary files
@@ -170,6 +188,7 @@ echo -e "${BLUE}Summary:${NC}"
 echo "   • Deleted $DELETED_COUNT agent directories"
 echo "   • Removed agent-specific TPM files"
 echo "   • Reset collector allowlist"
+echo "   • Reset gateway allowlist"
 echo "   • Cleaned up temporary files"
 
 echo ""
