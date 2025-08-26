@@ -1,4 +1,5 @@
 cd tpm
+rm *.ctx *.pem *.pub *.priv *.bin *.sig *.out *.msg *.pcrs *.hash
 
 ./swtpm.sh
 sleep 1

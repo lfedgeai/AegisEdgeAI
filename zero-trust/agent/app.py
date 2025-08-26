@@ -21,6 +21,7 @@ import hashlib
 from datetime import datetime
 from typing import Dict, Any, Optional
 from flask import Flask, jsonify, request
+from email.utils import formatdate
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -251,6 +252,20 @@ class CollectorClient:
             self.session.verify = False
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    @staticmethod
+    def _now_epoch() -> int:
+        return int(time.time())
+
+    @staticmethod
+    def _five_minutes_from(epoch: int) -> int:
+        return epoch + 300
+
+    @staticmethod
+    def _generate_http_signature_input(keyid: str, algorithm: str, nonce_value: str) -> str:
+        created = CollectorClient._now_epoch()
+        expires = CollectorClient._five_minutes_from(created)
+        return f"keyid=\"{keyid}\", created={created}, expires={expires}, alg=\"{algorithm}\", nonce=\"{nonce_value}\""
     
     def get_nonce(self) -> str:
         """
@@ -290,7 +305,22 @@ class CollectorClient:
                            public_key_hash=public_key_hash[:16] + "...")
                 
                 # Get the nonce with public key hash parameter
-                response = self.session.get(f"{self.base_url}/nonce", params={"public_key_hash": public_key_hash})
+                # Build Signature-Input header (RFC 9421) for nonce request
+                # Default: thick client, use workload public key hash as keyid
+                http_sig_nonce = secrets.token_hex(16)
+                signature_input = self._generate_http_signature_input(
+                    keyid=public_key_hash,
+                    algorithm="Ed25519",  # per requirement example
+                    nonce_value=http_sig_nonce,
+                )
+
+                response = self.session.get(
+                    f"{self.base_url}/nonce",
+                    params={"public_key_hash": public_key_hash},
+                    headers={
+                        "Signature-Input": signature_input,
+                    },
+                )
                 response.raise_for_status()
                 
                 data = response.json()
@@ -343,10 +373,42 @@ class CollectorClient:
         """
         with tracer.start_as_current_span("send_metrics"):
             try:
+                # Build Workload-Geo-ID header (JSON) and Signature headers
+                agent_name = payload.get("agent_name", os.environ.get("AGENT_NAME", settings.service_name))
+                geographic_region = payload.get("geographic_region", {})
+
+                # Determine client workload location details
+                workload_geo_id = {
+                    "client_workload_id": agent_name,
+                    "client_workload_location": {
+                        "region": geographic_region.get("region"),
+                        "state": geographic_region.get("state"),
+                        "city": geographic_region.get("city"),
+                    },
+                    "client_workload_location_type": "geographic-region",  # precise/approximated/region
+                    "client_workload_location_quality": "GNSS",  # GNSS/mobile/WiFi/IP
+                    "client_type": os.environ.get("CLIENT_TYPE", "thick"),  # thick/thin (default thick)
+                }
+
+                # Signature headers (reuse TPM signature as HTTP Signature header value)
+                public_key_hash = payload.get("tpm_public_key_hash", "unknown")
+                http_sig_nonce = secrets.token_hex(16)
+                signature_input = self._generate_http_signature_input(
+                    keyid=public_key_hash,  # thick: workload public key hash
+                    algorithm="Ed25519",
+                    nonce_value=http_sig_nonce,
+                )
+                http_signature = payload.get("signature", "")
+
                 response = self.session.post(
                     f"{self.base_url}/metrics",
                     json=payload,
-                    headers={"Content-Type": "application/json"}
+                    headers={
+                        "Content-Type": "application/json",
+                        "Workload-Geo-ID": json.dumps(workload_geo_id, separators=(",", ":")),
+                        "Signature-Input": signature_input,
+                        "Signature": http_signature,
+                    },
                 )
                 response.raise_for_status()
                 
