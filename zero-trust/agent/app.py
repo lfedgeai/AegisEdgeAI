@@ -304,22 +304,110 @@ class CollectorClient:
                            agent_name=agent_name,
                            public_key_hash=public_key_hash[:16] + "...")
                 
-                # Get the nonce with public key hash parameter
-                # Build Signature-Input header (RFC 9421) for nonce request
-                # Default: thick client, use workload public key hash as keyid
-                http_sig_nonce = secrets.token_hex(16)
-                signature_input = self._generate_http_signature_input(
-                    keyid=public_key_hash,
-                    algorithm="Ed25519",  # per requirement example
-                    nonce_value=http_sig_nonce,
-                )
+                                # Get the nonce with public key hash parameter
+                # Build headers with comprehensive error handling
+                headers = {}
+                
+                try:
+                    # Build Signature-Input header (RFC 9421) for nonce request
+                    # Default: thick client, use workload public key hash as keyid
+                    http_sig_nonce = secrets.token_hex(16)
+                    signature_input = self._generate_http_signature_input(
+                        keyid=public_key_hash,
+                        algorithm="Ed25519",  # per requirement example
+                        nonce_value=http_sig_nonce,
+                    )
+                    
+                    logger.info("🔍 [AGENT] Signature-Input header created", 
+                               agent_name=agent_name,
+                               signature_input=signature_input)
+                    
+                    # Add Signature-Input header
+                    headers["Signature-Input"] = signature_input
+                    
+                    # Build Workload-Geo-ID header (JSON) for nonce request
+                    # Get geographic region from environment or use defaults
+                    geo_env_var = os.environ.get("AGENT_GEO_POLICY_VIOLATION_002_GEOGRAPHIC_REGION")
+                    logger.info("🔍 [AGENT] Geographic region check", 
+                               agent_name=agent_name,
+                               geo_env_var=geo_env_var)
+                    
+                    if geo_env_var:
+                        geo_parts = geo_env_var.split("/")
+                        geographic_region = {
+                            "region": geo_parts[0] if len(geo_parts) > 0 else "US",
+                            "state": geo_parts[1] if len(geo_parts) > 1 else "California", 
+                            "city": geo_parts[2] if len(geo_parts) > 2 else "Santa Clara",
+                        }
+                    else:
+                        geographic_region = {
+                            "region": "US",
+                            "state": "California",
+                            "city": "Santa Clara",
+                        }
+                    
+                    logger.info("🔍 [AGENT] Geographic region determined", 
+                               agent_name=agent_name,
+                               geographic_region=geographic_region)
+
+                    workload_geo_id = {
+                        "client_workload_id": agent_name,
+                        "client_workload_location": {
+                            "region": geographic_region.get("region"),
+                            "state": geographic_region.get("state"),
+                            "city": geographic_region.get("city"),
+                        },
+                        "client_workload_location_type": "geographic-region",  # precise/approximated/region
+                        "client_workload_location_quality": "GNSS",  # GNSS/mobile/WiFi/IP
+                        "client_type": os.environ.get("CLIENT_TYPE", "thick"),  # thick/thin (default thick)
+                    }
+
+                    # Log the Workload-Geo-ID for debugging
+                    logger.info("📤 [AGENT] Sending nonce request with Workload-Geo-ID", 
+                               agent_name=agent_name,
+                               workload_geo_id=workload_geo_id)
+
+                    # Add Workload-Geo-ID header
+                    headers["Workload-Geo-ID"] = json.dumps(workload_geo_id, separators=(",", ":"))
+                    
+                    logger.info("📤 [AGENT] Final headers for nonce request", 
+                               agent_name=agent_name,
+                               headers=headers)
+                               
+                except Exception as e:
+                    logger.error("❌ [AGENT] Error preparing headers for nonce request", 
+                               agent_name=agent_name,
+                               error=str(e),
+                               error_type=type(e).__name__)
+                    
+                    # Ensure we at least have Signature-Input header
+                    if "Signature-Input" not in headers:
+                        try:
+                            http_sig_nonce = secrets.token_hex(16)
+                            signature_input = self._generate_http_signature_input(
+                                keyid=public_key_hash,
+                                algorithm="Ed25519",
+                                nonce_value=http_sig_nonce,
+                            )
+                            headers["Signature-Input"] = signature_input
+                            logger.info("📤 [AGENT] Created fallback Signature-Input header", 
+                                       agent_name=agent_name,
+                                       signature_input=signature_input)
+                        except Exception as fallback_error:
+                            logger.error("❌ [AGENT] Failed to create even fallback headers", 
+                                       agent_name=agent_name,
+                                       error=str(fallback_error))
+                            # Last resort: empty headers
+                            headers = {}
+                    
+                    logger.info("📤 [AGENT] Using fallback headers for nonce request", 
+                               agent_name=agent_name,
+                               headers=headers)
 
                 response = self.session.get(
                     f"{self.base_url}/nonce",
                     params={"public_key_hash": public_key_hash},
-                    headers={
-                        "Signature-Input": signature_input,
-                    },
+                    headers=headers,
                 )
                 response.raise_for_status()
                 
