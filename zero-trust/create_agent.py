@@ -111,6 +111,7 @@ class AgentCreator:
         
         try:
             import subprocess
+            from shutil import copyfile
             
             # Calculate agent-specific APP_HANDLE
             agent_number = int(self.agent_name.split('-')[-1])
@@ -138,6 +139,17 @@ class AgentCreator:
             
             if result.returncode == 0:
                 logger.info("TPM persistence setup completed", agent_name=self.agent_name)
+                # Ensure agent-specific public key file exists; fall back to default app key path
+                agent_pubkey_path = f"tpm/{self.agent_name}_pubkey.pem"
+                default_pubkey_path = "tpm/appsk_pubkey.pem"
+                if not os.path.exists(agent_pubkey_path) and os.path.exists(default_pubkey_path):
+                    try:
+                        copyfile(default_pubkey_path, agent_pubkey_path)
+                        logger.info("Copied default public key to agent-specific path",
+                                    source=default_pubkey_path, dest=agent_pubkey_path)
+                    except Exception as copy_err:
+                        logger.warning("Failed to copy default public key to agent path",
+                                       error=str(copy_err), dest=agent_pubkey_path)
             else:
                 logger.warning("TPM persistence setup failed", 
                              agent_name=self.agent_name,

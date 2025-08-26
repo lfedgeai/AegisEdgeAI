@@ -195,13 +195,48 @@ The schema includes:
 #### Updated endpoint details
  - **GET `/nonce` (collector, gateway proxies it)**
    - **query**: `public_key_hash` (SHA-256 hex of the agent's raw public key)
+   - **headers (added)**:
+     - `Signature-Input` (RFC 9421): keyid, created, expires, alg, nonce
    - **errors**: `400 public_key_hash parameter is required`, `403 Agent not found in allowlist`
  - **POST `/metrics` (collector)**
    - **required fields**: `agent_name`, `tpm_public_key_hash`, `geolocation{country,state,city}`, `metrics`, `geographic_region{region,state,city}`, `nonce`, `signature`, `algorithm`, `timestamp`
+   - **headers (added)**:
+     - `Workload-Geo-ID` (JSON): Workload geolocation context
+     - `Signature-Input` (RFC 9421): keyid, created, expires, alg, nonce
+     - `Signature` (RFC 9421): detached signature value
    - **notes**: Nonce is validated per-agent; `tpm_public_key_hash` must match allowlist; signature verified against agent key
    - **possible 400s**: `Invalid or expired nonce for this agent`, `Signature verification failed`, `Geographic region verification failed`, `Public key hash mismatch`, `Agent not found in allowlist`, `Agent public key not found`, `Agent verification failed`, `Geolocation verification failed`
  - **POST `/metrics/generate` (agent)**
    - **metric_type** optional; defaults to `system` when omitted
+
+### HTTP Header Schemas (New)
+
+#### Workload-Geo-ID (JSON)
+```json
+{
+  "client_workload_id": "opentelemetry-agent",
+  "client_workload_location": {
+    "region": "US",
+    "state": "California",
+    "city": "Santa Clara"
+  },
+  "client_workload_location_type": "geographic-region",
+  "client_workload_location_quality": "GNSS",
+  "client_type": "thick"
+}
+```
+
+#### Signature-Input (RFC 9421)
+Header value example:
+```
+keyid="<public_key_hash>", created=1734636000, expires=1734636300, alg="Ed25519", nonce="a1b2c3..."
+```
+
+#### Signature (RFC 9421)
+Detached signature value. In this prototype we reuse the TPM signature from the payload.
+
+### Gateway logging of headers
+The gateway prints the received `Workload-Geo-ID`, `Signature-Input`, and `Signature` headers for both `/nonce` and `/metrics` requests for observability.
 
 #### **🔄 8-Step Flow Process**
 1. **Nonce Request**: Agent requests nonce from collector

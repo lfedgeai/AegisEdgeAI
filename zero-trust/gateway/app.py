@@ -85,6 +85,27 @@ logger.info("Gateway logging configuration",
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 
+# Simple file logger for header capture (greppable by tests)
+HEADER_LOG_PATH = os.environ.get("GATEWAY_HEADER_LOG", os.path.join(os.getcwd(), "logs", "gateway_headers.log"))
+try:
+    os.makedirs(os.path.dirname(HEADER_LOG_PATH), exist_ok=True)
+except Exception:
+    pass
+
+def log_headers_to_file(endpoint: str, geo_id: Optional[str], sig: Optional[str], sig_input: Optional[str]):
+    try:
+        record = {
+            "ts": datetime.utcnow().isoformat(),
+            "endpoint": endpoint,
+            "Workload-Geo-ID": geo_id,
+            "Signature": sig,
+            "Signature-Input": sig_input,
+        }
+        with open(HEADER_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, separators=(",", ":")) + "\n")
+    except Exception as e:
+        logger.warning("Failed to write header log", error=str(e))
+
 # Initialize OpenTelemetry
 def setup_opentelemetry():
     """Setup OpenTelemetry tracing and metrics."""
@@ -135,6 +156,22 @@ error_counter = meter.create_counter(
 
 # Request tracking for rate limiting
 request_timestamps = {}
+
+# Debug storage for last seen headers
+last_headers = {
+    "nonce": {
+        "Workload-Geo-ID": None,
+        "Signature": None,
+        "Signature-Input": None,
+        "timestamp": None,
+    },
+    "metrics": {
+        "Workload-Geo-ID": None,
+        "Signature": None,
+        "Signature-Input": None,
+        "timestamp": None,
+    },
+}
 
 
 class ProxyManager:
@@ -310,14 +347,30 @@ def proxy_nonce():
             request_counter.add(1, {"endpoint": "nonce"})
             proxy_counter.add(1, {"operation": "get_nonce"})
             
+            # Log headers FIRST (before any validation)
+            geo_id = request.headers.get('Workload-Geo-ID')
+            sig = request.headers.get('Signature')
+            sig_input = request.headers.get('Signature-Input')
+            if geo_id or sig or sig_input:
+                logger.info("Gateway received headers (nonce)",
+                            workload_geo_id=geo_id,
+                            signature=sig,
+                            signature_input=sig_input)
+            log_headers_to_file("/nonce", geo_id, sig, sig_input)
+            # update debug headers
+            last_headers["nonce"]["Workload-Geo-ID"] = geo_id
+            last_headers["nonce"]["Signature"] = sig
+            last_headers["nonce"]["Signature-Input"] = sig_input
+            last_headers["nonce"]["timestamp"] = datetime.utcnow().isoformat()
+            
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
                 return jsonify({"error": validation["error"]}), validation["status_code"]
             
             # Proxy request to collector as-is (all query params, headers, etc.)
-            response = proxy_manager.proxy_request('GET', '/nonce', 
-                                                  headers=request.headers, 
+            response = proxy_manager.proxy_request('GET', '/nonce',
+                                                  headers=request.headers,
                                                   params=request.args)
             
             logger.info("Nonce request proxied successfully")
@@ -340,6 +393,21 @@ def proxy_metrics():
             request_counter.add(1, {"endpoint": "metrics"})
             proxy_counter.add(1, {"operation": "send_metrics"})
             
+            # Log headers FIRST (before any validation)
+            geo_id = request.headers.get('Workload-Geo-ID')
+            sig = request.headers.get('Signature')
+            sig_input = request.headers.get('Signature-Input')
+            logger.info("Gateway received headers (metrics)",
+                        workload_geo_id=geo_id,
+                        signature=(sig[:32] + "...") if sig else None,
+                        signature_input=sig_input)
+            log_headers_to_file("/metrics", geo_id, sig, sig_input)
+            # update debug headers
+            last_headers["metrics"]["Workload-Geo-ID"] = geo_id
+            last_headers["metrics"]["Signature"] = sig
+            last_headers["metrics"]["Signature-Input"] = sig_input
+            last_headers["metrics"]["timestamp"] = datetime.utcnow().isoformat()
+            
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
@@ -347,7 +415,7 @@ def proxy_metrics():
             
             # Get request data
             data = request.get_json()
-            
+
             # Proxy request to collector as-is
             response = proxy_manager.proxy_request('POST', '/metrics', 
                                                  data=data, 
