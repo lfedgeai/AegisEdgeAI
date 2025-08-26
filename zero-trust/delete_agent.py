@@ -104,6 +104,32 @@ class AgentDeleter:
             logger.info("Agent removed from collector allowlist", agent_name=self.agent_name)
         else:
             logger.warning("Agent not found in collector allowlist", agent_name=self.agent_name)
+    
+    def remove_from_gateway_allowlist(self):
+        """Remove agent from gateway allowlist."""
+        logger.info("Removing agent from gateway allowlist", agent_name=self.agent_name)
+        
+        allowlist_path = "gateway/allowed_agents.json"
+        
+        if not os.path.exists(allowlist_path):
+            logger.warning("Gateway allowlist not found", allowlist_path=allowlist_path)
+            return
+        
+        # Load existing allowlist
+        with open(allowlist_path, 'r') as f:
+            allowed_agents = json.load(f)
+        
+        # Remove agent entry
+        original_count = len(allowed_agents)
+        allowed_agents = [agent for agent in allowed_agents if agent.get('agent_name') != self.agent_name]
+        
+        if len(allowed_agents) < original_count:
+            # Write back to allowlist
+            with open(allowlist_path, 'w') as f:
+                json.dump(allowed_agents, f, indent=2)
+            logger.info("Agent removed from gateway allowlist", agent_name=self.agent_name)
+        else:
+            logger.warning("Agent not found in gateway allowlist", agent_name=self.agent_name)
         
     def delete_tpm_files(self, config):
         """Delete agent-specific TPM files."""
@@ -146,6 +172,7 @@ class AgentDeleter:
         print(f"   - Agent directory: {self.agent_dir}")
         print(f"   - TPM context and public key files")
         print(f"   - Collector allowlist entry")
+        print(f"   - Gateway allowlist entry")
         print(f"   - All agent configuration")
         
         response = input(f"\nAre you sure you want to delete agent '{self.agent_name}'? (yes/no): ")
@@ -170,10 +197,13 @@ class AgentDeleter:
             # Step 4: Remove from collector allowlist
             self.remove_from_collector_allowlist()
             
-            # Step 5: Delete TPM files
+            # Step 5: Remove from gateway allowlist
+            self.remove_from_gateway_allowlist()
+            
+            # Step 6: Delete TPM files
             self.delete_tpm_files(config)
             
-            # Step 6: Delete agent directory
+            # Step 7: Delete agent directory
             self.delete_agent_directory()
             
             logger.info("Agent deletion completed successfully", agent_name=self.agent_name)
