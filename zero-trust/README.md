@@ -238,6 +238,45 @@ Detached signature value. In this prototype we reuse the TPM signature from the 
 ### Gateway logging of headers
 The gateway prints the received `Workload-Geo-ID`, `Signature-Input`, and `Signature` headers for both `/nonce` and `/metrics` requests for observability.
 
+### Gateway Agent Allowlist
+
+The gateway implements an agent allowlist system with configurable validation options:
+
+#### **Features**
+- **Agent Allowlist**: Maintains a list of authorized agents similar to the collector
+- **Configurable Validation**: Three validation options that can be enabled/disabled independently:
+  - **Public Key Hash Validation**: Validates that the agent's public key hash is in the allowlist
+  - **Signature Validation**: Validates signatures against the agent's public key
+  - **Geolocation Validation**: Validates geographic location against agent's policy
+
+#### **Configuration**
+Set validation options via environment variables:
+```bash
+# Enable/disable validation options (default: all enabled)
+GATEWAY_VALIDATE_PUBLIC_KEY_HASH=true
+GATEWAY_VALIDATE_SIGNATURE=true
+GATEWAY_VALIDATE_GEOLOCATION=true
+```
+
+#### **Allowlist Management**
+- **Automatic Population**: Agents are automatically added to the gateway allowlist when created
+- **Synchronized with Collector**: Gateway allowlist is kept in sync with collector allowlist
+- **Manual Reload**: Allowlist can be reloaded via `/reload-allowlist` endpoint
+
+#### **Gateway Endpoints**
+- `GET /health` - Health check with allowlist status
+- `POST /reload-allowlist` - Reload allowlist from file
+- `GET /nonce` - Proxy nonce requests (with validation)
+- `POST /metrics` - Proxy metrics requests (with validation)
+
+#### **Validation Flow**
+1. **Header Extraction**: Extract `Signature-Input`, `Signature`, and `Workload-Geo-ID` headers
+2. **Public Key Hash**: Extract public key hash from `Signature-Input` header
+3. **Allowlist Check**: Validate public key hash is in allowlist (if enabled)
+4. **Signature Validation**: Validate signature against agent's public key (if enabled)
+5. **Geolocation Validation**: Validate geographic location against agent's policy (if enabled)
+6. **Request Processing**: If all validations pass, proxy request to collector
+
 #### **🔄 8-Step Flow Process**
 1. **Nonce Request**: Agent requests nonce from collector
 2. **Metrics Generation**: Generate system or application metrics

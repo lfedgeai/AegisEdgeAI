@@ -11,3 +11,4 @@ zero-trust/tpm/*.hash
 **/*.pyc
 **/__pycache__/
 zero-trust/agents/*
+zero-trust/logs/*
