@@ -125,9 +125,10 @@ class GatewayAllowlistManager:
         self.load_allowlist()
         
         # Configurable validation options (can be set via environment variables)
-        self.validate_public_key_hash = os.environ.get("GATEWAY_VALIDATE_PUBLIC_KEY_HASH", "true").lower() == "true"
-        self.validate_signature = os.environ.get("GATEWAY_VALIDATE_SIGNATURE", "true").lower() == "true"
-        self.validate_geolocation = os.environ.get("GATEWAY_VALIDATE_GEOLOCATION", "true").lower() == "true"
+        # Default to false - validation should be explicitly enabled
+        self.validate_public_key_hash = os.environ.get("GATEWAY_VALIDATE_PUBLIC_KEY_HASH", "false").lower() == "true"
+        self.validate_signature = os.environ.get("GATEWAY_VALIDATE_SIGNATURE", "false").lower() == "true"
+        self.validate_geolocation = os.environ.get("GATEWAY_VALIDATE_GEOLOCATION", "false").lower() == "true"
         
         logger.info("Gateway allowlist manager initialized",
                    allowlist_path=allowlist_path,
@@ -708,7 +709,8 @@ def health_check():
                 "signature": gateway_allowlist_manager.validate_signature,
                 "geolocation": gateway_allowlist_manager.validate_geolocation
             },
-            "agent_count": len(gateway_allowlist_manager.allowed_agents)
+            "agent_count": len(gateway_allowlist_manager.allowed_agents),
+            "agents": [agent.get('agent_name') for agent in gateway_allowlist_manager.allowed_agents]
         },
         "timestamp": datetime.utcnow().isoformat()
     })
@@ -723,6 +725,7 @@ def reload_allowlist():
             "status": "success",
             "message": "Gateway allowlist reloaded successfully",
             "agent_count": len(gateway_allowlist_manager.allowed_agents),
+            "agents": [agent.get('agent_name') for agent in gateway_allowlist_manager.allowed_agents],
             "timestamp": datetime.utcnow().isoformat()
         })
     except Exception as e:

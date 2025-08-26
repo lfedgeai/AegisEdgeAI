@@ -28,6 +28,137 @@ The [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-kl
 ## How to test Edge AI prototype
 Refer [README_demo.md](README_demo.md)
 
+## 🧪 Test Modes
+
+The system supports two test modes reflecting different deployment architectures:
+
+### **Standard Test Mode (Collector-Only Validation)**
+```bash
+./test_end_to_end_flow.sh
+# or
+./test_end_to_end_flow.sh full
+```
+
+**Trust Boundary**: Collector only (gateway acts as pure proxy)
+
+**Test Scenarios**:
+1. **Happy Path**: agent-001 successfully sends metrics
+2. **Geographic Policy Violation**: agent-geo-policy-violation-002 rejected by collector for location mismatch
+3. **Unregistered Agent**: agent-unregistered-003 rejected by collector for not being in allowlist
+
+**Validation Layer**: Collector performs all validation
+
+### **Gateway-Allowlist Test Mode (Cloud Deployment Model)**
+```bash
+./test_end_to_end_flow.sh gateway-allowlist
+```
+
+**Trust Boundary**: API Gateway + Collector (same internal network)
+
+**Test Scenarios**: Same as standard mode
+1. **Happy Path**: agent-001 successfully sends metrics
+2. **Geographic Policy Violation**: agent-geo-policy-violation-002 rejected by gateway for location mismatch
+3. **Unregistered Agent**: agent-unregistered-003 rejected by gateway for not being in allowlist
+
+**Validation Layer**: Gateway performs first-layer validation, collector performs second-layer validation
+
+### **Cloud Deployment Model Details**
+
+**Gateway Enforcement** (First Layer):
+- ✅ **Geolocation Policy**: Rejects if location doesn't match allowlist
+- ✅ **Public Key Hash**: Rejects unregistered agents
+- ✅ **Signature of Geolocation Header**: Validates signature format
+- ✅ **Timestamp Proximity**: Rejects if agent time is too far from gateway time
+
+**Collector Enforcement** (Second Layer):
+- ✅ **Nonce Validity**: Existence, expiration, reuse prevention
+- ✅ **Payload Signature**: Full cryptographic verification
+
+**Header Handling**: New headers are NOT passed by gateway to collector
+
+### **Key Differences**
+
+| Aspect | Standard Mode | Gateway-Allowlist Mode |
+|--------|---------------|------------------------|
+| Trust Boundary | Collector only | Gateway + Collector |
+| Gateway Validation | Disabled | Enabled |
+| Rejection Point | Collector | Gateway (first layer) |
+| Header Passing | All headers | Filtered headers |
+| Nonce Validation | Collector only | Collector only |
+| Test Scenarios | Identical | Identical |
+| Expected Results | Identical | Identical |
+
+## 🔐 Gateway Validation Architecture
+
+The system supports two validation modes reflecting different deployment architectures:
+
+### **Standard Flow** (Collector-Only Validation)
+**Trust Boundary**: Collector only (gateway acts as pure proxy)
+
+- **Gateway**: Acts as pure proxy, no validation
+- **Collector**: Performs all validation:
+  - ✅ **Public Key Hash**: Validates agent is in allowlist
+  - ✅ **Signature Format**: Basic signature format validation
+  - ✅ **Geolocation**: Compares reported vs allowlist location
+  - ✅ **Nonce Validation**: Existence, expiration, reuse prevention
+  - ✅ **Cryptographic Verification**: Full signature verification
+- **Header Handling**: All headers passed to collector
+
+### **Gateway-Allowlist Flow** (Cloud Deployment Model)
+**Trust Boundary**: API Gateway + Collector (same internal network)
+
+- **Gateway**: Performs first-layer validation:
+  - ✅ **Public Key Hash**: Validates agent is in allowlist
+  - ✅ **Signature Format**: Basic signature format and structure validation
+  - ✅ **Geographic Policy**: Enforces location-based access rules (Workload-Geo-ID header)
+  - ✅ **Timestamp Proximity**: Ensures request timestamp is close to gateway time
+  - ✅ **Rejects**: Unregistered agents, geolocation mismatches, invalid signatures
+- **Collector**: Performs second-layer validation:
+  - ✅ **Nonce Validation**: Existence, expiration, reuse prevention
+  - ✅ **Payload Signature**: Full cryptographic signature verification
+  - ✅ **End-to-End Integrity**: Complete request validation
+- **Header Handling**: New headers are NOT passed to collector
+
+### **Gateway Validation Limitations**
+
+The gateway **CANNOT** validate:
+- ❌ **Nonce Validity**: Gateway doesn't maintain nonce state
+- ❌ **Nonce Expiration**: Gateway doesn't track nonce timestamps
+- ❌ **Nonce Reuse**: Gateway doesn't track used nonces
+- ❌ **Payload Signature**: Gateway cannot perform full cryptographic signature verification
+
+### **Security Flow Comparison**
+
+| Validation Type | Standard Flow | Gateway-Allowlist Flow |
+|----------------|---------------|------------------------|
+| Public Key Hash | Collector | Gateway + Collector |
+| Signature Format | Collector | Gateway (basic format) + Collector (full verification) |
+| Geographic Policy | Collector | Gateway + Collector |
+| Timestamp Proximity | Collector | Gateway + Collector |
+| Nonce Validation | Collector | Collector only |
+| Nonce Expiration | Collector | Collector only |
+| Nonce Reuse | Collector | Collector only |
+| Payload Signature | Collector | Collector only |
+
+### **Configuration**
+
+**Standard Flow** (Collector-Only Validation):
+```bash
+./test_end_to_end_flow.sh
+# Gateway validation disabled by default
+```
+
+**Gateway-Allowlist Flow** (Cloud Deployment Model):
+```bash
+./test_end_to_end_flow.sh gateway-allowlist
+# Gateway validation explicitly enabled
+```
+
+### **Use Cases**
+
+- **Standard Flow**: When you want all validation centralized at the collector (simpler deployment)
+- **Gateway-Allowlist Flow**: Cloud deployment model where API Gateway and Collector are in the same trust boundary, with gateway providing first-layer security enforcement
+
 ## Architecture for the first iteration
 The system follows a microservices architecture with three main components:
 
