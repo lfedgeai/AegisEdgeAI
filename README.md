@@ -3,20 +3,7 @@
 **CitadelAI** delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, CitadelAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: CitadelAI makes it impossible for an AI workload to run on the wrong machine, in the wrong location, or in a compromised state — and cryptographically proves it.**
 
 ## Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement
-
-**Hardware Manufacturing Trust** - Permanent hardware identity  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Certifies  
-
-**Platform Onboarding/Runtime Trust** - Hardware‑rooted platform artifact provenance/integrity with on-boarding geofencing enforcement  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Enables 
-
-**Software Supply Chain Trust** - Hardware‑attested application artifact provenance/integrity with build‑location geofencing enforcement  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Locks
-
-**Application Deployment/Runtime Trust** - Hardware‑attested workload identity/integrity with runtime geofencing enforcement  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓ Proves
-
-**Operations Trust** - Hardware‑attested telemetry provenance/integrity with data‑origin geofencing enforcement
+![Alt text](zero-trust/images/citadelai-flow.png)
 
 ## Why it matters
 
