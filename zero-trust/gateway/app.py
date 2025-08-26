@@ -6,6 +6,7 @@ This microservice acts as a man-in-the-middle proxy that:
 2. Reinitiates TLS connections to OpenTelemetry Collector
 3. Provides load balancing and request routing
 4. Implements security policies and rate limiting
+5. Validates agents against allowlist with configurable options
 
 The gateway ensures secure communication between agents and collectors.
 """
@@ -14,9 +15,11 @@ import os
 import sys
 import json
 import time
+import hashlib
+import base64
 import requests
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from flask import Flask, jsonify, request, Response
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
@@ -105,6 +108,358 @@ def log_headers_to_file(endpoint: str, geo_id: Optional[str], sig: Optional[str]
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
     except Exception as e:
         logger.warning("Failed to write header log", error=str(e))
+
+
+class GatewayAllowlistManager:
+    """Manages gateway agent allowlist and validation."""
+    
+    def __init__(self, allowlist_path: str = "gateway/allowed_agents.json"):
+        """
+        Initialize the gateway allowlist manager.
+        
+        Args:
+            allowlist_path: Path to the allowlist JSON file
+        """
+        self.allowlist_path = allowlist_path
+        self.allowed_agents = []
+        self.load_allowlist()
+        
+        # Configurable validation options (can be set via environment variables)
+        self.validate_public_key_hash = os.environ.get("GATEWAY_VALIDATE_PUBLIC_KEY_HASH", "true").lower() == "true"
+        self.validate_signature = os.environ.get("GATEWAY_VALIDATE_SIGNATURE", "true").lower() == "true"
+        self.validate_geolocation = os.environ.get("GATEWAY_VALIDATE_GEOLOCATION", "true").lower() == "true"
+        
+        logger.info("Gateway allowlist manager initialized",
+                   allowlist_path=allowlist_path,
+                   validate_public_key_hash=self.validate_public_key_hash,
+                   validate_signature=self.validate_signature,
+                   validate_geolocation=self.validate_geolocation,
+                   agent_count=len(self.allowed_agents))
+    
+    def load_allowlist(self):
+        """Load the allowlist from JSON file."""
+        try:
+            if os.path.exists(self.allowlist_path):
+                with open(self.allowlist_path, 'r') as f:
+                    self.allowed_agents = json.load(f)
+                logger.info("Gateway allowlist loaded", 
+                           path=self.allowlist_path,
+                           agent_count=len(self.allowed_agents))
+            else:
+                self.allowed_agents = []
+                logger.info("Gateway allowlist file not found, starting with empty allowlist",
+                           path=self.allowlist_path)
+        except Exception as e:
+            logger.error("Failed to load gateway allowlist", 
+                        path=self.allowlist_path,
+                        error=str(e))
+            self.allowed_agents = []
+    
+    def reload_allowlist(self):
+        """Reload the allowlist from file."""
+        self.load_allowlist()
+    
+    def get_agent_by_public_key_hash(self, public_key_hash: str) -> Optional[Dict[str, Any]]:
+        """
+        Get agent information by public key hash.
+        
+        Args:
+            public_key_hash: SHA-256 hash of the agent's public key
+            
+        Returns:
+            Agent information dict or None if not found
+        """
+        for agent in self.allowed_agents:
+            if agent.get('tpm_public_key_hash') == public_key_hash:
+                return agent
+        return None
+    
+    def get_agent_by_name(self, agent_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get agent information by agent name.
+        
+        Args:
+            agent_name: Name of the agent
+            
+        Returns:
+            Agent information dict or None if not found
+        """
+        for agent in self.allowed_agents:
+            if agent.get('agent_name') == agent_name:
+                return agent
+        return None
+    
+    def validate_public_key_hash_in_allowlist(self, public_key_hash: str) -> Dict[str, Any]:
+        """
+        Validate that the public key hash is in the allowlist.
+        
+        Args:
+            public_key_hash: SHA-256 hash of the agent's public key
+            
+        Returns:
+            Validation result
+        """
+        if not self.validate_public_key_hash:
+            return {"valid": True, "reason": "Public key hash validation disabled"}
+        
+        agent = self.get_agent_by_public_key_hash(public_key_hash)
+        if agent:
+            return {
+                "valid": True,
+                "agent": agent,
+                "reason": "Public key hash found in allowlist"
+            }
+        else:
+            return {
+                "valid": False,
+                "reason": f"Public key hash {public_key_hash} not found in allowlist"
+            }
+    
+    def validate_signature_against_agent(self, signature: str, public_key_hash: str, 
+                                       signature_input: str) -> Dict[str, Any]:
+        """
+        Validate signature against agent's public key.
+        
+        Args:
+            signature: The signature to validate
+            public_key_hash: SHA-256 hash of the agent's public key
+            signature_input: The signature input string
+            
+        Returns:
+            Validation result
+        """
+        if not self.validate_signature:
+            return {"valid": True, "reason": "Signature validation disabled"}
+        
+        agent = self.get_agent_by_public_key_hash(public_key_hash)
+        if not agent:
+            return {
+                "valid": False,
+                "reason": "Agent not found in allowlist for signature validation"
+            }
+        
+        try:
+            # Extract public key from agent data
+            public_key_content = agent.get('tpm_public_key', '')
+            if not public_key_content:
+                return {
+                    "valid": False,
+                    "reason": "No public key found for agent"
+                }
+            
+            # TODO: Implement actual signature verification
+            # For now, we'll do a basic validation that the signature exists and has expected format
+            if not signature or len(signature) < 64:  # Minimum reasonable signature length
+                return {
+                    "valid": False,
+                    "reason": "Invalid signature format"
+                }
+            
+            # TODO: Add actual cryptographic signature verification here
+            # This would involve:
+            # 1. Parsing the signature input to extract the signed data
+            # 2. Using the public key to verify the signature
+            # 3. Checking the signature expiration
+            
+            logger.info("Signature validation passed (basic format check)",
+                       agent_name=agent.get('agent_name'),
+                       public_key_hash=public_key_hash)
+            
+            return {
+                "valid": True,
+                "agent": agent,
+                "reason": "Signature format validation passed"
+            }
+            
+        except Exception as e:
+            logger.error("Signature validation failed",
+                        agent_name=agent.get('agent_name'),
+                        public_key_hash=public_key_hash,
+                        error=str(e))
+            return {
+                "valid": False,
+                "reason": f"Signature validation error: {str(e)}"
+            }
+    
+    def validate_geolocation_against_agent(self, workload_geo_id: Dict[str, Any], 
+                                         public_key_hash: str) -> Dict[str, Any]:
+        """
+        Validate geolocation against agent's policy.
+        
+        Args:
+            workload_geo_id: The Workload-Geo-ID header content
+            public_key_hash: SHA-256 hash of the agent's public key
+            
+        Returns:
+            Validation result
+        """
+        if not self.validate_geolocation:
+            return {"valid": True, "reason": "Geolocation validation disabled"}
+        
+        agent = self.get_agent_by_public_key_hash(public_key_hash)
+        if not agent:
+            return {
+                "valid": False,
+                "reason": "Agent not found in allowlist for geolocation validation"
+            }
+        
+        try:
+            # Extract expected geolocation from agent
+            expected_geo = agent.get('geolocation', {})
+            if not expected_geo:
+                return {
+                    "valid": True,
+                    "reason": "No geolocation policy defined for agent"
+                }
+            
+            # Extract actual geolocation from request
+            actual_location = workload_geo_id.get('client_workload_location', {})
+            if not actual_location:
+                return {
+                    "valid": False,
+                    "reason": "No geolocation information in request"
+                }
+            
+            # Compare geolocation (case-insensitive)
+            # Note: allowlist uses 'country' but Workload-Geo-ID uses 'region'
+            expected_country = expected_geo.get('country', '').upper()
+            expected_state = expected_geo.get('state', '').upper()
+            expected_city = expected_geo.get('city', '').upper()
+            
+            actual_country = actual_location.get('region', '').upper()
+            actual_state = actual_location.get('state', '').upper()
+            actual_city = actual_location.get('city', '').upper()
+            
+            # Check if geolocation matches
+            if (expected_country and actual_country and expected_country != actual_country):
+                return {
+                    "valid": False,
+                    "reason": f"Geolocation verification failed - expected country: {expected_country}, received: {actual_country}"
+                }
+            
+            if (expected_state and actual_state and expected_state != actual_state):
+                return {
+                    "valid": False,
+                    "reason": f"Geolocation verification failed - expected state: {expected_state}, received: {actual_state}"
+                }
+            
+            if (expected_city and actual_city and expected_city != actual_city):
+                return {
+                    "valid": False,
+                    "reason": f"Geolocation verification failed - expected city: {expected_city}, received: {actual_city}"
+                }
+            
+            logger.info("Geolocation validation passed",
+                       agent_name=agent.get('agent_name'),
+                       expected_geo=expected_geo,
+                       actual_geo=actual_location)
+            
+            return {
+                "valid": True,
+                "agent": agent,
+                "reason": "Geolocation validation passed"
+            }
+            
+        except Exception as e:
+            logger.error("Geolocation validation failed",
+                        agent_name=agent.get('agent_name'),
+                        public_key_hash=public_key_hash,
+                        error=str(e))
+            return {
+                "valid": False,
+                "reason": f"Geolocation validation error: {str(e)}"
+            }
+    
+    def extract_public_key_hash_from_signature_input(self, signature_input: str) -> Optional[str]:
+        """
+        Extract public key hash from signature input header.
+        
+        Args:
+            signature_input: The Signature-Input header value
+            
+        Returns:
+            Public key hash or None if not found
+        """
+        try:
+            # Parse signature input format: keyid="hash", created=timestamp, expires=timestamp, alg="algorithm", nonce="nonce"
+            if not signature_input:
+                return None
+            
+            # Extract keyid value
+            if 'keyid=' in signature_input:
+                keyid_start = signature_input.find('keyid="') + 7
+                keyid_end = signature_input.find('"', keyid_start)
+                if keyid_start > 6 and keyid_end > keyid_start:
+                    return signature_input[keyid_start:keyid_end]
+            
+            return None
+            
+        except Exception as e:
+            logger.error("Failed to extract public key hash from signature input",
+                        signature_input=signature_input,
+                        error=str(e))
+            return None
+    
+    def validate_request_headers(self, headers: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Validate request headers against allowlist and policies.
+        
+        Args:
+            headers: Request headers
+            
+        Returns:
+            Validation result
+        """
+        try:
+            # Extract headers
+            signature_input = headers.get('Signature-Input', '')
+            signature = headers.get('Signature', '')
+            workload_geo_id_str = headers.get('Workload-Geo-ID', '')
+            
+            # Extract public key hash from signature input
+            public_key_hash = self.extract_public_key_hash_from_signature_input(signature_input)
+            if not public_key_hash:
+                return {
+                    "valid": False,
+                    "reason": "Could not extract public key hash from Signature-Input header"
+                }
+            
+            # Validate public key hash is in allowlist
+            pk_validation = self.validate_public_key_hash_in_allowlist(public_key_hash)
+            if not pk_validation["valid"]:
+                return pk_validation
+            
+            # Validate signature if present
+            if signature:
+                sig_validation = self.validate_signature_against_agent(signature, public_key_hash, signature_input)
+                if not sig_validation["valid"]:
+                    return sig_validation
+            
+            # Validate geolocation if present
+            if workload_geo_id_str:
+                try:
+                    workload_geo_id = json.loads(workload_geo_id_str)
+                    geo_validation = self.validate_geolocation_against_agent(workload_geo_id, public_key_hash)
+                    if not geo_validation["valid"]:
+                        return geo_validation
+                except json.JSONDecodeError:
+                    return {
+                        "valid": False,
+                        "reason": "Invalid JSON format in Workload-Geo-ID header"
+                    }
+            
+            return {
+                "valid": True,
+                "agent": pk_validation.get("agent"),
+                "reason": "All validations passed"
+            }
+            
+        except Exception as e:
+            logger.error("Header validation failed", error=str(e))
+            return {
+                "valid": False,
+                "reason": f"Header validation error: {str(e)}"
+            }
 
 # Initialize OpenTelemetry
 def setup_opentelemetry():
@@ -319,12 +674,23 @@ class SecurityManager:
                     "status_code": 400
                 }
         
+        # Validate against gateway allowlist if enabled
+        if gateway_allowlist_manager.validate_public_key_hash or gateway_allowlist_manager.validate_signature or gateway_allowlist_manager.validate_geolocation:
+            header_validation = gateway_allowlist_manager.validate_request_headers(dict(request.headers))
+            if not header_validation["valid"]:
+                return {
+                    "valid": False,
+                    "error": header_validation["reason"],
+                    "status_code": 403
+                }
+        
         return {"valid": True}
 
 
 # Initialize managers
 proxy_manager = ProxyManager()
 security_manager = SecurityManager()
+gateway_allowlist_manager = GatewayAllowlistManager()
 
 
 @app.route('/health', methods=['GET'])
@@ -335,8 +701,37 @@ def health_check():
         "service": settings.service_name,
         "version": settings.service_version,
         "collector_connected": True,  # This could be enhanced with actual connectivity check
+        "gateway_allowlist": {
+            "enabled": gateway_allowlist_manager.validate_public_key_hash or gateway_allowlist_manager.validate_signature or gateway_allowlist_manager.validate_geolocation,
+            "validation_options": {
+                "public_key_hash": gateway_allowlist_manager.validate_public_key_hash,
+                "signature": gateway_allowlist_manager.validate_signature,
+                "geolocation": gateway_allowlist_manager.validate_geolocation
+            },
+            "agent_count": len(gateway_allowlist_manager.allowed_agents)
+        },
         "timestamp": datetime.utcnow().isoformat()
     })
+
+
+@app.route('/reload-allowlist', methods=['POST'])
+def reload_allowlist():
+    """Reload the gateway allowlist from file."""
+    try:
+        gateway_allowlist_manager.reload_allowlist()
+        return jsonify({
+            "status": "success",
+            "message": "Gateway allowlist reloaded successfully",
+            "agent_count": len(gateway_allowlist_manager.allowed_agents),
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        logger.error("Failed to reload allowlist", error=str(e))
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to reload allowlist: {str(e)}",
+            "timestamp": datetime.utcnow().isoformat()
+        }), 500
 
 
 @app.route('/nonce', methods=['GET'])
