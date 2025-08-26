@@ -679,6 +679,10 @@ def health_check():
         "service": settings.service_name,
         "version": settings.service_version,
         "active_nonces": len(active_nonces),
+        "collector_allowlist": {
+            "agent_count": len(agent_verification_utils.allowed_agents),
+            "agents": [agent.get('agent_name') for agent in agent_verification_utils.allowed_agents]
+        },
         "timestamp": datetime.utcnow().isoformat()
     })
 
