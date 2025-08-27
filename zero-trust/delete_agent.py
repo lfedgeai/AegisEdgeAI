@@ -238,6 +238,7 @@ def main():
             print(f"   - Agent directory removed")
             print(f"   - TPM files deleted")
             print(f"   - Collector allowlist updated")
+            print(f"   - Gateway allowlist updated")
         else:
             print(f"\n❌ Failed to delete agent '{args.agent_name}'")
             sys.exit(1)
