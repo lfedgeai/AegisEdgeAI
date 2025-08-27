@@ -265,7 +265,10 @@ class CollectorClient:
     def _generate_http_signature_input(keyid: str, algorithm: str, nonce_value: str) -> str:
         created = CollectorClient._now_epoch()
         expires = CollectorClient._five_minutes_from(created)
-        return f"keyid=\"{keyid}\", created={created}, expires={expires}, alg=\"{algorithm}\", nonce=\"{nonce_value}\""
+        if nonce_value:
+            return f"keyid=\"{keyid}\", created={created}, expires={expires}, alg=\"{algorithm}\", nonce=\"{nonce_value}\""
+        else:
+            return f"keyid=\"{keyid}\", created={created}, expires={expires}, alg=\"{algorithm}\""
     
     def get_nonce(self) -> str:
         """
@@ -311,11 +314,11 @@ class CollectorClient:
                 try:
                     # Build Signature-Input header (RFC 9421) for nonce request
                     # Default: thick client, use workload public key hash as keyid
-                    http_sig_nonce = secrets.token_hex(16)
+                    # No nonce needed in HTTP headers since collector validates payload signature only
                     signature_input = self._generate_http_signature_input(
                         keyid=public_key_hash,
                         algorithm="Ed25519",  # per requirement example
-                        nonce_value=http_sig_nonce,
+                        nonce_value="",  # No nonce in HTTP headers for nonce requests
                     )
                     
                     logger.info("🔍 [AGENT] Signature-Input header created", 
@@ -338,11 +341,10 @@ class CollectorClient:
                     # Ensure we at least have Signature-Input header
                     if "Signature-Input" not in headers:
                         try:
-                            http_sig_nonce = secrets.token_hex(16)
                             signature_input = self._generate_http_signature_input(
                                 keyid=public_key_hash,
                                 algorithm="Ed25519",
-                                nonce_value=http_sig_nonce,
+                                nonce_value="",  # No nonce in HTTP headers
                             )
                             headers["Signature-Input"] = signature_input
                             logger.info("📤 [AGENT] Created fallback Signature-Input header", 
@@ -463,25 +465,44 @@ class CollectorClient:
                     "client_type": os.environ.get("CLIENT_TYPE", "thick"),  # thick/thin (default thick)
                 }
 
-                # Signature headers (reuse TPM signature as HTTP Signature header value)
+                # HTTP Signature headers (without nonce since collector validates payload signature only)
                 public_key_hash = payload.get("tpm_public_key_hash", "unknown")
-                http_sig_nonce = secrets.token_hex(16)
                 signature_input = self._generate_http_signature_input(
                     keyid=public_key_hash,  # thick: workload public key hash
                     algorithm="Ed25519",
-                    nonce_value=http_sig_nonce,
+                    nonce_value="",  # No nonce in HTTP headers since collector validates payload signature
                 )
                 http_signature = payload.get("signature", "")
+
+                # Prepare headers for metrics request
+                metrics_headers = {
+                    "Content-Type": "application/json",
+                    "Workload-Geo-ID": json.dumps(workload_geo_id, separators=(",", ":")),
+                    "Signature-Input": signature_input,
+                    "Signature": http_signature,
+                }
+                
+                # Debug logging for header construction
+                logger.info("🔍 [AGENT] Headers prepared for metrics request",
+                           agent_name=agent_name,
+                           workload_geo_id_present=bool(metrics_headers.get("Workload-Geo-ID")),
+                           workload_geo_id_value=metrics_headers.get("Workload-Geo-ID", "")[:100] + "..." if len(metrics_headers.get("Workload-Geo-ID", "")) > 100 else metrics_headers.get("Workload-Geo-ID", ""),
+                           signature_present=bool(metrics_headers.get("Signature")),
+                           signature_input_present=bool(metrics_headers.get("Signature-Input")),
+                           geographic_region=geographic_region,
+                           all_headers=metrics_headers)
+                
+                # Verify HTTP signature approach
+                logger.info("🔍 [AGENT] HTTP signature approach verification",
+                           agent_name=agent_name,
+                           payload_nonce=payload.get("nonce", ""),
+                           http_signature_nonce="N/A (payload signature only)",
+                           security_model="Payload signature validation only")
 
                 response = self.session.post(
                     f"{self.base_url}/metrics",
                     json=payload,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Workload-Geo-ID": json.dumps(workload_geo_id, separators=(",", ":")),
-                        "Signature-Input": signature_input,
-                        "Signature": http_signature,
-                    },
+                    headers=metrics_headers,
                 )
                 response.raise_for_status()
                 

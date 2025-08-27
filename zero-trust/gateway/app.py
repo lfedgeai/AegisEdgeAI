@@ -64,7 +64,7 @@ import logging
 DEBUG_ALL = os.environ.get("DEBUG_ALL", "false").lower() == "true"
 DEBUG_GATEWAY = os.environ.get("DEBUG_GATEWAY", "false").lower() == "true"
 
-# Set log level based on debug flags
+# Set log level based on debug flags (default to INFO, not DEBUG)
 if DEBUG_ALL or DEBUG_GATEWAY:
     log_level = logging.DEBUG
 else:
@@ -95,6 +95,13 @@ try:
 except Exception:
     pass
 
+def get_header_case_insensitive(headers_dict, header_name):
+    """Get header value case-insensitively."""
+    for key, value in headers_dict.items():
+        if key.lower() == header_name.lower():
+            return value
+    return None
+
 def log_headers_to_file(endpoint: str, geo_id: Optional[str], sig: Optional[str], sig_input: Optional[str]):
     try:
         record = {
@@ -108,6 +115,103 @@ def log_headers_to_file(endpoint: str, geo_id: Optional[str], sig: Optional[str]
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
     except Exception as e:
         logger.warning("Failed to write header log", error=str(e))
+
+
+def log_all_relevant_headers(endpoint: str, request_headers: Dict[str, str], request_args: Dict[str, str] = None):
+    """
+    Log all relevant HTTP extension headers for end-to-end policy enforcement debugging.
+    
+    Args:
+        endpoint: The API endpoint being called
+        request_headers: Dictionary of request headers
+        request_args: Dictionary of query parameters
+    """
+    try:
+        # Debug: Log all incoming headers for troubleshooting (only when debug is enabled)
+        if DEBUG_ALL or DEBUG_GATEWAY:
+            logger.debug("🔍 [GATEWAY] All incoming headers for debugging",
+                       endpoint=endpoint,
+                       all_headers=dict(request_headers),
+                       header_count=len(request_headers))
+        
+        # Debug: Log relevant headers in full for policy enforcement debugging
+        relevant_debug_headers = {
+            "Workload-Geo-ID": get_header_case_insensitive(request_headers, 'Workload-Geo-ID'),
+            "Signature": get_header_case_insensitive(request_headers, 'Signature'),
+            "Signature-Input": get_header_case_insensitive(request_headers, 'Signature-Input'),
+            "Content-Type": get_header_case_insensitive(request_headers, 'Content-Type'),
+        }
+        
+        logger.info("🔍 [GATEWAY] Full relevant headers for policy enforcement debugging",
+                   endpoint=endpoint,
+                   method=request.method,
+                   **relevant_debug_headers)
+        
+        # Extract relevant headers for policy enforcement debugging
+        relevant_headers = {
+            "ts": datetime.utcnow().isoformat(),
+            "endpoint": endpoint,
+            "method": request.method,
+            "path": request.path,
+            "query_params": dict(request.args) if request.args else {},
+            "headers": {
+                "Workload-Geo-ID": get_header_case_insensitive(request_headers, 'Workload-Geo-ID'),
+                "Signature": get_header_case_insensitive(request_headers, 'Signature'),
+                "Signature-Input": get_header_case_insensitive(request_headers, 'Signature-Input'),
+                "Content-Type": get_header_case_insensitive(request_headers, 'Content-Type'),
+                "User-Agent": get_header_case_insensitive(request_headers, 'User-Agent'),
+                "X-Forwarded-For": get_header_case_insensitive(request_headers, 'X-Forwarded-For'),
+                "X-Real-IP": get_header_case_insensitive(request_headers, 'X-Real-IP'),
+                "Host": get_header_case_insensitive(request_headers, 'Host'),
+                "Accept": get_header_case_insensitive(request_headers, 'Accept'),
+                "Authorization": get_header_case_insensitive(request_headers, 'Authorization'),
+            }
+        }
+        
+        # Log to structured logger for real-time debugging
+        logger.info("🔍 [GATEWAY] API call headers for policy enforcement debugging",
+                   endpoint=endpoint,
+                   method=request.method,
+                   path=request.path,
+                   workload_geo_id_present=bool(relevant_headers["headers"]["Workload-Geo-ID"]),
+                   workload_geo_id_value=relevant_headers["headers"]["Workload-Geo-ID"],
+                   signature_present=bool(relevant_headers["headers"]["Signature"]),
+                   signature_value=relevant_headers["headers"]["Signature"][:64] + "..." if relevant_headers["headers"]["Signature"] and len(relevant_headers["headers"]["Signature"]) > 64 else relevant_headers["headers"]["Signature"],
+                   signature_input_present=bool(relevant_headers["headers"]["Signature-Input"]),
+                   signature_input_value=relevant_headers["headers"]["Signature-Input"],
+                   content_type=relevant_headers["headers"]["Content-Type"],
+                   user_agent=relevant_headers["headers"]["User-Agent"],
+                   client_ip=relevant_headers["headers"]["X-Forwarded-For"] or relevant_headers["headers"]["X-Real-IP"],
+                   query_params=relevant_headers["query_params"],
+                   expected_headers_for_endpoint={
+                       "/nonce": "Signature-Input only (no geolocation)",
+                       "/metrics": "Workload-Geo-ID + Signature-Input + Signature",
+                       "/metrics/status": "Optional headers",
+                       "/nonces/stats": "Optional headers",
+                       "/nonces/cleanup": "Optional headers"
+                   }.get(endpoint, "Standard headers"))
+        
+        # Write to file for persistent debugging
+        with open(HEADER_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(relevant_headers, separators=(",", ":")) + "\n")
+        
+        # Log policy enforcement summary
+        policy_summary = {
+            "endpoint": endpoint,
+            "geolocation_header_present": bool(relevant_headers["headers"]["Workload-Geo-ID"]),
+            "signature_header_present": bool(relevant_headers["headers"]["Signature"]),
+            "signature_input_present": bool(relevant_headers["headers"]["Signature-Input"]),
+            "policy_enforcement_ready": (
+                bool(relevant_headers["headers"]["Signature-Input"]) and  # Always required
+                (endpoint == "/nonce" or bool(relevant_headers["headers"]["Workload-Geo-ID"]))  # Geolocation required for non-nonce requests
+            )
+        }
+        
+        logger.info("📋 [GATEWAY] Policy enforcement header summary",
+                   **policy_summary)
+            
+    except Exception as e:
+        logger.warning("Failed to write comprehensive header log", error=str(e))
 
 
 class GatewayAllowlistManager:
@@ -917,17 +1021,13 @@ def proxy_nonce():
             request_counter.add(1, {"endpoint": "nonce"})
             proxy_counter.add(1, {"operation": "get_nonce"})
             
-            # Log headers FIRST (before any validation)
-            geo_id = request.headers.get('Workload-Geo-ID')
-            sig = request.headers.get('Signature')
-            sig_input = request.headers.get('Signature-Input')
-            if geo_id or sig or sig_input:
-                logger.info("Gateway received headers (nonce)",
-                            workload_geo_id=geo_id,
-                            signature=sig,
-                            signature_input=sig_input)
-            log_headers_to_file("/nonce", geo_id, sig, sig_input)
-            # update debug headers
+            # Log all relevant headers FIRST (before any validation) for end-to-end policy enforcement debugging
+            log_all_relevant_headers("/nonce", dict(request.headers))
+            
+            # Update debug headers for backward compatibility
+            geo_id = get_header_case_insensitive(dict(request.headers), 'Workload-Geo-ID')
+            sig = get_header_case_insensitive(dict(request.headers), 'Signature')
+            sig_input = get_header_case_insensitive(dict(request.headers), 'Signature-Input')
             last_headers["nonce"]["Workload-Geo-ID"] = geo_id
             last_headers["nonce"]["Signature"] = sig
             last_headers["nonce"]["Signature-Input"] = sig_input
@@ -974,16 +1074,13 @@ def proxy_metrics():
             request_counter.add(1, {"endpoint": "metrics"})
             proxy_counter.add(1, {"operation": "send_metrics"})
             
-            # Log headers FIRST (before any validation)
-            geo_id = request.headers.get('Workload-Geo-ID')
-            sig = request.headers.get('Signature')
-            sig_input = request.headers.get('Signature-Input')
-            logger.info("Gateway received headers (metrics)",
-                        workload_geo_id=geo_id,
-                        signature=(sig[:32] + "...") if sig else None,
-                        signature_input=sig_input)
-            log_headers_to_file("/metrics", geo_id, sig, sig_input)
-            # update debug headers
+            # Log all relevant headers FIRST (before any validation) for end-to-end policy enforcement debugging
+            log_all_relevant_headers("/metrics", dict(request.headers))
+            
+            # Update debug headers for backward compatibility
+            geo_id = get_header_case_insensitive(dict(request.headers), 'Workload-Geo-ID')
+            sig = get_header_case_insensitive(dict(request.headers), 'Signature')
+            sig_input = get_header_case_insensitive(dict(request.headers), 'Signature-Input')
             last_headers["metrics"]["Workload-Geo-ID"] = geo_id
             last_headers["metrics"]["Signature"] = sig
             last_headers["metrics"]["Signature-Input"] = sig_input
@@ -1028,6 +1125,9 @@ def proxy_metrics_status():
             request_counter.add(1, {"endpoint": "metrics_status"})
             proxy_counter.add(1, {"operation": "get_metrics_status"})
             
+            # Log all relevant headers FIRST (before any validation) for end-to-end policy enforcement debugging
+            log_all_relevant_headers("/metrics/status", dict(request.headers))
+            
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
@@ -1063,6 +1163,9 @@ def proxy_nonce_stats():
             request_counter.add(1, {"endpoint": "nonces_stats"})
             proxy_counter.add(1, {"operation": "get_nonce_stats"})
             
+            # Log all relevant headers FIRST (before any validation) for end-to-end policy enforcement debugging
+            log_all_relevant_headers("/nonces/stats", dict(request.headers))
+            
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
@@ -1097,6 +1200,9 @@ def proxy_nonces_cleanup():
         try:
             request_counter.add(1, {"endpoint": "nonces_cleanup"})
             proxy_counter.add(1, {"operation": "cleanup_nonces"})
+            
+            # Log all relevant headers FIRST (before any validation) for end-to-end policy enforcement debugging
+            log_all_relevant_headers("/nonces/cleanup", dict(request.headers))
             
             # Validate request
             validation = security_manager.validate_request(request)
@@ -1175,6 +1281,9 @@ def proxy_all_other_routes(subpath):
             
             request_counter.add(1, {"endpoint": f"proxy_{method.lower()}"})
             proxy_counter.add(1, {"operation": f"proxy_{method.lower()}"})
+            
+            # Log all relevant headers FIRST (before any validation) for end-to-end policy enforcement debugging
+            log_all_relevant_headers(path, dict(request.headers))
             
             # Validate request
             validation = security_manager.validate_request(request)

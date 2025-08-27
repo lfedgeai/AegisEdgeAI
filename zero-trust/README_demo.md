@@ -4,21 +4,25 @@ This document provides a step-by-step guide to demonstrate the Edge AI zero-trus
 
 ## Demo Modes
 
-The system supports two deployment modes with **aligned error handling**:
+The system supports two deployment modes with **aligned error handling** and **comprehensive debugging capabilities**:
 
 ### **Standard Mode** (Default)
 - **Gateway**: Acts as pure proxy, no validation
 - **Collector**: Performs all validation (public key, signature, nonce, geolocation)
 - **Use Case**: Simpler deployment with centralized validation
 - **Error Handling**: All errors returned with consistent format and `rejected_by: "collector"`
+- **Debugging**: Complete HTTP header visibility and structured logging
 
 ### **Gateway Policy Enforcement Mode** (Cloud Deployment Model)
 - **Gateway**: Performs first-layer validation (public key hash, signature format, geographic policy, timestamp)
 - **Collector**: Performs second-layer validation (nonce validity, payload signature, end-to-end integrity)
 - **Use Case**: Cloud deployment with layered security and faster rejection
 - **Error Handling**: All errors returned with consistent format and `rejected_by: "gateway"` or `rejected_by: "collector"`
+- **Debugging**: Complete HTTP header visibility and structured logging
 
-**Note**: Both modes now provide **aligned error handling** with consistent error response formats, validation types, and detailed error information. The `rejected_by` field clearly indicates which service performed the validation.
+**Note**: Both modes provide **aligned error handling** with consistent error response formats, validation types, and detailed error information. The `rejected_by` field clearly indicates which service performed the validation. **Enhanced debugging** provides complete visibility into HTTP headers for policy enforcement troubleshooting with case-insensitive parsing and persistent logging.
+
+
 
 ## Pre-requisites (./system-setup.sh will install swtpm, tpm2-tools; check the below steps)
 | Environment        | swtpm Version                                              | tpm2-tools Version                                                         | Python Version  |
@@ -279,7 +283,7 @@ curl -k "https://localhost:9000/health"
   "version": "1.0.0",
   "gateway_allowlist": {
     "enabled": false,
-    "validation": {
+    "validation_options": {
       "public_key_hash": false,
       "signature": false,
       "geolocation": false
@@ -299,7 +303,7 @@ curl -k "https://localhost:9000/health"
   "version": "1.0.0",
   "gateway_allowlist": {
     "enabled": true,
-    "validation": {
+    "validation_options": {
       "public_key_hash": true,
       "signature": true,
       "geolocation": true
@@ -427,7 +431,7 @@ curl -X POST "https://localhost:8402/metrics/generate" \
     "received": {"city": "Berlin", "region": "EU", "state": "Germany"},
     "agent_name": "agent-geo-policy-violation-002"
   },
-  "timestamp": "2024-01-25T10:30:00Z"
+  "timestamp": "2025-08-27T21:34:42.813289"
 }
 ```
 
@@ -435,7 +439,7 @@ curl -X POST "https://localhost:8402/metrics/generate" \
 ```json
 {
   "status": "error",
-  "message": "Failed to send metrics to collector",
+  "message": "Failed to send metrics to gateway",
   "details": {
     "error": "Geolocation verification failed",
     "rejected_by": "collector",
@@ -445,7 +449,7 @@ curl -X POST "https://localhost:8402/metrics/generate" \
       "received": {"city": "Berlin", "country": "EU", "state": "Germany"},
       "agent_name": "agent-geo-policy-violation-002"
     },
-    "timestamp": "2024-01-25T10:30:00Z"
+    "timestamp": "2025-08-27T21:34:42.813289"
   }
 }
 ```
@@ -461,6 +465,73 @@ tail -f logs/gateway.log
 tail -f logs/collector.log
 
 # Compare validation behavior between modes
+
+### Enhanced Debugging and Monitoring
+
+The system provides comprehensive debugging capabilities for end-to-end policy enforcement troubleshooting:
+
+#### **Gateway Header Logging**
+The gateway provides complete HTTP header visibility for every API call with case-insensitive parsing:
+
+**Real-time Logs**:
+```
+INFO:__main__:2025-08-27T21:34:42.812074Z [info     ] 🔍 [GATEWAY] Full relevant headers for policy enforcement debugging
+Content-Type=application/json Signature=6e2e9bceda6d96ad8cb9cbb82bd1a6f3ab8880cd9b98230c662adecacda8638f6c15596651fa1ff1d3e3a08d508de79e20582691526e1938778eeb7630febb608511fb1417f5a574a90cda53e491b51e2e0836c49ef925204f720700e57599ae3c7ecc041528a0f834a90883c94b8e3ee220ad6d5172a01c449a3d6e010712dc9c6debebc4aa1db85de836db406dbc085dfca313daa371bb18257e4beaf83cdf5f84e2e413c199e6bdf0ba61f74653c6bc1b64186a9b018ac76411e217942c0e66411a8f9b13c25fd48d4eb56373d992e3fef45627ba5e8ee3bbdb72799ffe72616e20beed057f4e14816c055dcf0b5944c32b34871ceecf9355b5e4b6c2925f Signature-Input=keyid="716d79b029c9c7bf4813fc487eb8e02529475878d8b2024eb2dc6f3424e58baf", created=1756330482, expires=1756330782, alg="Ed25519" Workload-Geo-ID={"client_workload_id":"agent-001","client_workload_location":{"region":"US","state":"California","city":"Santa Clara"},"client_workload_location_type":"geographic-region","client_workload_location_quality":"GNSS","client_type":"thick"} endpoint=/metrics method=POST
+```
+
+**Policy Enforcement Summary**:
+```
+INFO:__main__:2025-08-27T21:34:42.925596Z [info     ] 📋 [GATEWAY] Policy enforcement header summary
+endpoint=/nonce geolocation_header_present=False policy_enforcement_ready=True signature_header_present=False signature_input_present=True
+```
+
+**Persistent Logs** (in `logs/gateway_headers.log`):
+```json
+{
+  "ts": "2025-08-27T21:34:42.530442",
+  "endpoint": "/metrics",
+  "method": "POST",
+  "path": "/metrics",
+  "query_params": {},
+  "headers": {
+    "Workload-Geo-ID": "{\"client_workload_id\":\"agent-001\",\"client_workload_location\":{\"region\":\"US\",\"state\":\"California\",\"city\":\"Santa Clara\"},\"client_workload_location_type\":\"geographic-region\",\"client_workload_location_quality\":\"GNSS\",\"client_type\":\"thick\"}",
+    "Signature": "6e2e9bceda6d96ad8cb9cbb82bd1a6f3ab8880cd9b98230c662adecacda8638f6c15596651fa1ff1d3e3a08d508de79e20582691526e1938778eeb7630febb608511fb1417f5a574a90cda53e491b51e2e0836c49ef925204f720700e57599ae3c7ecc041528a0f834a90883c94b8e3ee220ad6d5172a01c449a3d6e010712dc9c6debebc4aa1db85de836db406dbc085dfca313daa371bb18257e4beaf83cdf5f84e2e413c199e6bdf0ba61f74653c6bc1b64186a9b018ac76411e217942c0e66411a8f9b13c25fd48d4eb56373d992e3fef45627ba5e8ee3bbdb72799ffe72616e20beed057f4e14816c055dcf0b5944c32b34871ceecf9355b5e4b6c2925f",
+    "Signature-Input": "keyid=\"716d79b029c9c7bf4813fc487eb8e02529475878d8b2024eb2dc6f3424e58baf\", created=1756330482, expires=1756330782, alg=\"Ed25519\"",
+    "Content-Type": "application/json",
+    "User-Agent": "python-requests/2.31.0",
+    "X-Forwarded-For": null,
+    "X-Real-IP": null,
+    "Host": "localhost:9000",
+    "Accept": "*/*",
+    "Authorization": null
+  }
+}
+```
+
+#### **Debug Mode Configuration**
+The gateway uses INFO level logging by default for clean operation. Enable detailed debug logging when needed:
+
+```bash
+# Enable gateway debug logging
+export DEBUG_GATEWAY=true
+
+# Start gateway with debug logging
+PORT=9000 python gateway/app.py
+```
+
+#### **Clean Security Model**
+The system implements a clean separation of concerns:
+- **HTTP headers**: Agent identification and context only
+- **Payload signature**: Actual security validation (with proper nonce)
+- **No unnecessary nonces**: Clean HTTP headers without confusing nonce values
+- **Clear separation**: No overlap between HTTP headers and payload validation
+
+#### **Consistent Error Handling**
+All services provide aligned error responses with:
+- **Consistent error formats**: Same structure across all services
+- **Enhanced error messages**: Detailed validation information
+- **Proper error propagation**: Full error context maintained through the stack
+- **Debug-friendly responses**: Rich error details for troubleshooting
 
 ### Additional Error Scenarios
 
