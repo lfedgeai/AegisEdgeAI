@@ -117,10 +117,8 @@ curl -X POST "https://localhost:8401/metrics/generate" \
 ```json
 {
   "status": "success",
-  "message": "Metrics generated and sent successfully",
-  "agent": "agent-001",
-  "timestamp": "2024-01-25T10:30:00Z",
-  "metrics_count": 5
+  "message": "Metrics generated, signed, and sent successfully",
+  "payload_id": "1da88c93af68fdbb"
 }
 ```
 
@@ -151,17 +149,36 @@ curl -X POST "https://localhost:8402/metrics/generate" \
 
 **Expected Result**: The agent should be rejected due to geographic policy violation.
 
-**Expected Error Response**:
+**Expected Error Response (Gateway Allowlist Mode)**:
 ```json
 {
-  "error": "Geographic policy violation",
-  "message": "Agent location (EU/Germany/Berlin) does not match allowed location (US/California/Santa Clara)",
-  "agent": "agent-geo-policy-violation-002",
-  "timestamp": "2024-01-25T10:30:00Z",
+  "error": "Geolocation verification failed",
+  "rejected_by": "gateway",
+  "validation_type": "geolocation_policy",
   "details": {
-    "reported_location": "EU/Germany/Berlin",
-    "allowed_location": "US/California/Santa Clara",
-    "policy_type": "geographic_region"
+    "expected": {"city": "Santa Clara", "country": "US", "state": "California"},
+    "received": {"city": "Berlin", "region": "EU", "state": "Germany"},
+    "agent_name": "agent-geo-policy-violation-002"
+  },
+  "timestamp": "2024-01-25T10:30:00Z"
+}
+```
+
+**Expected Error Response (Standard Mode)**:
+```json
+{
+  "status": "error",
+  "message": "Failed to send metrics to collector",
+  "details": {
+    "error": "Geolocation verification failed",
+    "rejected_by": "collector",
+    "validation_type": "geolocation_policy",
+    "details": {
+      "expected": {"city": "Santa Clara", "country": "US", "state": "California"},
+      "received": {"city": "Berlin", "country": "EU", "state": "Germany"},
+      "agent_name": "agent-geo-policy-violation-002"
+    },
+    "timestamp": "2024-01-25T10:30:00Z"
   }
 }
 ```
@@ -195,17 +212,36 @@ curl -X POST "https://localhost:8403/metrics/generate" \
 
 **Expected Result**: The unregistered agent should be rejected by the collector.
 
-**Expected Error Response**:
+**Expected Error Response (Gateway Allowlist Mode)**:
 ```json
 {
   "error": "Agent not found in allowlist",
-  "message": "Agent 'agent-unregistered-003' is not registered in the collector allowlist",
-  "agent": "agent-unregistered-003",
-  "timestamp": "2024-01-25T10:30:00Z",
+  "rejected_by": "gateway",
+  "validation_type": "agent_verification",
   "details": {
-    "public_key_hash": "abc123...",
-    "allowlist_status": "not_registered",
-    "suggestion": "Register agent using create_agent.py"
+    "public_key_hash": "cd673d8c6adc3d72d9751dfa61b8cd69b73c4b3ba237aede555d632570697190",
+    "validation_type": "public_key_hash",
+    "allowlist_status": "not_found"
+  },
+  "timestamp": "2025-08-27T00:51:19.022333"
+}
+```
+
+**Expected Error Response (Standard Mode)**:
+```json
+{
+  "status": "error",
+  "message": "Failed to send metrics to gateway",
+  "details": {
+    "error": "Agent not found in allowlist",
+    "rejected_by": "collector",
+    "validation_type": "agent_verification",
+    "details": {
+      "public_key_hash": "cd673d8c6adc3d72d9751dfa61b8cd69b73c4b3ba237aede555d632570697190",
+      "validation_type": "public_key_hash",
+      "allowlist_status": "not_found"
+    },
+    "timestamp": "2025-08-27T00:51:19.022333"
   }
 }
 ```
@@ -334,10 +370,8 @@ curl -X POST "https://localhost:8401/metrics/generate" \
 ```json
 {
   "status": "success",
-  "message": "Metrics generated and sent successfully",
-  "agent": "agent-001",
-  "timestamp": "2024-01-25T10:30:00Z",
-  "metrics_count": 5
+  "message": "Metrics generated, signed, and sent successfully",
+  "payload_id": "1da88c93af68fdbb"
 }
 ```
 
@@ -354,10 +388,8 @@ curl -X POST "https://localhost:8401/metrics/generate" \
 ```json
 {
   "status": "success",
-  "message": "Metrics generated and sent successfully",
-  "agent": "agent-001",
-  "timestamp": "2024-01-25T10:30:00Z",
-  "metrics_count": 5
+  "message": "Metrics generated, signed, and sent successfully",
+  "payload_id": "1da88c93af68fdbb"
 }
 ```
 ```
@@ -381,30 +413,33 @@ curl -X POST "https://localhost:8402/metrics/generate" \
 **Expected Error Response (Gateway Allowlist Mode)**:
 ```json
 {
-  "error": "Gateway validation failed",
-  "message": "Geolocation verification failed: reported location does not match allowlist",
-  "status_code": 403,
-  "timestamp": "2024-01-25T10:30:00Z",
+  "error": "Geolocation verification failed",
+  "rejected_by": "gateway",
+  "validation_type": "geolocation_policy",
   "details": {
-    "validation_type": "geolocation",
-    "reported_location": "EU/Germany/Berlin",
-    "allowed_location": "US/California/Santa Clara",
-    "agent": "agent-geo-policy-violation-002"
-  }
+    "expected": {"city": "Santa Clara", "country": "US", "state": "California"},
+    "received": {"city": "Berlin", "region": "EU", "state": "Germany"},
+    "agent_name": "agent-geo-policy-violation-002"
+  },
+  "timestamp": "2024-01-25T10:30:00Z"
 }
 ```
 
 **Expected Error Response (Standard Mode)**:
 ```json
 {
-  "error": "Geographic policy violation",
-  "message": "Agent location (EU/Germany/Berlin) does not match allowed location (US/California/Santa Clara)",
-  "agent": "agent-geo-policy-violation-002",
-  "timestamp": "2024-01-25T10:30:00Z",
+  "status": "error",
+  "message": "Failed to send metrics to collector",
   "details": {
-    "reported_location": "EU/Germany/Berlin",
-    "allowed_location": "US/California/Santa Clara",
-    "policy_type": "geographic_region"
+    "error": "Geolocation verification failed",
+    "rejected_by": "collector",
+    "validation_type": "geolocation_policy",
+    "details": {
+      "expected": {"city": "Santa Clara", "country": "US", "state": "California"},
+      "received": {"city": "Berlin", "country": "EU", "state": "Germany"},
+      "agent_name": "agent-geo-policy-violation-002"
+    },
+    "timestamp": "2024-01-25T10:30:00Z"
   }
 }
 ```
@@ -423,66 +458,63 @@ tail -f logs/collector.log
 
 ### Additional Error Scenarios
 
-#### Invalid Signature Error Response:
+#### Invalid Signature Error Response (Gateway Allowlist Mode):
 ```json
 {
-  "error": "Gateway validation failed",
-  "message": "Invalid signature format or verification failed",
-  "status_code": 403,
-  "timestamp": "2024-01-25T10:30:00Z",
+  "error": "Invalid signature format",
+  "rejected_by": "gateway",
+  "validation_type": "signature_verification",
   "details": {
-    "validation_type": "signature",
-    "agent": "agent-001",
-    "signature_input": "keyid=\"invalid-hash\", created=1234567890, expires=1234567899, alg=\"Ed25519\", nonce=\"test-nonce\""
-  }
+    "agent_name": "agent-001",
+    "public_key_hash": "26702138d1490530fbdd6b848ca08d72502cc34e91910350be17fff5ad54477c",
+    "validation_type": "signature_validation",
+    "error_type": "invalid_format",
+    "signature_length": 32
+  },
+  "timestamp": "2024-01-25T10:30:00Z"
 }
 ```
 
 #### Unregistered Agent Error Response (Gateway Allowlist Mode):
 ```json
 {
-  "error": "Gateway validation failed",
-  "message": "Agent not found in gateway allowlist",
-  "status_code": 403,
-  "timestamp": "2024-01-25T10:30:00Z",
+  "error": "Agent not found in allowlist",
+  "rejected_by": "gateway",
+  "validation_type": "agent_verification",
   "details": {
+    "public_key_hash": "cd673d8c6adc3d72d9751dfa61b8cd69b73c4b3ba237aede555d632570697190",
     "validation_type": "public_key_hash",
-    "public_key_hash": "invalid-hash-not-in-allowlist",
-    "agent": "agent-unregistered-003",
     "allowlist_status": "not_found"
-  }
+  },
+  "timestamp": "2025-08-27T00:51:19.022333"
 }
 ```
 
-#### Timestamp Proximity Error Response:
+#### Timestamp Proximity Error Response (Gateway Allowlist Mode):
 ```json
 {
-  "error": "Gateway validation failed",
-  "message": "Request timestamp too far from gateway time",
-  "status_code": 403,
-  "timestamp": "2024-01-25T10:30:00Z",
-  "details": {
-    "validation_type": "timestamp_proximity",
-    "request_timestamp": "2024-01-25T08:00:00Z",
-    "gateway_timestamp": "2024-01-25T10:30:00Z",
-    "time_difference_seconds": 9000,
-    "max_allowed_difference_seconds": 300
-  }
+  "error": "Request timestamp too far from gateway time",
+  "rejected_by": "gateway",
+  "validation_type": "request_validation",
+  "timestamp": "2024-01-25T10:30:00Z"
 }
 ```
 
-#### Nonce Validation Error Response (Collector):
+#### Nonce Validation Error Response (Collector Only):
 ```json
 {
-  "error": "Nonce validation failed",
-  "message": "Nonce 'test-nonce-123' has already been used",
-  "agent": "agent-001",
-  "timestamp": "2024-01-25T10:30:00Z",
+  "status": "error",
+  "message": "Failed to send metrics to gateway",
   "details": {
-    "validation_type": "nonce_reuse",
-    "nonce": "test-nonce-123",
-    "first_used_at": "2024-01-25T10:25:00Z",
-    "reuse_attempted_at": "2024-01-25T10:30:00Z"
+    "error": "Agent not found in allowlist",
+    "rejected_by": "collector",
+    "validation_type": "agent_verification",
+    "details": {
+      "public_key_hash": "cd673d8c6adc3d72d9751dfa61b8cd69b73c4b3ba237aede555d632570697190",
+      "validation_type": "public_key_hash",
+      "allowlist_status": "not_found"
+    },
+    "timestamp": "2025-08-27T00:51:19.022333"
   }
 }
 ```
@@ -505,6 +537,13 @@ tail -f logs/collector.log
 - **Rejection Points**: Standard mode rejects at collector, gateway allowlist mode can reject at gateway
 - **Validation Speed**: Gateway allowlist mode provides faster rejection for basic issues
 
+**Critical Validation Check - `rejected_by` Field**:
+The `rejected_by` field in error responses is the key indicator of which service performed the validation:
+- **`"rejected_by": "collector"`** = Standard Mode (Gateway acts as proxy)
+- **`"rejected_by": "gateway"`** = Gateway Allowlist Mode (Gateway performs validation)
+
+This field helps verify that the correct validation flow is being used for each deployment model.
+
 **Expected Test Output (Standard Mode)**:
 ```
 🚀 Testing End-to-End Multi-Agent Zero-Trust Flow (README_demo.md Workflow)
@@ -517,6 +556,46 @@ Trust Boundary: Collector only (gateway acts as pure proxy)
 ✅ Test 2.2: Geographic Policy Violation - agent-geo-policy-violation-002 (rejected by collector)
 ✅ Test 2.3: Unregistered Agent - agent-unregistered-003 (rejected by collector)
 ✅ Step 3: All tests completed successfully
+```
+
+**Expected Error Responses to Verify (Standard Mode)**:
+
+**Geographic Policy Violation Response:**
+```json
+{
+  "status": "error",
+  "message": "Failed to send metrics to gateway",
+  "details": {
+    "error": "Geolocation verification failed",
+    "rejected_by": "collector",
+    "validation_type": "geolocation_policy",
+    "details": {
+      "expected": {"city": "Santa Clara", "country": "US", "state": "California"},
+      "received": {"city": "Berlin", "country": "EU", "state": "Germany"},
+      "agent_name": "agent-geo-policy-violation-002"
+    },
+    "timestamp": "2025-08-27T00:51:19.022333"
+  }
+}
+```
+
+**Unregistered Agent Response:**
+```json
+{
+  "status": "error",
+  "message": "Failed to send metrics to gateway",
+  "details": {
+    "error": "Agent not found in allowlist",
+    "rejected_by": "collector",
+    "validation_type": "agent_verification",
+    "details": {
+      "public_key_hash": "cd673d8c6adc3d72d9751dfa61b8cd69b73c4b3ba237aede555d632570697190",
+      "validation_type": "public_key_hash",
+      "allowlist_status": "not_found"
+    },
+    "timestamp": "2025-08-27T00:51:19.022333"
+  }
+}
 ```
 
 **Expected Test Output (Gateway Allowlist Mode)**:
@@ -537,6 +616,45 @@ Collector Enforcement: Nonce validity, Payload signature
 ✅ Test 2: Gateway enforcement is working (proven by real agent tests above)
 ✅ Step 3: All tests completed successfully
 ```
+
+**Expected Error Responses to Verify (Gateway Allowlist Mode)**:
+
+**Geographic Policy Violation Response:**
+```json
+{
+  "error": "Geolocation verification failed",
+  "rejected_by": "gateway",
+  "validation_type": "geolocation_policy",
+  "details": {
+    "expected": {"city": "Santa Clara", "country": "US", "state": "California"},
+    "received": {"city": "Berlin", "region": "EU", "state": "Germany"},
+    "agent_name": "agent-geo-policy-violation-002"
+  },
+  "timestamp": "2025-08-27T00:51:19.022333"
+}
+```
+
+**Unregistered Agent Response:**
+```json
+{
+  "error": "Agent not found in allowlist",
+  "rejected_by": "gateway",
+  "validation_type": "agent_verification",
+  "details": {
+    "public_key_hash": "cd673d8c6adc3d72d9751dfa61b8cd69b73c4b3ba237aede555d632570697190",
+    "validation_type": "public_key_hash",
+    "allowlist_status": "not_found"
+  },
+  "timestamp": "2025-08-27T00:51:19.022333"
+}
+```
+
+**Key Validation Points to Check**:
+- ✅ **`rejected_by` field**: Should show "gateway" for Gateway Allowlist Mode, "collector" for Standard Mode
+- ✅ **`validation_type` field**: Should show appropriate validation type (geolocation_policy, agent_verification, etc.)
+- ✅ **`details` structure**: Should contain specific validation details
+- ✅ **`timestamp` field**: Should be in ISO format
+- ✅ **Error message consistency**: Should match the validation type
 
 ## For Utils and Debugging 
 Refer [README_utils.md](README_utils.md)
