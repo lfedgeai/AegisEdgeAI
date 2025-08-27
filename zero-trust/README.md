@@ -103,6 +103,7 @@ The system supports two validation modes reflecting different deployment archite
   - ✅ **Nonce Validation**: Existence, expiration, reuse prevention
   - ✅ **Cryptographic Verification**: Full signature verification
 - **Header Handling**: All headers passed to collector
+- **Error Handling**: Aligned format with `rejected_by: "collector"`
 
 ### **Gateway-Allowlist Flow** (Cloud Deployment Model)
 **Trust Boundary**: API Gateway + Collector (same internal network)
@@ -119,6 +120,7 @@ The system supports two validation modes reflecting different deployment archite
   - ✅ **Payload Signature**: Full cryptographic signature verification
   - ✅ **End-to-End Integrity**: Complete request validation
 - **Header Handling**: New headers are NOT passed to collector
+- **Error Handling**: Aligned format with `rejected_by: "gateway"` or `rejected_by: "collector"`
 
 ### **Gateway Validation Limitations**
 
@@ -140,6 +142,9 @@ The gateway **CANNOT** validate:
 | Nonce Expiration | Collector | Collector only |
 | Nonce Reuse | Collector | Collector only |
 | Payload Signature | Collector | Collector only |
+| **Error Handling** | **Aligned Format** | **Aligned Format** |
+| **Error Response** | **Consistent Structure** | **Consistent Structure** |
+| **Validation Types** | **Standardized Names** | **Standardized Names** |
 
 ### **Configuration**
 
@@ -155,13 +160,32 @@ The gateway **CANNOT** validate:
 # Gateway validation explicitly enabled
 ```
 
+### **Aligned Error Handling Benefits**
+
+Both deployment modes now provide **consistent error response formats**:
+
+**🔄 Unified Error Structure**:
+- **`rejected_by` field**: Clearly indicates which service performed validation
+- **`validation_type` field**: Standardized validation type names (geolocation_policy, agent_verification, etc.)
+- **`details` structure**: Same detailed error information format
+- **`timestamp` field**: ISO format timestamps in all responses
+
+**📊 Operational Benefits**:
+- **Consistent Debugging**: Same error format across both deployment modes
+- **Unified Monitoring**: Single monitoring system can handle both modes
+- **Simplified Development**: Developers work with consistent error structures
+- **Easier Troubleshooting**: Familiar error format regardless of deployment mode
+- **Better Observability**: Consistent logging and error tracking across modes
+
 ### **Use Cases**
 
 - **Standard Flow**: When you want all validation centralized at the collector (simpler deployment)
 - **Gateway-Allowlist Flow**: Cloud deployment model where API Gateway and Collector are in the same trust boundary, with gateway providing first-layer security enforcement
 
+**Both modes provide aligned error handling for consistent operational experience.**
+
 ## Architecture for the first iteration
-The system follows a microservices architecture with three main components:
+The system follows a microservices architecture with three main components and supports two policy enforcement models:
 
 ```
 ┌─────────────────────────────────┐    HTTPS/TLS    ┌─────────────────────────────────┐    HTTPS/TLS    ┌─────────────────────────────────┐
@@ -180,6 +204,21 @@ The system follows a microservices architecture with three main components:
 │  └─────────────────────────┘    │                 │  └─────────────────────────┘    │                 │  └─────────────────────────┘    │
 └─────────────────────────────────┘                 └─────────────────────────────────┘                 └─────────────────────────────────┘
 ```
+
+### **Standard Mode (Collector-Only Validation)**
+**Trust Boundary**: Collector only (Gateway acts as pure proxy)
+**Error Handling**: Aligned format with `rejected_by: "collector"`
+
+### **Gateway-Allowlist Mode (Cloud Deployment Model)**
+**Trust Boundary**: API Gateway + Collector (same internal network)
+**Error Handling**: Aligned format with `rejected_by: "gateway"` or `rejected_by: "collector"`
+
+### **Aligned Error Handling Across Both Modes**
+Both deployment modes provide **consistent error response formats**:
+- **`rejected_by` field**: Clearly indicates which service performed validation
+- **`validation_type` field**: Standardized validation type names
+- **`details` structure**: Same detailed error information format
+- **`timestamp` field**: ISO format timestamps in all responses
 
 ### 🔐 **COMPLETE SECURITY FLOW** 🔐
 

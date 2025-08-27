@@ -11,10 +11,12 @@ if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
     echo "Trust Boundary: API Gateway + Collector (same internal network)"
     echo "Gateway Enforcement: Geolocation, Public Key Hash, Signature, Timestamp"
     echo "Collector Enforcement: Nonce validity, Payload signature"
+    echo "Error Handling: Aligned with Standard Mode"
 elif [[ "$TEST_TYPE" == "full" ]]; then
     echo "🚀 Testing End-to-End Multi-Agent Zero-Trust Flow (README_demo.md Workflow)"
     echo "=========================================================================="
     echo "Trust Boundary: Collector only (gateway acts as pure proxy)"
+    echo "Error Handling: Aligned with Gateway Allowlist Mode"
 else
     echo "Usage: $0 [full|gateway-allowlist]"
     echo "  full: Run complete end-to-end test (default) - Collector-only validation"
@@ -550,12 +552,14 @@ if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
     echo "            • Nonce validity (existence, expiration, reuse prevention)"
     echo "            • Payload signature (full cryptographic verification)"
     echo "         📋 Header Handling: New headers NOT passed to collector"
+    echo "         🔄 Error Handling: Aligned with Standard Mode (consistent format)"
 else
     echo "      🔐 Standard Flow Model:"
     echo "         Trust Boundary: Collector only (gateway acts as pure proxy)"
     echo "         ❌ Gateway: No validation, pure proxy"
     echo "         ✅ Collector: All validation (public key, signature, nonce, geolocation)"
     echo "         📋 Header Handling: All headers passed to collector"
+    echo "         🔄 Error Handling: Aligned with Gateway Allowlist Mode (consistent format)"
 fi
 
 echo ""
@@ -569,6 +573,8 @@ echo "   ✅ Comprehensive testing framework with geographic policy enforcement"
 echo "   ✅ Detailed monitoring and logging with real-time header validation"
 echo "   ✅ Gateway allowlist functionality with reload capability"
 echo "   ✅ Zero-trust security model with TPM2 hardware-backed signing"
+echo "   ✅ Aligned error handling across both deployment modes"
+echo "   ✅ Consistent error response formats with detailed validation information"
 
 # Step 5: Stop services (all agents, gateway, collector)
 echo ""
