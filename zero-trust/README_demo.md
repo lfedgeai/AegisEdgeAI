@@ -154,15 +154,19 @@ curl -X POST "https://localhost:8402/metrics/generate" \
 **Expected Error Response (Gateway Allowlist Mode)**:
 ```json
 {
-  "error": "Geolocation verification failed",
-  "rejected_by": "gateway",
-  "validation_type": "geolocation_policy",
+  "status": "error",
+  "message": "Failed to send metrics to gateway",
   "details": {
-    "expected": {"city": "Santa Clara", "country": "US", "state": "California"},
-    "received": {"city": "Berlin", "region": "EU", "state": "Germany"},
-    "agent_name": "agent-geo-policy-violation-002"
-  },
-  "timestamp": "2024-01-25T10:30:00Z"
+    "error": "Geolocation verification failed",
+    "rejected_by": "gateway",
+    "validation_type": "geolocation_policy",
+    "details": {
+      "expected": {"city": "Santa Clara", "country": "US", "state": "California"},
+      "received": {"city": "Berlin", "region": "EU", "state": "Germany"},
+      "agent_name": "agent-geo-policy-violation-002"
+    },
+    "timestamp": "2024-01-25T10:30:00Z"
+  }
 }
 ```
 
@@ -170,7 +174,7 @@ curl -X POST "https://localhost:8402/metrics/generate" \
 ```json
 {
   "status": "error",
-  "message": "Failed to send metrics to collector",
+  "message": "Failed to send metrics to gateway",
   "details": {
     "error": "Geolocation verification failed",
     "rejected_by": "collector",
