@@ -458,7 +458,7 @@ class MetricsProcessor:
             return True
             
         except Exception as e:
-            logger.error("Geographic region verification failed", error=str(e))
+            logger.warning("Geographic region verification failed", error=str(e))
             return False
     
     @staticmethod
@@ -528,7 +528,7 @@ class MetricsProcessor:
             return is_valid
             
         except Exception as e:
-            logger.error("🔍 [COLLECTOR] Signature verification failed", error=str(e))
+            logger.warning("🔍 [COLLECTOR] Signature verification failed", error=str(e))
             return False
     
     @staticmethod
@@ -630,7 +630,7 @@ class MetricsProcessor:
             return is_valid
             
         except Exception as e:
-            logger.error("🔍 [COLLECTOR] Signature verification failed with key", error=str(e))
+            logger.warning("🔍 [COLLECTOR] Signature verification failed with key", error=str(e))
             return False
     
     @staticmethod
@@ -745,7 +745,17 @@ def get_nonce():
                 logger.warning("❌ [COLLECTOR] Nonce request from unauthorized agent", 
                              agent_public_key_hash=public_key_hash[:16] + "...",
                              request_ip=request.remote_addr)
-                return jsonify({"error": "Agent not found in allowlist"}), 403
+                return jsonify({
+                    "error": "Agent not found in allowlist",
+                    "rejected_by": "collector",
+                    "validation_type": "agent_verification",
+                    "details": {
+                        "public_key_hash": public_key_hash,
+                        "validation_type": "public_key_hash",
+                        "allowlist_status": "not_found"
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                }), 403
             
             # Clean up expired nonces
             NonceManager.cleanup_expired_nonces()
@@ -879,7 +889,17 @@ def receive_metrics():
                              service=payload["metrics"].get("service", {}).get("name"),
                              agent_name=payload.get("agent_name"))
                 verification_counter.add(1, {"status": "failed"})
-                return jsonify({"error": "Signature verification failed"}), 400
+                return jsonify({
+                    "error": "Signature verification failed",
+                    "rejected_by": "collector",
+                    "validation_type": "signature_verification",
+                    "details": {
+                        "agent_name": payload.get("agent_name"),
+                        "validation_type": "signature_verification",
+                        "error_type": "verification_failed"
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                }), 400
             
             # Verify agent information with detailed error checking
             agent_name = payload.get("agent_name")
@@ -890,7 +910,18 @@ def receive_metrics():
             if not agent_config:
                 logger.warning("Agent not found in allowlist", agent_name=agent_name)
                 verification_counter.add(1, {"status": "failed"})
-                return jsonify({"error": f"Agent '{agent_name}' not found in allowlist"}), 400
+                return jsonify({
+                    "error": f"Agent '{agent_name}' not found in allowlist",
+                    "rejected_by": "collector",
+                    "validation_type": "agent_verification",
+                    "details": {
+                        "agent_name": agent_name,
+                        "validation_type": "agent_verification",
+                        "error_type": "agent_not_found",
+                        "allowlist_status": "not_found"
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                }), 400
             
             # Check geolocation specifically
             expected_geo = agent_config.get('geolocation', {})
@@ -905,11 +936,14 @@ def receive_metrics():
                 verification_counter.add(1, {"status": "failed"})
                 return jsonify({
                     "error": "Geolocation verification failed",
+                    "rejected_by": "collector",
+                    "validation_type": "geolocation_policy",
                     "details": {
                         "expected": expected_geo,
                         "received": geolocation,
                         "agent_name": agent_name
-                    }
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
                 }), 400
             
             # Verify agent information (this will check public key and other details)
@@ -918,14 +952,36 @@ def receive_metrics():
                              agent_name=agent_name,
                              service=payload["metrics"].get("service", {}).get("name"))
                 verification_counter.add(1, {"status": "failed"})
-                return jsonify({"error": "Agent verification failed"}), 400
+                return jsonify({
+                    "error": "Agent verification failed",
+                    "rejected_by": "collector",
+                    "validation_type": "agent_verification",
+                    "details": {
+                        "agent_name": agent_name,
+                        "validation_type": "agent_verification",
+                        "error_type": "verification_failed",
+                        "service": payload["metrics"].get("service", {}).get("name")
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                }), 400
             
             # Verify geographic region
             if not MetricsProcessor.verify_geographic_region(payload):
                 logger.warning("Geographic region verification failed", 
                              service=payload["metrics"].get("service", {}).get("name"))
                 verification_counter.add(1, {"status": "failed"})
-                return jsonify({"error": "Geographic region verification failed"}), 400
+                return jsonify({
+                    "error": "Geographic region verification failed",
+                    "rejected_by": "collector",
+                    "validation_type": "geographic_region",
+                    "details": {
+                        "agent_name": payload.get("agent_name"),
+                        "validation_type": "geographic_region",
+                        "error_type": "verification_failed",
+                        "service": payload["metrics"].get("service", {}).get("name")
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                }), 400
             
             # Consume nonce
             NonceManager.consume_nonce(payload["nonce"])

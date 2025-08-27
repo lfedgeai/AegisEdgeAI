@@ -110,9 +110,10 @@ The system supports two validation modes reflecting different deployment archite
 - **Gateway**: Performs first-layer validation:
   - ✅ **Public Key Hash**: Validates agent is in allowlist
   - ✅ **Signature Format**: Basic signature format and structure validation
-  - ✅ **Geographic Policy**: Enforces location-based access rules (Workload-Geo-ID header)
+  - ✅ **Geographic Policy**: Enforces location-based access rules (Workload-Geo-ID header) - **except for nonce requests**
   - ✅ **Timestamp Proximity**: Ensures request timestamp is close to gateway time
   - ✅ **Rejects**: Unregistered agents, geolocation mismatches, invalid signatures
+  - ✅ **Nonce Requests**: Only validates public key hash in allowlist (same as collector)
 - **Collector**: Performs second-layer validation:
   - ✅ **Nonce Validation**: Existence, expiration, reuse prevention
   - ✅ **Payload Signature**: Full cryptographic signature verification
@@ -133,7 +134,7 @@ The gateway **CANNOT** validate:
 |----------------|---------------|------------------------|
 | Public Key Hash | Collector | Gateway + Collector |
 | Signature Format | Collector | Gateway (basic format) + Collector (full verification) |
-| Geographic Policy | Collector | Gateway + Collector |
+| Geographic Policy | Collector | Gateway + Collector (except nonce requests) |
 | Timestamp Proximity | Collector | Gateway + Collector |
 | Nonce Validation | Collector | Collector only |
 | Nonce Expiration | Collector | Collector only |

@@ -322,55 +322,10 @@ class CollectorClient:
                                agent_name=agent_name,
                                signature_input=signature_input)
                     
-                    # Add Signature-Input header
+                    # Add Signature-Input header (only header needed for nonce requests)
                     headers["Signature-Input"] = signature_input
                     
-                    # Build Workload-Geo-ID header (JSON) for nonce request
-                    # Get geographic region from environment or use defaults
-                    geo_env_var = os.environ.get("AGENT_GEO_POLICY_VIOLATION_002_GEOGRAPHIC_REGION")
-                    logger.info("🔍 [AGENT] Geographic region check", 
-                               agent_name=agent_name,
-                               geo_env_var=geo_env_var)
-                    
-                    if geo_env_var:
-                        geo_parts = geo_env_var.split("/")
-                        geographic_region = {
-                            "region": geo_parts[0] if len(geo_parts) > 0 else "US",
-                            "state": geo_parts[1] if len(geo_parts) > 1 else "California", 
-                            "city": geo_parts[2] if len(geo_parts) > 2 else "Santa Clara",
-                        }
-                    else:
-                        geographic_region = {
-                            "region": "US",
-                            "state": "California",
-                            "city": "Santa Clara",
-                        }
-                    
-                    logger.info("🔍 [AGENT] Geographic region determined", 
-                               agent_name=agent_name,
-                               geographic_region=geographic_region)
-
-                    workload_geo_id = {
-                        "client_workload_id": agent_name,
-                        "client_workload_location": {
-                            "region": geographic_region.get("region"),
-                            "state": geographic_region.get("state"),
-                            "city": geographic_region.get("city"),
-                        },
-                        "client_workload_location_type": "geographic-region",  # precise/approximated/region
-                        "client_workload_location_quality": "GNSS",  # GNSS/mobile/WiFi/IP
-                        "client_type": os.environ.get("CLIENT_TYPE", "thick"),  # thick/thin (default thick)
-                    }
-
-                    # Log the Workload-Geo-ID for debugging
-                    logger.info("📤 [AGENT] Sending nonce request with Workload-Geo-ID", 
-                               agent_name=agent_name,
-                               workload_geo_id=workload_geo_id)
-
-                    # Add Workload-Geo-ID header
-                    headers["Workload-Geo-ID"] = json.dumps(workload_geo_id, separators=(",", ":"))
-                    
-                    logger.info("📤 [AGENT] Final headers for nonce request", 
+                    logger.info("📤 [AGENT] Final headers for nonce request (public key hash only)", 
                                agent_name=agent_name,
                                headers=headers)
                                
@@ -428,24 +383,54 @@ class CollectorClient:
             except requests.exceptions.HTTPError as e:
                 # Handle HTTP errors with detailed error messages
                 error_details = "Unknown error"
+                rejected_by = "unknown"
+                validation_type = "unknown"
                 try:
                     error_response = e.response.json()
                     if "error" in error_response:
                         error_details = error_response["error"]
+                    if "rejected_by" in error_response:
+                        rejected_by = error_response["rejected_by"]
+                    if "validation_type" in error_response:
+                        validation_type = error_response["validation_type"]
                 except:
                     error_details = e.response.text if e.response.text else str(e)
                 
-                logger.error("❌ [AGENT] HTTP error from collector during nonce request", 
+                logger.error("❌ [AGENT] HTTP error from gateway during nonce request", 
                            status_code=e.response.status_code,
                            error_details=error_details,
+                           rejected_by=rejected_by,
+                           validation_type=validation_type,
                            response_text=e.response.text[:200] if e.response.text else "No response text")
                 error_counter.add(1, {"operation": "get_nonce", "error": error_details})
-                raise ValueError(f"Nonce request failed: {error_details}")
                 
-            except Exception as e:
-                logger.error("Failed to get nonce from collector", error=str(e))
-                error_counter.add(1, {"operation": "get_nonce", "error": str(e)})
+                # Return enhanced error response if available
+                try:
+                    error_response = e.response.json()
+                    logger.info("✅ [AGENT] Successfully parsed error response JSON", error_response=error_response)
+                    # Include rejected_by in the error message for better visibility
+                    error_message = f"Nonce request failed: {error_details}"
+                    if rejected_by and rejected_by != "unknown":
+                        error_message += f" (rejected by {rejected_by})"
+                    raise ValueError(error_message, error_response)
+                except (TypeError, json.JSONDecodeError) as json_error:
+                    logger.warning("⚠️ [AGENT] Failed to parse error response JSON", 
+                                 json_error=str(json_error), 
+                                 response_text=e.response.text[:200] if e.response.text else "No response text")
+                    raise ValueError(f"Nonce request failed: {error_details}")
+                
+            except ValueError:
+                # Re-raise ValueError directly to preserve the enhanced error response
                 raise
+            except Exception as e:
+                # Only handle non-ValueError exceptions here
+                if not isinstance(e, ValueError):
+                    logger.error("Failed to get nonce from collector", error=str(e))
+                    error_counter.add(1, {"operation": "get_nonce", "error": str(e)})
+                    raise
+                else:
+                    # Re-raise ValueError to preserve the enhanced error response
+                    raise
     
 
     
@@ -503,31 +488,45 @@ class CollectorClient:
                 logger.info("✅ [AGENT] Metrics sent successfully to collector", 
                            response_status=response.status_code,
                            response_size=len(response.content))
-                return True, ""
+                return True, "", None
                 
             except requests.exceptions.HTTPError as e:
                 # Handle HTTP errors with detailed error messages
                 error_details = "Unknown error"
+                rejected_by = "unknown"
+                validation_type = "unknown"
                 try:
                     error_response = e.response.json()
                     if "error" in error_response:
                         error_details = error_response["error"]
                         if "details" in error_response:
                             error_details += f" - {error_response['details']}"
+                    if "rejected_by" in error_response:
+                        rejected_by = error_response["rejected_by"]
+                    if "validation_type" in error_response:
+                        validation_type = error_response["validation_type"]
                 except:
                     error_details = e.response.text if e.response.text else str(e)
                 
-                logger.error("❌ [AGENT] HTTP error from collector", 
+                logger.error("❌ [AGENT] HTTP error from gateway", 
                            status_code=e.response.status_code,
                            error_details=error_details,
+                           rejected_by=rejected_by,
+                           validation_type=validation_type,
                            response_text=e.response.text[:200] if e.response.text else "No response text")
                 error_counter.add(1, {"operation": "send_metrics", "error": error_details})
-                return False, error_details
+                
+                # Return enhanced error response if available
+                try:
+                    error_response = e.response.json()
+                    return False, error_details, error_response
+                except:
+                    return False, error_details, None
                 
             except Exception as e:
-                logger.error("Failed to send metrics to collector", error=str(e))
+                logger.error("Failed to send metrics to gateway", error=str(e))
                 error_counter.add(1, {"operation": "send_metrics", "error": str(e)})
-                return False, str(e)
+                return False, str(e), None
 
 
 # Initialize collector client
@@ -728,7 +727,7 @@ def generate_and_send_metrics():
                        payload_size=len(json.dumps(payload)),
                        signature_length=len(signature_data["signature"]))
             
-            success, error_message = collector_client.send_metrics(payload)
+            success, error_message, error_response = collector_client.send_metrics(payload)
             
             if success:
                 logger.info("🎉 [AGENT] Metrics generation and sending completed successfully", 
@@ -741,23 +740,52 @@ def generate_and_send_metrics():
                     "payload_id": signature_data["digest"][:16]  # Use first 16 chars of digest as ID
                 })
             else:
-                logger.error("❌ [AGENT] Failed to send metrics to collector", 
+                logger.error("❌ [AGENT] Failed to send metrics to gateway", 
                            agent_name=agent_name,
                            error_message=error_message)
-                return jsonify({
-                    "status": "error",
-                    "message": "Failed to send metrics to collector",
-                    "details": error_message
-                }), 500
+                
+                # Return enhanced error response if available
+                if error_response and isinstance(error_response, dict):
+                    return jsonify({
+                        "status": "error",
+                        "message": "Failed to send metrics to gateway",
+                        "details": error_response
+                    }), 500
+                else:
+                    return jsonify({
+                        "status": "error",
+                        "message": "Failed to send metrics to gateway",
+                        "details": error_message
+                    }), 500
                 
         except ValueError as e:
             # Handle specific error messages from get_nonce
             logger.error("❌ [AGENT] Nonce request failed", error=str(e))
             error_counter.add(1, {"operation": "generate_and_send_metrics", "error": str(e)})
-            return jsonify({
-                "status": "error",
-                "message": str(e)
-            }), 400
+            
+            # Debug: Log the full ValueError details
+            logger.info("🔍 [AGENT] ValueError details", 
+                       has_args=hasattr(e, 'args'),
+                       args_length=len(e.args) if hasattr(e, 'args') else 0,
+                       args_type=type(e.args) if hasattr(e, 'args') else "No args",
+                       args_content=e.args if hasattr(e, 'args') else "No args")
+            
+            # Check if this is an enhanced error response
+            if hasattr(e, 'args') and len(e.args) > 1 and isinstance(e.args[1], dict):
+                error_response = e.args[1]
+                logger.info("✅ [AGENT] Using enhanced error response", error_response=error_response)
+                return jsonify({
+                    "status": "error",
+                    "message": "Failed to send metrics to gateway",
+                    "details": error_response
+                }), 400
+            else:
+                # Fallback for simple error messages
+                logger.info("⚠️ [AGENT] Using fallback error response", error_args=e.args if hasattr(e, 'args') else "No args")
+                return jsonify({
+                    "status": "error",
+                    "message": str(e)
+                }), 400
         except Exception as e:
             logger.error("Error in generate_and_send_metrics", error=str(e))
             error_counter.add(1, {"operation": "generate_and_send_metrics", "error": str(e)})
