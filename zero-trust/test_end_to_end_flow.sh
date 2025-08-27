@@ -5,7 +5,7 @@
 
 # Parse command line arguments
 TEST_TYPE=${1:-"full"}
-if [[ "$TEST_TYPE" == "gateway-allowlist" || "$TEST_TYPE" == "gateway-policy-enforcement" ]]; then
+if [[ "$TEST_TYPE" == "gateway-policy-enforcement" ]]; then
     echo "🔐 Testing Gateway Policy Enforcement Functionality (Cloud Deployment Model)"
     echo "================================================================"
     echo "Trust Boundary: API Gateway + Collector (same internal network)"
@@ -21,7 +21,6 @@ else
     echo "Usage: $0 [full|gateway-policy-enforcement]"
     echo "  full: Run complete end-to-end test (default) - Collector-only validation"
     echo "  gateway-policy-enforcement: Run all tests with gateway enforcement (cloud deployment model)"
-    echo "  (alias maintained: gateway-allowlist)"
     exit 1
 fi
 
