@@ -48,9 +48,10 @@ The system supports two test modes reflecting different deployment architectures
 
 **Validation Layer**: Collector performs all validation
 
-### **Gateway-Allowlist Test Mode (Cloud Deployment Model)**
+### **Gateway Policy Enforcement Test Mode (Cloud Deployment Model)**
 ```bash
-./test_end_to_end_flow.sh gateway-allowlist
+./test_end_to_end_flow.sh gateway-policy-enforcement
+# (alias supported: gateway-allowlist)
 ```
 
 **Trust Boundary**: API Gateway + Collector (same internal network)
@@ -78,7 +79,7 @@ The system supports two test modes reflecting different deployment architectures
 
 ### **Key Differences**
 
-| Aspect | Standard Mode | Gateway-Allowlist Mode |
+| Aspect | Standard Mode (Collector Policy Enforcement - Default) | Gateway Policy Enforcement Mode |
 |--------|---------------|------------------------|
 | Trust Boundary | Collector only | Gateway + Collector |
 | Gateway Validation | Disabled | Enabled |
@@ -105,11 +106,11 @@ The system supports two validation modes reflecting different deployment archite
 - **Header Handling**: All headers passed to collector
 - **Error Handling**: Aligned format with `rejected_by: "collector"`
 
-### **Gateway-Allowlist Flow** (Cloud Deployment Model)
+### **Gateway Policy Enforcement Flow** (Cloud Deployment Model)
 **Trust Boundary**: API Gateway + Collector (same internal network)
 
 - **Gateway**: Performs first-layer validation:
-  - ✅ **Public Key Hash**: Validates agent is in allowlist
+  - ✅ **Public Key Hash**: Validates agent is in gateway agent allowlist
   - ✅ **Signature Format**: Basic signature format and structure validation
   - ✅ **Geographic Policy**: Enforces location-based access rules (Workload-Geo-ID header) - **except for nonce requests**
   - ✅ **Timestamp Proximity**: Ensures request timestamp is close to gateway time
@@ -122,6 +123,8 @@ The system supports two validation modes reflecting different deployment archite
 - **Header Handling**: New headers are NOT passed to collector
 - **Error Handling**: Aligned format with `rejected_by: "gateway"` or `rejected_by: "collector"`
 
+> Policy enforcement is implemented via the gateway agent allowlist and the collector agent allowlist.
+
 ### **Gateway Validation Limitations**
 
 The gateway **CANNOT** validate:
@@ -132,7 +135,7 @@ The gateway **CANNOT** validate:
 
 ### **Security Flow Comparison**
 
-| Validation Type | Standard Flow | Gateway-Allowlist Flow |
+| Validation Type | Standard Flow | Gateway Policy Enforcement Flow |
 |----------------|---------------|------------------------|
 | Public Key Hash | Collector | Gateway + Collector |
 | Signature Format | Collector | Gateway (basic format) + Collector (full verification) |
@@ -148,16 +151,16 @@ The gateway **CANNOT** validate:
 
 ### **Configuration**
 
-**Standard Flow** (Collector-Only Validation):
+**Standard Flow** (Collector-Only Validation - Default):
 ```bash
 ./test_end_to_end_flow.sh
 # Gateway validation disabled by default
 ```
 
-**Gateway-Allowlist Flow** (Cloud Deployment Model):
+**Gateway Policy Enforcement Flow** (Cloud Deployment Model):
 ```bash
-./test_end_to_end_flow.sh gateway-allowlist
-# Gateway validation explicitly enabled
+./test_end_to_end_flow.sh gateway-policy-enforcement
+# (alias supported: gateway-allowlist) Gateway validation explicitly enabled
 ```
 
 ### **Aligned Error Handling Benefits**
@@ -180,7 +183,7 @@ Both deployment modes now provide **consistent error response formats**:
 ### **Use Cases**
 
 - **Standard Flow**: When you want all validation centralized at the collector (simpler deployment)
-- **Gateway-Allowlist Flow**: Cloud deployment model where API Gateway and Collector are in the same trust boundary, with gateway providing first-layer security enforcement
+- **Gateway Policy Enforcement Flow**: Cloud deployment model where API Gateway and Collector are in the same trust boundary, with gateway providing first-layer security enforcement
 
 **Both modes provide aligned error handling for consistent operational experience.**
 
@@ -209,7 +212,7 @@ The system follows a microservices architecture with three main components and s
 **Trust Boundary**: Collector only (Gateway acts as pure proxy)
 **Error Handling**: Aligned format with `rejected_by: "collector"`
 
-### **Gateway-Allowlist Mode (Cloud Deployment Model)**
+### **Gateway Policy Enforcement Mode (Cloud Deployment Model)**
 **Trust Boundary**: API Gateway + Collector (same internal network)
 **Error Handling**: Aligned format with `rejected_by: "gateway"` or `rejected_by: "collector"`
 
