@@ -4,19 +4,21 @@ This document provides a step-by-step guide to demonstrate the Edge AI zero-trus
 
 ## Demo Modes
 
-The system supports two deployment modes:
+The system supports two deployment modes with **aligned error handling**:
 
 ### **Standard Mode** (Default)
 - **Gateway**: Acts as pure proxy, no validation
 - **Collector**: Performs all validation (public key, signature, nonce, geolocation)
 - **Use Case**: Simpler deployment with centralized validation
+- **Error Handling**: All errors returned with consistent format and `rejected_by: "collector"`
 
 ### **Gateway Allowlist Mode** (Cloud Deployment Model)
 - **Gateway**: Performs first-layer validation (public key hash, signature format, geographic policy, timestamp)
 - **Collector**: Performs second-layer validation (nonce validity, payload signature, end-to-end integrity)
 - **Use Case**: Cloud deployment with layered security and faster rejection
+- **Error Handling**: All errors returned with consistent format and `rejected_by: "gateway"` or `rejected_by: "collector"`
 
-**Note**: This demo covers both modes. Follow the instructions to test each mode's capabilities.
+**Note**: Both modes now provide **aligned error handling** with consistent error response formats, validation types, and detailed error information. The `rejected_by` field clearly indicates which service performed the validation.
 
 ## Pre-requisites (./system-setup.sh will install swtpm, tpm2-tools; check the below steps)
 | Environment        | swtpm Version                                              | tpm2-tools Version                                                         | Python Version  |
@@ -537,18 +539,26 @@ tail -f logs/collector.log
 - **Rejection Points**: Standard mode rejects at collector, gateway allowlist mode can reject at gateway
 - **Validation Speed**: Gateway allowlist mode provides faster rejection for basic issues
 
+**Aligned Error Handling**:
+Both modes now provide **consistent error response formats** with the same structure:
+- **`rejected_by` field**: Clearly indicates which service performed the validation
+- **`validation_type` field**: Consistent validation type names across both modes
+- **`details` structure**: Same detailed error information format
+- **`timestamp` field**: ISO format timestamps in all responses
+
 **Critical Validation Check - `rejected_by` Field**:
 The `rejected_by` field in error responses is the key indicator of which service performed the validation:
 - **`"rejected_by": "collector"`** = Standard Mode (Gateway acts as proxy)
 - **`"rejected_by": "gateway"`** = Gateway Allowlist Mode (Gateway performs validation)
 
-This field helps verify that the correct validation flow is being used for each deployment model.
+This field helps verify that the correct validation flow is being used for each deployment model while maintaining consistent error handling across both modes.
 
 **Expected Test Output (Standard Mode)**:
 ```
 🚀 Testing End-to-End Multi-Agent Zero-Trust Flow (README_demo.md Workflow)
 ==========================================================================
 Trust Boundary: Collector only (gateway acts as pure proxy)
+Error Handling: Aligned with Gateway Allowlist Mode
 
 ✅ Step 1: Creating agents and starting services...
 ✅ Step 2: Testing agent scenarios...
@@ -605,6 +615,7 @@ Trust Boundary: Collector only (gateway acts as pure proxy)
 Trust Boundary: API Gateway + Collector (same internal network)
 Gateway Enforcement: Geolocation, Public Key Hash, Signature, Timestamp
 Collector Enforcement: Nonce validity, Payload signature
+Error Handling: Aligned with Standard Mode
 
 ✅ Step 1: Creating agents and starting services...
 ✅ Step 2: Testing agent scenarios...
@@ -655,6 +666,13 @@ Collector Enforcement: Nonce validity, Payload signature
 - ✅ **`details` structure**: Should contain specific validation details
 - ✅ **`timestamp` field**: Should be in ISO format
 - ✅ **Error message consistency**: Should match the validation type
+
+**Benefits of Aligned Error Handling**:
+- 🔄 **Consistent Debugging**: Same error format across both deployment modes
+- 📊 **Unified Monitoring**: Single monitoring system can handle both modes
+- 🛠️ **Simplified Development**: Developers work with consistent error structures
+- 🔍 **Easier Troubleshooting**: Familiar error format regardless of deployment mode
+- 📈 **Better Observability**: Consistent logging and error tracking across modes
 
 ## For Utils and Debugging 
 Refer [README_utils.md](README_utils.md)
