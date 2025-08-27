@@ -213,7 +213,12 @@ class GatewayAllowlistManager:
         else:
             return {
                 "valid": False,
-                "reason": f"Public key hash {public_key_hash} not found in allowlist"
+                "reason": f"Public key hash {public_key_hash} not found in allowlist",
+                "details": {
+                    "public_key_hash": public_key_hash,
+                    "validation_type": "public_key_hash",
+                    "allowlist_status": "not_found"
+                }
             }
     
     def validate_signature_against_agent(self, signature: str, public_key_hash: str, 
@@ -236,7 +241,12 @@ class GatewayAllowlistManager:
         if not agent:
             return {
                 "valid": False,
-                "reason": "Agent not found in allowlist for signature validation"
+                "reason": "Agent not found in allowlist for signature validation",
+                "details": {
+                    "public_key_hash": public_key_hash,
+                    "validation_type": "signature_validation",
+                    "allowlist_status": "not_found"
+                }
             }
         
         try:
@@ -245,7 +255,13 @@ class GatewayAllowlistManager:
             if not public_key_content:
                 return {
                     "valid": False,
-                    "reason": "No public key found for agent"
+                    "reason": "No public key found for agent",
+                    "details": {
+                        "agent_name": agent.get('agent_name'),
+                        "public_key_hash": public_key_hash,
+                        "validation_type": "signature_validation",
+                        "error_type": "missing_public_key"
+                    }
                 }
             
             # TODO: Implement actual signature verification
@@ -253,7 +269,14 @@ class GatewayAllowlistManager:
             if not signature or len(signature) < 64:  # Minimum reasonable signature length
                 return {
                     "valid": False,
-                    "reason": "Invalid signature format"
+                    "reason": "Invalid signature format",
+                    "details": {
+                        "agent_name": agent.get('agent_name'),
+                        "public_key_hash": public_key_hash,
+                        "validation_type": "signature_validation",
+                        "error_type": "invalid_format",
+                        "signature_length": len(signature) if signature else 0
+                    }
                 }
             
             # TODO: Add actual cryptographic signature verification here
@@ -273,10 +296,10 @@ class GatewayAllowlistManager:
             }
             
         except Exception as e:
-            logger.error("Signature validation failed",
-                        agent_name=agent.get('agent_name'),
-                        public_key_hash=public_key_hash,
-                        error=str(e))
+            logger.warning("Signature validation failed",
+                       agent_name=agent.get('agent_name'),
+                       public_key_hash=public_key_hash,
+                       error=str(e))
             return {
                 "valid": False,
                 "reason": f"Signature validation error: {str(e)}"
@@ -301,7 +324,12 @@ class GatewayAllowlistManager:
         if not agent:
             return {
                 "valid": False,
-                "reason": "Agent not found in allowlist for geolocation validation"
+                "reason": "Agent not found in allowlist for geolocation validation",
+                "details": {
+                    "public_key_hash": public_key_hash,
+                    "validation_type": "geolocation_validation",
+                    "allowlist_status": "not_found"
+                }
             }
         
         try:
@@ -323,6 +351,7 @@ class GatewayAllowlistManager:
             
             # Compare geolocation (case-insensitive)
             # Note: allowlist uses 'country' but Workload-Geo-ID uses 'region'
+            # Align field names with collector for consistency
             expected_country = expected_geo.get('country', '').upper()
             expected_state = expected_geo.get('state', '').upper()
             expected_city = expected_geo.get('city', '').upper()
@@ -331,23 +360,47 @@ class GatewayAllowlistManager:
             actual_state = actual_location.get('state', '').upper()
             actual_city = actual_location.get('city', '').upper()
             
+            logger.info("Gateway geolocation comparison",
+                       agent_name=agent.get('agent_name'),
+                       expected_country=expected_country,
+                       expected_state=expected_state,
+                       expected_city=expected_city,
+                       actual_country=actual_country,
+                       actual_state=actual_state,
+                       actual_city=actual_city)
+            
             # Check if geolocation matches
             if (expected_country and actual_country and expected_country != actual_country):
                 return {
                     "valid": False,
-                    "reason": f"Geolocation verification failed - expected country: {expected_country}, received: {actual_country}"
+                    "reason": "Geolocation verification failed",  # Aligned with collector
+                    "details": {
+                        "expected": expected_geo,
+                        "received": actual_location,
+                        "agent_name": agent.get('agent_name')
+                    }
                 }
             
             if (expected_state and actual_state and expected_state != actual_state):
                 return {
                     "valid": False,
-                    "reason": f"Geolocation verification failed - expected state: {expected_state}, received: {actual_state}"
+                    "reason": "Geolocation verification failed",  # Aligned with collector
+                    "details": {
+                        "expected": expected_geo,
+                        "received": actual_location,
+                        "agent_name": agent.get('agent_name')
+                    }
                 }
             
             if (expected_city and actual_city and expected_city != actual_city):
                 return {
                     "valid": False,
-                    "reason": f"Geolocation verification failed - expected city: {expected_city}, received: {actual_city}"
+                    "reason": "Geolocation verification failed",  # Aligned with collector
+                    "details": {
+                        "expected": expected_geo,
+                        "received": actual_location,
+                        "agent_name": agent.get('agent_name')
+                    }
                 }
             
             logger.info("Geolocation validation passed",
@@ -362,7 +415,7 @@ class GatewayAllowlistManager:
             }
             
         except Exception as e:
-            logger.error("Geolocation validation failed",
+            logger.warning("Geolocation validation failed",
                         agent_name=agent.get('agent_name'),
                         public_key_hash=public_key_hash,
                         error=str(e))
@@ -412,18 +465,27 @@ class GatewayAllowlistManager:
             Validation result
         """
         try:
-            # Extract headers
-            signature_input = headers.get('Signature-Input', '')
-            signature = headers.get('Signature', '')
-            workload_geo_id_str = headers.get('Workload-Geo-ID', '')
+            logger.info("Gateway validate_request_headers called",
+                       headers_present=list(headers.keys()),
+                       validate_geolocation=self.validate_geolocation)
+            
+            # Extract headers (case-insensitive)
+            signature_input = headers.get('Signature-Input', '') or headers.get('signature-input', '')
+            signature = headers.get('Signature', '') or headers.get('signature', '')
+            workload_geo_id_str = headers.get('Workload-Geo-ID', '') or headers.get('Workload-Geo-Id', '') or headers.get('workload-geo-id', '')
             
             # Extract public key hash from signature input
             public_key_hash = self.extract_public_key_hash_from_signature_input(signature_input)
             if not public_key_hash:
-                return {
-                    "valid": False,
-                    "reason": "Could not extract public key hash from Signature-Input header"
+                            return {
+                "valid": False,
+                "reason": "Could not extract public key hash from Signature-Input header",
+                "details": {
+                    "validation_type": "header_parsing",
+                    "error_type": "missing_public_key_hash",
+                    "signature_input": signature_input[:100] + "..." if len(signature_input) > 100 else signature_input
                 }
+            }
             
             # Validate public key hash is in allowlist
             pk_validation = self.validate_public_key_hash_in_allowlist(public_key_hash)
@@ -437,16 +499,33 @@ class GatewayAllowlistManager:
                     return sig_validation
             
             # Validate geolocation if present
+            logger.info("Gateway checking geolocation validation",
+                       workload_geo_id_str=workload_geo_id_str,
+                       validate_geolocation=self.validate_geolocation)
             if workload_geo_id_str:
                 try:
                     workload_geo_id = json.loads(workload_geo_id_str)
+                    logger.info("Gateway geolocation validation called",
+                               workload_geo_id=workload_geo_id,
+                               public_key_hash=public_key_hash)
                     geo_validation = self.validate_geolocation_against_agent(workload_geo_id, public_key_hash)
+                    if geo_validation["valid"]:
+                        logger.info("Gateway geolocation validation result",
+                                   validation_result=geo_validation)
+                    else:
+                        logger.warning("Gateway geolocation validation result",
+                                      validation_result=geo_validation)
                     if not geo_validation["valid"]:
                         return geo_validation
                 except json.JSONDecodeError:
                     return {
                         "valid": False,
-                        "reason": "Invalid JSON format in Workload-Geo-ID header"
+                        "reason": "Invalid JSON format in Workload-Geo-ID header",
+                        "details": {
+                            "validation_type": "header_parsing",
+                            "error_type": "invalid_json_format",
+                            "workload_geo_id_str": workload_geo_id_str[:100] + "..." if len(workload_geo_id_str) > 100 else workload_geo_id_str
+                        }
                     }
             
             return {
@@ -456,10 +535,15 @@ class GatewayAllowlistManager:
             }
             
         except Exception as e:
-            logger.error("Header validation failed", error=str(e))
+            logger.warning("Header validation failed", error=str(e))
             return {
                 "valid": False,
-                "reason": f"Header validation error: {str(e)}"
+                "reason": f"Header validation error: {str(e)}",
+                "details": {
+                    "validation_type": "header_validation",
+                    "error_type": "exception",
+                    "error_message": str(e)
+                }
             }
 
 # Initialize OpenTelemetry
@@ -675,15 +759,103 @@ class SecurityManager:
                     "status_code": 400
                 }
         
-        # Validate against gateway allowlist if enabled
-        if gateway_allowlist_manager.validate_public_key_hash or gateway_allowlist_manager.validate_signature or gateway_allowlist_manager.validate_geolocation:
-            header_validation = gateway_allowlist_manager.validate_request_headers(dict(request.headers))
-            if not header_validation["valid"]:
-                return {
-                    "valid": False,
-                    "error": header_validation["reason"],
-                    "status_code": 403
-                }
+        # For nonce requests, only validate public key hash (same as collector)
+        # For all other requests, validate according to gateway settings
+        if request.path == '/nonce':
+            # Nonce requests: only check public key hash in allowlist (no geolocation)
+            if gateway_allowlist_manager.validate_public_key_hash:
+                logger.info("SecurityManager validating nonce request - public key hash only")
+                # Extract public key hash from query parameters (same as collector)
+                public_key_hash = request.args.get("public_key_hash")
+                if not public_key_hash:
+                    logger.warning("❌ [GATEWAY] Nonce request missing public_key_hash parameter", 
+                                 request_ip=request.remote_addr)
+                    return {
+                        "valid": False,
+                        "error": "public_key_hash parameter is required",
+                        "status_code": 400
+                    }
+                
+                # Validate public key hash format (should be 64 character hex string)
+                if len(public_key_hash) != 64 or not all(c in '0123456789abcdef' for c in public_key_hash.lower()):
+                    logger.warning("❌ [GATEWAY] Nonce request with invalid public_key_hash format", 
+                                 public_key_hash=public_key_hash[:16] + "..." if len(public_key_hash) > 16 else public_key_hash,
+                                 request_ip=request.remote_addr,
+                                 hash_length=len(public_key_hash))
+                    return {
+                        "valid": False,
+                        "error": "Invalid public_key_hash format - must be 64 character hex string",
+                        "status_code": 400
+                    }
+                
+                # Check if public key hash is in allowlist
+                pk_validation = gateway_allowlist_manager.validate_public_key_hash_in_allowlist(public_key_hash)
+                if not pk_validation["valid"]:
+                    logger.warning("❌ [GATEWAY] Nonce request from unauthorized agent", 
+                                 agent_public_key_hash=public_key_hash[:16] + "...",
+                                 request_ip=request.remote_addr)
+                    
+                    # Align with collector's error message and structure
+                    return {
+                        "valid": False,
+                        "error": "Agent not found in allowlist",  # Same as collector
+                        "rejected_by": "gateway",
+                        "status_code": 403
+                    }
+                
+                logger.info("✅ [GATEWAY] Nonce validation passed - public key hash only")
+                return {"valid": True}
+        else:
+            # All other requests: validate according to gateway settings
+            logger.info("SecurityManager checking validation conditions for non-nonce request",
+                       validate_public_key_hash=gateway_allowlist_manager.validate_public_key_hash,
+                       validate_signature=gateway_allowlist_manager.validate_signature,
+                       validate_geolocation=gateway_allowlist_manager.validate_geolocation)
+            
+            if gateway_allowlist_manager.validate_public_key_hash or gateway_allowlist_manager.validate_signature or gateway_allowlist_manager.validate_geolocation:
+                logger.info("SecurityManager calling validate_request_headers")
+                header_validation = gateway_allowlist_manager.validate_request_headers(dict(request.headers))
+                if header_validation["valid"]:
+                    logger.info("SecurityManager validation result", validation_result=header_validation)
+                else:
+                    logger.warning("SecurityManager validation result", validation_result=header_validation)
+                if not header_validation["valid"]:
+                    # Determine validation type based on the error reason (aligned with collector)
+                    validation_type = "gateway_allowlist"  # default
+                    if "geolocation" in header_validation["reason"].lower():
+                        validation_type = "geolocation_policy"
+                    elif "signature" in header_validation["reason"].lower():
+                        validation_type = "signature_verification"
+                    elif "public key" in header_validation["reason"].lower():
+                        validation_type = "agent_verification"
+                    elif "agent" in header_validation["reason"].lower():
+                        validation_type = "agent_verification"
+                    
+                    # Align with collector's error structure
+                    error_response = {
+                        "error": header_validation["reason"],
+                        "rejected_by": "gateway",
+                        "validation_type": validation_type,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    
+                    # Include details if available (aligned with collector structure)
+                    if "details" in header_validation:
+                        # For geolocation errors, align with collector's structure
+                        if "agent_name" in header_validation["details"]:
+                            error_response["details"] = {
+                                "agent_name": header_validation["details"]["agent_name"],
+                                "expected": header_validation["details"].get("expected", {}),
+                                "received": header_validation["details"].get("received", {})
+                            }
+                        else:
+                            error_response["details"] = header_validation["details"]
+                    
+                    return {
+                        "valid": False,
+                        "error_response": error_response,
+                        "status_code": 403
+                    }
         
         return {"valid": True}
 
@@ -764,7 +936,18 @@ def proxy_nonce():
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
-                return jsonify({"error": validation["error"]}), validation["status_code"]
+                # For nonce requests, align with geolocation error format
+                return jsonify({
+                    "error": validation["error"],
+                    "rejected_by": "gateway",
+                    "validation_type": "agent_verification",
+                    "details": {
+                        "public_key_hash": request.args.get("public_key_hash", "unknown"),
+                        "validation_type": "public_key_hash",
+                        "allowlist_status": "not_found"
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                }), validation["status_code"]
             
             # Proxy request to collector as-is (all query params, headers, etc.)
             response = proxy_manager.proxy_request('GET', '/nonce',
@@ -809,7 +992,15 @@ def proxy_metrics():
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
-                return jsonify({"error": validation["error"]}), validation["status_code"]
+                if "error_response" in validation:
+                    return jsonify(validation["error_response"]), validation["status_code"]
+                else:
+                    return jsonify({
+                        "error": validation["error"],
+                        "rejected_by": "gateway",
+                        "validation_type": "request_validation",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }), validation["status_code"]
             
             # Get request data
             data = request.get_json()
@@ -840,7 +1031,15 @@ def proxy_metrics_status():
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
-                return jsonify({"error": validation["error"]}), validation["status_code"]
+                if "error_response" in validation:
+                    return jsonify(validation["error_response"]), validation["status_code"]
+                else:
+                    return jsonify({
+                        "error": validation["error"],
+                        "rejected_by": "gateway",
+                        "validation_type": "request_validation",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }), validation["status_code"]
             
             # Proxy request to collector as-is
             response = proxy_manager.proxy_request('GET', '/metrics/status', 
@@ -867,7 +1066,15 @@ def proxy_nonce_stats():
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
-                return jsonify({"error": validation["error"]}), validation["status_code"]
+                if "error_response" in validation:
+                    return jsonify(validation["error_response"]), validation["status_code"]
+                else:
+                    return jsonify({
+                        "error": validation["error"],
+                        "rejected_by": "gateway",
+                        "validation_type": "request_validation",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }), validation["status_code"]
             
             # Proxy request to collector as-is
             response = proxy_manager.proxy_request('GET', '/nonces/stats', 
@@ -894,7 +1101,10 @@ def proxy_nonces_cleanup():
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
-                return jsonify({"error": validation["error"]}), validation["status_code"]
+                if "error_response" in validation:
+                    return jsonify(validation["error_response"]), validation["status_code"]
+                else:
+                    return jsonify({"error": validation["error"]}), validation["status_code"]
             
             # Get request data if any
             data = request.get_json() if request.is_json else None
@@ -969,7 +1179,10 @@ def proxy_all_other_routes(subpath):
             # Validate request
             validation = security_manager.validate_request(request)
             if not validation["valid"]:
-                return jsonify({"error": validation["error"]}), validation["status_code"]
+                if "error_response" in validation:
+                    return jsonify(validation["error_response"]), validation["status_code"]
+                else:
+                    return jsonify({"error": validation["error"]}), validation["status_code"]
             
             # Get request data if any
             data = None
