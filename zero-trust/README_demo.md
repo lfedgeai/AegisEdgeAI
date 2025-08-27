@@ -12,7 +12,7 @@ The system supports two deployment modes with **aligned error handling**:
 - **Use Case**: Simpler deployment with centralized validation
 - **Error Handling**: All errors returned with consistent format and `rejected_by: "collector"`
 
-### **Gateway Allowlist Mode** (Cloud Deployment Model)
+### **Gateway Policy Enforcement Mode** (Cloud Deployment Model)
 - **Gateway**: Performs first-layer validation (public key hash, signature format, geographic policy, timestamp)
 - **Collector**: Performs second-layer validation (nonce validity, payload signature, end-to-end integrity)
 - **Use Case**: Cloud deployment with layered security and faster rejection
@@ -82,7 +82,7 @@ PORT=8500 python collector/app.py
 PORT=9000 python gateway/app.py
 ```
 
-### Option B: Gateway Allowlist Mode (Cloud Deployment Model)
+### Option B: Gateway Policy Enforcement Mode (Cloud Deployment Model)
 ```bash
 # Start the gateway service with validation enabled
 GATEWAY_VALIDATE_PUBLIC_KEY_HASH=true GATEWAY_VALIDATE_SIGNATURE=true GATEWAY_VALIDATE_GEOLOCATION=true PORT=9000 python gateway/app.py
@@ -151,7 +151,7 @@ curl -X POST "https://localhost:8402/metrics/generate" \
 
 **Expected Result**: The agent should be rejected due to geographic policy violation.
 
-**Expected Error Response (Gateway Allowlist Mode)**:
+**Expected Error Response (Gateway Policy Enforcement Mode)**:
 ```json
 {
   "status": "error",
@@ -218,7 +218,7 @@ curl -X POST "https://localhost:8403/metrics/generate" \
 
 **Expected Result**: The unregistered agent should be rejected by the collector.
 
-**Expected Error Response (Gateway Allowlist Mode)**:
+**Expected Error Response (Gateway Policy Enforcement Mode)**:
 ```json
 {
   "error": "Agent not found in allowlist",
@@ -254,9 +254,9 @@ curl -X POST "https://localhost:8403/metrics/generate" \
 
 ---
 
-## Gateway Allowlist Functionality Demo
+## Gateway Policy Enforcement Functionality Demo
 
-This section demonstrates the gateway allowlist functionality in the Cloud Deployment Model.
+This section demonstrates the gateway Policy Enforcement functionality in the Cloud Deployment Model.
 
 ### Gateway Health Check
 
@@ -291,7 +291,7 @@ curl -k "https://localhost:9000/health"
 }
 ```
 
-**Expected Response (Gateway Allowlist Mode)**:
+**Expected Response (Gateway Policy Enforcement Mode)**:
 ```json
 {
   "status": "healthy",
@@ -357,7 +357,7 @@ curl -k "https://localhost:9000/health"
 
 ### Gateway Validation Testing
 
-#### Test 1: Gateway Allowlist Mode vs Standard Mode
+#### Test 1: Gateway Policy Enforcement Mode vs Standard Mode
 
 **Window 1 - Main Terminal**
 ```bash
@@ -381,7 +381,7 @@ curl -X POST "https://localhost:8401/metrics/generate" \
 }
 ```
 
-# Stop gateway and start in Gateway Allowlist Mode
+# Stop gateway and start in Gateway Policy Enforcement Mode
 GATEWAY_VALIDATE_PUBLIC_KEY_HASH=true GATEWAY_VALIDATE_SIGNATURE=true GATEWAY_VALIDATE_GEOLOCATION=true PORT=9000 python gateway/app.py
 
 # Test agent-001 again (should work - gateway validates and forwards)
@@ -390,7 +390,7 @@ curl -X POST "https://localhost:8401/metrics/generate" \
   -d '{"metric_type": "application"}' \
   --insecure
 
-**Expected Response (Gateway Allowlist Mode)**:
+**Expected Response (Gateway Policy Enforcement Mode)**:
 ```json
 {
   "status": "success",
@@ -404,7 +404,7 @@ curl -X POST "https://localhost:8401/metrics/generate" \
 
 **Window 1 - Main Terminal**
 ```bash
-# Ensure gateway is in allowlist mode
+# Ensure gateway is in Policy Enforcement mode
 GATEWAY_VALIDATE_PUBLIC_KEY_HASH=true GATEWAY_VALIDATE_SIGNATURE=true GATEWAY_VALIDATE_GEOLOCATION=true PORT=9000 python gateway/app.py
 
 # Test agent-geo-policy-violation-002 (should be rejected by gateway)
@@ -414,9 +414,9 @@ curl -X POST "https://localhost:8402/metrics/generate" \
   --insecure
 ```
 
-**Expected Result**: In gateway allowlist mode, the agent should be rejected at the gateway level for geographic policy violation.
+**Expected Result**: In gateway Policy Enforcement mode, the agent should be rejected at the gateway level for geographic policy violation.
 
-**Expected Error Response (Gateway Allowlist Mode)**:
+**Expected Error Response (Gateway Policy Enforcement Mode)**:
 ```json
 {
   "error": "Geolocation verification failed",
@@ -464,7 +464,7 @@ tail -f logs/collector.log
 
 ### Additional Error Scenarios
 
-#### Invalid Signature Error Response (Gateway Allowlist Mode):
+#### Invalid Signature Error Response (Gateway Policy Enforcement Mode):
 ```json
 {
   "error": "Invalid signature format",
@@ -481,7 +481,7 @@ tail -f logs/collector.log
 }
 ```
 
-#### Unregistered Agent Error Response (Gateway Allowlist Mode):
+#### Unregistered Agent Error Response (Gateway Policy Enforcement Mode):
 ```json
 {
   "error": "Agent not found in allowlist",
@@ -496,7 +496,7 @@ tail -f logs/collector.log
 }
 ```
 
-#### Timestamp Proximity Error Response (Gateway Allowlist Mode):
+#### Timestamp Proximity Error Response (Gateway Policy Enforcement Mode):
 ```json
 {
   "error": "Request timestamp too far from gateway time",
@@ -530,8 +530,8 @@ tail -f logs/collector.log
 
 **Window 1 - Main Terminal**
 ```bash
-# Run the complete end-to-end test with gateway allowlist
-./test_end_to_end_flow.sh gateway-allowlist
+# Run the complete end-to-end test with gateway Policy Enforcement
+./test_end_to_end_flow.sh gateway-policy-enforcement
 
 # Run the standard end-to-end test
 ./test_end_to_end_flow.sh
@@ -539,9 +539,9 @@ tail -f logs/collector.log
 
 **Key Differences to Observe**:
 - **Standard Mode**: Gateway acts as pure proxy, all validation at collector
-- **Gateway Allowlist Mode**: Gateway performs first-layer validation, collector performs second-layer validation
-- **Rejection Points**: Standard mode rejects at collector, gateway allowlist mode can reject at gateway
-- **Validation Speed**: Gateway allowlist mode provides faster rejection for basic issues
+- **Gateway Policy Enforcement Mode**: Gateway performs first-layer validation, collector performs second-layer validation
+- **Rejection Points**: Standard mode rejects at collector, gateway Policy Enforcement mode can reject at gateway
+- **Validation Speed**: Gateway Policy Enforcement mode provides faster rejection for basic issues
 
 **Aligned Error Handling**:
 Both modes now provide **consistent error response formats** with the same structure:
@@ -553,7 +553,7 @@ Both modes now provide **consistent error response formats** with the same struc
 **Critical Validation Check - `rejected_by` Field**:
 The `rejected_by` field in error responses is the key indicator of which service performed the validation:
 - **`"rejected_by": "collector"`** = Standard Mode (Gateway acts as proxy)
-- **`"rejected_by": "gateway"`** = Gateway Allowlist Mode (Gateway performs validation)
+- **`"rejected_by": "gateway"`** = Gateway Policy Enforcement Mode (Gateway performs validation)
 
 This field helps verify that the correct validation flow is being used for each deployment model while maintaining consistent error handling across both modes.
 
@@ -562,7 +562,7 @@ This field helps verify that the correct validation flow is being used for each 
 🚀 Testing End-to-End Multi-Agent Zero-Trust Flow (README_demo.md Workflow)
 ==========================================================================
 Trust Boundary: Collector only (gateway acts as pure proxy)
-Error Handling: Aligned with Gateway Allowlist Mode
+Error Handling: Aligned with Gateway Policy Enforcement Mode
 
 ✅ Step 1: Creating agents and starting services...
 ✅ Step 2: Testing agent scenarios...
@@ -612,9 +612,9 @@ Error Handling: Aligned with Gateway Allowlist Mode
 }
 ```
 
-**Expected Test Output (Gateway Allowlist Mode)**:
+**Expected Test Output (Gateway Policy Enforcement Mode)**:
 ```
-🔐 Testing Gateway Allowlist Functionality (Cloud Deployment Model)
+🔐 Testing Gateway Policy Enforcement Functionality (Cloud Deployment Model)
 ================================================================
 Trust Boundary: API Gateway + Collector (same internal network)
 Gateway Enforcement: Geolocation, Public Key Hash, Signature, Timestamp
@@ -632,7 +632,7 @@ Error Handling: Aligned with Standard Mode
 ✅ Step 3: All tests completed successfully
 ```
 
-**Expected Error Responses to Verify (Gateway Allowlist Mode)**:
+**Expected Error Responses to Verify (Gateway Policy Enforcement Mode)**:
 
 **Geographic Policy Violation Response:**
 ```json
@@ -665,7 +665,7 @@ Error Handling: Aligned with Standard Mode
 ```
 
 **Key Validation Points to Check**:
-- ✅ **`rejected_by` field**: Should show "gateway" for Gateway Allowlist Mode, "collector" for Standard Mode
+- ✅ **`rejected_by` field**: Should show "gateway" for Gateway Policy Enforcement Mode, "collector" for Standard Mode
 - ✅ **`validation_type` field**: Should show appropriate validation type (geolocation_policy, agent_verification, etc.)
 - ✅ **`details` structure**: Should contain specific validation details
 - ✅ **`timestamp` field**: Should be in ISO format

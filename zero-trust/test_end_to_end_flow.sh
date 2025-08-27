@@ -5,8 +5,8 @@
 
 # Parse command line arguments
 TEST_TYPE=${1:-"full"}
-if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
-    echo "🔐 Testing Gateway Allowlist Functionality (Cloud Deployment Model)"
+if [[ "$TEST_TYPE" == "gateway-allowlist" || "$TEST_TYPE" == "gateway-policy-enforcement" ]]; then
+    echo "🔐 Testing Gateway Policy Enforcement Functionality (Cloud Deployment Model)"
     echo "================================================================"
     echo "Trust Boundary: API Gateway + Collector (same internal network)"
     echo "Gateway Enforcement: Geolocation, Public Key Hash, Signature, Timestamp"
@@ -16,11 +16,12 @@ elif [[ "$TEST_TYPE" == "full" ]]; then
     echo "🚀 Testing End-to-End Multi-Agent Zero-Trust Flow (README_demo.md Workflow)"
     echo "=========================================================================="
     echo "Trust Boundary: Collector only (gateway acts as pure proxy)"
-    echo "Error Handling: Aligned with Gateway Allowlist Mode"
+    echo "Error Handling: Aligned with Gateway Policy Enforcement Mode"
 else
-    echo "Usage: $0 [full|gateway-allowlist]"
+    echo "Usage: $0 [full|gateway-policy-enforcement]"
     echo "  full: Run complete end-to-end test (default) - Collector-only validation"
-    echo "  gateway-allowlist: Run all tests with gateway enforcement (cloud deployment model)"
+    echo "  gateway-policy-enforcement: Run all tests with gateway enforcement (cloud deployment model)"
+    echo "  (alias maintained: gateway-allowlist)"
     exit 1
 fi
 
@@ -138,10 +139,10 @@ python3 create_agent.py agent-001 >/dev/null 2>&1 || cleanup_on_failure
 
 # Start services
 echo "   Starting gateway..."
-if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
-    # Enable gateway allowlist functionality
+if [[ "$TEST_TYPE" == "gateway-allowlist" || "$TEST_TYPE" == "gateway-policy-enforcement" ]]; then
+    # Enable gateway policy enforcement functionality
     GATEWAY_VALIDATE_PUBLIC_KEY_HASH=true GATEWAY_VALIDATE_SIGNATURE=true GATEWAY_VALIDATE_GEOLOCATION=true SERVICE_NAME=opentelemetry-gateway PORT=9000 python3 gateway/app.py >logs/gateway.log 2>&1 &
-    echo "   ✅ Gateway started with allowlist enabled"
+    echo "   ✅ Gateway started with policy enforcement enabled"
 else
     # Standard mode - gateway validation disabled by default, let collector do all validation
     SERVICE_NAME=opentelemetry-gateway PORT=9000 python3 gateway/app.py >logs/gateway.log 2>&1 &
@@ -354,12 +355,12 @@ echo ""
 # Step 2.4: Gateway Enforcement Testing (Cloud Deployment Model)
 echo -e "${YELLOW}2.4 Gateway Enforcement Testing (Cloud Deployment Model)...${NC}"
 
-if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
+if [[ "$TEST_TYPE" == "gateway-allowlist" || "$TEST_TYPE" == "gateway-policy-enforcement" ]]; then
     echo "   🔐 Testing Gateway Enforcement (Cloud Deployment Model):"
     echo "   Trust Boundary: API Gateway + Collector (same internal network)"
     echo ""
     echo "   ✅ Gateway Enforcement (First-Layer Security):"
-    echo "      • Public Key Hash: Validates agent is in gateway allowlist"
+    echo "      • Public Key Hash: Validates agent is in gateway agent allowlist"
     echo "      • Signature Format: Basic signature format and structure validation"
     echo "      • Geographic Policy: Enforces location-based access rules (Workload-Geo-ID header)"
     echo "      • Timestamp Proximity: Ensures request timestamp is close to gateway time"
@@ -540,12 +541,12 @@ echo "      Agent → Gateway → Collector"
 echo "      Sign → Proxy → Verify"
 
 echo -e "${BLUE}   🔐 Trust Boundary & Validation Model:${NC}"
-if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
-    echo "      🔐 Cloud Deployment Model (Gateway-Allowlist Mode):"
+if [[ "$TEST_TYPE" == "gateway-allowlist" || "$TEST_TYPE" == "gateway-policy-enforcement" ]]; then
+    echo "      🔐 Cloud Deployment Model (Gateway Policy Enforcement Mode):"
     echo "         Trust Boundary: API Gateway + Collector (same internal network)"
     echo "         ✅ Gateway Enforcement:"
     echo "            • Geolocation policy (rejects location mismatches)"
-    echo "            • Public key hash in allowlist (rejects unregistered agents)"
+    echo "            • Public key hash in gateway agent allowlist (rejects unregistered agents)"
     echo "            • Signature of geolocation header (validates signature format)"
     echo "            • Timestamp proximity (rejects if time too far from gateway)"
     echo "         ✅ Collector Enforcement:"
@@ -554,12 +555,12 @@ if [[ "$TEST_TYPE" == "gateway-allowlist" ]]; then
     echo "         📋 Header Handling: New headers NOT passed to collector"
     echo "         🔄 Error Handling: Aligned with Standard Mode (consistent format)"
 else
-    echo "      🔐 Standard Flow Model:"
+    echo "      🔐 Standard Flow Model (Collector Policy Enforcement - Default):"
     echo "         Trust Boundary: Collector only (gateway acts as pure proxy)"
     echo "         ❌ Gateway: No validation, pure proxy"
     echo "         ✅ Collector: All validation (public key, signature, nonce, geolocation)"
     echo "         📋 Header Handling: All headers passed to collector"
-    echo "         🔄 Error Handling: Aligned with Gateway Allowlist Mode (consistent format)"
+    echo "         🔄 Error Handling: Aligned with Gateway Policy Enforcement Mode (consistent format)"
 fi
 
 echo ""
