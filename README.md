@@ -1,9 +1,9 @@
 # "AegisEdgeAI" - Securing AI at the Edge
 
-**AegisEdgeAI** delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, CitadelAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: CitadelAI makes it impossible for an AI workload to run on the wrong machine, in the wrong location, or in a compromised state — and cryptographically proves it.**
+**AegisEdgeAI** delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, AegisEdgeAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: AegisEdgeAI makes it impossible for an AI workload to run on the wrong machine, in the wrong location, or in a compromised state — and cryptographically proves it.**
 
 ## Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement
-![Alt text](zero-trust/images/citadelai-flow.png)
+![Alt text](zero-trust/images/AegisEdgeAI-flow.png)
 
 ## Why it matters
 
@@ -167,7 +167,7 @@ This approach begins addressing the critical security gaps in current inference,
 This produces a PoG workload certificate/token, enabling verifiable enforcement of geographic policy at the workload level.
 
 ### 3. Addressing Hardware and Software Supply Chain Threats (work in progress)
-To mitigate the hardware and software supply chain threats above, CitadelAI adopts a layered trust model that binds device identity, hardware integrity, and runtime state into a continuous attestation chain from manufacturing through operation.
+To mitigate the hardware and software supply chain threats above, AegisEdgeAI adopts a layered trust model that binds device identity, hardware integrity, and runtime state into a continuous attestation chain from manufacturing through operation.
 
 **Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
 
@@ -199,7 +199,7 @@ To mitigate the hardware and software supply chain threats above, CitadelAI adop
 
 A production‑ready prototype microservice design for secure, verifiable data (e.g., operational metrics etc.) collection at the edge.
 
-Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/zero-trust/README.md)
+Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trust/README.md)
 
 #### Security Highlights
 
@@ -209,11 +209,11 @@ Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/zero-trust/
 
 #### How to test Prototype?
 
-- Refer [README_demo.md](https://github.com/lfedgeai/CitadelAI/tree/main/zero-trust/README_demo.md)
+- Refer [README_demo.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trust/README_demo.md)
 
 ### TPM tools for macOS - In progress
 
-Details: [README.md](https://github.com/lfedgeai/CitadelAI/tree/main/swtpm-macos/README.md)
+Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/swtpm-macos/README.md)
 
 ## References
 (1) https://simplynuc.com/blog/banks-data-closer-to-customers/
