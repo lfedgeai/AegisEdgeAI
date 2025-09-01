@@ -112,6 +112,18 @@ echo "   Gateway URL: $GATEWAY_URL"
 echo "   Collector URL: $COLLECTOR_URL"
 echo ""
 
+# Check if swtpm is running before proceeding
+echo -e "${YELLOW}0.5. Checking TPM prerequisite...${NC}"
+if ! pgrep -f "swtpm" >/dev/null 2>&1; then
+    echo -e "${RED}❌ swtpm (software TPM) is not running${NC}"
+    echo "   Please start swtpm first:"
+    echo "   bash tpm/swtpm.sh"
+    echo "   Then run the test again"
+    exit 1
+fi
+echo "   ✅ swtpm is running"
+echo ""
+
 # Main test logic - runs for both full and gateway-allowlist modes
 # Step 1: Create agents and start services (README_demo.md workflow)
 echo -e "${YELLOW}1. Creating agents and starting services...${NC}"
