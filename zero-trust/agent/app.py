@@ -436,68 +436,37 @@ class CollectorClient:
     
 
     
-    def send_metrics(self, payload: Dict[str, Any]) -> tuple[bool, str]:
+    def send_metrics(self, payload: Dict[str, Any], custom_headers: Dict[str, str] = None) -> tuple[bool, str]:
         """
         Send signed metrics payload to the OpenTelemetry Collector.
         
         Args:
-            payload: Signed metrics payload
+            payload: Signed metrics payload (already contains payload signature)
+            custom_headers: Pre-signed headers for the request (including Workload-Geo-ID and Signature)
             
         Returns:
             Tuple of (success: bool, error_message: str)
         """
         with tracer.start_as_current_span("send_metrics"):
             try:
-                # Build Workload-Geo-ID header (JSON) and Signature headers
                 agent_name = payload.get("agent_name", os.environ.get("AGENT_NAME", settings.service_name))
-                geographic_region = payload.get("geographic_region", {})
-
-                # Determine client workload location details
-                workload_geo_id = {
-                    "client_workload_id": agent_name,
-                    "client_workload_location": {
-                        "region": geographic_region.get("region"),
-                        "state": geographic_region.get("state"),
-                        "city": geographic_region.get("city"),
-                    },
-                    "client_workload_location_type": "geographic-region",  # precise/approximated/region
-                    "client_workload_location_quality": "GNSS",  # GNSS/mobile/WiFi/IP
-                    "client_type": os.environ.get("CLIENT_TYPE", "thick"),  # thick/thin (default thick)
-                }
-
-                # HTTP Signature headers (without nonce since collector validates payload signature only)
-                public_key_hash = payload.get("tpm_public_key_hash", "unknown")
-                signature_input = self._generate_http_signature_input(
-                    keyid=public_key_hash,  # thick: workload public key hash
-                    algorithm="Ed25519",
-                    nonce_value="",  # No nonce in HTTP headers since collector validates payload signature
-                )
-                http_signature = payload.get("signature", "")
-
-                # Prepare headers for metrics request
-                metrics_headers = {
-                    "Content-Type": "application/json",
-                    "Workload-Geo-ID": json.dumps(workload_geo_id, separators=(",", ":")),
-                    "Signature-Input": signature_input,
-                    "Signature": http_signature,
-                }
                 
-                # Debug logging for header construction
-                logger.info("🔍 [AGENT] Headers prepared for metrics request",
-                           agent_name=agent_name,
-                           workload_geo_id_present=bool(metrics_headers.get("Workload-Geo-ID")),
-                           workload_geo_id_value=metrics_headers.get("Workload-Geo-ID", "")[:100] + "..." if len(metrics_headers.get("Workload-Geo-ID", "")) > 100 else metrics_headers.get("Workload-Geo-ID", ""),
-                           signature_present=bool(metrics_headers.get("Signature")),
-                           signature_input_present=bool(metrics_headers.get("Signature-Input")),
-                           geographic_region=geographic_region,
-                           all_headers=metrics_headers)
+                # Use custom headers if provided, otherwise create basic headers
+                if custom_headers:
+                    metrics_headers = custom_headers.copy()
+                    # Ensure Content-Type is set
+                    metrics_headers["Content-Type"] = "application/json"
+                else:
+                    # Fallback to basic headers (for backward compatibility)
+                    metrics_headers = {
+                        "Content-Type": "application/json",
+                    }
                 
-                # Verify HTTP signature approach
-                logger.info("🔍 [AGENT] HTTP signature approach verification",
+                logger.info("🔍 [AGENT] Sending metrics with headers",
                            agent_name=agent_name,
-                           payload_nonce=payload.get("nonce", ""),
-                           http_signature_nonce="N/A (payload signature only)",
-                           security_model="Payload signature validation only")
+                           has_workload_geo_id=bool(metrics_headers.get("Workload-Geo-ID")),
+                           has_signature=bool(metrics_headers.get("Signature")),
+                           has_signature_input=bool(metrics_headers.get("Signature-Input")))
 
                 response = self.session.post(
                     f"{self.base_url}/metrics",
@@ -548,7 +517,6 @@ class CollectorClient:
                 logger.error("Failed to send metrics to gateway", error=str(e))
                 error_counter.add(1, {"operation": "send_metrics", "error": str(e)})
                 return False, str(e), None
-
 
 # Initialize collector client
 collector_client = CollectorClient()
@@ -742,13 +710,61 @@ def generate_and_send_metrics():
                        metrics_timestamp=metrics_data.get("timestamp"),
                        payload_timestamp=payload["timestamp"])
             
+            # Create headers for metrics request (required for gateway validation)
+            # Build Workload-Geo-ID header (JSON) format for zero-trust validation
+            workload_geo_id = {
+                "client_workload_id": agent_name,
+                "client_workload_location": {
+                    "region": geographic_region.get("region"),
+                    "state": geographic_region.get("state"),
+                    "city": geographic_region.get("city"),
+                },
+                "client_workload_location_type": "geographic-region",  # precise/approximated/region
+                "client_workload_location_quality": "GNSS",  # GNSS/mobile/WiFi/IP
+                "client_type": os.environ.get("CLIENT_TYPE", "thick"),  # thick/thin (default thick)
+            }
+
+            # Sign the Workload-Geo-ID header content for gateway validation
+            workload_geo_id_json = json.dumps(workload_geo_id, separators=(",", ":"))
+            workload_geo_id_bytes = workload_geo_id_json.encode('utf-8')
+            
+            logger.info("🔍 [AGENT] Signing Workload-Geo-ID header",
+                       agent_name=agent_name,
+                       workload_geo_id_length=len(workload_geo_id_json),
+                       data_hash=hashlib.sha256(workload_geo_id_bytes).hexdigest()[:16] + "...")
+            
+            # Sign the header content using TPM2
+            header_signature_data = tpm2_utils.sign_data(
+                workload_geo_id_bytes,
+                algorithm="sha256"  # Use SHA256 for header signing
+            )
+            
+            # Create HTTP Signature headers for gateway validation
+            signature_input = f'keyid="{public_key_hash}", created={int(time.time())}, expires={int(time.time()) + 300}, alg="Ed25519"'
+            http_signature = header_signature_data.hex()  # Use the header signature
+            
+            # Prepare headers for metrics request
+            metrics_headers = {
+                "Content-Type": "application/json",
+                "Workload-Geo-ID": workload_geo_id_json,
+                "Signature-Input": signature_input,
+                "Signature": http_signature,
+            }
+            
+            logger.info("🔍 [AGENT] Headers prepared for metrics request",
+                       agent_name=agent_name,
+                       workload_geo_id_present=bool(metrics_headers.get("Workload-Geo-ID")),
+                       signature_present=bool(metrics_headers.get("Signature")),
+                       signature_input_present=bool(metrics_headers.get("Signature-Input")),
+                       signature_length=len(http_signature))
+
             # Send to collector
             logger.info("📤 [AGENT] Sending signed metrics to collector", 
                        agent_name=agent_name,
                        payload_size=len(json.dumps(payload)),
                        signature_length=len(signature_data["signature"]))
             
-            success, error_message, error_response = collector_client.send_metrics(payload)
+            success, error_message, error_response = collector_client.send_metrics(payload, metrics_headers)
             
             if success:
                 logger.info("🎉 [AGENT] Metrics generation and sending completed successfully", 

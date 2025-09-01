@@ -102,7 +102,7 @@ The system supports two test modes reflecting different deployment architectures
 **Gateway Enforcement** (First Layer):
 - ✅ **Geolocation Policy**: Rejects if location doesn't match allowlist
 - ✅ **Public Key Hash**: Rejects unregistered agents
-- ✅ **Signature of Geolocation Header**: Validates signature format
+- ✅ **Cryptographic Signature Verification**: Fully verifies Workload-Geo-ID header signature using TPM2 verification
 - ✅ **Timestamp Proximity**: Rejects if agent time is too far from gateway time
 
 **Collector Enforcement** (Second Layer):
@@ -133,10 +133,10 @@ The system supports two validation modes reflecting different deployment archite
 - **Gateway**: Acts as pure proxy, no validation
 - **Collector**: Performs all validation:
   - ✅ **Public Key Hash**: Validates agent is in allowlist
-  - ✅ **Signature Format**: Basic signature format validation
+  - ✅ **Cryptographic Signature Verification**: Full TPM2 signature verification of payload data
   - ✅ **Geolocation**: Compares reported vs allowlist location
   - ✅ **Nonce Validation**: Existence, expiration, reuse prevention
-  - ✅ **Cryptographic Verification**: Full signature verification
+  - ✅ **End-to-End Integrity**: Complete request validation
 - **Header Handling**: All headers passed to collector
 - **Error Handling**: Aligned format with `rejected_by: "collector"`
 
@@ -145,7 +145,7 @@ The system supports two validation modes reflecting different deployment archite
 
 - **Gateway**: Performs first-layer validation:
   - ✅ **Public Key Hash**: Validates agent is in gateway agent allowlist
-  - ✅ **Signature Format**: Basic signature format and structure validation
+  - ✅ **Cryptographic Signature Verification**: Full TPM2 signature verification of Workload-Geo-ID header using same method as collector
   - ✅ **Geographic Policy**: Enforces location-based access rules (Workload-Geo-ID header) - **except for nonce requests**
   - ✅ **Timestamp Proximity**: Ensures request timestamp is close to gateway time
   - ✅ **Rejects**: Unregistered agents, geolocation mismatches, invalid signatures
@@ -165,14 +165,14 @@ The gateway **CANNOT** validate:
 - ❌ **Nonce Validity**: Gateway doesn't maintain nonce state
 - ❌ **Nonce Expiration**: Gateway doesn't track nonce timestamps
 - ❌ **Nonce Reuse**: Gateway doesn't track used nonces
-- ❌ **Payload Signature**: Gateway cannot perform full cryptographic signature verification
+- ❌ **Payload Signature**: Gateway validates header signatures only, collector validates payload signatures
 
 ### **Security Flow Comparison**
 
 | Validation Type | Standard Flow | Gateway Policy Enforcement Flow |
 |----------------|---------------|------------------------|
 | Public Key Hash | Collector | Gateway + Collector |
-| Signature Format | Collector | Gateway (basic format) + Collector (full verification) |
+| Signature Verification | Collector | Gateway (full cryptographic verification) + Collector (full verification) |
 | Geographic Policy | Collector | Gateway + Collector (except nonce requests) |
 | Timestamp Proximity | Collector | Gateway + Collector |
 | Nonce Validation | Collector | Collector only |
@@ -220,6 +220,31 @@ Both deployment modes now provide **consistent error response formats**:
 - **Gateway Policy Enforcement Flow**: Cloud deployment model where API Gateway and Collector are in the same trust boundary, with gateway providing first-layer security enforcement
 
 **Both modes provide aligned error handling for consistent operational experience.**
+
+## 🔐 Gateway Signature Verification
+
+### **Enhanced Security Implementation**
+
+The gateway now implements **full cryptographic signature verification** of HTTP headers, providing genuine security at the gateway layer:
+
+**Implementation Details:**
+- **Same TPM2 Verification Method**: Gateway uses identical `verify_app_message_signature.sh` script as collector
+- **Individual Agent Keys**: Each agent's signature is verified using their specific public key from allowlist
+- **Canonical JSON Processing**: Ensures consistent JSON formatting between signing and verification
+- **Shell Script Consistency**: Maintains verification consistency across gateway and collector
+
+**Security Benefits:**
+- **Genuine Cryptographic Security**: Not just format validation, but actual signature verification
+- **Early Rejection**: Invalid signatures rejected at gateway layer before reaching collector
+- **Consistent Verification**: Same verification logic as collector ensures compatibility
+- **Individual Agent Authentication**: Each agent verified with their unique TPM2 key
+
+**Technical Architecture:**
+```bash
+Agent → Signs Workload-Geo-ID with TPM2 → Gateway → Verifies with verify_app_message_signature.sh → Collector
+```
+
+This enhancement transforms the gateway from a simple proxy to a **genuine security enforcement point** while maintaining full compatibility with existing agent and collector implementations.
 
 ## Enhanced Debugging and Monitoring
 

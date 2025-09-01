@@ -306,11 +306,15 @@ class AgentCreator:
         """Read and extract raw public key content from the TPM public key file."""
         public_key_file = f"tpm/{self.agent_name}_pubkey.pem"
         
+        logger.info("Attempting to read public key content", 
+                   agent_name=self.agent_name,
+                   public_key_file=public_key_file,
+                   file_exists=os.path.exists(public_key_file))
+        
         if not os.path.exists(public_key_file):
-            logger.warning("Agent-specific public key file not found, agent may not have been fully initialized", 
+            logger.error("Agent-specific public key file not found - TPM setup failed", 
                          public_key_file=public_key_file)
-            # Return a placeholder - this will be updated after TPM persistence setup
-            return f"PLACEHOLDER_FOR_{self.agent_name}"
+            raise FileNotFoundError(f"TPM public key file not found: {public_key_file}")
         
         try:
             # Read the PEM formatted public key content
@@ -379,16 +383,16 @@ class AgentCreator:
             # Step 1: Create directory structure
             self.create_agent_directory()
             
-            # Step 2: Create TPM files (before config so we can read the agent-specific key)
+            # Step 2: Create TPM files
             self.create_tpm_files()
             
-            # Step 3: Setup TPM persistence (this generates the agent-specific public key)
+            # Step 3: Setup TPM persistence (MUST happen before config creation)
             self.setup_tpm_persistence()
             
-            # Step 4: Create agent configuration (now we can read the agent-specific key)
+            # Step 4: Create agent configuration (reads the real TPM public key)
             self.create_agent_config()
             
-            # Step 5: Add to collector allowlist
+            # Step 5: Add to allowlists (uses the same real public key)
             self.add_to_collector_allowlist()
             
             logger.info("Agent creation completed successfully", agent_name=self.agent_name)
