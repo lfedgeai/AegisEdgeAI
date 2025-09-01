@@ -1,6 +1,6 @@
-# "CitadelAI" - Securing AI at the Edge
+# "AegisEdgeAI" - Securing AI at the Edge
 
-**CitadelAI** delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, CitadelAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: CitadelAI makes it impossible for an AI workload to run on the wrong machine, in the wrong location, or in a compromised state — and cryptographically proves it.**
+**AegisEdgeAI** delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, CitadelAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: CitadelAI makes it impossible for an AI workload to run on the wrong machine, in the wrong location, or in a compromised state — and cryptographically proves it.**
 
 ## Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement
 ![Alt text](zero-trust/images/citadelai-flow.png)
