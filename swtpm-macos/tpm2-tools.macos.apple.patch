@@ -1,0 +1,117 @@
+diff --git a/lib/efi_event.h b/lib/efi_event.h
+index e1b29550..4b1a89b9 100644
+--- a/lib/efi_event.h
++++ b/lib/efi_event.h
+@@ -2,7 +2,13 @@
+ #ifndef TCG_EFI_EVENT_H
+ #define TCG_EFI_EVENT_H 1
+ 
++#if __has_include(<uchar.h>)
+ #include <uchar.h>
++#else
++typedef uint16_t char16_t;
++typedef uint32_t char32_t;
++#endif
++
+ #include <tss2/tss2_tpm2_types.h>
+ 
+ /*
+diff --git a/lib/tpm2_eventlog_yaml.c b/lib/tpm2_eventlog_yaml.c
+index c9c87efb..1d8e2d3a 100644
+--- a/lib/tpm2_eventlog_yaml.c
++++ b/lib/tpm2_eventlog_yaml.c
+@@ -4,7 +4,16 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++
++#if __has_include(<uchar.h>)
+ #include <uchar.h>
++#else
++typedef uint16_t char16_t;
++typedef uint32_t char32_t;
++#endif
++
++#include <wchar.h>
++
+ 
+ #include <tss2/tss2_tpm2_types.h>
+ 
+@@ -43,6 +52,29 @@
+ #define NAME_SHIM_LEN 4
+ #define NAME_SECUREBOOT_LEN 10
+ 
++size_t c16rtomb(char *s, char16_t c16, mbstate_t *ps) {
++    (void)ps;
++    if (!s) {
++        return 4;  // Max UTF-8 char size
++    }
++    if (c16 < 0x80) {
++        s[0] = (char)c16;
++        return 1;
++    } else if (c16 < 0x800) {
++        s[0] = 0xC0 | (c16 >> 6);
++        s[1] = 0x80 | (c16 & 0x3F);
++        return 2;
++    } else if (0xD800 <= c16 && c16 <= 0xDFFF) {
++        errno = EILSEQ; // Surrogate half - invalid here
++        return (size_t)-1;
++    } else {
++        s[0] = 0xE0 | (c16 >> 12);
++        s[1] = 0x80 | ((c16 >> 6) & 0x3F);
++        s[2] = 0x80 | (c16 & 0x3F);
++        return 3;
++    }
++}
++
+ static void guid_unparse_lower(EFI_GUID guid, char guid_buf[37]) {
+ 
+     snprintf(guid_buf, 37, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+diff --git a/lib/tpm2_systemdeps.h b/lib/tpm2_systemdeps.h
+index 3eafb618..8d50aa15 100644
+--- a/lib/tpm2_systemdeps.h
++++ b/lib/tpm2_systemdeps.h
+@@ -5,6 +5,15 @@
+ 
+ #if defined __FreeBSD__ || defined __DragonFly__
+ # include <sys/endian.h>
++#elif defined __APPLE__
++# include <machine/endian.h>
++#include <libkern/OSByteOrder.h>
++#define le16toh(x) OSSwapLittleToHostInt16(x)
++#define htole16(x) OSSwapHostToLittleInt16(x)
++#define le32toh(x) OSSwapLittleToHostInt32(x)
++#define htole32(x) OSSwapHostToLittleInt32(x)
++#define le64toh(x) OSSwapLittleToHostInt64(x)
++#define htole64(x) OSSwapHostToLittleInt64(x)
+ #else
+ # include <endian.h>
+ #endif
+diff --git a/lib/tpm2_util.c b/lib/tpm2_util.c
+index c489430d..b074492b 100644
+--- a/lib/tpm2_util.c
++++ b/lib/tpm2_util.c
+@@ -21,6 +21,23 @@
+ #include "tpm2_util.h"
+ #include "tpm2_systemdeps.h"
+ 
++#ifdef __APPLE__
++#include <libkern/OSByteOrder.h>
++#define be64toh(x) OSSwapBigToHostInt64(x)
++#define be32toh(x) OSSwapBigToHostInt32(x)
++#define be16toh(x) OSSwapBigToHostInt16(x)
++#define le64toh(x) OSSwapLittleToHostInt64(x)
++#define le32toh(x) OSSwapLittleToHostInt32(x)
++#define le16toh(x) OSSwapLittleToHostInt16(x)
++#define htobe64(x) OSSwapHostToBigInt64(x)
++#define htobe32(x) OSSwapHostToBigInt32(x)
++#define htobe16(x) OSSwapHostToBigInt16(x)
++#define htole64(x) OSSwapHostToLittleInt64(x)
++#define htole32(x) OSSwapHostToLittleInt32(x)
++#define htole16(x) OSSwapHostToLittleInt16(x)
++#endif
++
++
+ // verify that the quote digest equals the digest we calculated
+ bool tpm2_util_verify_digests(TPM2B_DIGEST *quoteDigest,
+         TPM2B_DIGEST *pcr_digest) {
