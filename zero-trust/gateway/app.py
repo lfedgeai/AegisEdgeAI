@@ -18,6 +18,7 @@ import time
 import hashlib
 import base64
 import requests
+import re
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from flask import Flask, jsonify, request, Response
@@ -31,6 +32,8 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 import structlog
+# Cryptography imports removed to avoid import issues
+# Using PublicKeyAllowlistUtils for signature verification instead
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -232,6 +235,9 @@ class GatewayAllowlistManager:
         # Default to false - validation should be explicitly enabled
         self.validate_public_key_hash = os.environ.get("GATEWAY_VALIDATE_PUBLIC_KEY_HASH", "false").lower() == "true"
         self.validate_signature = os.environ.get("GATEWAY_VALIDATE_SIGNATURE", "false").lower() == "true"
+        logger.info("🚨 [GATEWAY] SIGNATURE_VALIDATION_CONFIG",
+                   validate_signature=self.validate_signature,
+                   env_var_value=os.environ.get("GATEWAY_VALIDATE_SIGNATURE", "NOT_SET"))
         self.validate_geolocation = os.environ.get("GATEWAY_VALIDATE_GEOLOCATION", "false").lower() == "true"
         
         logger.info("Gateway allowlist manager initialized",
@@ -326,7 +332,7 @@ class GatewayAllowlistManager:
             }
     
     def validate_signature_against_agent(self, signature: str, public_key_hash: str, 
-                                       signature_input: str) -> Dict[str, Any]:
+                                       signature_input: str, workload_geo_id_str: str = None) -> Dict[str, Any]:
         """
         Validate signature against agent's public key.
         
@@ -338,6 +344,10 @@ class GatewayAllowlistManager:
         Returns:
             Validation result
         """
+        logger.info("🚨 [GATEWAY] VALIDATE_SIGNATURE_METHOD_CALLED",
+                   public_key_hash=public_key_hash,
+                   has_signature=bool(signature),
+                   has_workload_geo_id=bool(workload_geo_id_str))
         if not self.validate_signature:
             return {"valid": True, "reason": "Signature validation disabled"}
         
@@ -368,8 +378,7 @@ class GatewayAllowlistManager:
                     }
                 }
             
-            # TODO: Implement actual signature verification
-            # For now, we'll do a basic validation that the signature exists and has expected format
+            # Basic signature format validation
             if not signature or len(signature) < 64:  # Minimum reasonable signature length
                 return {
                     "valid": False,
@@ -383,20 +392,257 @@ class GatewayAllowlistManager:
                     }
                 }
             
-            # TODO: Add actual cryptographic signature verification here
-            # This would involve:
-            # 1. Parsing the signature input to extract the signed data
-            # 2. Using the public key to verify the signature
-            # 3. Checking the signature expiration
+            # Parse signature input to extract components
+            signature_input_parts = signature_input.split(',')
+            key_id = None
+            created = None
+            expires = None
+            algorithm = None
+            nonce = None
             
-            logger.info("Signature validation passed (basic format check)",
+            for part in signature_input_parts:
+                part = part.strip()
+                if 'keyid=' in part:
+                    key_id = part.split('=')[1].strip('"')
+                elif 'created=' in part:
+                    created = int(part.split('=')[1])
+                elif 'expires=' in part:
+                    expires = int(part.split('=')[1])
+                elif 'alg=' in part:
+                    algorithm = part.split('=')[1].strip('"')
+                elif 'nonce=' in part:
+                    nonce = part.split('=')[1].strip('"')
+            
+            # Validate signature input components
+            if not key_id or key_id != public_key_hash:
+                return {
+                    "valid": False,
+                    "reason": "Invalid key ID in signature input",
+                    "details": {
+                        "agent_name": agent.get('agent_name'),
+                        "public_key_hash": public_key_hash,
+                        "validation_type": "signature_validation",
+                        "error_type": "invalid_key_id",
+                        "expected_key_id": public_key_hash,
+                        "received_key_id": key_id
+                    }
+                }
+            
+            # Validate timestamp if present
+            current_time = int(time.time())
+            if created and current_time < created:
+                return {
+                    "valid": False,
+                    "reason": "Signature created in the future",
+                    "details": {
+                        "agent_name": agent.get('agent_name'),
+                        "public_key_hash": public_key_hash,
+                        "validation_type": "signature_validation",
+                        "error_type": "future_timestamp",
+                        "created": created,
+                        "current_time": current_time
+                    }
+                }
+            
+            if expires and current_time > expires:
+                return {
+                    "valid": False,
+                    "reason": "Signature has expired",
+                    "details": {
+                        "agent_name": agent.get('agent_name'),
+                        "public_key_hash": public_key_hash,
+                        "validation_type": "signature_validation",
+                        "error_type": "expired_signature",
+                        "expires": expires,
+                        "current_time": current_time
+                    }
+                }
+            
+            # Basic signature format validation
+            if not re.match(r'^[0-9a-fA-F]+$', signature):
+                return {
+                    "valid": False,
+                    "reason": "Invalid signature format - not hexadecimal",
+                    "details": {
+                        "agent_name": agent.get('agent_name'),
+                        "public_key_hash": public_key_hash,
+                        "validation_type": "signature_validation",
+                        "error_type": "invalid_hex_format"
+                    }
+                }
+            
+            # Convert signature from hex to bytes
+            signature_bytes = bytes.fromhex(signature)
+            
+            # For RSA-SSA (TPM2 default), signature should be 256 bytes (2048-bit key)
+            if len(signature_bytes) != 256:
+                return {
+                    "valid": False,
+                    "reason": "Invalid signature length for RSA-SSA",
+                    "details": {
+                        "agent_name": agent.get('agent_name'),
+                        "public_key_hash": public_key_hash,
+                        "validation_type": "signature_validation",
+                        "error_type": "invalid_signature_length",
+                        "expected_length": 256,
+                        "actual_length": len(signature_bytes)
+                    }
+                }
+            
+            # If we have Workload-Geo-ID content, verify the signature cryptographically
+            logger.info("🚨 [GATEWAY] SIGNATURE_VERIFICATION_ENTRY_POINT",
                        agent_name=agent.get('agent_name'),
-                       public_key_hash=public_key_hash)
+                       workload_geo_id_present=bool(workload_geo_id_str),
+                       validate_signature=self.validate_signature)
+            if workload_geo_id_str:
+                try:
+                    # CRITICAL FIX: Parse and re-serialize the JSON with the EXACT same format
+                    # the agent used when signing (separators=(",", ":") for compact format)
+                    import json
+                    workload_geo_id_parsed = json.loads(workload_geo_id_str)
+                    workload_geo_id_canonical = json.dumps(workload_geo_id_parsed, separators=(",", ":"))
+                    data_to_verify = workload_geo_id_canonical.encode('utf-8')
+                    
+                    # Debug: Log the exact data being verified
+                    import hashlib
+                    logger.info("🚨 [GATEWAY] SIGNATURE_DEBUG_DATA_VERIFIED",
+                               agent_name=agent.get('agent_name'),
+                               public_key_hash=public_key_hash,
+                               workload_geo_id_original=workload_geo_id_str,
+                               workload_geo_id_canonical=workload_geo_id_canonical,
+                               data_length=len(data_to_verify),
+                               data_sha256=hashlib.sha256(data_to_verify).hexdigest()[:16] + "...",
+                               format_match=(workload_geo_id_str == workload_geo_id_canonical))
+                    
+                    # Use the exact same shell script approach as the collector for consistency
+                    logger.info("🔍 [GATEWAY] Using shell script signature verification (same as collector)",
+                               agent_name=agent.get('agent_name'),
+                               public_key_hash=public_key_hash,
+                               data_length=len(data_to_verify),
+                               signature_length=len(signature_bytes))
+                    
+                    # Create temporary files for verification (same approach as collector)
+                    import tempfile
+                    import subprocess
+                    import os
+                    
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as pubkey_file, \
+                         tempfile.NamedTemporaryFile(mode='wb', suffix='.bin', delete=False) as message_file, \
+                         tempfile.NamedTemporaryFile(mode='wb', suffix='.bin', delete=False) as signature_file:
+                        
+                        try:
+                            # Write the public key to temporary file (PEM format)
+                            agent_public_key_pem = f"-----BEGIN PUBLIC KEY-----\n{public_key_content}\n-----END PUBLIC KEY-----"
+                            pubkey_file.write(agent_public_key_pem)
+                            pubkey_file.flush()
+                            
+                            # Write the data to temporary file
+                            message_file.write(data_to_verify)
+                            message_file.flush()
+                            
+                            # Write signature bytes to temporary file
+                            signature_file.write(signature_bytes)
+                            signature_file.flush()
+                            
+                            # Use the same verification script as collector
+                            script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tpm", "verify_app_message_signature.sh")
+                            
+                            logger.info("🔍 [GATEWAY] Running verification script",
+                                       agent_name=agent.get('agent_name'),
+                                       script_path=script_path,
+                                       data_length=len(data_to_verify),
+                                       signature_length=len(signature_bytes))
+                            
+                            # Run verification: verify_app_message_signature.sh <pubkey> <message> <signature>
+                            result = subprocess.run(
+                                [script_path, pubkey_file.name, message_file.name, signature_file.name],
+                                capture_output=True,
+                                text=True,
+                                timeout=30
+                            )
+                            
+                            is_valid = (result.returncode == 0)
+                            
+                            logger.info("🔍 [GATEWAY] Shell script verification result",
+                                       agent_name=agent.get('agent_name'),
+                                       return_code=result.returncode,
+                                       is_valid=is_valid,
+                                       stdout=result.stdout.strip() if result.stdout else "",
+                                       stderr=result.stderr.strip() if result.stderr else "")
+                                       
+                        except Exception as e:
+                            logger.error("🚨 [GATEWAY] Shell script verification error", 
+                                        agent_name=agent.get('agent_name'),
+                                        error=str(e))
+                            is_valid = False
+                            
+                        finally:
+                            # Cleanup temporary files
+                            for temp_file in [pubkey_file.name, message_file.name, signature_file.name]:
+                                if os.path.exists(temp_file):
+                                    os.unlink(temp_file)
+                    
+                    if is_valid:
+                        logger.info("✅ [GATEWAY] Workload-Geo-ID signature verification successful",
+                                   agent_name=agent.get('agent_name'),
+                                   public_key_hash=public_key_hash,
+                                   signature_length=len(signature_bytes),
+                                   algorithm=algorithm)
+                    else:
+                        logger.warning("❌ [GATEWAY] Workload-Geo-ID signature verification failed",
+                                      agent_name=agent.get('agent_name'),
+                                      public_key_hash=public_key_hash,
+                                      signature_length=len(signature_bytes),
+                                      algorithm=algorithm)
+                    
+                    if is_valid:
+                        return {
+                            "valid": True,
+                            "agent": agent,
+                            "reason": "Workload-Geo-ID signature verification passed"
+                        }
+                    else:
+                        return {
+                            "valid": False,
+                            "reason": "Workload-Geo-ID signature verification failed",
+                            "details": {
+                                "agent_name": agent.get('agent_name'),
+                                "public_key_hash": public_key_hash,
+                                "validation_type": "signature_validation",
+                                "error_type": "verification_failed"
+                            }
+                        }
+                    
+
+                        
+                except Exception as e:
+                    logger.warning("❌ [GATEWAY] Workload-Geo-ID signature verification error",
+                                  agent_name=agent.get('agent_name'),
+                                  public_key_hash=public_key_hash,
+                                  error=str(e))
+                    return {
+                        "valid": False,
+                        "reason": f"Workload-Geo-ID signature verification error: {str(e)}",
+                        "details": {
+                            "agent_name": agent.get('agent_name'),
+                            "public_key_hash": public_key_hash,
+                            "validation_type": "signature_validation",
+                            "error_type": "verification_exception",
+                            "error_message": str(e)
+                        }
+                    }
+            
+            # Fallback: basic format validation if no Workload-Geo-ID content
+            logger.info("Signature validation passed (basic format check - no Workload-Geo-ID content)",
+                       agent_name=agent.get('agent_name'),
+                       public_key_hash=public_key_hash,
+                       signature_length=len(signature_bytes),
+                       algorithm=algorithm)
             
             return {
                 "valid": True,
                 "agent": agent,
-                "reason": "Signature format validation passed"
+                "reason": "Signature format validation passed (no content to verify)"
             }
             
         except Exception as e:
@@ -406,7 +652,14 @@ class GatewayAllowlistManager:
                        error=str(e))
             return {
                 "valid": False,
-                "reason": f"Signature validation error: {str(e)}"
+                "reason": f"Signature validation error: {str(e)}",
+                "details": {
+                    "agent_name": agent.get('agent_name'),
+                    "public_key_hash": public_key_hash,
+                    "validation_type": "signature_validation",
+                    "error_type": "exception",
+                    "error_message": str(e)
+                }
             }
     
     def validate_geolocation_against_agent(self, workload_geo_id: Dict[str, Any], 
@@ -598,7 +851,7 @@ class GatewayAllowlistManager:
             
             # Validate signature if present
             if signature:
-                sig_validation = self.validate_signature_against_agent(signature, public_key_hash, signature_input)
+                sig_validation = self.validate_signature_against_agent(signature, public_key_hash, signature_input, workload_geo_id_str)
                 if not sig_validation["valid"]:
                     return sig_validation
             

@@ -14,13 +14,15 @@ The system supports two deployment modes with **aligned error handling** and **c
 - **Debugging**: Complete HTTP header visibility and structured logging
 
 ### **Gateway Policy Enforcement Mode** (Cloud Deployment Model)
-- **Gateway**: Performs first-layer validation (public key hash, signature format, geographic policy, timestamp)
+- **Gateway**: Performs first-layer validation (public key hash, cryptographic signature verification of headers, geographic policy, timestamp)
 - **Collector**: Performs second-layer validation (nonce validity, payload signature, end-to-end integrity)
 - **Use Case**: Cloud deployment with layered security and faster rejection
 - **Error Handling**: All errors returned with consistent format and `rejected_by: "gateway"` or `rejected_by: "collector"`
 - **Debugging**: Complete HTTP header visibility and structured logging
 
 **Note**: Both modes provide **aligned error handling** with consistent error response formats, validation types, and detailed error information. The `rejected_by` field clearly indicates which service performed the validation. **Enhanced debugging** provides complete visibility into HTTP headers for policy enforcement troubleshooting with case-insensitive parsing and persistent logging.
+
+**🔐 Gateway Signature Verification Enhancement**: The gateway now performs **full cryptographic signature verification** of the Workload-Geo-ID header using the same TPM2 verification method as the collector. This provides genuine cryptographic security at the gateway layer, not just format validation.
 
 
 
@@ -538,15 +540,15 @@ All services provide aligned error responses with:
 #### Invalid Signature Error Response (Gateway Policy Enforcement Mode):
 ```json
 {
-  "error": "Invalid signature format",
+  "error": "Workload-Geo-ID signature verification failed",
   "rejected_by": "gateway",
   "validation_type": "signature_verification",
   "details": {
     "agent_name": "agent-001",
     "public_key_hash": "26702138d1490530fbdd6b848ca08d72502cc34e91910350be17fff5ad54477c",
     "validation_type": "signature_validation",
-    "error_type": "invalid_format",
-    "signature_length": 32
+    "error_type": "verification_failed",
+    "signature_length": 512
   },
   "timestamp": "2024-01-25T10:30:00Z"
 }
