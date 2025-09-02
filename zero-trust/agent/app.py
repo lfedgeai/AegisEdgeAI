@@ -317,7 +317,7 @@ class CollectorClient:
                     # No nonce needed in HTTP headers since collector validates payload signature only
                     signature_input = self._generate_http_signature_input(
                         keyid=public_key_hash,
-                        algorithm="Ed25519",  # per requirement example
+                        algorithm="RSA",  # TPM2 uses RSA keys (corrected from Ed25519)
                         nonce_value="",  # No nonce in HTTP headers for nonce requests
                     )
                     
@@ -343,7 +343,7 @@ class CollectorClient:
                         try:
                             signature_input = self._generate_http_signature_input(
                                 keyid=public_key_hash,
-                                algorithm="Ed25519",
+                                algorithm="RSA",  # TPM2 uses RSA keys (corrected from Ed25519)
                                 nonce_value="",  # No nonce in HTTP headers
                             )
                             headers["Signature-Input"] = signature_input
@@ -739,8 +739,8 @@ def generate_and_send_metrics():
                 algorithm="sha256"  # Use SHA256 for header signing
             )
             
-            # Create HTTP Signature headers for gateway validation
-            signature_input = f'keyid="{public_key_hash}", created={int(time.time())}, expires={int(time.time()) + 300}, alg="Ed25519"'
+            # Create HTTP Signature headers for gateway validation  
+            signature_input = f'keyid="{public_key_hash}", created={int(time.time())}, expires={int(time.time()) + 300}, alg="RSA"'  # TPM2 uses RSA keys
             http_signature = header_signature_data.hex()  # Use the header signature
             
             # Prepare headers for metrics request
