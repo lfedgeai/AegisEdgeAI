@@ -32,6 +32,7 @@ The system supports two deployment modes with **aligned error handling** and **c
 | **RHEL 10.0 (Coughlan)**   | TPM emulator version 0.9.0, Copyright (c) 2014-2022 IBM Corp. and others | tool="tpm2_print" version="5.7" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.12.9  |
 | **Ubuntu 22.04.5** | TPM emulator version 0.6.3, Copyright (c) 2014-2021 IBM Corp. | tool="flushcontext" version="5.2" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.11.13  |
 | **WSL**            | TPM emulator version 0.6.3, Copyright (c) 2014-2021 IBM Corp. | tool="flushcontext" version="5.2" tctis="libtss2-tctildr" tcti-default=tcti-device | Python 3.10.12  |
+| **Mac mini m4**            | TPM emulator version 0.11.0, Copyright (c) 2014-2022 IBM Corp. and others | tool="tpm2_print" version="5.7-51-geff962d1" tctis="libtss2-tctildr" tcti-default=(null) | Python 3.13.6  |
 
 ###  Command to get swtpm version
 ```bash
@@ -58,7 +59,12 @@ cat <<'EOF' >> ~/.bashrc
 export SWTPM_DIR="$HOME/.swtpm/ztpm"
 export SWTPM_PORT=2321
 export SWTPM_CTRL=2322
-export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=2321"
+if [[ "$(uname)" == "Darwin" ]]; then
+  export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
+  export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+else
+  export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+fi
 export EK_HANDLE=0x81010001
 export AK_HANDLE=0x8101000A
 export APP_HANDLE=0x8101000B
