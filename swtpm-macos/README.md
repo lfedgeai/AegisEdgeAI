@@ -29,8 +29,7 @@ Developers who primarily work on macOS wouldn’t need to dual-boot or constantl
    export PREFIX="/opt/homebrew"
    export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
    export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
-3. For python tests, create venv and install requirements.txt ( make sure TPM2TOOLS_TCTI and DYLD_LIBRARY_PATH are set)
 
 #### How to test Prototype?
-
-- Refer [README_demo.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trust/README_demo.md)
+1. For python tests, create venv and install requirements.txt ( make sure TPM2TOOLS_TCTI and DYLD_LIBRARY_PATH are set)
+2. Refer [README_demo.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trust/README_demo.md)
