@@ -6,8 +6,15 @@ set -euo pipefail
 
 # Load configuration from environment or use defaults
 export SWTPM_PORT="${SWTPM_PORT:-2321}"
-export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
 export AK_HANDLE="${AK_HANDLE:-0x8101000A}"
+export PREFIX="/opt/homebrew"
+
+if [[ "$(uname)" == "Darwin" ]]; then
+  export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
+  export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+else
+  export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+fi
 
 echo "[INFO] TPM Quote Generation Script"
 echo "[INFO] TPM2TOOLS_TCTI: $TPM2TOOLS_TCTI"
