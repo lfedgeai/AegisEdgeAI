@@ -9,6 +9,12 @@ AGENT_PUBKEY=${3:-}
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+export PREFIX="/opt/homebrew"
+if [[ "$(uname)" == "Darwin" ]]; then
+  export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
+  export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+fi
+
 # Define TPM handles
 export AK_HANDLE="${AK_HANDLE:-0x8101000A}"
 export APP_HANDLE="${APP_HANDLE:-0x8101000B}"
