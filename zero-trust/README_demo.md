@@ -50,7 +50,12 @@ python3 --version
 ## Window 1 - Main Terminal
 ### Install swtpm, tpm2-tools, python packages and initialize system
 ```bash
+# Linux
 ./system-setup.sh
+
+# macOS
+# build the tools one by one
+../swtpm-macos/system-setup-mac-apple.sh
 
 # Append SWTPM environment variables to ~/.bashrc
 cat <<'EOF' >> ~/.bashrc
