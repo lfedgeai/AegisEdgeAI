@@ -16,7 +16,13 @@ swtpm socket --tpm2 \
   --flags not-need-init &
 
 # Tell tpm2-tools to use it
-export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=$SWTPM_PORT"
+export PREFIX="/opt/homebrew"
+if [[ "$(uname)" == "Darwin" ]]; then
+  export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
+  export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+else
+  export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+fi
 
 # Initialise and test
 sleep 1
