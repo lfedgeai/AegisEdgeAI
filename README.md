@@ -142,7 +142,7 @@ Current security approaches for inference applications, secret stores, system ag
 
 ## Solution Overview
 
-Building on the [IETF Verifiable Geofencing draft](https://datatracker.ietf.org/doc/draft-klspa-wimse-verifiable-geo-fence/) — which defines an architecture for cryptographically verifiable geofencing and residency proofs — this design offers an **edge‑focused, production‑ready microservice blueprint** for secure, verifiable data flows (e.g., operational metrics, federated learning) at the edge.
+Building on the [IETF Verifiable Geofencing draft](https://github.com/nedmsmith/draft-klspa-wimse-verifiable-geo-fence/blob/main/draft-lkspa-wimse-verifiable-geo-fence.md) — which defines an architecture for cryptographically verifiable geofencing and residency proofs — this design offers an **edge‑focused, production‑ready microservice blueprint** for secure, verifiable data flows (e.g., operational metrics, federated learning) at the edge.
 
 This approach begins addressing the critical security gaps in current inference, agent, and model‑repository patterns, while remaining open to further extension and innovation.
 
