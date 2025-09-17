@@ -8,7 +8,7 @@ It's time for a paradigm shift. The answer lies in moving beyond static secrets 
 
 ## Phased Approach to Sovereign Zero Trust
 <figure>
-  <img src="https://github.com/lfedgeai/AegisEdgeAI/raw/main/zero-trust/images/AegisEdgeAI-concept.png" alt="Phased Approach to Sovereign Zero Trust" width="800">
+  <img src="https://github.com/lfedgeai/AegisEdgeAI/raw/main/zero-trust/images/AegisEdgeAI-concept-phases.png" alt="Phased Approach to Sovereign Zero Trust" width="800">
 </figure>
 
 ## Phase 0: The IP Address Bottleneck
