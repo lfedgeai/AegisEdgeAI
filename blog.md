@@ -6,12 +6,12 @@ For **DevSecOps** (Development, Security, and Operations) practitioners navigati
 
 It's time for a paradigm shift. The answer lies in moving beyond static secrets and network boundaries to verifiable, hardware-rooted identity. This post outlines a modern, two-phase journey to achieve a truly sovereign and automated Zero Trust posture, leveraging open-source technologies and concepts pioneered right here at the Linux Foundation.
 
+## Phased Approach to Sovereign Zero Trust
 <figure>
   <img src="https://github.com/lfedgeai/AegisEdgeAI/raw/main/zero-trust/images/AegisEdgeAI-concept.png" alt="Phased Approach to Sovereign Zero Trust" width="800">
-  <figcaption><em>Phased Approach to Sovereign Zero Trust</em></figcaption>
 </figure>
 
-## The Problem: The IP Address Bottleneck
+## Phase 0: The IP Address Bottleneck
 
 Our current security model, built on IP addresses, creates a triple challenge:
 
