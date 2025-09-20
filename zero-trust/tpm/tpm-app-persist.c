@@ -26,15 +26,25 @@ void log_error(const char *msg, TSS2_RC rc) {
 }
 
 int write_pem_key(const char *filename, TPM2B_PUBLIC *public_key) {
-    if (public_key->publicArea.type != TPM2_ALG_RSA) return 1;
+    if (public_key->publicArea.type != TPM2_ALG_RSA) {
+        log_error("PEM export only supports RSA keys", 0);
+        return 1;
+    }
     RSA *rsa = RSA_new();
     BIGNUM *n = BN_bin2bn(public_key->publicArea.unique.rsa.buffer, public_key->publicArea.unique.rsa.size, NULL);
     BIGNUM *e = BN_new();
-    if (public_key->publicArea.parameters.rsaDetail.exponent == 0) BN_set_word(e, 65537);
-    else BN_set_word(e, public_key->publicArea.parameters.rsaDetail.exponent);
+    if (public_key->publicArea.parameters.rsaDetail.exponent == 0) {
+        BN_set_word(e, 65537);
+    } else {
+        BN_set_word(e, public_key->publicArea.parameters.rsaDetail.exponent);
+    }
     RSA_set0_key(rsa, n, e, NULL);
     BIO *bio = BIO_new_file(filename, "w");
-    if (bio == NULL) { RSA_free(rsa); return 1; }
+    if (bio == NULL) {
+        log_error("BIO_new_file failed", 0);
+        RSA_free(rsa);
+        return 1;
+    }
     PEM_write_bio_RSAPublicKey(bio, rsa);
     BIO_free(bio);
     RSA_free(rsa);
@@ -71,17 +81,26 @@ int main(int argc, char *argv[]) {
     TPM2B_ATTEST *certifyInfo = NULL;
     TPMT_SIGNATURE *signature = NULL;
 
-    rc = Tss2_TctiLdr_Initialize(getenv("TPM2TOOLS_TCTI"), &tcti_context);
-    if (rc != TSS2_RC_SUCCESS) { log_error("TCTI init", rc); return 1; }
+    const char* tcti_conf = getenv("TPM2TOOLS_TCTI");
+    rc = Tss2_TctiLdr_Initialize(tcti_conf, &tcti_context);
+    if (rc != TSS2_RC_SUCCESS) {
+        log_error("TCTI init", rc);
+        return 1;
+    }
     rc = Esys_Initialize(&esys_context, tcti_context, NULL);
-    if (rc != TSS2_RC_SUCCESS) { log_error("ESYS init", rc); goto cleanup; }
+    if (rc != TSS2_RC_SUCCESS) {
+        log_error("ESYS init", rc);
+        goto cleanup;
+    }
 
     rc = Esys_TR_FromTPMPublic(esys_context, app_handle, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, &app_handle_tr);
-    if (rc != TSS2_RC_SUCCESS) { log_error("Esys_TR_FromTPMPublic for APP_HANDLE", rc); goto cleanup; }
+    // This call only creates a software handle and does not require a TPM call, so no error check is needed here.
 
     if (force) {
         rc = Esys_EvictControl(esys_context, ESYS_TR_RH_OWNER, app_handle_tr, ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, app_handle, NULL);
-        if (rc != TSS2_RC_SUCCESS && rc != TPM2_RC_BAD_AUTH) { log_error("Esys_EvictControl (force)", rc); }
+        if (rc != TSS2_RC_SUCCESS && rc != TPM2_RC_BAD_AUTH) {
+            log_error("Esys_EvictControl (force)", rc);
+        }
     }
 
     rc = Esys_ReadPublic(esys_context, app_handle_tr, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, &outPublic, NULL, NULL);
@@ -126,9 +145,13 @@ int main(int argc, char *argv[]) {
             write_data_to_file("appsig_info.bin", certifyInfo->attestationData, certifyInfo->size);
             uint8_t sig_bytes[sizeof(TPMT_SIGNATURE)];
             size_t sig_size = 0;
-            Tss2_MU_TPMT_SIGNATURE_Marshal(signature, sig_bytes, sizeof(sig_bytes), &sig_size);
-            write_data_to_file("appsig_cert.sig", sig_bytes, sig_size);
+            rc = Tss2_MU_TPMT_SIGNATURE_Marshal(signature, sig_bytes, sizeof(sig_bytes), &sig_size);
+            if (rc == TSS2_RC_SUCCESS) {
+                write_data_to_file("appsig_cert.sig", sig_bytes, sig_size);
+            } else { log_error("Signature Marshal", rc); }
         } else { log_error("Esys_Certify", rc); }
+    } else {
+        log_error("AK Handle not found, skipping certify", rc);
     }
 
 cleanup:
@@ -141,7 +164,8 @@ cleanup:
     Esys_Free(app_context);
     Esys_Free(certifyInfo);
     Esys_Free(signature);
-    Esys_Finalize(&esys_context);
-    Tss2_TctiLdr_Finalize(&tcti_context);
+    if (esys_context) Esys_Finalize(&esys_context);
+    if (tcti_context) Tss2_TctiLdr_Finalize(&tcti_context);
+
     return rc == TSS2_RC_SUCCESS ? 0 : 1;
 }
