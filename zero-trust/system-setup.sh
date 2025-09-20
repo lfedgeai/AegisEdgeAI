@@ -8,6 +8,7 @@ if [ -f /etc/redhat-release ]; then
   sudo dnf install -y swtpm
   sudo dnf install -y tpm2-tools
   sudo dnf install -y tpm2-tss-devel
+  sudo dnf install -y openssl-devel
   sudo dnf install -y vim-common
 elif [ -f /etc/lsb-release ]; then
   echo "Ubuntu system setup..."
@@ -15,6 +16,7 @@ elif [ -f /etc/lsb-release ]; then
   sudo apt install -y swtpm
   sudo apt install -y tpm2-tools
   sudo apt install -y libtss2-dev
+  sudo apt install -y libssl-dev
 else
   echo "Unsupported or unknown Linux distribution."
   exit 1
