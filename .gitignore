@@ -12,3 +12,7 @@ zero-trust/tpm/*.hash
 **/__pycache__/
 zero-trust/agents/*
 zero-trust/logs/*
+
+# Compiled binaries
+zero-trust/tpm/tpm-app-persist
+zero-trust/tpm/*.o
