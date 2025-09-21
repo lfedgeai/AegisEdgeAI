@@ -215,7 +215,23 @@ Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trus
 
 Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/swtpm-macos/README.md)
 
+## Additional Resources
+
+- **Zero‑Trust Sovereign AI Deck** – Public presentation outlining PoR/PoG architecture, market‑entry cases, and integration flow.  
+  [View Deck (OneDrive)](https://1drv.ms/b/c/746ada9dc9ba7cb7/ETTLFqSUV3pCsIWiD4zMDt0BXzSwcCMGX8cA-qllKfmYvw?e=mBDEC8) 
+
+- **Blog: Unlock the Future of Access** – In‑depth article on moving from IP‑based security to hardware‑rooted sovereign Zero Trust, with phased implementation examples.  
+  [Read Blog](https://github.com/lfedgeai/AegisEdgeAI/blob/main/blog.md)
+
+- **IETF 123 WIMSE Presentation** – *Zero‑Trust Sovereign AI: WIMSE Impact*  
+  [View Slides](https://datatracker.ietf.org/meeting/123/materials/slides-123-wimse-zero-trust-sovereign-ai-wimse-impact-04)
+
+- **IETF 123 RATS Presentation** – *Zero‑Trust Sovereign AI: RATS Impact*  
+  [View Slides](https://datatracker.ietf.org/meeting/123/materials/slides-123-rats-zero-trust-sovereign-ai-rats-impact-00)
+
 ## References
 (1) https://simplynuc.com/blog/banks-data-closer-to-customers/
+
 (2) https://keylime.readthedocs.io/en/latest/
+
 (3) https://github.com/keylime/enhancements/pull/108
