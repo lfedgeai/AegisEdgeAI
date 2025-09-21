@@ -231,5 +231,7 @@ Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/swtpm-mac
 
 ## References
 (1) https://simplynuc.com/blog/banks-data-closer-to-customers/
+
 (2) https://keylime.readthedocs.io/en/latest/
+
 (3) https://github.com/keylime/enhancements/pull/108
