@@ -5,6 +5,8 @@
 ## Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement
 ![Alt text](zero-trust/images/AegisEdgeAI-flow.png)
 
+**See also:** [Additional Resources](#additional-resources) for related decks, blog posts, and IETF presentations.
+
 ## Why it matters
 
 - **Unlock regulated markets** – Meet location and integrity compliance requirements with verifiable, automated proof that spans user, device, and workload.
