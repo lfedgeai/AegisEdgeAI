@@ -218,7 +218,7 @@ Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/swtpm-mac
 ## Additional Resources
 
 - **Zero‑Trust Sovereign AI Deck** – Public presentation outlining PoR/PoG architecture, market‑entry cases, and integration flow.  
-  [View Deck (OneDrive)](https://1drv.ms/p/c/746ada9dc9ba7cb7/EWNHyrWH7K1Ek81ypwY578MBPHXMrsU8pOLWYe8v8eilRg?e=bm5m26) 
+  [View Deck (OneDrive)]() 
 
 - **Blog: Unlock the Future of Access** – In‑depth article on moving from IP‑based security to hardware‑rooted sovereign Zero Trust, with phased implementation examples.  
   [Read Blog](https://github.com/lfedgeai/AegisEdgeAI/blob/main/blog.md)
