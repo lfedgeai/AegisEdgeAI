@@ -52,6 +52,7 @@ int write_pem_key(const char *filename, TPM2B_PUBLIC *public_key) {
 }
 
 int main(int argc, char *argv[]) {
+    printf("---- HELLO WORLD FROM THE NEW CODE ----\n");
     int force = 0;
     char *agent_ctx_path = "app.ctx";
     char *agent_pubkey_path = "appsk_pubkey.pem";
@@ -63,13 +64,13 @@ int main(int argc, char *argv[]) {
     }
     if (optind < argc) agent_ctx_path = argv[optind++];
     if (optind < argc) agent_pubkey_path = argv[optind++];
-
+    
     uint32_t ak_handle = getenv(AK_HANDLE_ENV) ? strtol(getenv(AK_HANDLE_ENV), NULL, 16) : 0x8101000A;
     uint32_t app_handle = getenv(APP_HANDLE_ENV) ? strtol(getenv(APP_HANDLE_ENV), NULL, 16) : 0x8101000B;
 
     TSS2_TCTI_CONTEXT *tcti_context = NULL;
     ESYS_CONTEXT *esys_context = NULL;
-    TSS2_RC rc;
+    TSS2_RC rc = TSS2_RC_SUCCESS;
 
     ESYS_TR primary_handle = ESYS_TR_NONE;
     ESYS_TR app_key_handle = ESYS_TR_NONE;
@@ -111,9 +112,9 @@ int main(int argc, char *argv[]) {
             .objectAttributes = TPMA_OBJECT_USERWITHAUTH | TPMA_OBJECT_RESTRICTED | TPMA_OBJECT_DECRYPT | TPMA_OBJECT_FIXEDTPM | TPMA_OBJECT_FIXEDPARENT | TPMA_OBJECT_SENSITIVEDATAORIGIN,
             .parameters.rsaDetail = { .keyBits = 2048 },
         }};
-        rc = Esys_CreatePrimary(esys_context, ESYS_TR_RH_OWNER, ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, &primary_template, NULL, NULL, &primary_handle, &outPublic, NULL, NULL, NULL);
+        rc = Esys_CreatePrimary(esys_context, ESYS_TR_RH_OWNER, ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, NULL, &primary_template, NULL, NULL, &primary_handle, NULL, NULL, NULL, NULL);
         if (rc != TSS2_RC_SUCCESS) { log_error("Esys_CreatePrimary", rc); goto cleanup; }
-
+        
         TPM2B_PUBLIC app_key_template = { .publicArea = {
             .type = TPM2_ALG_RSA, .nameAlg = TPM2_ALG_SHA256,
             .objectAttributes = TPMA_OBJECT_USERWITHAUTH | TPMA_OBJECT_SIGN_ENCRYPT | TPMA_OBJECT_DECRYPT | TPMA_OBJECT_FIXEDTPM | TPMA_OBJECT_FIXEDPARENT | TPMA_OBJECT_SENSITIVEDATAORIGIN,
@@ -129,7 +130,7 @@ int main(int argc, char *argv[]) {
         if (rc == TSS2_RC_SUCCESS) {
             write_data_to_file(agent_ctx_path, app_context->contextBlob.buffer, app_context->contextBlob.size);
         } else { log_error("Esys_ContextSave", rc); }
-
+        
         rc = Esys_EvictControl(esys_context, ESYS_TR_RH_OWNER, app_key_handle, ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE, app_handle, NULL);
         if (rc != TSS2_RC_SUCCESS) { log_error("Esys_EvictControl", rc); goto cleanup; }
     }
@@ -166,6 +167,6 @@ cleanup:
     Esys_Free(signature);
     if (esys_context) Esys_Finalize(&esys_context);
     if (tcti_context) Tss2_TctiLdr_Finalize(&tcti_context);
-
+    
     return rc == TSS2_RC_SUCCESS ? 0 : 1;
 }
