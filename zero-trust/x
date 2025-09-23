@@ -1,0 +1,306 @@
+TPM2_PT_FAMILY_INDICATOR:
+  raw: 0x322E3000
+  value: "2.0"
+TPM2_PT_LEVEL:
+  raw: 0
+TPM2_PT_REVISION:
+  raw: 0xA4
+  value: 1.64
+TPM2_PT_DAY_OF_YEAR:
+  raw: 0x4B
+TPM2_PT_YEAR:
+  raw: 0x7E5
+TPM2_PT_MANUFACTURER:
+  raw: 0x49424D00
+  value: "IBM"
+TPM2_PT_VENDOR_STRING_1:
+  raw: 0x53572020
+  value: "SW"
+TPM2_PT_VENDOR_STRING_2:
+  raw: 0x2054504D
+  value: "TPM"
+TPM2_PT_VENDOR_STRING_3:
+  raw: 0x0
+  value: ""
+TPM2_PT_VENDOR_STRING_4:
+  raw: 0x0
+  value: ""
+TPM2_PT_VENDOR_TPM_TYPE:
+  raw: 0x1
+TPM2_PT_FIRMWARE_VERSION_1:
+  raw: 0x20191023
+TPM2_PT_FIRMWARE_VERSION_2:
+  raw: 0x163636
+TPM2_PT_INPUT_BUFFER:
+  raw: 0x400
+TPM2_PT_HR_TRANSIENT_MIN:
+  raw: 0x3
+TPM2_PT_HR_PERSISTENT_MIN:
+  raw: 0x7
+TPM2_PT_HR_LOADED_MIN:
+  raw: 0x3
+TPM2_PT_ACTIVE_SESSIONS_MAX:
+  raw: 0x40
+TPM2_PT_PCR_COUNT:
+  raw: 0x18
+TPM2_PT_PCR_SELECT_MIN:
+  raw: 0x3
+TPM2_PT_CONTEXT_GAP_MAX:
+  raw: 0xFFFF
+TPM2_PT_NV_COUNTERS_MAX:
+  raw: 0x0
+TPM2_PT_NV_INDEX_MAX:
+  raw: 0x800
+TPM2_PT_MEMORY:
+  raw: 0x6
+TPM2_PT_CLOCK_UPDATE:
+  raw: 0x1000
+TPM2_PT_CONTEXT_HASH:
+  raw: 0xD
+TPM2_PT_CONTEXT_SYM:
+  raw: 0x6
+TPM2_PT_CONTEXT_SYM_SIZE:
+  raw: 0x100
+TPM2_PT_ORDERLY_COUNT:
+  raw: 0xFF
+TPM2_PT_MAX_COMMAND_SIZE:
+  raw: 0x1000
+TPM2_PT_MAX_RESPONSE_SIZE:
+  raw: 0x1000
+TPM2_PT_MAX_DIGEST:
+  raw: 0x40
+TPM2_PT_MAX_OBJECT_CONTEXT:
+  raw: 0xA84
+TPM2_PT_MAX_SESSION_CONTEXT:
+  raw: 0x194
+TPM2_PT_PS_FAMILY_INDICATOR:
+  raw: 0x322E3000
+TPM2_PT_PS_LEVEL:
+  raw: 0x0
+TPM2_PT_PS_REVISION:
+  raw: 0xA4
+TPM2_PT_PS_DAY_OF_YEAR:
+  raw: 0x4B
+TPM2_PT_PS_YEAR:
+  raw: 0x7E5
+TPM2_PT_SPLIT_MAX:
+  raw: 0x80
+TPM2_PT_TOTAL_COMMANDS:
+  raw: 0x6E
+TPM2_PT_LIBRARY_COMMANDS:
+  raw: 0x6E
+TPM2_PT_VENDOR_COMMANDS:
+  raw: 0x0
+TPM2_PT_NV_BUFFER_MAX:
+  raw: 0x400
+TPM2_PT_MODES:
+  raw: 0x0
+[STEP] Using TPM2TOOLS_TCTI=swtpm:host=127.0.0.1,port=2321
+[STEP] EK handle will be 0x81010001
+[STEP] AK handle will be 0x8101000A
+[STEP] Flushing transient/session handles...
+[STEP] Evicting existing EK/AK persistent handles (if any)...
+[INFO] Handle 0x81010001 not listed; forcing eviction to clear phantom state
+[INFO] Handle 0x8101000A not listed; forcing eviction to clear phantom state
+[STEP] Creating EK...
+persistent-handle: 0x81010001
+action: persisted
+[STEP] Flushing again after EK creation...
+[INFO] Flushing handles-transient handle 0x80000000
+[INFO] Flushing handles-transient handle 0x80000001
+[STEP] Creating AK using EK handle 0x81010001...
+loaded-key:
+  name: 000bac7422c2d65b90fd2a95eaf9d0996768df3204922f1456043a79bc5b85d89aa7
+  qualified name: 000b1b8bef626d7fade0ce5b822e56c05d520c894eccc33aff24ac9fc647c50bec25
+persistent-handle: 0x8101000a
+action: persisted
+[STEP] Exporting AK public key for verification...
+name: 000bac7422c2d65b90fd2a95eaf9d0996768df3204922f1456043a79bc5b85d89aa7
+qualified name: 000b1b8bef626d7fade0ce5b822e56c05d520c894eccc33aff24ac9fc647c50bec25
+name-alg:
+  value: sha256
+  raw: 0xb
+attributes:
+  value: fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign
+  raw: 0x50072
+type:
+  value: rsa
+  raw: 0x1
+exponent: 65537
+bits: 2048
+scheme:
+  value: rsassa
+  raw: 0x14
+scheme-halg:
+  value: sha256
+  raw: 0xb
+sym-alg:
+  value: null
+  raw: 0x10
+sym-mode:
+  value: (null)
+  raw: 0x0
+sym-keybits: 0
+rsa: 8f754a9dc4f266dd9c17c78305fc1e58c4937fd6acb554018b04cc705815a9e115f95f5ce6d270c0e1568ecb0849d1fbfd696b799a982cf193f58cb139410706e16de5417b2076615593ca1e577ed0ee6944bca3786ceae7150bddeee4d2fbb8a2e53f2cce5cdf8a44b381f46bf74332e11bd1ff820c580b0c761ae84bd24f5c6e4de09182b7bbcd1712ade34d8bda85fca4a73508bc9694b1795e911b3ba253c53e7754947151ecd14c027609b41047d578f688bb6fda1983d7b283c119e237c3d852d2d9374ba3f8e92646e399afe43cc79a1303fbaf04cd90db5e6b6528a0c080dd6391884f456257d960e4ebc16cc558204c94b49f6c98108d8af318756d
+[SUCCESS] AK Public Key exported to /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/ak_pub.pem
+[STEP] Persistent handles now present:
+- 0x81010001
+- 0x8101000A
+[INFO] AK handle: 0x8101000A
+[INFO] App handle: 0x8101000B
+[INFO] Using default TPM files:
+[INFO]   Context file: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/app.ctx
+[INFO]   Public key: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/appsk_pubkey.pem
+[STEP] Flushing ALL stale contexts...
+[STEP] Creating primary...
+name-alg:
+  value: sha256
+  raw: 0xb
+attributes:
+  value: fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|decrypt
+  raw: 0x30072
+type:
+  value: rsa
+  raw: 0x1
+exponent: 65537
+bits: 2048
+scheme:
+  value: null
+  raw: 0x10
+scheme-halg:
+  value: (null)
+  raw: 0x0
+sym-alg:
+  value: aes
+  raw: 0x6
+sym-mode:
+  value: cfb
+  raw: 0x43
+sym-keybits: 128
+rsa: c3f584a81b6087fe7b69fc5e26198d239023c43ea0ca6da293dd91e3dbf80a1cfb9ed804004845f3be5907c627f271b3bb70ddd82d2553daf482c39f7f0e781564a0df4885b04bd4d6a48e1e23a628eb423e9e2cf908f0ee83a7727608f8feb95d919f7bde8c0b7eed849978d6fe3903ef709ac3a6f8cc011bdebc7fb9871eb553f0b97b16c83dea8a988581a02f270fb00f7b7121c884a073a97975b8f2d1c12b7ea575c0aa68dd82fe7cf2a66f4a3a4b27162c3f991d2ef29ef238208bbd26051d8675659f39bf5ee9e60b7a3fd172abaca95895b2f9d9706e2b1c7c17d4ec105bb3c65feee293cbb578cc6b872736d08f363be48dc89d078805617f44861d
+[STEP] Creating AppSK under primary...
+name-alg:
+  value: sha256
+  raw: 0xb
+attributes:
+  value: fixedtpm|fixedparent|sensitivedataorigin|userwithauth|decrypt|sign
+  raw: 0x60072
+type:
+  value: rsa
+  raw: 0x1
+exponent: 65537
+bits: 2048
+scheme:
+  value: null
+  raw: 0x10
+scheme-halg:
+  value: (null)
+  raw: 0x0
+sym-alg:
+  value: null
+  raw: 0x10
+sym-mode:
+  value: (null)
+  raw: 0x0
+sym-keybits: 0
+rsa: b341c10edc2c98c13f559262e282314c1b20220d1446cb9c9e5c2dd211712ed895740772e56153507eb46f725366e644f764ce243e73da228080a1160b41d6f36244ac7b8e154ecf453c7666473819cc16ff23a9223d706ddb1d9fdadb507589b3b400cd8e495142b99c587991579accc0a6cb8e0c8c6921eb26b11ada2a70938d60f7eb59f3b11a0a69b3c0ccbb9c7b4856b272fa6a1978110c2ec1df523328203ea4459902a9c50e2723ce51d12ab1b20b964e03d8d48dad17b5e7ddd94c650edc941f2b6083351ea7b5347007b5805cce01e193a9358ad04320e5beb7c34be8da9d012fa76d27f2a983e7a442065d49bb09998a2aa5780c7c8e91354b72b7
+[STEP] Flushing all extra transients...
+[STEP] Loading AppSK...
+name: 000bc25a304fbbfc09f4db96477cacbf854b12f922c8c27b9b76adf0e0b97e748fd1
+[DEBUG] AppSK transient handle: 0x80000001
+[STEP] Persisting AppSK at 0x8101000B...
+persistent-handle: 0x8101000b
+action: persisted
+[CLEANUP] Flushing primary and any remaining transients...
+[DEBUG] Persistent handles now:
+- 0x81010001
+- 0x8101000A
+- 0x8101000B
+[STEP] Certifying AppSK with AK at 0x8101000A...
+[INFO] Using -o/-s syntax for certify
+[INFO] Residency proof written: appsig_info.bin / appsig_cert.sig
+[SUCCESS] AppSK persisted at 0x8101000B.
+name: 000bc25a304fbbfc09f4db96477cacbf854b12f922c8c27b9b76adf0e0b97e748fd1
+qualified name: 000b6ab892bd0758aa54874fb1560a88ef3b9c1f9ce0730ed29868417b2e80363c51
+name-alg:
+  value: sha256
+  raw: 0xb
+attributes:
+  value: fixedtpm|fixedparent|sensitivedataorigin|userwithauth|decrypt|sign
+  raw: 0x60072
+type:
+  value: rsa
+  raw: 0x1
+exponent: 65537
+bits: 2048
+scheme:
+  value: null
+  raw: 0x10
+scheme-halg:
+  value: (null)
+  raw: 0x0
+sym-alg:
+  value: null
+  raw: 0x10
+sym-mode:
+  value: (null)
+  raw: 0x0
+sym-keybits: 0
+rsa: b341c10edc2c98c13f559262e282314c1b20220d1446cb9c9e5c2dd211712ed895740772e56153507eb46f725366e644f764ce243e73da228080a1160b41d6f36244ac7b8e154ecf453c7666473819cc16ff23a9223d706ddb1d9fdadb507589b3b400cd8e495142b99c587991579accc0a6cb8e0c8c6921eb26b11ada2a70938d60f7eb59f3b11a0a69b3c0ccbb9c7b4856b272fa6a1978110c2ec1df523328203ea4459902a9c50e2723ce51d12ab1b20b964e03d8d48dad17b5e7ddd94c650edc941f2b6083351ea7b5347007b5805cce01e193a9358ad04320e5beb7c34be8da9d012fa76d27f2a983e7a442065d49bb09998a2aa5780c7c8e91354b72b7
+[INFO] Exported TPM public key to /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/appsk_pubkey.pem
+[INFO] APP certification by AK complete
+[INFO] TPM Quote Generation Script
+[INFO] TPM2TOOLS_TCTI: swtpm:host=127.0.0.1,port=2321
+[INFO] AK handle: 0x8101000A
+[INFO] Using nonce: 12
+[STEP] Checking if AK exists at handle 0x8101000A...
+[STEP] Flushing TPM contexts...
+[STEP] Generating TPM quote...
+[INFO] Quote will be saved to:
+[INFO]   - Message: appsk_quote.msg
+[INFO]   - Signature: appsk_quote.sig
+[INFO]   - PCRs: appsk_quote.pcrs
+quoted: ff54434780180022000b1b8bef626d7fade0ce5b822e56c05d520c894eccc33aff24ac9fc647c50bec25000112000000000000135e000000010000000001201910230016363600000001000b030300000020f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b
+signature:
+  alg: rsassa
+  sig: 16268bf1bf33364bd90a3a1b92e012553b34d5581617f64803ee761c20cbac87fa21fd3e45041f7809c80246353d017a915bbc3c13d2aa642d3d2102f71a9f67d0bdee956c55123e30917ee372807b5a8fa9b992b4a1dcdf15eb67dffd5241b7816abb68589598800441eff1bfb3b8124735eee8c64f7f9ae14a318ce8957a9a2b2c10b42eb6841de4510e8babfcb00a7e0f2ac582882d7365f8017a901066da31f22d6839771ae87ab751d9435102c4c4aed67a1153d4a55fa7b0bed228d941fc146f725e786f8198336f5b7cd36c3687c4b00e98859c08574b46681e508c43b7da7575ac07164ceda4ca195845bcfd25f702573b1e35b9fe03417f772f0a10
+pcrs:
+  sha256:
+    0 : 0x0000000000000000000000000000000000000000000000000000000000000000
+    1 : 0x0000000000000000000000000000000000000000000000000000000000000000
+calcDigest: f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b
+[SUCCESS] TPM quote generated successfully
+[INFO] Quote files:
+[INFO]   - Message: appsk_quote.msg
+[INFO]   - Signature: appsk_quote.sig
+[INFO]   - PCRs: appsk_quote.pcrs
+[INFO]   - Nonce used: 12
+[INFO] Using nonce: 12
+[STEP] Verifying TPM quote signature...
+pcrs:
+  sha256:
+    0 : 0x0000000000000000000000000000000000000000000000000000000000000000
+    1 : 0x0000000000000000000000000000000000000000000000000000000000000000
+sig: 16268bf1bf33364bd90a3a1b92e012553b34d5581617f64803ee761c20cbac87fa21fd3e45041f7809c80246353d017a915bbc3c13d2aa642d3d2102f71a9f67d0bdee956c55123e30917ee372807b5a8fa9b992b4a1dcdf15eb67dffd5241b7816abb68589598800441eff1bfb3b8124735eee8c64f7f9ae14a318ce8957a9a2b2c10b42eb6841de4510e8babfcb00a7e0f2ac582882d7365f8017a901066da31f22d6839771ae87ab751d9435102c4c4aed67a1153d4a55fa7b0bed228d941fc146f725e786f8198336f5b7cd36c3687c4b00e98859c08574b46681e508c43b7da7575ac07164ceda4ca195845bcfd25f702573b1e35b9fe03417f772f0a10
+[SUCCESS] TPM Quote verified successfully
+[STEP] Verifying AppSK certification signature...
+[SUCCESS] AppSK certification signature verified
+[SUCCESS] All verifications completed successfully
+[INFO] TPM Quote: VERIFIED
+[INFO] AppSK Certification: VERIFIED
+[INFO] AppSK public key is now trusted through TPM AK and EK chain
+[INFO] Using TPM context file: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/app.ctx
+[INFO] Message file already in correct location: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/appsig_info.bin
+[INFO] TPM contexts flushed.
+[INFO] Generating SHA-256 hash of message to sign...
+[INFO] Signing precomputed hash with rsassa scheme...
+[INFO] Signature generated: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/appsig.bin
+Signature: 2324a96a896ef48a67aed913d83dd18e5ee11b7c364e702de579bf3732893be454d6f901187a208b203549680b8cb200d43d794298a677bf9ffd58e836fbd352ab589b29c1146ce83ac35a1cf1977e9c23bbdbebb2a8f55743e1d89a0c512d7633e753ce962c84db17b33c48152485a5be74059c64af40e6a87d50eea9a405dee4ef2717030933fc8aa263f7a6864e7b89653d2f3f78c6e325197bd44184b596ccdb0fafb7f7ada49009e4fcf4f1294a48a5f4139ba6f9ffcd718c46a8e9c91ccbc02a6058af0811e84d6c4945084d1de152e554c0f5152442a3db59fdb5d3e00da1e8c172ab8441e25897108392f79aead56a778389d17d8b1d06c171f51eac
+Digest: ef594903f000b47dbb0bdddce6a4949d3851d4c736975a0780a679d44f36cfe6
+[INFO] Hashing the message with SHA-256...
+[INFO] Verifying signature with OpenSSL pkeyutl...
+Signature Verified Successfully
+[INFO] Signature valid!
+🧹 Cleaning up all existing agents...
+=====================================
+[1;33mNo agent directories found. Nothing to clean up.[0m
