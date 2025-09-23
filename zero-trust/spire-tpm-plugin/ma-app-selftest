@@ -1,0 +1,1 @@
+gcc -o tpm-app-selftest tpm-app-selftest.c -ltss2-esys -ltss2-mu
