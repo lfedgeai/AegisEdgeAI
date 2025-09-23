@@ -16,3 +16,13 @@ zero-trust/logs/*
 # Compiled binaries
 zero-trust/spire-tpm-plugin/tpm-app-persist
 zero-trust/spire-tpm-plugin/*.o
+zero-trust/spire-tpm-plugin/*.ctx
+zero-trust/spire-tpm-plugin/*.pem
+zero-trust/spire-tpm-plugin/*.pub
+zero-trust/spire-tpm-plugin/*.priv
+zero-trust/spire-tpm-plugin/*.bin
+zero-trust/spire-tpm-plugin/*.sig
+zero-trust/spire-tpm-plugin/*.out
+zero-trust/spire-tpm-plugin/*.msg
+zero-trust/spire-tpm-plugin/*.pcrs
+zero-trust/spire-tpm-plugin/*.hash
