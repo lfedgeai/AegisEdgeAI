@@ -163,7 +163,6 @@ int main(int argc, char **argv) {
 
     flush_all_transients(ctx);
 
-    // Force mode: evict if present, then create anew
     if (strcmp(force, "--force") == 0) {
         ESYS_TR app_tr = ESYS_TR_NONE;
         if (Esys_TR_FromTPMPublic(ctx, APP_HANDLE,
@@ -175,12 +174,10 @@ int main(int argc, char **argv) {
         }
         printf("[INFO] Forcing creation of new AppSK...\n");
     } else {
-        // Non-force: if already persisted, export and exit
         ESYS_TR existing = ESYS_TR_NONE;
         TSS2_RC rc = Esys_TR_FromTPMPublic(ctx, APP_HANDLE,
                                            ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, &existing);
         if (rc == TSS2_RC_SUCCESS) {
-            // Save context
             TPMS_CONTEXT *outctx = NULL;
             if (Esys_ContextSave(ctx, existing, &outctx) == TSS2_RC_SUCCESS && outctx) {
                 uint8_t buf[sizeof(TPMS_CONTEXT)] = {0};
@@ -191,7 +188,6 @@ int main(int argc, char **argv) {
                 }
                 Esys_Free(outctx);
             }
-            // Export public
             TPM2B_PUBLIC *pub = NULL;
             rc = Esys_ReadPublic(ctx, existing,
                                  ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
@@ -212,31 +208,20 @@ int main(int argc, char **argv) {
             printf("[INFO] No existing AppSK at 0x%08x; creating new key...\n", APP_HANDLE);
         }
     }
+    TPM2B_SENSITIVE_CREATE inSensitivePrimary = { .size = sizeof(TPM2B_SENSITIVE_CREATE) };
+    TPM2B_PUBLIC inPublicPrimary = { .size = 0 };
+    inPublicPrimary.publicArea.type = TPM2_ALG_RSA;
+    inPublicPrimary.publicArea.nameAlg = TPM2_ALG_SHA256;
+    inPublicPrimary.publicArea.objectAttributes =
+        TPMA_OBJECT_FIXEDTPM | TPMA_OBJECT_FIXEDPARENT |
+        TPMA_OBJECT_SENSITIVEDATAORIGIN | TPMA_OBJECT_USERWITHAUTH |
+        TPMA_OBJECT_RESTRICTED | TPMA_OBJECT_DECRYPT;
+    inPublicPrimary.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_AES;
+    inPublicPrimary.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 128;
+    inPublicPrimary.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM2_ALG_CFB;
+    inPublicPrimary.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
+    inPublicPrimary.publicArea.parameters.rsaDetail.keyBits = 2048;
 
-    // 1) Create storage primary (Owner)
-    TPM2B_SENSITIVE_CREATE inSensitivePrimary = {
-        .size = sizeof(TPM2B_SENSITIVE_CREATE),
-        .sensitive = { .userAuth = { .size = 0 }, .data = { .size = 0 } }
-    };
-    TPM2B_PUBLIC inPublicPrimary = {
-        .size = 0,
-        .publicArea = {
-            .type = TPM2_ALG_RSA,
-            .nameAlg = TPM2_ALG_SHA256,
-            .objectAttributes =
-                TPMA_OBJECT_FIXEDTPM | TPMA_OBJECT_FIXEDPARENT |
-                TPMA_OBJECT_SENSITIVEDATAORIGIN | TPMA_OBJECT_USERWITHAUTH |
-                TPMA_OBJECT_RESTRICTED | TPMA_OBJECT_DECRYPT,
-            .authPolicy = { .size = 0 },
-            .parameters.rsaDetail = {
-                .symmetric = { .algorithm = TPM2_ALG_AES, .keyBits.aes = 128, .mode.aes = TPM2_ALG_CFB },
-                .scheme = { .scheme = TPM2_ALG_NULL },
-                .keyBits = 2048,
-                .exponent = 0,
-            },
-            .unique.rsa = { .size = 0 },
-        }
-    };
     TPM2B_DATA outsideInfo = { .size = 0 };
     TPML_PCR_SELECTION creationPCR = { .count = 0 };
 
@@ -246,36 +231,27 @@ int main(int argc, char **argv) {
     TPM2B_DIGEST *creationHash = NULL;
     TPMT_TK_CREATION *creationTicket = NULL;
 
-    CHECK_RC(Esys_CreatePrimary(
-        ctx, ESYS_TR_RH_OWNER,
+    CHECK_RC(Esys_CreatePrimary(ctx, ESYS_TR_RH_OWNER,
         ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
         &inSensitivePrimary, &inPublicPrimary, &outsideInfo, &creationPCR,
         &primary, &outPublicPrimary, &creationData, &creationHash, &creationTicket), cleanup);
-
-    // 2) Create AppSK (non-restricted signer)
-    TPM2B_SENSITIVE_CREATE inSensitive = {
-        .size = sizeof(TPM2B_SENSITIVE_CREATE),
-        .sensitive = { .userAuth = { .size = 0 }, .data = { .size = 0 } }
-    };
-    TPM2B_PUBLIC inPublic = {
-        .size = 0,
-        .publicArea = {
-            .type = TPM2_ALG_RSA,
-            .nameAlg = TPM2_ALG_SHA256,
-            .objectAttributes =
-                TPMA_OBJECT_FIXEDTPM | TPMA_OBJECT_FIXEDPARENT |
-                TPMA_OBJECT_SENSITIVEDATAORIGIN | TPMA_OBJECT_USERWITHAUTH |
-                TPMA_OBJECT_SIGN_ENCRYPT,
-            .authPolicy = { .size = 0 },
-            .parameters.rsaDetail = {
-                .symmetric = { .algorithm = TPM2_ALG_NULL },
-                .scheme = { .scheme = TPM2_ALG_RSASSA, .details.rsassa.hashAlg = TPM2_ALG_SHA256 },
-                .keyBits = 2048,
-                .exponent = 0,
-            },
-            .unique.rsa = { .size = 0 },
-        }
-    };
+    TPM2B_SENSITIVE_CREATE inSensitive = { .size = sizeof(TPM2B_SENSITIVE_CREATE) };
+    TPM2B_PUBLIC inPublic = { .size = 0 };
+    inPublic.publicArea.type = TPM2_ALG_RSA;
+    inPublic.publicArea.nameAlg = TPM2_ALG_SHA256;
+    inPublic.publicArea.objectAttributes =
+        TPMA_OBJECT_FIXEDTPM | TPMA_OBJECT_FIXEDPARENT |
+        TPMA_OBJECT_SENSITIVEDATAORIGIN | TPMA_OBJECT_USERWITHAUTH |
+        TPMA_OBJECT_SIGN_ENCRYPT;
+    inPublic.publicArea.authPolicy.size = 0;
+    memset(&inPublic.publicArea.parameters.rsaDetail.symmetric, 0,
+           sizeof(inPublic.publicArea.parameters.rsaDetail.symmetric));
+    inPublic.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_NULL;
+    inPublic.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_RSASSA;
+    inPublic.publicArea.parameters.rsaDetail.scheme.details.rsassa.hashAlg = TPM2_ALG_SHA256;
+    inPublic.publicArea.parameters.rsaDetail.keyBits = 2048;
+    inPublic.publicArea.parameters.rsaDetail.exponent = 0;
+    inPublic.publicArea.unique.rsa.size = 0;
 
     TPM2B_PRIVATE *outPrivate = NULL;
     TPM2B_PUBLIC *outPublic = NULL;
@@ -283,60 +259,51 @@ int main(int argc, char **argv) {
     TPM2B_DIGEST *creationHash2 = NULL;
     TPMT_TK_CREATION *creationTicket2 = NULL;
 
-    CHECK_RC(Esys_Create(
-        ctx, primary,
+    CHECK_RC(Esys_Create(ctx, primary,
         ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
         &inSensitive, &inPublic, &outsideInfo, &creationPCR,
         &outPrivate, &outPublic, &creationData2, &creationHash2, &creationTicket2), cleanup);
-
-    // 3) Load AppSK
+    // Load AppSK
     ESYS_TR app_tr = ESYS_TR_NONE;
     CHECK_RC(Esys_Load(ctx, primary,
         ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
         outPrivate, outPublic, &app_tr), cleanup);
 
-    // 4) Persist at APP_HANDLE
+    // Save context BEFORE eviction
+    TPMS_CONTEXT *saved = NULL;
+    if (Esys_ContextSave(ctx, app_tr, &saved) == TSS2_RC_SUCCESS && saved) {
+        uint8_t cbuf[sizeof(TPMS_CONTEXT)] = {0};
+        size_t coff = 0;
+        if (Tss2_MU_TPMS_CONTEXT_Marshal(saved, cbuf, sizeof(cbuf), &coff) == TSS2_RC_SUCCESS) {
+            write_file(agent_ctx_path, cbuf, coff);
+            printf("[INFO] Saved AppSK context to %s\n", agent_ctx_path);
+        }
+        Esys_Free(saved);
+    }
+
+    // Persist at APP_HANDLE
     ESYS_TR persistent_tr = ESYS_TR_NONE;
     CHECK_RC(Esys_EvictControl(ctx, ESYS_TR_RH_OWNER, app_tr,
         ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
         APP_HANDLE, &persistent_tr), cleanup);
 
-    // 5) Export artifacts
-    {
-        uint8_t pbuf[4096]; size_t poff = 0;
-        if (Tss2_MU_TPM2B_PUBLIC_Marshal(outPublic, pbuf, sizeof(pbuf), &poff) == TSS2_RC_SUCCESS) {
-            write_file("appsk.pub", pbuf, poff);
-        }
+    // Export artifacts
+    uint8_t pbuf[4096]; size_t poff = 0;
+    if (Tss2_MU_TPM2B_PUBLIC_Marshal(outPublic, pbuf, sizeof(pbuf), &poff) == TSS2_RC_SUCCESS) {
+        write_file("appsk.pub", pbuf, poff);
     }
-    {
-        uint8_t sbuf[4096]; size_t soff = 0;
-        if (Tss2_MU_TPM2B_PRIVATE_Marshal(outPrivate, sbuf, sizeof(sbuf), &soff) == TSS2_RC_SUCCESS) {
-            write_file("appsk.priv", sbuf, soff);
-        }
+
+    uint8_t sbuf[4096]; size_t soff = 0;
+    if (Tss2_MU_TPM2B_PRIVATE_Marshal(outPrivate, sbuf, sizeof(sbuf), &soff) == TSS2_RC_SUCCESS) {
+        write_file("appsk.priv", sbuf, soff);
     }
+
     tpm_public_to_pem(outPublic, agent_pubkey_pem);
 
-    // Save context of the persisted object (best-effort)
-    {
-        ESYS_TR persisted = ESYS_TR_NONE;
-        if (Esys_TR_FromTPMPublic(ctx, APP_HANDLE, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, &persisted) == TSS2_RC_SUCCESS) {
-            TPMS_CONTEXT *saved = NULL;
-            if (Esys_ContextSave(ctx, persisted, &saved) == TSS2_RC_SUCCESS && saved) {
-                uint8_t cbuf[sizeof(TPMS_CONTEXT)] = {0};
-                size_t coff = 0;
-                if (Tss2_MU_TPMS_CONTEXT_Marshal(saved, cbuf, sizeof(cbuf), &coff) == TSS2_RC_SUCCESS) {
-                    write_file(agent_ctx_path, cbuf, coff);
-                }
-                Esys_Free(saved);
-            }
-        }
-    }
-
-    printf("[SUCCESS] AppSK persisted at 0x%08x, exported: appsk.pub, appsk.priv, %s, %s\n",
-           APP_HANDLE, agent_pubkey_pem, agent_ctx_path);
+    printf("[SUCCESS] AppSK persisted at 0x%08x, exported: appsk.pub, appsk.priv, %s\n",
+           APP_HANDLE, agent_pubkey_pem);
 
 cleanup:
-    // Free creation outputs
     if (creationTicket2) Esys_Free(creationTicket2);
     if (creationHash2) Esys_Free(creationHash2);
     if (creationData2) Esys_Free(creationData2);
@@ -348,11 +315,10 @@ cleanup:
     if (creationData) Esys_Free(creationData);
     if (outPublicPrimary) Esys_Free(outPublicPrimary);
 
-    // Flush objects if still loaded
     if (app_tr != ESYS_TR_NONE) (void)Esys_FlushContext(ctx, app_tr);
     if (primary != ESYS_TR_NONE) (void)Esys_FlushContext(ctx, primary);
 
-    // Shutdown
-    if (ctx) esys_shutdown(ctx);
+    esys_shutdown(ctx);
     return 0;
 }
+
