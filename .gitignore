@@ -14,5 +14,5 @@ zero-trust/agents/*
 zero-trust/logs/*
 
 # Compiled binaries
-zero-trust/tpm/tpm-app-persist
-zero-trust/tpm/*.o
+zero-trust/spire-tpm-plugin/tpm-app-persist
+zero-trust/spire-tpm-plugin/*.o
