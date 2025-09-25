@@ -46,3 +46,7 @@ sleep 1
 openssl dgst -sha256 -verify appsk_pubkey.pem -signature appsig.bin appmsg.bin && \
   echo "[SUCCESS] OpenSSL verified signature"
 
+sleep 1
+# evict handle
+./ma-app-evict
+./tpm-app-evict 0x8101000B
