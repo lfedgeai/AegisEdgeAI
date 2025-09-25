@@ -1,0 +1,9 @@
+gcc -O2 -Wall tpm-app-evict.c \
+  ./usr/local/lib/libtss2-esys.a \
+  ./usr/local/lib/libtss2-sys.a \
+  ./usr/local/lib/libtss2-mu.a \
+  ./usr/local/lib/libtss2-rc.a \
+  ./usr/local/lib/libtss2-tctildr.a \
+  ./usr/local/lib/libtss2-tcti-swtpm.a \
+  -lcrypto -lpthread -ldl \
+  -o tpm-app-evict
