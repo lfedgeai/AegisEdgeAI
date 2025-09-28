@@ -9,12 +9,12 @@
 - **Keylime**: A remote attestation framework that uses TPM and IMA for host integrity verification.
 - **KBS**: Key Broker Service, a service that releases cryptographic keys to attested workloads based on their identity.
 - **BM SPIRE agent**: Bare-metal SPIRE agent running on the host machine, responsible for attesting the physical host and relaying evidence.
+- **VM SPIRE agent**: SPIRE agent running inside the VM, responsible for issuing workload SVIDs to applications within the VM.
 - **SPIRE server**: The central server that issues SVIDs (SPIFFE Verifiable Identity Documents) based on attestation evidence.
 - **Keylime agent**: Agent running on the host to collect TPM quotes and IMA measurements for attestation.
 - **Keylime verifier**: Service that verifies TPM/IMA evidence from the Keylime agent.
 - **Host TPM**: The physical TPM device on the host, typically accessible at `/dev/tpm0`.
 - **VM Kata agent**: Agent inside the VM (e.g., Kata Containers agent) responsible for VM attestation and relaying evidence.
-- **VM SPIRE agent**: SPIRE agent running inside the VM, responsible for attesting the VM and issuing workload SVIDs to applications within the VM.
 - **VM shim**: Lightweight process in the VM that mediates communication between the VM Kata agent and the host.
 - **Workload**: Application or process running inside the VM that requests workload identity.
 - **mTLS**: Mutual TLS, used for secure and authenticated communication between components.
@@ -131,9 +131,9 @@ sequenceDiagram
   Server->>KLVer: Forward for verification (mTLS)
   KLVer-->>Server: Verdict (signed)
   alt Host pass
-    Server-->>BM: Issue bm SVID (short TTL) (mTLS)
+  Server-->>BM: Issue bm SVID (short TTL) (mTLS)
   else Host fail
-    Server-->>BM: Deny bm SVID
+  Server-->>BM: Deny bm SVID
   end
 
   %% Phase 1: Challenge for VM
@@ -165,13 +165,13 @@ sequenceDiagram
   KLVer-->>Server: Combined verdict (host+VM pass/fail)
   Server->>Server: Consume nonces (mark used)
   alt Host+VM pass
-    Server-->>BM: Issue VM SVID (fused selectors; short TTL) (mTLS)
-    BM-->>Shim: Relay VM SVID (vsock)
-    Shim-->>VMA: Deliver VM SVID (UDS)
+  Server-->>BM: Issue VM SVID (fused selectors; short TTL) (mTLS)
+  BM-->>Shim: Relay VM SVID (vsock)
+  Shim-->>VMA: Deliver VM SVID (UDS)
   else Any fail
-    Server-->>BM: Failure (no VM SVID)
-    BM-->>Shim: Relay failure (vsock)
-    Shim-->>VMA: Inform failure (UDS)
+  Server-->>BM: Failure (no VM SVID)
+  BM-->>Shim: Relay failure (vsock)
+  Shim-->>VMA: Inform failure (UDS)
   end
 
   %% Phase 5: Workload SVID issuance
