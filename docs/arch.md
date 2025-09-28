@@ -99,92 +99,71 @@ This unifies the outermost ring (BM SPIRE agent SVID), outer ring (VM attestatio
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  %% Outermost Ring participants
-  box "Outermost Ring: Bare-metal host trust (BM SVID)" #lightblue
-    participant BM as "bm SPIRE agent"
-    participant Server as "SPIRE server"
-    participant KLAgent as "Keylime agent (host)"
-    participant KLVer as "Keylime verifier"
-    participant HostTPM as "Host TPM (/dev/tpm0)"
-  end
+    autonumber
 
-  %% Outer Ring participants
-  box "Outer Ring: VM attestation & VM SVID" #lightgreen
-    participant Shim as "VM shim (UDS)"
-  participant VMA as "VM Kata agent (may include VM SPIRE agent)"
-    participant vTPM as "VM TPM (/dev/tpm0 or proxy)"
-  end
+    %% Outermost Ring
+    participant BM as bm SPIRE agent
+    participant Server as SPIRE server
+    participant KLAgent as Keylime agent (host)
+    participant HostTPM as Host TPM (/dev/tpm0)
+    participant KLVer as Keylime verifier
 
-  %% Inner Ring participants
-  box "Inner Ring: Workload identity & KBS release" #lightyellow
-    participant WL as "Workload inside VM"
-    participant KBS as "Key Broker Service"
-  end
+    %% Outer Ring
+    participant Shim as VM shim
+    participant Kata as VM Kata agent (attestation collector)
+    participant vTPM as vTPM (/dev/tpm0 or proxy)
 
-  %% Phase 0: bm SVID
-  BM->>Server: Request bm node SVID (mTLS)
-  BM->>KLAgent: Provide host attestation inputs (local RPC/mTLS)
-  KLAgent->>HostTPM: TPM2_Quote + IMA + logs (physical TPM access)
-  KLAgent-->>BM: Host evidence
-  BM->>Server: Submit host evidence (mTLS)
-  Server->>KLVer: Forward for verification (mTLS)
-  KLVer-->>Server: Verdict (signed)
-  alt Host pass
-  Server-->>BM: Issue bm SVID (short TTL) (mTLS)
-  else Host fail
-  Server-->>BM: Deny bm SVID
-  end
+    %% Inner Ring
+    participant VMA as VM SPIRE agent (runtime + identity broker)
+    participant WL as Workload
+    participant KBS as Key Broker Service
 
-  %% Phase 1: Challenge for VM
-  VMA->>Shim: Initiate attest-and-SVID (UDS)
-  Shim->>BM: Forward request (vsock)
-  BM->>Server: Request server challenge (mTLS)
-  Server-->>BM: session_id, nonce_host, nonce_vm, expires_at, token (mTLS)
-  BM-->>Shim: Relay VM challenge (vsock)
-  Shim-->>VMA: Relay VM challenge (UDS)
+    %% Phase 0: bm SVID
+    BM->>Server: Request bm node SVID (mTLS)
+    BM->>KLAgent: Request host evidence
+    KLAgent->>HostTPM: TPM2_Quote + IMA + logs
+    KLAgent-->>BM: Host evidence
+    BM->>Server: Submit evidence (mTLS)
+    Server->>KLVer: Verify host evidence
+    KLVer-->>Server: Verdict
+    Server-->>BM: Issue bm SVID (if pass)
 
-  %% Phase 2: VM vTPM quote
-  VMA->>VMA: Compute vm_claims_digest (PCRs, VMID, image, sandbox)
-  VMA->>vTPM: TPM2_Quote extraData=H(session_id||nonce_vm||vm_claims_digest) (TPM device)
-  vTPM-->>VMA: VM quote + PCRs + logs + AK
-  VMA->>Shim: Send VM evidence (UDS)
-  Shim->>BM: Forward VM evidence (vsock)
+    %% Phase 1: VM challenge
+    Kata->>Shim: Attest-and-SVID request (UDS)
+    Shim->>BM: Forward (vsock)
+    BM->>Server: Request challenge (mTLS)
+    Server-->>BM: session_id, nonces, token
+    BM-->>Shim: Relay (vsock)
+    Shim-->>Kata: Relay (UDS)
 
-  %% Phase 3: Host TPM quote
-  BM->>KLAgent: Request host TPM2_Quote with extraData=H(session_id||nonce_host||host_claims_digest) (local RPC/mTLS)
-  KLAgent->>HostTPM: TPM2_Quote (physical TPM)
-  HostTPM-->>KLAgent: Host quote + PCRs + logs + AK/EK chain + IMA
-  KLAgent-->>BM: Host evidence
+    %% Phase 2: VM quote
+    Kata->>vTPM: TPM2_Quote(extraData=H(session_id||nonce_vm||vm_claims_digest))
+    vTPM-->>Kata: VM quote + PCRs + logs
+    Kata->>Shim: Send VM evidence (UDS)
+    Shim->>BM: Forward (vsock)
 
-  %% Phase 4: Bundle and verify
-  BM->>BM: Assemble & sign bundle (VM + host + challenge token)
-  BM->>Server: Submit signed evidence bundle (mTLS)
-  Server->>KLVer: Forward bundle + policy IDs (mTLS)
-  KLVer->>KLVer: Verify EK/AK chains, PCR profiles, IMA allowlist, event logs, nonces, session_id
-  KLVer-->>Server: Combined verdict (host+VM pass/fail)
-  Server->>Server: Consume nonces (mark used)
-  alt Host+VM pass
-  Server-->>BM: Issue VM SVID (fused selectors; short TTL) (mTLS)
-  BM-->>Shim: Relay VM SVID (vsock)
-  Shim-->>VMA: Deliver VM SVID (UDS)
-  else Any fail
-  Server-->>BM: Failure (no VM SVID)
-  BM-->>Shim: Relay failure (vsock)
-  Shim-->>VMA: Inform failure (UDS)
-  end
+    %% Phase 3: Host quote
+    BM->>KLAgent: Request host TPM2_Quote(extraData=H(session_id||nonce_host||host_claims_digest))
+    KLAgent->>HostTPM: TPM2_Quote
+    HostTPM-->>KLAgent: Host quote + PCRs + logs
+    KLAgent-->>BM: Host evidence
 
-  %% Phase 5: Workload SVID issuance
-  WL->>VMA: Request workload identity (UDS)
-  VMA->>Server: Authenticate using VM SVID (mTLS)
-  Server->>Server: Validate VM SVID (TTL, selectors, revocation)
-  VMA->>Server: Send workload selectors (mTLS)
-  Server-->>VMA: Issue workload SVID (short TTL) (mTLS)
-  VMA-->>WL: Deliver workload SVID (UDS)
+    %% Phase 4: Verification
+    BM->>Server: Submit bundle (mTLS)
+    Server->>KLVer: Verify host+VM evidence
+    KLVer-->>Server: Verdict
+    Server-->>BM: Issue VM SVID (if pass)
+    BM-->>Shim: Relay (vsock)
+    Shim-->>Kata: Deliver VM SVID (UDS)
+    Kata-->>VMA: Hand over VM SVID (UDS)
 
-  %% Phase 6: KBS key release
-  WL->>KBS: Present workload SVID (mTLS/SPIFFE)
-  KBS->>KBS: Validate SPIFFE ID, selectors, TTL, trust roots
-  KBS-->>WL: Release scoped key (one-time unwrap, short TTL)
+    %% Phase 5: Workload SVID
+    WL->>VMA: Request identity (UDS)
+    VMA->>Server: Authenticate with VM SVID (mTLS)
+    Server-->>VMA: Issue workload SVID
+    VMA-->>WL: Deliver workload SVID (UDS)
+
+    %% Phase 6: KBS release
+    WL->>KBS: Present workload SVID (mTLS/SPIFFE)
+    KBS-->>WL: Release scoped key
 ```
-
