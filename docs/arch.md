@@ -178,7 +178,7 @@ sequenceDiagram
     participant KBS as Key Broker Service
 
     %% Phase 0
-    note over BM,Server: Phase 0 – bm SVID (root of chain)
+    Note over BM,Server: Phase 0 – bm SVID (root of chain)
     alt bm SVID expired or revoked
       BM->>Server: Request bm SVID
       BM->>KLAgent: Request host evidence
@@ -189,11 +189,11 @@ sequenceDiagram
       KLVer-->>Server: Verdict
       Server-->>BM: Issue bm SVID (anchored to SPIRE CA)
     else bm SVID valid
-      note over BM: Reuse existing bm SVID
+      Note over BM: Reuse existing bm SVID
     end
 
     %% Phase 1
-    note over Kata,Server: Phase 1 – Challenge issuance
+    Note over Kata,Server: Phase 1 – Challenge issuance
     alt VM SVID renewal required
       Kata->>Shim: Attest-and-SVID request
       Shim->>BM: Forward (authenticated under bm SVID)
@@ -202,33 +202,33 @@ sequenceDiagram
       BM-->>Shim: Relay
       Shim-->>Kata: Relay
     else VM SVID valid
-      note over Kata: Skip challenge (reuse VM SVID)
+      Note over Kata: Skip challenge (reuse VM SVID)
     end
 
     %% Phase 2
-    note over Kata,BM: Phase 2 – VM quote (vTPM)
+    Note over Kata,BM: Phase 2 – VM quote (vTPM)
     alt VM SVID renewal required
       Kata->>vTPM: TPM2_Quote(extraData=H(session_id||nonce_vm||vm_claims_digest))
       vTPM-->>Kata: VM quote + PCRs + logs
       Kata->>Shim: Send VM evidence
       Shim->>BM: Forward (under bm SVID)
     else VM SVID valid
-      note over Kata: Skip VM quote
+      Note over Kata: Skip VM quote
     end
 
     %% Phase 3
-    note over BM,KLAgent: Phase 3 – Host quote (physical TPM)
+    Note over BM,KLAgent: Phase 3 – Host quote (physical TPM)
     alt VM SVID renewal required
       BM->>KLAgent: Request host quote
       KLAgent->>HostTPM: TPM2_Quote(extraData=H(session_id||nonce_host||host_claims_digest))
       HostTPM-->>KLAgent: Host quote + PCRs + logs
       KLAgent-->>BM: Host evidence
     else VM SVID valid
-      note over BM: Skip host quote
+      Note over BM: Skip host quote
     end
 
     %% Phase 4
-    note over BM,Server: Phase 4 – Evidence bundling and verification
+    Note over BM,Server: Phase 4 – Evidence bundling and verification
     alt VM SVID renewal required
       BM->>Server: Submit signed bundle (host+VM evidence + challenge token)
       Server->>KLVer: Verify EK/AK chains, PCRs, IMA, nonces, session_id
@@ -238,19 +238,20 @@ sequenceDiagram
       Shim-->>Kata: Deliver VM SVID
       Kata-->>VMA: Hand over VM SVID
     else VM SVID valid
-      note over VMA: Reuse existing VM SVID (already chained to bm SVID)
+      Note over VMA: Reuse existing VM SVID (already chained to bm SVID)
     end
 
     %% Phase 5
-    note over WL,Server: Phase 5 – Workload SVID issuance
+    Note over WL,Server: Phase 5 – Workload SVID issuance
     WL->>VMA: Request identity (UDS)
     VMA->>Server: Authenticate with VM SVID (mTLS)
     Server-->>VMA: Issue workload SVID (includes reference to VM SVID)
     VMA-->>WL: Deliver workload SVID (UDS)
 
     %% Phase 6
-    note over WL,KBS: Phase 6 – KBS key release
+    Note over WL,KBS: Phase 6 – KBS key release
     WL->>KBS: Present workload SVID (mTLS/SPIFFE)
     KBS->>KBS: Validate chain: workload → VM → bm → SPIRE CA
     KBS-->>WL: Release scoped key (one-time unwrap, short TTL)
+
 ```
