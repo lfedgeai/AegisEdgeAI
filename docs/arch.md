@@ -127,7 +127,7 @@ sequenceDiagram
     autonumber
 
     %% Outermost Ring
-    participant BM as bm SPIRE agent
+    participant BM as BM SPIRE agent
     participant Server as SPIRE server
     participant KLAgent as Keylime agent (host)
     participant HostTPM as Host TPM (/dev/tpm0)
