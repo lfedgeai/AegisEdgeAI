@@ -145,8 +145,8 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
 - **Comms:** UDS (workload ↔ VM SPIRE agent), mTLS (VM SPIRE agent ↔ SPIRE server using a **vTPM‑resident key**).  
 - **Nonce:** SPIRE server issues a fresh nonce for workload attestation.  
 - **Selectors:** VM SPIRE agent collects workload selectors (UID, cgroup, labels) and binds the nonce into the request.  
-- **Result:** SPIRE server
-
+- **Result:** SPIRE server issues workload SVID (short TTL), **including a reference to the VM SVID**.
+- **Chain:** Workload SVID → VM SVID → BM SVID → SPIRE CA.
 
 # ✅ End‑to‑End Mermaid Sequence Diagram (Phases 0–6, with chain references)
 
