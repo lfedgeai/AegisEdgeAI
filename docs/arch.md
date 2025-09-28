@@ -1,6 +1,16 @@
 # Unified workload identity - End-to-end flow with three rings and communication mechanisms - work in progress
 
-This proposal advances zero‑trust attestation by introducing a three‑ring trust architecture, a novel role inversion between Kata and SPIRE agents, and a fully explicit comms/device mapping. In addition, it strengthens the chain of custody by ensuring that all mTLS private keys are non‑exportable and resident in TPM/vTPM hardware roots of trust.
+This architecture advances zero‑trust attestation by unifying a three‑ring trust model spanning the host layer, the virtual machine layer, and the workload layer; introducing a role inversion between Kata and SPIRE agents for clearer auditability; and mapping all communications and device paths explicitly (UDS, vsock, mTLS, TPM access). It strengthens the chain of custody by ensuring that all mTLS private keys are non‑exportable and resident in TPM or vTPM hardware roots of trust, so attestation evidence and operational identities are inseparably bound to the same silicon.
+
+To address weaknesses in bearer and proof‑of‑possession tokens, it introduces Proof of Residency (PoR) — binding workload identity with host hardware identity and policy — and Proof of Geofencing (PoG) — extending PoR with GNSS or mobile sensor evidence to prove location.
+
+Finally, it enforces a Trust Chain and Cryptographic Inheritance:
+- Host‑level SVIDs anchored to the SPIRE CA,
+- Virtual machine–level SVIDs referencing host‑level SVIDs,
+- Workload‑level SVIDs referencing virtual machine–level SVIDs,
+- and the Key Broker Service enforcing the full chain before key release.
+
+Together, these novelties yield a regulator‑ready, reproducible, and extensible framework for sovereign AI and confidential workloads.
 
 # Terminology
 
@@ -59,6 +69,10 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
 - VM SVID → BM SVID: Issued only if BM SVID is valid; includes a reference to the BM SVID, binding VM identity to its attested host. **VM SPIRE agent authenticates with a vTPM‑resident key.**
 - Workload SVID → VM SVID: Issued only if VM SVID is valid; includes a reference to the VM SVID, creating a transitive link back to the BM SVID. **Workload SVID requests are authenticated with the VM agent’s vTPM key.**
 - KBS enforcement: Validates the full chain before releasing scoped keys, ensuring that every workload secret is cryptographically rooted in host attestation.
+
+### Residency and Geofencing Proofs
+- **Proof of Residency (PoR)**: Workload certificates cryptographically bind workload identity (e.g., executable code hash) with approved host hardware identity (TPM PKI key, kernel version, platform policy), eliminating reliance on bearer or proof‑of‑possession tokens.
+- **Proof of Geofencing (PoG)**: Extends PoR by incorporating host location hardware identity (GNSS, mobile modem, or proximity sensor) to generate geofencing‑anchored workload credentials, providing verifiable enforcement that workloads execute only on approved hosts in approved regions.
 
 ---
 
