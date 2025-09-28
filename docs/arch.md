@@ -1,3 +1,7 @@
+# Unified workload identity - End-to-end flow with three rings and communication mechanisms - work in progress
+
+This proposal advances zero‑trust attestation by introducing a three‑ring trust architecture, a novel role inversion between kata and SPIRE agents, and a fully explicit comms/device mapping. Together, these yield a regulator‑ready, reproducible, and extensible framework for sovereign AI and confidential workloads.
+
 # Terminology
 
 - **BM**: Bare-metal, referring to the physical host machine (as opposed to a virtual machine).
@@ -21,9 +25,38 @@
 - **UDS**: Unix Domain Socket, used for local inter-process communication.
 - **vsock**: Virtual socket, used for communication between VMs and hosts.
 
-# Unified workload identity - End-to-end flow with three rings and communication mechanisms - work in progress
+# Architecture overview
+This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (VM attestation and VM SVID), and inner ring (workload identity and KBS release), with explicit transport and device access at each step.
 
-This unifies the outermost ring (BM SPIRE agent SVID), outer ring (VM attestation and VM SVID), and inner ring (workload identity and KBS release), with explicit transport and device access at each step.
+## Summary of Novelties
+
+This proposal introduces several innovations beyond conventional SPIRE/Keylime deployments:
+
+### Three-Ring Trust Model
+- **Outermost ring (BM SVID):** Bare-metal SPIRE agent itself is attested and issued an SVID, anchored in host TPM + IMA evidence.
+- **Outer ring (VM SVID):** VM attestation fuses vTPM quotes with host TPM quotes in a single session, ensuring replay protection and launch binding.
+- **Inner ring (workload SVID):** Workload SVIDs are issued only if the VM SVID is valid, and KBS secrets are released only to workloads with valid workload SVIDs.
+
+### Role Inversion for Clarity
+- **VM Kata agent:** Dedicated to attestation collection (vTPM quotes, vm_claims_digest, evidence relay).
+- **VM SPIRE agent:** Repurposed as the container runtime and identity broker, consuming the VM SVID and issuing workload SVIDs.
+- This separation of duties simplifies auditability and allows attestation logic to evolve independently of workload lifecycle management.
+
+### Explicit Comms and Device Paths
+- **UDS** inside the VM (workload ↔ Kata agent, Kata agent ↔ VM SPIRE agent)
+- **vsock** between VM shim and BM SPIRE agent
+- **mTLS** for all SPIRE server, Keylime verifier, and KBS interactions
+- **TPM device access:** `/dev/tpm0` for vTPM inside VM and physical TPM on host
+- This explicit mapping ensures reproducibility and regulator-ready clarity.
+
+### Nonce-Anchored Freshness and Fusion
+- Server-issued `session_id`, `nonce_host`, and `nonce_vm` are cryptographically bound into both host and VM quotes.
+- Evidence is fused at the BM SPIRE agent, signed, and verified as a single bundle, preventing replay or split-verdict attacks.
+
+### Policy-Driven Selectors and Key Scoping
+- VM SVIDs are tied to fused selectors (host AK, VM AK, PCRs, VM image, sandbox config).
+- Workload SVIDs inherit trust from VM SVIDs.
+- KBS keys are released only to workloads with valid workload SVIDs, scoped for one-time use and short TTL.
 
 ---
 
@@ -84,14 +117,6 @@ This unifies the outermost ring (BM SPIRE agent SVID), outer ring (VM attestatio
 - **Comms:** mTLS with SPIFFE bundle (workload ↔ KBS).
 - **Policy:** KBS validates SPIFFE ID, selectors, TTL, and trust roots.
 - **Result:** KBS releases scoped key (one‑time unwrap, short TTL) for workload cryptographic operations.
-
----
-
-## Three rings summary
-
-- **Outermost ring (BM SVID):** Host integrity and BM SPIRE agent trust via physical TPM and Keylime.
-- **Outer ring (VM SVID):** VM’s measured boot and session freshness, fused with host evidence; issued only on joint pass.
-- **Inner ring (workload SVID):** Workload identity anchored to VM SVID; enables KBS key release to attested workloads.
 
 ---
 
