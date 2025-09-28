@@ -103,51 +103,63 @@ The proposal introduces several **innovations** beyond conventional SPIRE/Keylim
 
 ## Full Mermaid Diagram: Comms and Rings
 
-    %% Outermost Ring
-  participant BM as "BM SPIRE agent"
+```mermaid
+sequenceDiagram
+    autonumber
 
+    %% Outermost Ring
+    participant BM as "BM SPIRE agent"
+    participant Server as "SPIRE server"
+    participant KLAgent as "Keylime agent"
+    participant HostTPM as "Host TPM (/dev/tpm0)"
+    participant KLVer as "Keylime verifier"
+
+    %% Outer Ring
     participant Shim as "VM shim"
     participant Kata as "VM Kata agent (attestation collector)"
     participant vTPM as "vTPM (/dev/tpm0)"
 
     %% Inner Ring
+    participant VMA as "VM SPIRE agent (runtime + identity broker)"
+    participant WL as "Workload"
     participant KBS as "Key Broker Service"
-  %% Phase 0: BM SVID
-  BM->>Server: Request BM SVID (mTLS)
-  BM->>KLAgent: Request host evidence
-  KLAgent->>HostTPM: TPM2_Quote (physical TPM)
-  KLAgent-->>BM: Host evidence
-  BM->>Server: Submit evidence (mTLS)
-  Server->>KLVer: Verify host evidence
-  KLVer-->>Server: Verdict
-  Server-->>BM: Issue BM SVID (if pass)
+
+    %% Phase 0: BM SVID
+    BM->>Server: Request BM SVID (mTLS)
+    BM->>KLAgent: Request host evidence
+    KLAgent->>HostTPM: TPM2_Quote (physical TPM)
+    KLAgent-->>BM: Host evidence
+    BM->>Server: Submit evidence (mTLS)
+    Server->>KLVer: Verify host evidence
+    KLVer-->>Server: Verdict
+    Server-->>BM: Issue BM SVID (if pass)
 
     %% Phase 1: VM challenge
     Kata->>Shim: Attest-and-SVID request (UDS)
-  Shim->>BM: Forward (vsock)
-  BM->>Server: Request challenge (mTLS)
-  Server-->>BM: session_id, nonces, token
-  BM-->>Shim: Relay (vsock)
+    Shim->>BM: Forward (vsock)
+    BM->>Server: Request challenge (mTLS)
+    Server-->>BM: session_id, nonces, token
+    BM-->>Shim: Relay (vsock)
     Shim-->>Kata: Relay (UDS)
 
     %% Phase 2: VM quote
     Kata->>vTPM: TPM2_Quote(extraData=H(session_id||nonce_vm||vm_claims_digest))
     vTPM-->>Kata: VM quote + PCRs + logs
     Kata->>Shim: Send VM evidence (UDS)
-  Shim->>BM: Forward (vsock)
+    Shim->>BM: Forward (vsock)
 
     %% Phase 3: Host quote
-  BM->>KLAgent: Request host quote
+    BM->>KLAgent: Request host quote
     KLAgent->>HostTPM: TPM2_Quote(extraData=H(session_id||nonce_host||host_claims_digest))
     HostTPM-->>KLAgent: Host quote
     KLAgent-->>BM: Host evidence
 
     %% Phase 4: Verification
-  BM->>Server: Submit bundle (mTLS)
+    BM->>Server: Submit bundle (mTLS)
     Server->>KLVer: Verify host+VM evidence
     KLVer-->>Server: Verdict
     Server-->>BM: Issue VM SVID (if pass)
-  BM-->>Shim: Relay (vsock)
+    BM-->>Shim: Relay (vsock)
     Shim-->>Kata: Deliver VM SVID (UDS)
     Kata-->>VMA: Hand over VM SVID (UDS)
 
@@ -160,6 +172,7 @@ The proposal introduces several **innovations** beyond conventional SPIRE/Keylim
     %% Phase 6: KBS release
     WL->>KBS: Present workload SVID (mTLS/SPIFFE)
     KBS-->>WL: Release scoped key
+```
 ```
 ## Detailed flows
 ### Split‑role design (kata agent + VM SPIRE agent separate)
