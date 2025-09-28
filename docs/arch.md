@@ -80,7 +80,13 @@ flowchart TD
 
 # 📖 End‑to‑End Attestation and Identity Flow
 
-## Outermost ring: Bare‑metal SPIRE agent SVID
+Got it — here’s the **full modified end‑to‑end phases text** with all instances of “bm” normalized to **BM** (so it consistently reads “BM SVID”, “BM SPIRE agent”, etc.).  
+
+---
+
+# 📖 End‑to‑End Phases (Modified, BM capitalization)
+
+## Outermost ring: Bare‑metal SPIRE agent SVID  
 
 **Phase 0: Host attestation and BM SVID issuance**  
 - **Initiate:** BM SPIRE agent requests its node SVID from SPIRE server.  
@@ -89,18 +95,20 @@ flowchart TD
 - **TPM access:** `/dev/tpm0` (host physical TPM).  
 - **Result:**  
   - **If BM SVID expired/revoked:** Full host attestation, new BM SVID issued.  
-  - **If BM SVID valid:** Reuse existing BM SVID.  
+  - **If BM SVID valid:** Reuse existing BM SVID; no fresh host quote required.  
 - **Chain:** BM SVID is anchored to SPIRE CA and becomes the parent reference for VM SVIDs.
 
 ---
 
-## Outer ring: VM attestation and VM SVID
+## Outer ring: VM attestation and VM SVID  
 
 **Phase 1: Challenge issuance (server‑anchored nonces)**  
 - **Request:** VM Kata agent initiates “attest‑and‑SVID”.  
-- **Comms:** UDS (workload ↔ Kata agent), UDS (Kata agent ↔ VM shim), vsock (shim ↔ BM SPIRE agent), mTLS (BM SPIRE agent ↔ SPIRE server).  
+- **Comms:** UDS (workload ↔ Kata agent), UDS (Kata agent ↔ VM shim), vsock (VM shim ↔ BM SPIRE agent), mTLS (BM SPIRE agent ↔ SPIRE server).  
 - **Server action:** SPIRE server issues `session_id`, `nonce_host`, `nonce_vm`, `expires_at`, and a signed challenge token.  
-- **Conditional:** Only runs if VM SVID renewal is required.  
+- **Conditional:**  
+  - **If VM SVID expired/revoked:** Full challenge/nonce exchange is triggered.  
+  - **If VM SVID valid:** Skip challenge; reuse existing VM SVID.  
 - **Chain:** Challenge is authenticated under BM SVID, binding VM SVID issuance to the host’s attested identity.
 
 **Phase 2: VM quote (vTPM)**  
@@ -109,7 +117,9 @@ flowchart TD
 - **TPM access:** `/dev/tpm0` inside VM (vTPM).  
 - **Comms:** UDS (Kata agent → VM shim), vsock (VM shim → BM SPIRE agent).  
 - **Evidence:** VM quote, AK pub, PCRs, event logs, `vm_claims_digest`, VM metadata.  
-- **Conditional:** Only runs if VM SVID renewal is required.  
+- **Conditional:**  
+  - **If VM SVID expired/revoked:** Full VM quote collected.  
+  - **If VM SVID valid:** Skip VM quote; reuse existing VM SVID.  
 - **Chain:** Evidence is relayed under BM SVID, ensuring VM SVID is cryptographically tied to BM SVID.
 
 **Phase 3: Host quote (physical TPM via Keylime)**  
@@ -118,7 +128,9 @@ flowchart TD
 - **TPM access:** `/dev/tpm0` (host physical TPM).  
 - **Comms:** local RPC or mTLS (BM SPIRE agent ↔ Keylime agent).  
 - **Evidence:** Host quote, AK/EK chain, PCRs, IMA allowlist, event logs, `host_claims_digest`.  
-- **Conditional:** Only runs if VM SVID renewal is required.  
+- **Conditional:**  
+  - **If VM SVID expired/revoked:** Fresh host quote collected.  
+  - **If VM SVID valid:** Skip host quote; reuse existing VM SVID.  
 - **Chain:** Host quote shares the same `session_id`, proving linkage to BM SVID context.
 
 **Phase 4: Evidence bundling and verification**  
@@ -126,25 +138,25 @@ flowchart TD
 - **Comms:** mTLS (BM SPIRE agent → SPIRE server), mTLS (SPIRE server ↔ Keylime verifier).  
 - **Verify:** Keylime verifier checks EK/AK chains, PCR profiles, IMA allowlists, event logs, nonce bindings, and shared `session_id`.  
 - **Result:**  
-  - **If both host and VM pass:** SPIRE server issues VM SVID (short TTL, includes explicit reference to BM SVID).  
-  - **If VM SVID valid:** Skip; existing VM SVID continues to be used.  
+  - **If both host and VM pass:** SPIRE server issues VM SVID (short TTL, **issued with an explicit reference to the BM SVID — parent SPIFFE ID or cert hash**).  
+  - **If VM SVID valid:** Skip; reuse existing VM SVID.  
 - **Chain:** VM SVID → BM SVID → SPIRE CA.
 
 ---
 
-## Inner ring: Workload identity and key release
+## Inner ring: Workload identity and key release  
 
 **Phase 5: Workload SVID issuance**  
 - **Request:** Workload asks VM SPIRE agent for identity.  
 - **Comms:** UDS (workload ↔ VM SPIRE agent), mTLS (VM SPIRE agent ↔ SPIRE server using VM SVID).  
 - **Selectors:** VM SPIRE agent collects workload selectors (UID, cgroup, labels).  
-- **Result:** SPIRE server issues workload SVID (short TTL, includes reference to VM SVID).  
-- **Chain:** Workload SVID → VM SVID → bm SVID → SPIRE CA.
+- **Result:** SPIRE server issues workload SVID (short TTL, **includes an explicit reference to the VM SVID — transitive chain to BM SVID**).  
+- **Chain:** Workload SVID → VM SVID → BM SVID → SPIRE CA.
 
 **Phase 6: KBS key release**  
 - **Request:** Workload presents workload SVID to KBS.  
 - **Comms:** mTLS/SPIFFE.  
-- **Policy:** KBS validates workload SVID and walks the chain back to VM SVID and bm SVID.  
+- **Policy:** KBS validates workload SVID and **validates the full chain workload → VM → BM → SPIRE CA before releasing keys**.  
 - **Result:** KBS releases scoped key (one‑time unwrap, short TTL) only if the full chain is valid.  
 
 ---
