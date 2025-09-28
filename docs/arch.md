@@ -177,81 +177,77 @@ sequenceDiagram
     participant WL as Workload
     participant KBS as Key Broker Service
 
-    %% Phase 0
-    Note over BM,Server: Phase 0 – bm SVID (root of chain)
+    %% Phase 0 – BM SVID
     alt bm SVID expired or revoked
       BM->>Server: Request bm SVID
-      BM->>KLAgent: Request host evidence
-      KLAgent->>HostTPM: TPM2_Quote + IMA
+      Server-->>BM: Issue fresh nonce for bm attestation
+      BM->>KLAgent: Request host evidence (with server nonce)
+      KLAgent->>HostTPM: TPM2_Quote(extraData=server nonce) + IMA
       KLAgent-->>BM: Host evidence
-      BM->>Server: Submit evidence
+      BM->>Server: Submit evidence (bound to nonce)
       Server->>KLVer: Verify
       KLVer-->>Server: Verdict
       Server-->>BM: Issue bm SVID (anchored to SPIRE CA)
     else bm SVID valid
-      Note over BM: Reuse existing bm SVID
+      BM->>Server: Reuse existing bm SVID (no fresh host quote)
     end
 
-    %% Phase 1
-    Note over Kata,Server: Phase 1 – Challenge issuance
+    %% Phase 1 – Challenge issuance
     alt VM SVID renewal required
       Kata->>Shim: Attest-and-SVID request
-      Shim->>BM: Forward (authenticated under bm SVID)
+      Shim->>BM: Forward (under bm SVID)
       BM->>Server: Request challenge
       Server-->>BM: session_id, nonce_host, nonce_vm, expires_at, token
       BM-->>Shim: Relay
       Shim-->>Kata: Relay
     else VM SVID valid
-      Note over Kata: Skip challenge (reuse VM SVID)
+      Kata->>Server: Reuse existing VM SVID (skip challenge)
     end
 
-    %% Phase 2
-    Note over Kata,BM: Phase 2 – VM quote (vTPM)
+    %% Phase 2 – VM quote
     alt VM SVID renewal required
       Kata->>vTPM: TPM2_Quote(extraData=H(session_id||nonce_vm||vm_claims_digest))
       vTPM-->>Kata: VM quote + PCRs + logs
       Kata->>Shim: Send VM evidence
       Shim->>BM: Forward (under bm SVID)
     else VM SVID valid
-      Note over Kata: Skip VM quote
+      Kata->>Server: Reuse existing VM SVID (skip VM quote)
     end
 
-    %% Phase 3
-    Note over BM,KLAgent: Phase 3 – Host quote (physical TPM)
+    %% Phase 3 – Host quote
     alt VM SVID renewal required
       BM->>KLAgent: Request host quote
       KLAgent->>HostTPM: TPM2_Quote(extraData=H(session_id||nonce_host||host_claims_digest))
       HostTPM-->>KLAgent: Host quote + PCRs + logs
       KLAgent-->>BM: Host evidence
     else VM SVID valid
-      Note over BM: Skip host quote
+      BM->>Server: Reuse existing VM SVID (skip host quote)
     end
 
-    %% Phase 4
-    Note over BM,Server: Phase 4 – Evidence bundling and verification
+    %% Phase 4 – Evidence bundling
     alt VM SVID renewal required
       BM->>Server: Submit signed bundle (host+VM evidence + challenge token)
-      Server->>KLVer: Verify EK/AK chains, PCRs, IMA, nonces, session_id
+      Server->>KLVer: Verify EK/AK, PCRs, IMA, nonces, session_id
       KLVer-->>Server: Verdict
       Server-->>BM: Issue VM SVID (includes reference to bm SVID)
       BM-->>Shim: Relay
       Shim-->>Kata: Deliver VM SVID
       Kata-->>VMA: Hand over VM SVID
     else VM SVID valid
-      Note over VMA: Reuse existing VM SVID (already chained to bm SVID)
+      VMA->>Server: Reuse existing VM SVID (already chained to bm SVID)
     end
 
-    %% Phase 5
-    Note over WL,Server: Phase 5 – Workload SVID issuance
+    %% Phase 5 – Workload SVID
     WL->>VMA: Request identity (UDS)
     VMA->>Server: Authenticate with VM SVID (mTLS)
+    Server-->>VMA: Issue fresh nonce for workload attestation
+    VMA->>Server: Submit workload selectors (bound to nonce)
     Server-->>VMA: Issue workload SVID (includes reference to VM SVID)
     VMA-->>WL: Deliver workload SVID (UDS)
 
-    %% Phase 6
-    Note over WL,KBS: Phase 6 – KBS key release
+    %% Phase 6 – KBS key release
     WL->>KBS: Present workload SVID (mTLS/SPIFFE)
     KBS->>KBS: Validate chain: workload → VM → bm → SPIRE CA
     KBS-->>WL: Release scoped key (one-time unwrap, short TTL)
-
 ```
+
