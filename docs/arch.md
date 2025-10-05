@@ -239,4 +239,7 @@ sequenceDiagram
     KBS->>KBS: Validate chain: workload → VM → bm → SPIRE CA
     KBS-->>WL: Release scoped key (one-time unwrap, short TTL)
 ```
+# Implementation Notes
 
+Systems where this architecture can be implemented include:
+- **Host OS:** Linux with TPM 2.0 support, IMA enabled, and Keylime installed.
