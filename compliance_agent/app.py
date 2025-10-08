@@ -1,5 +1,13 @@
 import os
+import sys
 import json
+
+# This block allows the script to be run directly with `python app.py`
+# by adding the project root to the Python path.
+if __name__ == "__main__" and __package__ is None:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.insert(0, project_root)
+
 from flask import Flask, request, jsonify
 
 # Use absolute imports from the package root
@@ -69,8 +77,6 @@ def process_logs():
     })
 
 if __name__ == '__main__':
-    # To run this application, use the command from the project root:
-    # python -m compliance_agent.app
     app.run(
         host=settings.host,
         port=settings.port,
