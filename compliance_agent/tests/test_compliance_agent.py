@@ -25,7 +25,13 @@ class ComplianceAgentTestCase(unittest.TestCase):
             "host-type": "vm",
             "residency": "us-east-1"
         }
-        self.assertEqual(len(self.engine.validate_log(log_valid)), 2)
+
+        # A valid log should produce one piece of evidence with two matched rules.
+        evidence = self.engine.validate_log(log_valid)
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(len(evidence[0]['matched_rules']), 2)
+
+        # An invalid log should produce no evidence.
         self.assertEqual(len(self.engine.validate_log(log_invalid)), 0)
 
     @patch('compliance_agent.app.narrative_generator')
@@ -40,7 +46,6 @@ class ComplianceAgentTestCase(unittest.TestCase):
                     "residency": "us-west-2"
                 }
             ],
-            # The payload now sends a 'framework' string
             "framework": "PCI DSS"
         }
 
@@ -50,6 +55,10 @@ class ComplianceAgentTestCase(unittest.TestCase):
         self.assertIn("compliance_report", data)
         self.assertEqual(data['compliance_report']['narrative'], "Mocked narrative about PCI DSS")
         self.assertEqual(data['compliance_report']['framework'], "PCI DSS")
+        # Ensure the evidence structure is correct in the API response
+        self.assertEqual(len(data['compliance_report']['evidence_chain']), 1)
+        self.assertIn('matched_rules', data['compliance_report']['evidence_chain'][0])
+
 
     def test_process_logs_no_evidence(self):
         """Test the /process_logs endpoint when no evidence is found."""

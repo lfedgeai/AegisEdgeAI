@@ -15,11 +15,12 @@ from compliance_agent.config import settings
 from compliance_agent.rules_engine import RulesEngine, example_rule_host_type, example_rule_residency
 from compliance_agent.narrative_generator import NarrativeGenerator
 
-# Construct the model path relative to the project root
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Construct the model path relative to the agent's directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
 model_path = None
 if settings.llm_model_path:
-    model_path = os.path.join(project_root, settings.llm_model_path)
+    # The model path in config is relative to the `compliance_agent` directory.
+    model_path = os.path.join(script_dir, settings.llm_model_path)
 
 # Check if the model file exists
 if model_path and not os.path.exists(model_path):
