@@ -11,7 +11,7 @@ st.set_page_config(
 
 # --- App Title ---
 st.title("AI Compliance Agent Interface")
-st.write("A simple UI to interact with the AI Compliance Agent. Enter your logs and controls below to generate a compliance report.")
+st.write("A simple UI to interact with the AI Compliance Agent. Enter your logs and the compliance framework to generate a report.")
 
 # --- API Configuration ---
 COMPLIANCE_AGENT_URL = "http://localhost:5001/process_logs"
@@ -36,12 +36,7 @@ default_logs = """
 ]
 """
 
-default_controls = """
-{
-  "Data Residency": "All data must be processed on servers located in the US.",
-  "Hardware Requirements": "All workloads must run on baremetal servers."
-}
-"""
+default_framework = "PCI DSS"
 
 # --- Input Fields ---
 col1, col2 = st.columns(2)
@@ -52,24 +47,23 @@ with col1:
     logs_input = st.text_area("Logs", value=default_logs, height=300)
 
 with col2:
-    st.subheader("📜 Compliance Controls")
-    st.write("Enter the compliance controls to validate against (in JSON format).")
-    controls_input = st.text_area("Controls", value=default_controls, height=300)
+    st.subheader("📜 Compliance Framework")
+    st.write("Enter the compliance framework to audit against.")
+    framework_input = st.text_input("Framework", value=default_framework)
 
 # --- Submit Button and Processing Logic ---
 if st.button("Generate Compliance Report", type="primary"):
-    if not logs_input or not controls_input:
-        st.error("Please provide both logs and controls.")
+    if not logs_input or not framework_input:
+        st.error("Please provide both logs and a framework.")
     else:
         try:
             # Parse the input JSON
             logs_data = json.loads(logs_input)
-            controls_data = json.loads(controls_input)
 
-            # Prepare the payload for the API
+            # Prepare the payload for the new API format
             payload = {
                 "logs": logs_data,
-                "controls": controls_data
+                "framework": framework_input
             }
 
             # Send the request to the compliance agent API
@@ -84,14 +78,15 @@ if st.button("Generate Compliance Report", type="primary"):
                 if "compliance_report" in report_data:
                     report = report_data["compliance_report"]
 
+                    st.markdown("### Audited Framework")
+                    st.code(report.get("framework", "N/A"))
+
                     st.markdown("### Narrative")
                     st.info(report.get("narrative", "No narrative generated."))
 
                     st.markdown("### Evidence Chain")
                     st.json(report.get("evidence_chain", []))
 
-                    st.markdown("### Control Mapping")
-                    st.json(report.get("control_mapping", {}))
                 else:
                     st.json(report_data)
 
@@ -103,6 +98,6 @@ if st.button("Generate Compliance Report", type="primary"):
                     st.text(response.text)
 
         except json.JSONDecodeError:
-            st.error("Invalid JSON format. Please check your input.")
+            st.error("Invalid JSON format. Please check your log data.")
         except requests.exceptions.RequestException as e:
             st.error(f"Failed to connect to the compliance agent at {COMPLIANCE_AGENT_URL}. Please ensure the agent is running. Error: {e}")
