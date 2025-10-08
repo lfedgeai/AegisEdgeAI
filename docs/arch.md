@@ -41,7 +41,7 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
 ### Summary of Novelties
 
 #### Three-Ring Trust Model
-- **Outermost ring (BM SVID):** Bare‑metal SPIRE agent itself is attested and issued an SVID, anchored in host TPM + IMA evidence. Its **mTLS private key is generated and sealed inside the physical TPM** (via the SPIRE TPM plugin).
+- **Outermost ring (BM SVID):** Bare‑metal SPIRE agent itself is attested and issued an SVID, anchored in host TPM + IMA evidence including geo-location if available. Its **mTLS private key is generated and sealed inside the physical TPM** (via the SPIRE TPM plugin).
 - **Outer ring (VM SVID):** VM attestation fuses vTPM quotes with host TPM quotes in a single session, ensuring replay protection and launch binding. The **VM SPIRE agent and Kata agent use vTPM‑resident keys for mTLS** to the SPIRE server and Keylime verifier.
 - **Inner ring (workload SVID):** Workload SVIDs are issued only if the VM SVID is valid, and KBS secrets are released only to workloads with valid workload SVIDs. Workload SVID issuance is authenticated by the VM SPIRE agent using its vTPM‑resident key.
 
@@ -244,105 +244,16 @@ sequenceDiagram
 Systems where this architecture can be implemented include:
 - **Host OS:** Linux with TPM 2.0 support, IMA enabled, and Keylime installed.
 
-## 📖 Compliance Proof Story with HIPAA / PCI Context
+## System bootstrap
+Top-down bootstrap of control plane nodes (Keylime → SPIRE → Kubernetes)
+* Keylime verifier and registrar are manually bootstrapped by a trusted operator.
+* Spire server bare metal nodes and kubernetes control plane bare metal nodes TPM EKs are registered with Keylime registrar by the trusted operator.
+* Spire server is manually bootstrapped by the trusted operator and Keylime performs TPM/IMA host attestation.
+* Kubernetes control plane nodes are bootstrapped from that attestation (Spire agent on kubernetes control plane node does not need SPIRE bearer token if you use Keylime‑based attestation).
+* Kubernetes kubelet and Containerd gets SPIRE SVID (no Kubernetes bearer token required if you use SPIRE‑based node attestation)
 
-### 1. **The Auditor’s Query**
-- **HIPAA auditor (healthcare)**:  
-  *“At 15:00 IST, prove that the workload processing ePHI (electronic Protected Health Information) was running only on an attested bare‑metal node in us‑west‑2.”*  
-  → This ties to **HIPAA §164.312(c)(1)** (integrity) and **§164.312(e)(1)** (transmission security).  
-
-- **PCI DSS auditor (finance)**:  
-  *“At 15:00 IST, prove that the workload handling cardholder data was running only on an attested bare‑metal node in us‑west‑2.”*  
-  → This ties to **PCI DSS v4.0 Requirement 10** (log and monitor all access) and **Requirement 12** (support information security with organizational policies).  
-
-### 2. **Definitions**
-- **T** → Time of interest (e.g., `2025‑10‑06T15:00 IST`).  
-- **Node SVID** → Identity document issued by SPIRE after node attestation.  
-- **notBefore / notAfter** → Validity window of the node SVID.  
-- **Residency label** → Kubernetes node label `spiffe.io/residency=us-west-2`.  
-- **SVID hash** → Cryptographic digest of the node SVID, projected into Kubernetes annotations.  
-
-### 3. **Evidence Chain**
-1. **Node Attestation (SPIRE logs)**  
-   ```
-   time="2025-10-06T14:50:00Z" msg="Issued X509-SVID"
-   spiffe_id="spiffe://example.org/spire/agent/bm-node-1"
-   not_before="2025-10-06T14:50:00Z"
-   not_after="2025-10-06T15:20:00Z"
-   ```
-   → Node SVID valid from 14:50 to 15:20.  
-
-2. **Kubernetes Node Object (labels/annotations)**  
-   ```
-   labels:
-     spiffe.io/host-type: baremetal
-     spiffe.io/residency: us-west-2
-   annotations:
-     spiffe.io/svid-hash: sha256:8f3a2c...
-   ```
-   → Residency and attestation evidence present before scheduling.  
-
-3. **Pod Scheduling Event (Kubernetes audit log)**  
-   ```
-   time="2025-10-06T14:59:45Z" 
-   msg="Scheduled Pod finance-api-123 to Node worker-1"
-   ```
-   → Pod bound to attested BM node before T.  
-
-4. **Time of Interest (T)**  
-   - At `15:00 IST`, Pod `finance-api-123` was running on Node `worker-1`.  
-   - Node SVID validity: `14:50 ≤ 15:00 ≤ 15:20`.  
-
-### 4. **Compliance Proof**
-- **HIPAA**: At T, the workload handling ePHI was running on a node with a valid SVID, attested via TPM, and labeled `residency=us-west-2`. This satisfies HIPAA’s requirement for **integrity controls** and **transmission security**, ensuring data was processed only in the approved region.  
-- **PCI DSS**: At T, the workload handling cardholder data was running on a node with a valid SVID, attested and logged. This satisfies PCI DSS **Requirement 10** (log and monitor access) and **Requirement 12** (documented security program), since the logs and labels provide verifiable, timestamped evidence.  
-
-### 5. **Conclusion**
-✅ For both HIPAA and PCI DSS auditors, you can show:  
-- The **node SVID** was valid at T (`notBefore ≤ T ≤ notAfter`).  
-- The **node carried residency and attestation evidence** before scheduling.  
-- The **Pod was scheduled before T** onto that node.  
-
-Therefore, the workload was running on an **attested bare‑metal node in us‑west‑2 at time T**, satisfying both **healthcare (HIPAA)** and **finance (PCI DSS)** compliance requirements.
-
-### 6. **Implementation example -- AI Agent Hybrid Compliance Pipeline (NLP + LLM)**
-
-This pipeline transforms a bounded set of observability data into a regulator‑ready compliance report using a small NLP/rules engine followed by an LLM‑driven narrative generator.
-
-1. Log filter & windowing
-   - Narrow logs to the relevant Kubernetes Pod, Node and time window (e.g., ±5 minutes around T).
-   - Keep the dataset small and bounded to limit PII exposure and speed processing.
-
-2. Simple NLP / rules engine
-   - Parse structured logs (JSON, YAML) and Kubernetes objects (events, node annotations).
-   - Validate conditions (produce a structured evidence set with fields shown below):
-     - Time window: `notBefore ≤ T ≤ notAfter`
-     - Node selectors / labels include `host-type=baremetal` and `residency=us-west-2`
-     - Pod scheduling: Pod was scheduled on the node at or before `T`
-   - Output (structured evidence set):
-     - evidence_type (e.g., node_svid_log, kube_event, pod_status)
-     - timestamp
-     - source (component that produced the log)
-     - excerpt (JSON/YAML snippet)
-     - hashes (sha256) and log offsets/locations for verifiability
-
-3. LLM narrative generator
-   - Input: the structured evidence set (and optional schema for control mappings).
-   - Responsibilities:
-     - Produce a regulator‑friendly narrative that cites evidence excerpts.
-     - Map findings to controls (e.g., HIPAA §164.312, PCI DSS Req. 10/12).
-     - Explain the conclusion in plain language and list any assumptions.
-   - Output: a draft narrative with explicit citations back to the evidence set.
-
-4. Compliance report (final artifact)
-   - Evidence chain: ordered log snippets, cryptographic hashes, timestamps, and SVID/certificate references.
-   - Narrative conclusion: plain‑language explanation and mapped control references.
-   - Explicit control mapping and gap list (if any), plus recommended remediation steps.
-
-Benefits of this approach
-- Efficiency: NLP/rules handle deterministic checks cheaply.
-- Explainability: LLM adds human‑readable narrative and control mapping.
-- Audit‑friendly: Report includes both raw evidence and narrative.
-- Scalable: Same pipeline works for HIPAA, PCI DSS, or other regulatory frameworks.
-
-
+Top‑down bootstrap of data plane nodes (Keylime → SPIRE → Kubernetes) 
+* Keylime performs TPM/IMA host attestation. This optionally includes Geolocation sensor details along with Geolocation data.
+* SPIRE agent is bootstrapped from that attestation (no Spire bearer token required if you use Keylime‑based attestation), and
+* Kubernetes kubelet and Containerd gets SPIRE SVID (no Kubernetes bearer token required if you use SPIRE‑based node attestation), and
+* Kubernetes workload gets SPIRE SVIDs (reducing reliance on static k8s bearer tokens)
