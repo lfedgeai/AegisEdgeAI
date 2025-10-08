@@ -1,6 +1,6 @@
 # AI Compliance Agent UI
 
-This directory contains a Streamlit-based web interface for the AI Compliance Agent. This UI allows users to easily input log data and compliance controls to generate a compliance report without directly using the API.
+This directory contains a Streamlit-based web interface for the AI Compliance Agent. This UI allows users to easily input log data and specify a compliance framework to generate a report.
 
 ## Prerequisites
 
@@ -21,6 +21,6 @@ The application will be accessible in your web browser, typically at `http://loc
 ## How to Use
 
 1.  **Enter Log Data**: In the "Log Data" text area, enter the log entries you want to analyze in JSON format.
-2.  **Enter Compliance Controls**: In the "Compliance Controls" text area, enter the controls you want to validate against, also in JSON format.
+2.  **Enter Compliance Framework**: In the "Compliance Framework" text area, enter the name of the framework you want to audit against (e.g., "PCI DSS", "HIPAA").
 3.  **Generate Report**: Click the "Generate Compliance Report" button.
-4.  **View Report**: The generated report, including the narrative, evidence chain, and control mapping, will be displayed below the input fields.
+4.  **View Report**: The generated report, including the AI-driven narrative and evidence chain, will be displayed below the input fields.

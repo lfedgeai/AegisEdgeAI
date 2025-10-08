@@ -5,7 +5,7 @@ This directory contains the AI Compliance Agent, a standalone microservice desig
 ## Features
 
 - **Rules Engine**: Validates log entries against a configurable set of rules to produce structured evidence.
-- **LLM Narrative Generation**: Uses a local LLM to generate a compliance narrative from the structured evidence.
+- **Intelligent Narrative Generation**: Uses a local LLM to act as a compliance expert, analyzing evidence and mapping it to specific controls within a high-level framework (e.g., "PCI DSS").
 - **Flask API**: Exposes a simple API endpoint for processing logs and generating compliance reports.
 - **Streamlit UI**: Includes a user-friendly interface for interacting with the agent.
 
@@ -43,7 +43,7 @@ The server will start on `http://0.0.0.0:5001` by default.
 
 ### Process Logs
 
-Send a `POST` request to the `/process_logs` endpoint with a JSON payload containing the logs and compliance controls.
+Send a `POST` request to the `/process_logs` endpoint with a JSON payload containing the logs and the name of the compliance framework to audit against.
 
 **Endpoint**: `POST /process_logs`
 
@@ -60,9 +60,7 @@ Send a `POST` request to the `/process_logs` endpoint with a JSON payload contai
       "message": "Pod scheduled successfully."
     }
   ],
-  "controls": {
-    "Data Residency": "All data must be processed on servers located in the US."
-  }
+  "framework": "PCI DSS"
 }
 ```
 
