@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     port: int = Field(default=5001, env="PORT")
 
     # LLM configuration
+    # The path is relative to the `compliance_agent` directory.
     llm_model_path: Optional[str] = Field(
         default="models/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
         env="LLM_MODEL_PATH"
