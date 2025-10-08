@@ -30,8 +30,8 @@ class ComplianceAgentTestCase(unittest.TestCase):
 
     @patch('compliance_agent.app.narrative_generator')
     def test_process_logs_endpoint(self, mock_generator):
-        """Test the /process_logs endpoint with a mock narrative generator."""
-        mock_generator.generate_narrative.return_value = "Mocked narrative"
+        """Test the /process_logs endpoint with the new API format."""
+        mock_generator.generate_narrative.return_value = "Mocked narrative about PCI DSS"
 
         payload = {
             "logs": [
@@ -40,16 +40,16 @@ class ComplianceAgentTestCase(unittest.TestCase):
                     "residency": "us-west-2"
                 }
             ],
-            "controls": {
-                "test-control": "A test control"
-            }
+            # The payload now sends a 'framework' string
+            "framework": "PCI DSS"
         }
 
         response = self.client.post('/process_logs', data=json.dumps(payload), content_type='application/json')
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertIn("compliance_report", data)
-        self.assertEqual(data['compliance_report']['narrative'], "Mocked narrative")
+        self.assertEqual(data['compliance_report']['narrative'], "Mocked narrative about PCI DSS")
+        self.assertEqual(data['compliance_report']['framework'], "PCI DSS")
 
     def test_process_logs_no_evidence(self):
         """Test the /process_logs endpoint when no evidence is found."""
@@ -60,7 +60,7 @@ class ComplianceAgentTestCase(unittest.TestCase):
                     "residency": "us-east-1"
                 }
             ],
-            "controls": {}
+            "framework": "HIPAA"
         }
 
         response = self.client.post('/process_logs', data=json.dumps(payload), content_type='application/json')
