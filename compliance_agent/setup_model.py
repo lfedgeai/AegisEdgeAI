@@ -41,13 +41,11 @@ def download_file(url, folder_name, file_name):
 
 if __name__ == "__main__":
     # URL of the GGUF model to download
-    # Using a small, capable model: Orca-2-13B GGUF
     model_url = "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
 
-    # Directory to save the model
-    # The model will be saved in 'zero-trust/models'
+    # Directory to save the model inside the compliance_agent directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    models_dir = os.path.join(script_dir, '..', 'models')
+    models_dir = os.path.join(script_dir, 'models')
 
     # Filename for the downloaded model
     model_name = "mistral-7b-instruct-v0.1.Q4_K_M.gguf"

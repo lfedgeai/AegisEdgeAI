@@ -1,19 +1,17 @@
 import os
-import sys
 import json
 from flask import Flask, request, jsonify
 
-# Add project root to Python path, which is the 'zero-trust' directory
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(script_dir, '..'))
-sys.path.insert(0, project_root)
-
-from config import settings
+# Use absolute imports from the package root
+from compliance_agent.config import settings
 from compliance_agent.rules_engine import RulesEngine, example_rule_host_type, example_rule_residency
 from compliance_agent.narrative_generator import NarrativeGenerator
 
-# Get the model path from settings
-model_path = settings.llm_model_path
+# Construct the model path relative to the project root
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+model_path = None
+if settings.llm_model_path:
+    model_path = os.path.join(project_root, settings.llm_model_path)
 
 # Check if the model file exists
 if model_path and not os.path.exists(model_path):
@@ -69,8 +67,10 @@ def process_logs():
     })
 
 if __name__ == '__main__':
+    # To run this application, use the command from the project root:
+    # python -m compliance_agent.app
     app.run(
-        host=settings.compliance_agent_host,
-        port=settings.compliance_agent_port,
+        host=settings.host,
+        port=settings.port,
         debug=settings.debug
     )
