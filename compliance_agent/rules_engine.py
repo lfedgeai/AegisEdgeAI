@@ -9,14 +9,18 @@ class RulesEngine:
     def validate_log(self, log_entry):
         """
         Validates a single log entry against the defined rules.
+        If any rules match, a single evidence entry is created that lists
+        all the rules that were matched.
         """
-        evidence = []
-        for rule in self.rules:
-            if rule(log_entry):
-                evidence.append(self.create_evidence(log_entry))
-        return evidence
+        matched_rules = [rule.__name__ for rule in self.rules if rule(log_entry)]
 
-    def create_evidence(self, log_entry):
+        if matched_rules:
+            # Only create one evidence entry, but list all matched rules.
+            return [self.create_evidence(log_entry, matched_rules)]
+
+        return []
+
+    def create_evidence(self, log_entry, matched_rules):
         """
         Creates a structured evidence entry from a log entry.
         """
@@ -28,6 +32,7 @@ class RulesEngine:
             "timestamp": log_entry.get("timestamp", datetime.now().isoformat()),
             "source": log_entry.get("source", "unknown"),
             "excerpt": log_entry,
+            "matched_rules": matched_rules, # Include the list of matched rules
             "hashes": {
                 "sha256": log_hash
             }
