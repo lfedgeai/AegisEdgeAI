@@ -31,10 +31,10 @@ This will download the model to the `compliance_agent/models` directory. The def
 
 ### 3. Run the Compliance Agent
 
-Once the dependencies are installed and the model is downloaded, you can start the compliance agent's Flask server. Run the following command from the **root of the repository**:
+Once the dependencies are installed and the model is downloaded, you can start the compliance agent's Flask server. Run the following command from the `compliance_agent` directory:
 
 ```bash
-python -m compliance_agent.app
+python app.py
 ```
 
 The server will start on `http://0.0.0.0:5001` by default.
