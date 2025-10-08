@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     # Logging configuration
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     log_format: str = Field(default="json", env="LOG_FORMAT")
+
+    # Compliance Agent configuration
+    compliance_agent_host: str = Field(default="0.0.0.0", env="COMPLIANCE_AGENT_HOST")
+    compliance_agent_port: int = Field(default=5001, env="COMPLIANCE_AGENT_PORT")
+    llm_model_path: Optional[str] = Field(default="models/mistral-7b-instruct-v0.1.Q4_K_M.gguf", env="LLM_MODEL_PATH")
     
     class Config:
         env_file = ".env"
