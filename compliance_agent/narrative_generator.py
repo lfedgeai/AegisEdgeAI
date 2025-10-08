@@ -2,7 +2,7 @@ import json
 from llama_cpp import Llama
 
 class NarrativeGenerator:
-    def __init__(self, model_path, n_ctx=2048):
+    def __init__(self, model_path, n_ctx=4096): # Increased context size for more complex prompts
         """
         Initializes the NarrativeGenerator with a local LLM.
 
@@ -10,34 +10,43 @@ class NarrativeGenerator:
         :param n_ctx: The context size for the model.
         """
         self.model_path = model_path
+        # Set verbose=False to keep the output clean
         self.llm = Llama(model_path=self.model_path, n_ctx=n_ctx, verbose=False)
 
-    def generate_narrative(self, evidence_set, controls):
+    def generate_narrative(self, evidence_set, framework_name):
         """
-        Generates a compliance narrative based on the evidence set and controls.
+        Generates a compliance narrative by having the LLM map evidence to controls.
 
         :param evidence_set: A list of structured evidence.
-        :param controls: A dictionary of compliance controls.
+        :param framework_name: The name of the compliance framework (e.g., "PCI DSS", "HIPAA").
         :return: A string containing the generated narrative.
         """
-        prompt = self._create_prompt(evidence_set, controls)
+        prompt = self._create_prompt(evidence_set, framework_name)
 
-        output = self.llm(prompt, max_tokens=1024, stop=["\n\n"], echo=False)
+        # Increased max_tokens to allow for more detailed reports
+        output = self.llm(prompt, max_tokens=2048, stop=["\n\n"], echo=False)
 
         return output['choices'][0]['text'].strip()
 
-    def _create_prompt(self, evidence_set, controls):
+    def _create_prompt(self, evidence_set, framework_name):
         """
-        Creates a prompt for the LLM based on the evidence and controls.
+        Creates a prompt that instructs the LLM to act as a compliance auditor.
         """
-        prompt = "Generate a compliance narrative based on the following evidence and controls.\n\n"
-        prompt += "Controls:\n"
-        for control, description in controls.items():
-            prompt += f"- {control}: {description}\n"
+        prompt = (
+            f"You are an expert compliance auditor. Your task is to analyze the provided evidence "
+            f"and map it to the specific, relevant controls within the '{framework_name}' framework. "
+            f"For each piece of evidence, identify the corresponding control and explain your reasoning.\n\n"
+            f"Here is the evidence to analyze:\n"
+        )
 
-        prompt += "\nEvidence:\n"
         for evidence in evidence_set:
-            prompt += f"- {json.dumps(evidence)}\n"
+            prompt += f"- Evidence: {json.dumps(evidence)}\n"
 
-        prompt += "\nNarrative:"
+        prompt += (
+            "\nBased on this evidence, please generate a compliance report that includes:\n"
+            "1. A summary of your findings.\n"
+            "2. A mapping of each piece of evidence to a specific control (e.g., PCI DSS Req. 10.2).\n"
+            "3. A brief explanation for each mapping.\n"
+            "\nCompliance Report:"
+        )
         return prompt

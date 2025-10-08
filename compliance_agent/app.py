@@ -40,7 +40,8 @@ if model_path:
 def process_logs():
     data = request.get_json()
     logs = data.get('logs', [])
-    controls = data.get('controls', {})
+    # The API now accepts a high-level framework name
+    framework = data.get('framework', 'Unspecified Framework')
 
     all_evidence = []
     for log in logs:
@@ -54,7 +55,8 @@ def process_logs():
     narrative = "Narrative generation is not available. Please check the model configuration."
     if narrative_generator:
         try:
-            narrative = narrative_generator.generate_narrative(all_evidence, controls)
+            # Pass the framework name to the enhanced narrative generator
+            narrative = narrative_generator.generate_narrative(all_evidence, framework)
         except Exception as e:
             return jsonify({"error": f"Failed to generate narrative: {e}"}), 500
 
@@ -62,7 +64,7 @@ def process_logs():
         "compliance_report": {
             "narrative": narrative,
             "evidence_chain": all_evidence,
-            "control_mapping": controls
+            "framework": framework
         }
     })
 
