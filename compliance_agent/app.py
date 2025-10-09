@@ -12,7 +12,7 @@ from flask import Flask, request, jsonify
 
 # Use absolute imports from the package root
 from compliance_agent.config import settings
-from compliance_agent.rules_engine import RulesEngine, example_rule_host_type, example_rule_residency
+from compliance_agent.rules_engine import RulesEngine, ALL_RULES
 from compliance_agent.narrative_generator import NarrativeGenerator
 
 # Construct the model path relative to the agent's directory
@@ -33,9 +33,8 @@ else:
 
 app = Flask(__name__)
 
-# Initialize the Rules Engine
-rules = [example_rule_host_type, example_rule_residency]
-rules_engine = RulesEngine(rules)
+# Initialize the Rules Engine with the globally defined rules
+rules_engine = RulesEngine(ALL_RULES)
 
 # Initialize the Narrative Generator
 narrative_generator = None
@@ -49,32 +48,32 @@ if model_path:
 def process_logs():
     data = request.get_json()
     logs = data.get('logs', [])
-    # The API now accepts a high-level framework name
     framework = data.get('framework', 'Unspecified Framework')
 
     all_evidence = []
+    structured_findings = []
     for log in logs:
         evidence = rules_engine.validate_log(log)
         if evidence:
             all_evidence.extend(evidence)
+            # Extract the deterministic findings to be summarized by the LLM
+            for e in evidence:
+                structured_findings.extend(e.get('matched_rules', []))
 
     if not all_evidence:
         return jsonify({"message": "No evidence found based on the provided logs."})
 
-    narrative = "Narrative generation is not available. Please check the model configuration."
+    summary = "AI summary could not be generated. Please check the model configuration."
     if narrative_generator:
         try:
-            # Pass the framework name to the enhanced narrative generator
-            narrative = narrative_generator.generate_narrative(all_evidence, framework)
-            # Add a final check here to ensure the narrative is not empty
-            if not narrative:
-                narrative = "The AI model did not produce a valid narrative for the given evidence."
+            # Pass the structured findings to the new generate_summary method
+            summary = narrative_generator.generate_summary(framework, structured_findings)
         except Exception as e:
-            return jsonify({"error": f"Failed to generate narrative: {e}"}), 500
+            return jsonify({"error": f"Failed to generate summary: {e}"}), 500
 
     return jsonify({
         "compliance_report": {
-            "narrative": narrative,
+            "summary": summary,
             "evidence_chain": all_evidence,
             "framework": framework
         }
