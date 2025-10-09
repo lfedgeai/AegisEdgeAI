@@ -244,16 +244,117 @@ sequenceDiagram
 Systems where this architecture can be implemented include:
 - **Host OS:** Linux with TPM 2.0 support, IMA enabled, and Keylime installed.
 
-## System bootstrap
-Top-down bootstrap of control plane nodes (Keylime → SPIRE → Kubernetes)
-* Trusted operator provisions Keylime verifier + registrar and retains operator control over registrar keys.
-* Operator registers TPM EKs for SPIRE server hosts and Kubernetes control‑plane bare‑metal nodes in Keylime registrar.
-* Operator manually boots SPIRE server; SPIRE server attests to Keylime to verify host TPM/IMA state.
-* Keylime returns a signed host verification; SPIRE server is considered trusted and begins issuing Node SVIDs to control‑plane agents (SPIRE agents on control nodes need no bearer token when using Keylime attestation).
-* SPIRE issues kubelet and containerd SVIDs to control‑plane runtimes (keys sealed to TPM).
-* Control plane components (kube‑apiserver, controller manager, scheduler) run with attested node identities; audit/collector records issuance artifacts for ledger anchoring.
+## System bootstrap - control plane
+Complete end‑to‑end trusted control‑plane bootstrap where the operator manifest is persisted immediately to TPM‑sealed local files on the three bootstrap bare‑metal hosts with Keylime and Spire, later migrated into Ceph as canonical archive. Includes exact ordering, artifacts, validation, failure handling, and go‑live checks.
 
-Top‑down bootstrap of data plane nodes (Keylime → SPIRE → Kubernetes) 
+### Assumptions
+- Three bootstrap bare‑metal hosts (physically separated racks/AZs) with TPM, measured boot, IMA.  
+- Operator signing keys available in HSM or multi‑custody YubiKeys.  
+- SPIRE agent and Keylime agent installed in images.  
+- Ceph, Kubernetes and other services will be provisioned later as described.  
+- Replicated append log running on bootstrap trio for WAL replication.
+
+### High level artifact model (before Ceph)
+- **Operator manifest file**: /var/lib/verification/operator/manifest.json (signed by operator HSM/YubiKey).  
+- **TPM seal wrapper**: /var/lib/verification/operator/manifest.sealed (key to decrypt sealed copy bound to PCRs).  
+- **Local verification index**: /var/lib/verification/index.json {manifest_sha256, manifest_sig, stored_ts, host_id}.  
+- **Replicated WAL entry**: logs/wal/events containing the manifest metadata and operator signature; 2/3 commit required.  
+- **Air‑gapped custody media**: encrypted USB with canonical manifest copy under dual custody.
+
+### End‑to‑end bootstrap sequence
+
+#### Phase A Operator signing and manifest sealing on trio
+1. Operator prepares manifest  
+   - Create canonical JSON: fields include expected PCRs, IMA hashes, registrar policy, operator custodians, manifest_version, and timestamp.  
+   - Sign manifest using HSM (recommended) or quorum of YubiKeys producing operator_signature.
+
+2. Persist signed manifest to each bootstrap host (atomic, sealed)  
+   - Copy signed manifest to each host: /var/lib/verification/operator/manifest.json.  
+   - Seal a symmetric encryption key or the manifest into the host TPM tied to the expected PCR set and measured‑boot image, producing manifest.sealed.  
+   - Overwrite the clear copy only after seal success; ensure only manifest.sealed remains readable by authorized processes.
+
+3. Record local index and WAL event with 2/3 replication requirement  
+   - Compute sha256(manifest) and write /var/lib/verification/index.json with manifest_sha256, manifest_sig, stored_ts, host_id. Fsync index.  
+   - Append a WAL event {type: "operator-manifest", host_id, manifest_sha256, operator_signature, ts} to the replicated append log and wait for 2/3 commit ack -- leaderless push replication model for each host.
+   - Verify WAL commit on each host and persist WAL segment with immutable flag locally.
+
+4. Air‑gapped custody copy for recovery  
+   - Store the signed manifest on encrypted media held by operator custodians under dual custody; record custody IDs and timestamp in WAL.
+
+Validation checks after Phase A
+- On each host verify: TPM unseal succeeds only under expected PCR values; manifest signature verifies against operator public key; WAL event present and 2/3 committed.
+
+#### Phase B Keylime registrar, verifier and log nucleus
+5. Start Keylime registrar and verifier on bootstrap trio  
+   - Deploy registrar/verifier using operator policy and the local sealed manifest as authoritative bootstrap policy. Persist registrar startup logs into WAL.
+
+6. Start replicated append log agents (if not already running)  
+   - Ensure replication health: 2/3 commit latency within SLO, segment archival working, and local indices match WAL.
+
+7. Collect and persist per‑host Keylime verification bundles  
+   - Run Keylime verifier to collect each host bundle; write attestation/<host>.bundle.json locally and append a signed WAL event for each bundle.
+
+8. Start SPIRE servers on bootstrap trio using Keylime bundles as bootstrap identity  
+   - Boot SPIRE servers pointing to local Keylime bundles; persist spire/server/bootstrap/<host>.json into WAL. Servers run without Node SVIDs but use Keylime validation for agent enrollment. Verify the SPIRE binary using the TPM by measuring its file hashes into the platform measurement chain and using a TPM quote of PCRs tied to those measurements; the TPM quote is verified by Keylime verifier.
+
+9. SPIRE agents on bootstrap hosts obtain Node SVIDs  
+   - Start SPIRE agents on bootstrap hosts; agents present Keylime bundles and receive Node SVIDs. Persist spire/issuance/<node>.log into WAL and index.
+
+Validation checks after Phase B
+- Keylime bundles present on all three hosts and WAL entries confirmed; SPIRE server started and at least one agent issuance completed and logged.
+
+#### Phase C Provision Ceph and Kubernetes trios (SVID‑driven joins)
+10. Provision Ceph hosts and collect Keylime bundles  
+    - PXE install Ceph trio hosts; collect and append per‑host Keylime bundles to WAL.
+
+11. SPIRE agents on Ceph hosts obtain Node SVIDs and persist issuance logs  
+    - Agents present Keylime bundles to SPIRE and receive Node SVIDs. Persist spire/issuance/<node>.log to WAL.
+
+12. Start Ceph MONs/OSDs in staging mode  
+    - Start Ceph daemons but keep membership enforcement gated; seal Ceph encryption keys to TPM on Ceph hosts and record key seals in WAL.
+
+13. Provision Kubernetes hosts, start SPIRE agents and issue Node/runtime SVIDs  
+    - Persist issuance events to WAL; kubelets wait to join full cluster until SVID verification confirmed.
+
+Validation checks after Phase C
+- All Ceph and K8s hosts show valid Keylime bundles and spire issuance logs in WAL; Ceph key seals recorded; services in staging mode.
+
+### Phase D — Long‑term log persistence to Ceph
+
+Purpose
+* Move replicated WAL segments, Keylime verification bundles, SPIRE issuance logs, signer attestations, and other audit artifacts from the bootstrap hosts into Ceph so there is a single canonical, immutable archive for long‑term retention and auditor access.
+
+When to run the migration
+- Only start after Ceph cluster health is OK (MON quorum, OSDs in service).
+- Verify network paths from each bootstrap host to Ceph are functional and performant.
+- Ensure WAL replication on the bootstrap trio has no outstanding uncommitted segments.
+- Record the migration start event in the WAL before moving data.
+
+What to persist (minimal set)
+- Finalized WAL segments and segment trailers, including checksums and producer aggregate signatures.
+- Operator manifest and its TPM seal metadata: `manifest.json` and `manifest.sealed`.
+- Keylime verification bundles: `attestation/<host>.bundle.json`.
+- SPIRE server bootstrap records and `spire/issuance/<node>.log` entries.
+- Signer public key, signer attestation bundles, and HSM/TSS audit exports.
+- Anchor drafts / signed root artifacts and any per‑artifact manifests or proofs produced so far.
+
+### Common questions/concerns and how to address them
+Signer and operator key custody risk
+* HSM is strongly recommended for the signer and operator key custody; treat YubiKey quorum as temporary.
+
+Bootstrap trio concentration of critical roles
+* The bootstrap‑trio concentration is real but manageable; you can reduce risk by minimizing co‑located services and enforcing strict resource, network, and process isolation. For example, spire server can run in 3 separate bare metal hosts, Keylime verifier/registrar in another 3 bare metal hosts.
+
+Bootstrap trio - WAL replication stalls blocking progress
+* 2/3 quorum is a consistency choice, not a bug; add explicit degraded‑mode rules, timeouts, and operator‑gated fallbacks so availability problems don’t silently stall the bootstrap.
+
+Time and canonical ordering ambiguity
+* Using a single trusted NTP source helps, but you still need explicit canonical ordering rules (sequence number, local monotonic clock etc.), ntp_offset capture, and monotonic time strategies to avoid nondeterminism.
+
+Manifest drift and host divergence risk
+* Manifest rotation risk means an operator‑mistake can create mismatched manifests across hosts or an unsealable state; eliminate the risk with scripted, auditable rotation, automated preflight checks, multisig approval, and rollback paths.
+
+## System bootstrap - data plane - summary
 * Keylime performs TPM/IMA host attestation. This optionally includes Geolocation sensor details along with Geolocation data.
 * SPIRE agent is bootstrapped from that attestation (no Spire bearer token required if you use Keylime‑based attestation), and
 * Kubernetes kubelet and Containerd gets SPIRE SVID (no Kubernetes bearer token required if you use SPIRE‑based node attestation), and
