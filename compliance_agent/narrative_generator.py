@@ -10,12 +10,18 @@ class NarrativeGenerator:
         :param n_ctx: The context size for the model.
         """
         self.model_path = model_path
-        # Set verbose=False to keep the output clean
-        self.llm = Llama(model_path=self.model_path, n_ctx=n_ctx, verbose=False)
+        # Set verbose=False and a low temperature for more deterministic output
+        self.llm = Llama(
+            model_path=self.model_path,
+            n_ctx=n_ctx,
+            temperature=0.1, # Lower temperature reduces randomness
+            verbose=False
+        )
 
     def generate_narrative(self, evidence_set, framework_name):
         """
         Generates a compliance narrative by having the LLM map evidence to controls.
+        Includes a retry mechanism for robustness.
 
         :param evidence_set: A list of structured evidence.
         :param framework_name: The name of the compliance framework (e.g., "PCI DSS", "HIPAA").
@@ -23,15 +29,15 @@ class NarrativeGenerator:
         """
         prompt = self._create_prompt(evidence_set, framework_name)
 
-        # Increased max_tokens to allow for more detailed reports
-        output = self.llm(prompt, max_tokens=2048, stop=["\n\n"], echo=False)
+        # Retry mechanism to handle occasional empty responses from the LLM
+        for _ in range(2): # Try up to 2 times
+            output = self.llm(prompt, max_tokens=2048, stop=["\n\n"], echo=False)
+            narrative = output['choices'][0]['text'].strip()
+            if narrative:
+                return narrative
 
-        # Add a check to ensure the generated text is not empty.
-        narrative = output['choices'][0]['text'].strip()
-        if not narrative:
-            return "The AI model did not produce a valid narrative for the given evidence."
-
-        return narrative
+        # If still no narrative after retries, return a default message.
+        return "The AI model did not produce a valid narrative for the given evidence."
 
     def _create_prompt(self, evidence_set, framework_name):
         """
