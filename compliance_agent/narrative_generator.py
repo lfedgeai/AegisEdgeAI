@@ -2,7 +2,7 @@ import json
 from llama_cpp import Llama
 
 class NarrativeGenerator:
-    def __init__(self, model_path, n_ctx=4096): # Increased context size for more complex prompts
+    def __init__(self, model_path, n_ctx=4096):
         """
         Initializes the NarrativeGenerator with a local LLM.
 
@@ -26,7 +26,12 @@ class NarrativeGenerator:
         # Increased max_tokens to allow for more detailed reports
         output = self.llm(prompt, max_tokens=2048, stop=["\n\n"], echo=False)
 
-        return output['choices'][0]['text'].strip()
+        # Add a check to ensure the generated text is not empty.
+        narrative = output['choices'][0]['text'].strip()
+        if not narrative:
+            return "The AI model did not produce a valid narrative for the given evidence."
+
+        return narrative
 
     def _create_prompt(self, evidence_set, framework_name):
         """
