@@ -66,14 +66,30 @@ To run the unit tests for the compliance agent, navigate to the **root of the re
 python -m unittest discover -s compliance_agent
 ```
 
-## Auditing Compliance Rules
+## Auditing Compliance Rules with Multi-Model Consensus
 
-This project includes a tool for auditing the compliance rules themselves using an LLM. This tool helps to validate the correctness and logic of the rules defined in `rules_engine.py`.
+This project includes an advanced tool for auditing the compliance rules themselves using a consensus-based approach with multiple LLMs. This tool provides a robust validation of the correctness and logic of the rules defined in `rules_engine.py`.
 
-To run the rule auditor, first ensure you have downloaded the LLM model by running `python setup_model.py`. Then, run the following command from the `compliance_agent` directory:
+The auditor loads all models defined in the `llm_models` list in `config.py`. It gets an independent assessment from each model and then calculates a cosine similarity score to quantify the level of agreement between them. This helps to identify ambiguous or potentially flawed rules.
+
+### 1. Configure Models
+
+You can configure which models to use for the audit by editing the `llm_models` list in `compliance_agent/config.py`.
+
+### 2. Download Models
+
+Ensure you have downloaded all the configured LLM models by running the setup script from the `compliance_agent` directory:
+
+```bash
+python setup_model.py
+```
+
+### 3. Run the Auditor
+
+Run the rule auditor with the following command from the `compliance_agent` directory:
 
 ```bash
 python rule_auditor.py
 ```
 
-The auditor will output an AI-generated assessment for each rule.
+The auditor will output a detailed consensus report for each rule, including the assessment from each model and the final similarity score.
