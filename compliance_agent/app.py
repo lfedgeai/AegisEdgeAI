@@ -66,6 +66,9 @@ def process_logs():
         try:
             # Pass the framework name to the enhanced narrative generator
             narrative = narrative_generator.generate_narrative(all_evidence, framework)
+            # Add a final check here to ensure the narrative is not empty
+            if not narrative:
+                narrative = "The AI model did not produce a valid narrative for the given evidence."
         except Exception as e:
             return jsonify({"error": f"Failed to generate narrative: {e}"}), 500
 
