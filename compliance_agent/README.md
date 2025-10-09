@@ -1,11 +1,11 @@
-# AI Compliance Agent
+# Compliance Agent
 
-This directory contains the AI Compliance Agent, a standalone microservice designed to process observability data, validate it against a set of rules, and generate a human-readable compliance narrative using a local Large Language Model (LLM).
+This directory contains the Compliance Agent, a standalone microservice designed to process observability data and validate it against a deterministic set of rules.
 
 ## Features
 
-- **Rules Engine**: Validates log entries against a configurable set of rules to produce structured evidence.
-- **Intelligent Narrative Generation**: Uses a local LLM to act as a compliance expert, analyzing evidence and mapping it to specific controls within a high-level framework (e.g., "PCI DSS").
+- **Deterministic Rules Engine**: Validates log entries against a configurable set of rules to produce structured evidence. Each rule includes a specific control mapping and a pre-defined explanation.
+- **Automated Report Generation**: Generates a consistent, fact-based compliance report from the structured evidence using a template.
 - **Flask API**: Exposes a simple API endpoint for processing logs and generating compliance reports.
 - **Streamlit UI**: Includes a user-friendly interface for interacting with the agent.
 
@@ -19,21 +19,9 @@ First, ensure you have installed all the required Python packages from the `requ
 pip install -r requirements.txt
 ```
 
-### 2. Download the LLM Model
+### 2. Run the Compliance Agent
 
-The narrative generation feature requires a local LLM model in GGUF format. A setup script is provided to download a small, capable model. Run the following command from the `compliance_agent` directory:
-
-```bash
-python setup_model.py
-```
-
-This will download the model to the `compliance_agent/models` directory. The default model is `mistral-7b-instruct-v0.1.Q4_K_M.gguf`. You can configure a different model by setting the `LLM_MODEL_PATH` environment variable.
-
-For advanced users, the creativity of the LLM can be tuned by adjusting the `temperature` parameter in `narrative_generator.py`. A lower value (e.g., 0.1) makes the output more deterministic, while a higher value increases its randomness.
-
-### 3. Run the Compliance Agent
-
-Once the dependencies are installed and the model is downloaded, you can start the compliance agent's Flask server. Run the following command from the `compliance_agent` directory:
+Once the dependencies are installed, you can start the compliance agent's Flask server. Run the following command from the `compliance_agent` directory:
 
 ```bash
 python app.py

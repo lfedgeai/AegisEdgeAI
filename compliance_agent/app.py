@@ -13,36 +13,15 @@ from flask import Flask, request, jsonify
 # Use absolute imports from the package root
 from compliance_agent.config import settings
 from compliance_agent.rules_engine import RulesEngine, ALL_RULES
-from compliance_agent.narrative_generator import NarrativeGenerator
-
-# Construct the model path relative to the agent's directory
-script_dir = os.path.dirname(os.path.abspath(__file__))
-model_path = None
-if settings.llm_model_path:
-    # The model path in config is relative to the `compliance_agent` directory.
-    model_path = os.path.join(script_dir, settings.llm_model_path)
-
-# Check if the model file exists
-if model_path and not os.path.exists(model_path):
-    print(f"Warning: Model file not found at {model_path}")
-    model_path = None
-elif model_path:
-    print(f"Model file found at {model_path}")
-else:
-    print("Warning: LLM model path not configured. Narrative generation will be disabled.")
+from compliance_agent.report_generator import ReportGenerator # Import the new deterministic generator
 
 app = Flask(__name__)
 
 # Initialize the Rules Engine with the globally defined rules
 rules_engine = RulesEngine(ALL_RULES)
 
-# Initialize the Narrative Generator
-narrative_generator = None
-if model_path:
-    try:
-        narrative_generator = NarrativeGenerator(model_path)
-    except Exception as e:
-        print(f"Warning: Failed to initialize NarrativeGenerator. {e}")
+# Initialize the new deterministic Report Generator
+report_generator = ReportGenerator()
 
 @app.route('/process_logs', methods=['POST'])
 def process_logs():
@@ -56,24 +35,19 @@ def process_logs():
         evidence = rules_engine.validate_log(log)
         if evidence:
             all_evidence.extend(evidence)
-            # Extract the deterministic findings to be summarized by the LLM
+            # Extract the deterministic findings for the report
             for e in evidence:
                 structured_findings.extend(e.get('matched_rules', []))
 
     if not all_evidence:
         return jsonify({"message": "No evidence found based on the provided logs."})
 
-    summary = "AI summary could not be generated. Please check the model configuration."
-    if narrative_generator:
-        try:
-            # Pass the structured findings to the new generate_summary method
-            summary = narrative_generator.generate_summary(framework, structured_findings)
-        except Exception as e:
-            return jsonify({"error": f"Failed to generate summary: {e}"}), 500
+    # Generate the report using the new deterministic generator
+    report_text = report_generator.generate_report(framework, structured_findings)
 
     return jsonify({
         "compliance_report": {
-            "summary": summary,
+            "report": report_text,
             "evidence_chain": all_evidence,
             "framework": framework
         }
