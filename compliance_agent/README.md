@@ -8,6 +8,7 @@ This directory contains the Compliance Agent, a standalone microservice designed
 - **Automated Report Generation**: Generates a consistent, fact-based compliance report from the structured evidence using a template.
 - **Flask API**: Exposes a simple API endpoint for processing logs and generating compliance reports.
 - **Streamlit UI**: Includes a user-friendly interface for interacting with the agent.
+- **AI-Powered Rule Auditor**: An additional tool that uses a local LLM to perform a "sanity check" on the compliance rules themselves, helping to ensure their semantic correctness.
 
 ## Setup and Installation
 
@@ -19,9 +20,21 @@ First, ensure you have installed all the required Python packages from the `requ
 pip install -r requirements.txt
 ```
 
-### 2. Run the Compliance Agent
+### 2. Download the AI Model (for Rule Auditor)
 
-Once the dependencies are installed, you can start the compliance agent's Flask server. Run the following command from the `compliance_agent` directory:
+If you plan to use the AI-powered rule auditor, you must first download the required LLM model. Run the following command from the `compliance_agent` directory:
+
+```bash
+python setup_model.py
+```
+
+## Running the Core Application
+
+To run the main compliance agent and its UI, use the following commands.
+
+### 1. Start the Flask Backend
+
+Run the following command from the `compliance_agent` directory:
 
 ```bash
 python app.py
@@ -29,67 +42,28 @@ python app.py
 
 The server will start on `http://0.0.0.0:5001` by default.
 
-## API Usage
+### 2. Start the Streamlit UI
 
-### Process Logs
-
-Send a `POST` request to the `/process_logs` endpoint with a JSON payload containing the logs and the name of the compliance framework to audit against.
-
-**Endpoint**: `POST /process_logs`
-
-**Request Body**:
-
-```json
-{
-  "logs": [
-    {
-      "timestamp": "2024-01-01T12:00:00Z",
-      "source": "kubernetes",
-      "host-type": "baremetal",
-      "residency": "us-west-2",
-      "message": "Pod scheduled successfully."
-    }
-  ],
-  "framework": "PCI DSS"
-}
-```
-
-## Running the UI
-
-This project includes a Streamlit-based UI for easy interaction with the agent. For instructions on how to run it, please see the `README.md` file in the `compliance_agent/ui` directory.
-
-## Running Tests
-
-To run the unit tests for the compliance agent, navigate to the **root of the repository** and run the following command:
+In a separate terminal, run the following command from the `compliance_agent/ui` directory:
 
 ```bash
-python -m unittest discover -s compliance_agent
+streamlit run app.py
 ```
 
-## Auditing Compliance Rules with Multi-Model Consensus
+## Running the AI Rule Auditor
 
-This project includes an advanced tool for auditing the compliance rules themselves using a consensus-based approach with three LLMs. This tool provides a highly robust validation of the correctness and logic of the rules defined in `rules_engine.py`.
-
-The auditor loads all three models defined in the `llm_models` list in `config.py`. It gets an independent assessment from each model and then calculates the average pairwise cosine similarity score to quantify the overall level of agreement among them. A low score indicates a potential disagreement that warrants manual review.
-
-### 1. Configure Models
-
-You can configure which models to use for the audit by editing the `llm_models` list in `compliance_agent/config.py`.
-
-### 2. Download Models
-
-Ensure you have downloaded all the configured LLM models by running the setup script from the `compliance_agent` directory:
-
-```bash
-python setup_model.py
-```
-
-### 3. Run the Auditor
-
-Run the rule auditor with the following command from the `compliance_agent` directory:
+To use the AI to validate the correctness of your compliance rules, run the following command from the `compliance_agent` directory:
 
 ```bash
 python rule_auditor.py
 ```
 
-The auditor will output a detailed consensus report for each rule, including the assessment from each model and the final similarity score.
+The auditor will output an AI-generated sanity check for each rule.
+
+## Running Tests
+
+To run the unit tests, navigate to the **root of the repository** and run the following command:
+
+```bash
+python -m unittest discover -s compliance_agent
+```
