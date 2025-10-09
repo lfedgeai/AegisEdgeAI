@@ -5,9 +5,6 @@ class NarrativeGenerator:
     def __init__(self, model_path, n_ctx=4096):
         """
         Initializes the NarrativeGenerator with a local LLM.
-
-        :param model_path: Path to the GGUF model file.
-        :param n_ctx: The context size for the model.
         """
         self.model_path = model_path
         self.llm = Llama(
@@ -17,35 +14,39 @@ class NarrativeGenerator:
             verbose=False
         )
 
-    def generate_narrative(self, evidence_set, framework_name):
+    def generate_summary(self, framework_name, structured_findings):
         """
-        Generates a compliance narrative using a simplified, direct prompt.
+        Generates a human-readable summary from structured findings.
 
-        :param evidence_set: A list of structured evidence.
         :param framework_name: The name of the compliance framework.
-        :return: A string containing the generated narrative.
+        :param structured_findings: A list of dictionaries, each containing a rule name, control mapping, and explanation.
+        :return: A string containing the generated summary.
         """
-        prompt = self._create_prompt(evidence_set, framework_name)
+        prompt = self._create_prompt(framework_name, structured_findings)
 
-        # Retry mechanism to handle occasional empty responses
-        for _ in range(3):
-            output = self.llm(prompt, max_tokens=1024, stop=["\n\n"], echo=False)
-            narrative = output['choices'][0]['text'].strip()
-            if narrative:
-                return narrative
+        output = self.llm(prompt, max_tokens=1024, stop=["\n\n"], echo=False)
+        summary = output['choices'][0]['text'].strip()
 
-        return "The AI model did not produce a valid narrative for the given evidence."
+        if not summary:
+            return "The AI model did not produce a valid summary for the given findings."
 
-    def _create_prompt(self, evidence_set, framework_name):
+        return summary
+
+    def _create_prompt(self, framework_name, structured_findings):
         """
-        Creates a simple, direct prompt to guide the LLM's response.
+        Creates a simple, direct prompt for summarization.
         """
-        evidence_str = "\n".join([f"- {json.dumps(e)}" for e in evidence_set])
+        findings_str = "\n".join([
+            f"- Rule: {finding['rule_name']}\n"
+            f"  Control: {finding['control_mapping']}\n"
+            f"  Explanation: {finding['explanation']}\n"
+            for finding in structured_findings
+        ])
 
         prompt = (
-            f"You are a compliance auditor. Based on the following evidence, "
-            f"write a brief summary for a {framework_name} compliance report.\n\n"
-            f"Evidence:\n{evidence_str}\n\n"
+            f"You are a compliance auditor. Based on the following structured findings, "
+            f"write a brief, fluent summary for a {framework_name} compliance report.\n\n"
+            f"Structured Findings:\n{findings_str}\n\n"
             f"Summary:"
         )
         return prompt
