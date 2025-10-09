@@ -68,9 +68,9 @@ python -m unittest discover -s compliance_agent
 
 ## Auditing Compliance Rules with Multi-Model Consensus
 
-This project includes an advanced tool for auditing the compliance rules themselves using a consensus-based approach with multiple LLMs. This tool provides a robust validation of the correctness and logic of the rules defined in `rules_engine.py`.
+This project includes an advanced tool for auditing the compliance rules themselves using a consensus-based approach with three LLMs. This tool provides a highly robust validation of the correctness and logic of the rules defined in `rules_engine.py`.
 
-The auditor loads all models defined in the `llm_models` list in `config.py`. It gets an independent assessment from each model and then calculates a cosine similarity score to quantify the level of agreement between them. This helps to identify ambiguous or potentially flawed rules.
+The auditor loads all three models defined in the `llm_models` list in `config.py`. It gets an independent assessment from each model and then calculates the average pairwise cosine similarity score to quantify the overall level of agreement among them. A low score indicates a potential disagreement that warrants manual review.
 
 ### 1. Configure Models
 
