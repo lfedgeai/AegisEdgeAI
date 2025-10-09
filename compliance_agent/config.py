@@ -27,9 +27,9 @@ class Settings(BaseSettings):
                 "url": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
             },
             {
-                "name": "Phi-3-mini-4k-instruct",
-                "path": "models/Phi-3-mini-4k-instruct-q4.gguf",
-                "url": "https://huggingface.co/TheBloke/Phi-3-mini-4k-instruct-GGUF/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
+                "name": "OpenHermes-2.5-Mistral-7B",
+                "path": "models/openhermes-2.5-mistral-7b.Q4_K_M.gguf",
+                "url": "https://huggingface.co/TheBloke/OpenHermes-2.5-Mistral-7B-GGUF/resolve/main/openhermes-2.5-mistral-7b.Q4_K_M.gguf"
             }
         ],
         env="LLM_MODELS"
