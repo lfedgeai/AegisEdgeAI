@@ -14,8 +14,7 @@ class NarrativeGenerator:
         self.llm = Llama(
             model_path=self.model_path,
             n_ctx=n_ctx,
-            temperature=0.1, # Lower temperature reduces randomness
-            top_p=0.95, # Nucleus sampling to further constrain the model
+            temperature=0.2, # A slightly higher temperature to encourage generation
             verbose=False
         )
 
@@ -31,8 +30,9 @@ class NarrativeGenerator:
         prompt = self._create_prompt(evidence_set, framework_name)
 
         # Retry mechanism to handle occasional empty responses from the LLM
-        for _ in range(3): # Try up to 3 times
+        for i in range(3): # Try up to 3 times
             output = self.llm(prompt, max_tokens=2048, stop=["\n\n"], echo=False)
+            print(f"LLM raw output (Attempt {i+1}):", output) # Diagnostic logging
             narrative = output['choices'][0]['text'].strip()
             if narrative:
                 return narrative
