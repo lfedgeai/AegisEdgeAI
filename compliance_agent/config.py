@@ -27,9 +27,9 @@ class Settings(BaseSettings):
                 "url": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
             },
             {
-                "name": "Llama-2-7B-Chat",
-                "path": "models/llama-2-7b-chat.Q4_K_M.gguf",
-                "url": "https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/llama-2-7b-chat.Q4_K_M.gguf"
+                "name": "Phi-3-mini-4k-instruct",
+                "path": "models/Phi-3-mini-4k-instruct-q4.gguf",
+                "url": "https://huggingface.co/TheBloke/Phi-3-mini-4k-instruct-GGUF/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
             }
         ],
         env="LLM_MODELS"
