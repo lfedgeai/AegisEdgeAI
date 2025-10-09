@@ -1,6 +1,7 @@
 import os
 import sys
 import inspect
+import itertools
 from llama_cpp import Llama
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -17,7 +18,6 @@ class RuleAuditor:
     def __init__(self):
         """
         Initializes the RuleAuditor by loading all configured LLM models.
-        Exits with an error if a model fails to load.
         """
         self.models = {}
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -52,7 +52,7 @@ class RuleAuditor:
 
     def audit_rule_with_consensus(self, rule):
         """
-        Audits a single rule with all loaded models and calculates a similarity score.
+        Audits a single rule with all loaded models and calculates the average similarity score.
         """
         assessments = {}
         prompt = self._create_prompt(rule)
@@ -62,22 +62,30 @@ class RuleAuditor:
             output = llm(prompt, max_tokens=1024, stop=["\n\n"], echo=False)
             assessments[model_name] = output['choices'][0]['text'].strip()
 
-        similarity_score = self._calculate_similarity(list(assessments.values()))
+        similarity_score = self._calculate_average_similarity(list(assessments.values()))
 
         return self._format_consensus_report(rule, assessments, similarity_score)
 
-    def _calculate_similarity(self, texts):
+    def _calculate_average_similarity(self, texts):
         """
-        Calculates the cosine similarity between a list of text assessments.
+        Calculates the average pairwise cosine similarity between a list of texts.
         """
         if len(texts) < 2:
             return None # Cannot calculate similarity with fewer than two texts
 
         try:
             tfidf_matrix = self.vectorizer.fit_transform(texts)
-            # Compare the first assessment to the second one
-            score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
-            return score
+            # Get all unique pairs of indices
+            index_pairs = list(itertools.combinations(range(len(texts)), 2))
+
+            if not index_pairs:
+                return 1.0 # Only one text, so perfect similarity
+
+            total_similarity = 0
+            for i, j in index_pairs:
+                total_similarity += cosine_similarity(tfidf_matrix[i:i+1], tfidf_matrix[j:j+1])[0][0]
+
+            return total_similarity / len(index_pairs)
         except ValueError:
             return 0.0
 
@@ -103,7 +111,7 @@ class RuleAuditor:
 
     def _format_consensus_report(self, rule, assessments, similarity_score):
         """
-        Formats the final report showing each model's assessment and the similarity score.
+        Formats the final report showing each model's assessment and the average similarity score.
         """
         report_parts = [f"\n--- Consensus Report for Rule: {rule.name} ---"]
 
@@ -113,11 +121,11 @@ class RuleAuditor:
 
         report_parts.append("\n--- Consensus Analysis ---")
         if similarity_score is not None:
-            report_parts.append(f"Similarity Score between assessments: {similarity_score:.4f}")
+            report_parts.append(f"Average Pairwise Similarity Score: {similarity_score:.4f}")
             if similarity_score > 0.8:
-                report_parts.append("Conclusion: High degree of consensus between models.")
+                report_parts.append("Conclusion: High degree of consensus among models.")
             elif similarity_score > 0.5:
-                report_parts.append("Conclusion: Moderate degree of consensus. Some differences in wording or focus may exist.")
+                report_parts.append("Conclusion: Moderate degree of consensus. Some differences may exist.")
             else:
                 report_parts.append("Conclusion: Low degree of consensus. The models have significant disagreements. Manual review is highly recommended.")
         else:

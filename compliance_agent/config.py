@@ -30,6 +30,11 @@ class Settings(BaseSettings):
                 "name": "OpenHermes-2.5-Mistral-7B",
                 "path": "models/openhermes-2.5-mistral-7b.Q4_K_M.gguf",
                 "url": "https://huggingface.co/TheBloke/OpenHermes-2.5-Mistral-7B-GGUF/resolve/main/openhermes-2.5-mistral-7b.Q4_K_M.gguf"
+            },
+            {
+                "name": "Zephyr-7B-beta",
+                "path": "models/zephyr-7b-beta.Q4_K_M.gguf",
+                "url": "https://huggingface.co/TheBloke/zephyr-7B-beta-GGUF/resolve/main/zephyr-7b-beta.Q4_K_M.gguf"
             }
         ],
         env="LLM_MODELS"
