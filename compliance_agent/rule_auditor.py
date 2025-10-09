@@ -17,6 +17,7 @@ class RuleAuditor:
     def __init__(self):
         """
         Initializes the RuleAuditor by loading all configured LLM models.
+        Exits with an error if a model fails to load.
         """
         self.models = {}
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,8 +28,9 @@ class RuleAuditor:
             model_path = os.path.join(script_dir, model_config["path"])
 
             if not os.path.exists(model_path):
-                print(f"Warning: Model file for '{model_name}' not found at {model_path}. Skipping.")
-                continue
+                print(f"Error: Model file for '{model_name}' not found at {model_path}.")
+                print("Please run setup_model.py to download the required models.")
+                sys.exit(1)
 
             print(f"Loading model: {model_name}...")
             try:
@@ -40,10 +42,11 @@ class RuleAuditor:
                 )
                 print(f"'{model_name}' loaded successfully.")
             except Exception as e:
-                print(f"Error loading model '{model_name}': {e}")
+                print(f"Error: Failed to load model '{model_name}': {e}")
+                sys.exit(1)
 
         if not self.models:
-            raise RuntimeError("No LLM models could be loaded. Please run setup_model.py first.")
+            raise RuntimeError("No LLM models could be loaded. Please check the configuration.")
 
         self.vectorizer = TfidfVectorizer()
 
@@ -68,7 +71,7 @@ class RuleAuditor:
         Calculates the cosine similarity between a list of text assessments.
         """
         if len(texts) < 2:
-            return 1.0 # Perfect similarity if there's only one assessment
+            return None # Cannot calculate similarity with fewer than two texts
 
         try:
             tfidf_matrix = self.vectorizer.fit_transform(texts)
@@ -76,7 +79,6 @@ class RuleAuditor:
             score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
             return score
         except ValueError:
-            # This can happen if all texts are empty or contain only stop words
             return 0.0
 
     def _create_prompt(self, rule):
@@ -110,13 +112,16 @@ class RuleAuditor:
             report_parts.append(assessment if assessment else "No assessment generated.")
 
         report_parts.append("\n--- Consensus Analysis ---")
-        report_parts.append(f"Similarity Score between assessments: {similarity_score:.4f}")
-        if similarity_score > 0.8:
-            report_parts.append("Conclusion: High degree of consensus between models.")
-        elif similarity_score > 0.5:
-            report_parts.append("Conclusion: Moderate degree of consensus. Some differences in wording or focus may exist.")
+        if similarity_score is not None:
+            report_parts.append(f"Similarity Score between assessments: {similarity_score:.4f}")
+            if similarity_score > 0.8:
+                report_parts.append("Conclusion: High degree of consensus between models.")
+            elif similarity_score > 0.5:
+                report_parts.append("Conclusion: Moderate degree of consensus. Some differences in wording or focus may exist.")
+            else:
+                report_parts.append("Conclusion: Low degree of consensus. The models have significant disagreements. Manual review is highly recommended.")
         else:
-            report_parts.append("Conclusion: Low degree of consensus. The models have significant disagreements. Manual review is highly recommended.")
+            report_parts.append("Conclusion: Only one model provided an assessment, so a consensus score cannot be calculated.")
 
         report_parts.append("-" * (len(rule.name) + 33))
         return "\n".join(report_parts)
@@ -129,8 +134,8 @@ def main():
 
     try:
         auditor = RuleAuditor()
-    except RuntimeError as e:
-        print(f"\nError: {e}")
+    except (RuntimeError, FileNotFoundError) as e:
+        print(f"\nError initializing auditor: {e}")
         sys.exit(1)
 
     for rule in ALL_RULES:
