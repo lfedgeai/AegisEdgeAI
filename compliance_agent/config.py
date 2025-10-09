@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # LLM configuration
     # The path is relative to the `compliance_agent` directory.
     llm_model_path: Optional[str] = Field(
-        default="models/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
+        default="models/Phi-3-mini-4k-instruct-q4.gguf",
         env="LLM_MODEL_PATH"
     )
 
