@@ -65,3 +65,15 @@ To run the unit tests for the compliance agent, navigate to the **root of the re
 ```bash
 python -m unittest discover -s compliance_agent
 ```
+
+## Auditing Compliance Rules
+
+This project includes a tool for auditing the compliance rules themselves using an LLM. This tool helps to validate the correctness and logic of the rules defined in `rules_engine.py`.
+
+To run the rule auditor, first ensure you have downloaded the LLM model by running `python setup_model.py`. Then, run the following command from the `compliance_agent` directory:
+
+```bash
+python rule_auditor.py
+```
+
+The auditor will output an AI-generated assessment for each rule.
