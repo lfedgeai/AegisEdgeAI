@@ -41,15 +41,15 @@ def download_file(url, folder_name, file_name):
 
 if __name__ == "__main__":
     # URL of the GGUF model to download.
-    # Using the more reliable Phi-3-mini model.
-    model_url = "https://huggingface.co/TheBloke/Phi-3-mini-4k-instruct-GGUF/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
+    # Using the public Llama-2-7B-Chat model.
+    model_url = "https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/llama-2-7b-chat.Q4_K_M.gguf"
 
     # Directory to save the model inside the compliance_agent directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
     models_dir = os.path.join(script_dir, 'models')
 
     # Filename for the downloaded model
-    model_name = "Phi-3-mini-4k-instruct-q4.gguf"
+    model_name = "llama-2-7b-chat.Q4_K_M.gguf"
 
     print("Starting model download...")
     download_file(model_url, models_dir, model_name)
