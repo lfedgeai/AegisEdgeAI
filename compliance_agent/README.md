@@ -29,6 +29,8 @@ python setup_model.py
 
 This will download the model to the `compliance_agent/models` directory. The default model is `mistral-7b-instruct-v0.1.Q4_K_M.gguf`. You can configure a different model by setting the `LLM_MODEL_PATH` environment variable.
 
+For advanced users, the creativity of the LLM can be tuned by adjusting the `temperature` parameter in `narrative_generator.py`. A lower value (e.g., 0.1) makes the output more deterministic, while a higher value increases its randomness.
+
 ### 3. Run the Compliance Agent
 
 Once the dependencies are installed and the model is downloaded, you can start the compliance agent's Flask server. Run the following command from the `compliance_agent` directory:
