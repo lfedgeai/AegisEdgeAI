@@ -10,11 +10,12 @@ class NarrativeGenerator:
         :param n_ctx: The context size for the model.
         """
         self.model_path = model_path
-        # Set verbose=False and a low temperature for more deterministic output
+        # Set verbose=False and tune parameters for more deterministic output
         self.llm = Llama(
             model_path=self.model_path,
             n_ctx=n_ctx,
             temperature=0.1, # Lower temperature reduces randomness
+            top_p=0.95, # Nucleus sampling to further constrain the model
             verbose=False
         )
 
@@ -41,23 +42,24 @@ class NarrativeGenerator:
 
     def _create_prompt(self, evidence_set, framework_name):
         """
-        Creates a prompt that instructs the LLM to act as a compliance auditor.
+        Creates a refined prompt that instructs the LLM to act as a compliance auditor.
         """
         prompt = (
-            f"You are an expert compliance auditor. Your task is to analyze the provided evidence "
-            f"and map it to the specific, relevant controls within the '{framework_name}' framework. "
-            f"For each piece of evidence, identify the corresponding control and explain your reasoning.\n\n"
-            f"Here is the evidence to analyze:\n"
+            f"As an expert compliance auditor, analyze the following evidence and map it to the specific, "
+            f"relevant controls within the '{framework_name}' framework. You must provide a "
+            f"detailed report that includes a summary of your findings and a clear mapping of "
+            f"each piece of evidence to its corresponding control.\n\n"
+            f"Evidence to analyze:\n"
         )
 
         for evidence in evidence_set:
             prompt += f"- Evidence: {json.dumps(evidence)}\n"
 
         prompt += (
-            "\nBased on this evidence, please generate a compliance report that includes:\n"
-            "1. A summary of your findings.\n"
-            "2. A mapping of each piece of evidence to a specific control (e.g., PCI DSS Req. 10.2).\n"
-            "3. A brief explanation for each mapping.\n"
-            "\nCompliance Report:"
+            "\nGenerate a compliance report with the following sections:\n"
+            "1. **Summary of Findings:** A brief overview of your conclusions.\n"
+            "2. **Control Mapping:** A clear mapping of each piece of evidence to a specific control from the framework.\n"
+            "3. **Explanation:** A brief justification for each mapping.\n"
+            "\n**Compliance Report:**"
         )
         return prompt
