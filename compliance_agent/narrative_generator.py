@@ -30,7 +30,7 @@ class NarrativeGenerator:
         prompt = self._create_prompt(evidence_set, framework_name)
 
         # Retry mechanism to handle occasional empty responses from the LLM
-        for _ in range(2): # Try up to 2 times
+        for _ in range(3): # Try up to 3 times
             output = self.llm(prompt, max_tokens=2048, stop=["\n\n"], echo=False)
             narrative = output['choices'][0]['text'].strip()
             if narrative:
