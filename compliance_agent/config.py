@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # LLM configuration
     # The path is relative to the `compliance_agent` directory.
     llm_model_path: Optional[str] = Field(
-        default="models/llama-2-7b-chat.Q4_K_M.gguf",
+        default="models/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
         env="LLM_MODEL_PATH"
     )
 
