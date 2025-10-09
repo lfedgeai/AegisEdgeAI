@@ -1,6 +1,14 @@
 import os
+import sys
 import requests
 from tqdm import tqdm
+
+# This block allows the script to be run directly
+if __name__ == "__main__" and __package__ is None:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.insert(0, project_root)
+
+from compliance_agent.config import settings
 
 def download_file(url, folder_name, file_name):
     """
@@ -12,12 +20,13 @@ def download_file(url, folder_name, file_name):
     file_path = os.path.join(folder_name, file_name)
 
     if os.path.exists(file_path):
-        print(f"Model already exists at {file_path}. Skipping download.")
+        print(f"Model '{file_name}' already exists at {file_path}. Skipping download.")
         return file_path
 
     try:
+        print(f"\nDownloading model: {file_name}")
         response = requests.get(url, stream=True)
-        response.raise_for_status()  # Raise an exception for bad status codes
+        response.raise_for_status()
 
         total_size = int(response.headers.get('content-length', 0))
 
@@ -33,23 +42,32 @@ def download_file(url, folder_name, file_name):
                     size = f.write(chunk)
                     bar.update(size)
 
-        print(f"Model downloaded successfully to {file_path}")
+        print(f"Model '{file_name}' downloaded successfully to {file_path}")
         return file_path
     except requests.exceptions.RequestException as e:
-        print(f"Error downloading the model: {e}")
+        print(f"Error downloading '{file_name}': {e}")
         return None
 
-if __name__ == "__main__":
-    # URL of the GGUF model to download.
-    # Using the reliable Mistral-7B-Instruct model.
-    model_url = "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
+def main():
+    """
+    Main function to download all configured LLM models.
+    """
+    print("--- Starting Model Setup ---")
 
-    # Directory to save the model inside the compliance_agent directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    models_dir = os.path.join(script_dir, 'models')
 
-    # Filename for the downloaded model
-    model_name = "mistral-7b-instruct-v0.1.Q4_K_M.gguf"
+    for model_config in settings.llm_models:
+        model_name = model_config["name"]
+        model_url = model_config["url"]
+        # The path in the config is relative to the compliance_agent directory
+        model_path = os.path.join(script_dir, model_config["path"])
 
-    print("Starting model download...")
-    download_file(model_url, models_dir, model_name)
+        models_dir = os.path.dirname(model_path)
+        file_name = os.path.basename(model_path)
+
+        download_file(model_url, models_dir, file_name)
+
+    print("\n--- Model Setup Complete ---")
+
+if __name__ == "__main__":
+    main()

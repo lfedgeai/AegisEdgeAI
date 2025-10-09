@@ -9,6 +9,9 @@ tqdm
 streamlit
 requests
 
+# For Similarity Scoring
+scikit-learn
+
 # Common
 python-dotenv==1.0.0
 gunicorn==21.2.0

@@ -18,10 +18,21 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", env="HOST")
     port: int = Field(default=5001, env="PORT")
 
-    # LLM configuration for the rule auditor tool
-    llm_model_path: Optional[str] = Field(
-        default="models/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
-        env="LLM_MODEL_PATH"
+    # LLM configuration for the multi-model rule auditor tool
+    llm_models: list = Field(
+        default=[
+            {
+                "name": "Mistral-7B-Instruct-v0.1",
+                "path": "models/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
+                "url": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
+            },
+            {
+                "name": "Llama-2-7B-Chat",
+                "path": "models/llama-2-7b-chat.Q4_K_M.gguf",
+                "url": "https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/llama-2-7b-chat.Q4_K_M.gguf"
+            }
+        ],
+        env="LLM_MODELS"
     )
 
     class Config:
