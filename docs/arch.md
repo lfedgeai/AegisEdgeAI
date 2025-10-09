@@ -246,11 +246,12 @@ Systems where this architecture can be implemented include:
 
 ## System bootstrap
 Top-down bootstrap of control plane nodes (Keylime → SPIRE → Kubernetes)
-* Keylime verifier and registrar are manually bootstrapped by a trusted operator.
-* Spire server bare metal nodes and kubernetes control plane bare metal nodes TPM EKs are registered with Keylime registrar by the trusted operator.
-* Spire server is manually bootstrapped by the trusted operator and Keylime performs TPM/IMA host attestation.
-* Kubernetes control plane nodes are bootstrapped from that attestation (Spire agent on kubernetes control plane node does not need SPIRE bearer token if you use Keylime‑based attestation).
-* Kubernetes kubelet and Containerd gets SPIRE SVID (no Kubernetes bearer token required if you use SPIRE‑based node attestation)
+* Trusted operator provisions Keylime verifier + registrar and retains operator control over registrar keys.
+* Operator registers TPM EKs for SPIRE server hosts and Kubernetes control‑plane bare‑metal nodes in Keylime registrar.
+* Operator manually boots SPIRE server; SPIRE server attests to Keylime to verify host TPM/IMA state.
+* Keylime returns a signed host verification; SPIRE server is considered trusted and begins issuing Node SVIDs to control‑plane agents (SPIRE agents on control nodes need no bearer token when using Keylime attestation).
+* SPIRE issues kubelet and containerd SVIDs to control‑plane runtimes (keys sealed to TPM).
+* Control plane components (kube‑apiserver, controller manager, scheduler) run with attested node identities; audit/collector records issuance artifacts for ledger anchoring.
 
 Top‑down bootstrap of data plane nodes (Keylime → SPIRE → Kubernetes) 
 * Keylime performs TPM/IMA host attestation. This optionally includes Geolocation sensor details along with Geolocation data.
