@@ -77,6 +77,29 @@ class ComplianceAgentTestCase(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data['message'], "No evidence found based on the provided logs.")
 
+    def test_empty_narrative_response(self):
+        """Test the endpoint's handling of an empty narrative from the LLM."""
+        # Mock the narrative generator to return an empty string
+        with patch('compliance_agent.app.narrative_generator') as mock_generator:
+            mock_generator.generate_narrative.return_value = ""
+
+            payload = {
+                "logs": [
+                    {
+                        "host-type": "baremetal",
+                        "residency": "us-west-2"
+                    }
+                ],
+                "framework": "PCI DSS"
+            }
+
+            response = self.client.post('/process_logs', data=json.dumps(payload), content_type='application/json')
+            self.assertEqual(response.status_code, 200)
+            data = response.get_json()
+            self.assertIn("compliance_report", data)
+            # Check that the API returns the default message for the narrative
+            self.assertEqual(data['compliance_report']['narrative'], "The AI model did not produce a valid narrative for the given evidence.")
+
 if __name__ == '__main__':
     # To run tests, navigate to the project root and run:
     # python -m unittest discover -s compliance_agent
