@@ -8,7 +8,7 @@ This directory contains the Compliance Agent, a standalone microservice designed
 - **Automated Report Generation**: Generates a consistent, fact-based compliance report from the structured evidence using a template.
 - **Flask API**: Exposes a simple API endpoint for processing logs and generating compliance reports.
 - **Streamlit UI**: Includes a user-friendly interface for interacting with the agent.
-- **AI-Powered Rule Auditor**: An additional tool that uses a local LLM to perform a "sanity check" on the compliance rules themselves, helping to ensure their semantic correctness.
+- **AI-Powered Rule Auditor**: An additional tool that uses a consensus-based approach with multiple LLMs to validate the compliance rules themselves.
 
 ## Setup and Installation
 
@@ -18,14 +18,6 @@ First, ensure you have installed all the required Python packages from the `requ
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. Download the AI Model (for Rule Auditor)
-
-If you plan to use the AI-powered rule auditor, you must first download the required LLM model. Run the following command from the `compliance_agent` directory:
-
-```bash
-python setup_model.py
 ```
 
 ## Running the Core Application
@@ -50,15 +42,33 @@ In a separate terminal, run the following command from the `compliance_agent/ui`
 streamlit run app.py
 ```
 
-## Running the AI Rule Auditor
+## Auditing Compliance Rules with Multi-Model Consensus
 
-To use the AI to validate the correctness of your compliance rules, run the following command from the `compliance_agent` directory:
+This project includes an advanced tool for auditing the compliance rules themselves using a consensus-based approach with three LLMs. This provides a highly robust validation of the correctness and logic of the rules defined in `rules_engine.py`.
+
+The auditor loads all three models defined in the `llm_models` list in `config.py`. It gets an independent assessment from each model and then calculates the average pairwise cosine similarity score to quantify the overall level of agreement among them. A low score indicates a potential disagreement that warrants manual review.
+
+### 1. Configure Models
+
+You can configure which models to use for the audit by editing the `llm_models` list in `compliance_agent/config.py`.
+
+### 2. Download Models
+
+Ensure you have downloaded all the configured LLM models by running the setup script from the `compliance_agent` directory:
+
+```bash
+python setup_model.py
+```
+
+### 3. Run the Auditor
+
+Run the rule auditor with the following command from the `compliance_agent` directory:
 
 ```bash
 python rule_auditor.py
 ```
 
-The auditor will output an AI-generated sanity check for each rule.
+The auditor will output a detailed consensus report for each rule, including the assessment from each model and the final similarity score.
 
 ## Running Tests
 
