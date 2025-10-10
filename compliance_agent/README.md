@@ -8,7 +8,7 @@ This directory contains the Compliance Agent, a standalone microservice designed
 - **Automated Report Generation**: Generates a consistent, fact-based compliance report from the structured evidence using a template.
 - **Flask API**: Exposes a simple API endpoint for processing logs and generating compliance reports.
 - **Streamlit UI**: Includes a user-friendly interface for interacting with the agent.
-- **AI-Powered Rule Auditor**: An additional tool that uses a consensus-based approach with multiple LLMs to validate the compliance rules themselves.
+- **AI-Powered "Compliance as Code" Tools**: A suite of tools that use local LLMs to help you build and validate your compliance rules, including a Rule Scaffold Generator and a Multi-Model Rule Auditor.
 
 ## Setup and Installation
 
@@ -18,6 +18,14 @@ First, ensure you have installed all the required Python packages from the `requ
 
 ```bash
 pip install -r requirements.txt
+```
+
+### 2. Download AI Models (for AI Tools)
+
+If you plan to use the AI-powered tools (Scaffold Generator or Rule Auditor), you must first download the required LLM models. Run the following command from the `compliance_agent` directory:
+
+```bash
+python setup_model.py
 ```
 
 ## Running the Core Application
@@ -42,33 +50,29 @@ In a separate terminal, run the following command from the `compliance_agent/ui`
 streamlit run app.py
 ```
 
-## Auditing Compliance Rules with Multi-Model Consensus
+## "Compliance as Code" Workflow Tools
 
-This project includes an advanced tool for auditing the compliance rules themselves using a consensus-based approach with three LLMs. This provides a highly robust validation of the correctness and logic of the rules defined in `rules_engine.py`.
+This project includes AI-powered tools to help build and validate your compliance rules.
 
-The auditor loads all three models defined in the `llm_models` list in `config.py`. It gets an independent assessment from each model and then calculates the average pairwise cosine similarity score to quantify the overall level of agreement among them. A low score indicates a potential disagreement that warrants manual review.
+### Generating Rule Scaffolds with AI
 
-### 1. Configure Models
+To kickstart the creation of a new compliance rule, you can use the `scaffold_generator.py` tool. It takes a high-level requirement (e.g., "PCI DSS Req. 1.2.1") and uses an LLM to generate a structured YAML template for the new rule. This template includes a suggested name, control mapping, rationale, recommended evidence types, and a commented-out validation template for a security engineer to complete.
 
-You can configure which models to use for the audit by editing the `llm_models` list in `compliance_agent/config.py`.
-
-### 2. Download Models
-
-Ensure you have downloaded all the configured LLM models by running the setup script from the `compliance_agent` directory:
+To use the generator, run the following command from the `compliance_agent` directory:
 
 ```bash
-python setup_model.py
+python scaffold_generator.py "PCI DSS Req. 1.2.1"
 ```
 
-### 3. Run the Auditor
+### Auditing Compliance Rules with Multi-Model Consensus
 
-Run the rule auditor with the following command from the `compliance_agent` directory:
+After you have implemented a rule, you can use the advanced auditing tool to validate it with a consensus-based approach using three LLMs. This provides a highly robust validation of the rule's correctness and logic. The auditor loads all three models defined in `config.py`, gets an independent assessment from each, and calculates an average similarity score to quantify their level of agreement.
+
+To run the auditor, use the following command from the `compliance_agent` directory:
 
 ```bash
 python rule_auditor.py
 ```
-
-The auditor will output a detailed consensus report for each rule, including the assessment from each model and the final similarity score.
 
 ## Running Tests
 
