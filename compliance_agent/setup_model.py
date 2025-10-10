@@ -50,24 +50,22 @@ def download_file(url, folder_name, file_name):
 
 def main():
     """
-    Main function to download the configured LLM model.
+    Main function to download all configured LLM models.
     """
     print("--- Starting Model Setup ---")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    model_url = settings.llm_model_url
-    model_path_config = settings.llm_model_path
+    # Iterate through the list of models in the configuration
+    for model_config in settings.llm_models:
+        model_url = model_config["url"]
+        # The path in the config is relative to the compliance_agent directory
+        model_path = os.path.join(script_dir, model_config["path"])
 
-    if not model_url or not model_path_config:
-        print("Error: LLM model URL or path not configured in config.py.")
-        sys.exit(1)
+        models_dir = os.path.dirname(model_path)
+        file_name = os.path.basename(model_path)
 
-    model_path = os.path.join(script_dir, model_path_config)
-    models_dir = os.path.dirname(model_path)
-    file_name = os.path.basename(model_path)
-
-    download_file(model_url, models_dir, file_name)
+        download_file(model_url, models_dir, file_name)
 
     print("\n--- Model Setup Complete ---")
 
