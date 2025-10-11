@@ -1,16 +1,13 @@
 # Backend Dependencies
 Flask==3.0.0
-llama-cpp-python==0.2.79
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 tqdm
+PyYAML
 
 # UI Dependencies
 streamlit
 requests
-
-# For Similarity Scoring
-scikit-learn
 
 # Common
 python-dotenv==1.0.0
