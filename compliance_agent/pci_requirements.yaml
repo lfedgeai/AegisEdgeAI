@@ -1,0 +1,21 @@
+- id: "1.2.1"
+  description: "Restrict inbound and outbound traffic to that which is necessary for the cardholder data environment, and specifically deny all other traffic."
+  evidence_sources:
+    - "firewall_rules"
+    - "network_flow_logs"
+- id: "2.1"
+  description: "Always change vendor-supplied defaults and remove or disable unnecessary default accounts before installing a system on the network."
+  evidence_sources:
+    - "os_configuration"
+    - "hardening_checklists"
+- id: "4.2"
+  description: "Never send unprotected PANs by end-user messaging technologies (for example, e-mail, instant messaging, SMS, chat, etc.)."
+  evidence_sources:
+    - "email_dlp_logs"
+    - "chat_logs"
+- id: "10.2"
+  description: "Implement automated audit trails for all system components to reconstruct all individual user accesses to cardholder data."
+  evidence_sources:
+    - "database_audit_logs"
+    - "os_event_logs"
+    - "application_logs"
