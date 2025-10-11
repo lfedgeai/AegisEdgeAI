@@ -2,13 +2,26 @@
 
 This directory contains the Compliance Agent, a standalone microservice designed to process observability data and validate it against a deterministic set of rules.
 
+## "Compliance as Code" Workflow
+
+This project uses a "Compliance as Code" approach to manage and automate compliance validation. The workflow is designed to be deterministic, reliable, and maintainable.
+
+The core workflow is as follows:
+
+1.  **Define Requirements:** Compliance requirements (e.g., from the PCI DSS document) are defined in a structured, human-readable YAML file: `pci_requirements.yaml`. This serves as the single source of truth for the controls.
+
+2.  **Auto-Generate Rule Stubs:** The `rule_generator.py` tool reads the YAML file and automatically generates the corresponding Python `Rule` object definitions. This eliminates manual boilerplate and ensures consistency between the documented requirements and the code.
+
+3.  **Implement and Review (Human-in-the-Loop):** A security engineer copies the auto-generated rule stubs into `rules_engine.py`. Their task is to implement the final, environment-specific `validation_logic` for each rule. This keeps a human expert in the loop for the most critical part of the process.
+
+4.  **Automated Validation:** Once implemented, the `RulesEngine` uses these deterministic rules to validate log data and generate consistent, fact-based compliance reports via the API.
+
 ## Features
 
-- **Deterministic Rules Engine**: Validates log entries against a configurable set of rules to produce structured evidence. Each rule includes a specific control mapping and a pre-defined explanation.
+- **Deterministic Rules Engine**: Validates log entries against a configurable set of rules defined in `rules_engine.py`.
 - **Automated Report Generation**: Generates a consistent, fact-based compliance report from the structured evidence using a template.
 - **Flask API**: Exposes a simple API endpoint for processing logs and generating compliance reports.
 - **Streamlit UI**: Includes a user-friendly interface for interacting with the agent.
-- **AI-Powered "Compliance as Code" Tools**: A suite of tools that use local LLMs to help you build and validate your compliance rules, including a Rule Scaffold Generator and a Multi-Model Rule Auditor.
 
 ## Setup and Installation
 
@@ -20,21 +33,9 @@ First, ensure you have installed all the required Python packages from the `requ
 pip install -r requirements.txt
 ```
 
-### 2. Download AI Models (for AI Tools)
+### 2. Run the Compliance Agent
 
-If you plan to use the AI-powered tools (Scaffold Generator or Rule Auditor), you must first download the required LLM models. Run the following command from the `compliance_agent` directory:
-
-```bash
-python setup_model.py
-```
-
-## Running the Core Application
-
-To run the main compliance agent and its UI, use the following commands.
-
-### 1. Start the Flask Backend
-
-Run the following command from the `compliance_agent` directory:
+Once the dependencies are installed, you can start the compliance agent's Flask server. Run the following command from the `compliance_agent` directory:
 
 ```bash
 python app.py
@@ -42,37 +43,16 @@ python app.py
 
 The server will start on `http://0.0.0.0:5001` by default.
 
-### 2. Start the Streamlit UI
+## Generating New Compliance Rules
 
-In a separate terminal, run the following command from the `compliance_agent/ui` directory:
+To add new compliance rules, follow the "Compliance as Code" workflow:
 
-```bash
-streamlit run app.py
-```
-
-## "Compliance as Code" Workflow Tools
-
-This project includes AI-powered tools to help build and validate your compliance rules.
-
-### Generating Rule Scaffolds with AI
-
-To kickstart the creation of a new compliance rule, you can use the `scaffold_generator.py` tool. It takes a high-level requirement (e.g., "PCI DSS Req. 1.2.1") and uses an LLM to generate a structured YAML template for the new rule. This template includes a suggested name, control mapping, rationale, recommended evidence types, and a commented-out validation template for a security engineer to complete.
-
-To use the generator, run the following command from the `compliance_agent` directory:
-
-```bash
-python scaffold_generator.py "PCI DSS Req. 1.2.1"
-```
-
-### Auditing Compliance Rules with Multi-Model Consensus
-
-After you have implemented a rule, you can use the advanced auditing tool to validate it with a consensus-based approach using three LLMs. This provides a highly robust validation of the rule's correctness and logic. The auditor loads all three models defined in `config.py`, gets an independent assessment from each, and calculates an average similarity score to quantify their level of agreement.
-
-To run the auditor, use the following command from the `compliance_agent` directory:
-
-```bash
-python rule_auditor.py
-```
+1.  **Add to YAML:** Add a new entry to the `pci_requirements.yaml` file with the new control's details.
+2.  **Run the Generator:** Run the rule generator from the `compliance_agent` directory:
+    ```bash
+    python rule_generator.py
+    ```
+3.  **Implement the Logic:** Copy the generated Python code from the console into `rules_engine.py` and implement the `validation_logic`.
 
 ## Running Tests
 
