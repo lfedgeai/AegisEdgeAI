@@ -28,45 +28,6 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
 
 ---
 
-## 📖 End‑to‑End Phases (with TPM/vTPM‑resident keys)
-
-### Outermost ring: Bare‑metal SPIRE agent SVID  
-
-**Phase 0: Host attestation and BM SVID issuance**  
-- **Initiate:** BM SPIRE agent requests its node SVID from SPIRE server.  
-- **Comms:** mTLS (BM SPIRE agent ↔ SPIRE server) using a **private key generated and stored in the physical TPM**.  
-- **Server action:** SPIRE server issues a fresh nonce.  
-- **Evidence:** BM SPIRE agent asks Keylime agent to produce a TPM quote with that nonce in `extraData`, plus IMA runtime measurements and optional GPU/geolocation plugins.  
-- **TPM access:** `/dev/tpm0` (host physical TPM).  
-- **Verification:** Keylime verifier validates EK/AK chain, PCRs, IMA allowlist, event logs, and nonce binding.  
-- **Result:**  SPIRE server issues a BM SVID
-- **Chain:** BM SVID is anchored to SPIRE CA and becomes the parent reference for VM SVIDs.  
-
----
-
-### Outer ring: VM attestation and VM SVID  
-
-**Phase 1: VM Host attestation and VM SVID issuance**  
-- **Request:** VM Spire agent initiates “attest‑and‑SVID”.  
-- **Comms:** UDS (VM spire agent ↔ VM shim), vTPM proxy socket (VM shim ↔ BM SPIRE agent), mTLS (BM SPIRE agent ↔ SPIRE server).
-- **Server action:** SPIRE server issues a fresh nonce. 
-- **TPM access:** `/dev/tpm0` inside VM (vTPM).  
-- **Evidence:** VM quote, AK pub, PCRs, event logs, `vm_claims_digest`, VM metadata.  
-- **Result:**  SPIRE server issues a VM SVID, **including a reference to the BM SVID** 
-- **Chain:** Challenge is authenticated under BM SVID, binding VM SVID issuance to the host’s attested identity.  
-
----
-
-### Inner ring: Workload identity and key release  
-
-**Phase 2: Workload SVID issuance**  
-- **Request:** Workload asks VM SPIRE agent for identity.  
-- **Comms:** UDS (workload ↔ VM SPIRE agent), mTLS (VM SPIRE agent ↔ SPIRE server using a **vTPM‑resident key**).  
-- **Server action:** SPIRE server issues a fresh nonce.  
-- **Selectors:** VM SPIRE agent collects workload selectors (UID, cgroup, labels) and binds the nonce into the request.  
-- **Result:** SPIRE server issues workload SVID (short TTL), **including a reference to the VM SVID**.
-- **Chain:** Workload SVID → VM SVID → BM SVID → SPIRE CA.
-
 ## System requirements
 
 Systems where this architecture can be implemented include:
