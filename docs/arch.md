@@ -1,6 +1,6 @@
 # Unified workload identity - End-to-end flow with three rings and communication mechanisms - work in progress
 
-This architecture advances zero‑trust attestation by unifying a three‑ring trust model spanning the host layer, the virtual machine layer, and the workload layer; introducing a role inversion between Kata and SPIRE agents for clearer auditability; and mapping all communications and device paths explicitly (UDS, vsock, mTLS, TPM access). It strengthens the chain of custody by ensuring that all mTLS private keys are non‑exportable and resident in TPM or vTPM hardware roots of trust, so attestation evidence and operational identities are inseparably bound to the same silicon.
+This architecture advances zero‑trust attestation by unifying a three‑ring trust model spanning the host layer, the virtual machine layer, and the workload layer; and mapping all communications and device paths explicitly (UDS, vsock, mTLS, TPM access). It strengthens the chain of custody by ensuring that all mTLS private keys are non‑exportable and resident in TPM or vTPM hardware roots of trust, so attestation evidence and operational identities are inseparably bound to the same silicon.
 
 To address weaknesses in bearer and proof‑of‑possession tokens, it introduces Proof of Residency (PoR) — binding workload identity with host hardware identity and policy — and Proof of Geofencing (PoG) — extending PoR with GNSS or mobile sensor evidence to prove location.
 
@@ -41,33 +41,20 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
 ### Summary of Novelties
 
 #### Three-Ring Trust Model
-- **Outermost ring (BM SVID):** Bare‑metal SPIRE agent itself is attested and issued an SVID, anchored in host TPM + IMA evidence including geo-location if available. Its **mTLS private key is generated and sealed inside the physical TPM** (via the SPIRE TPM plugin).
-- **Outer ring (VM SVID):** VM attestation fuses vTPM quotes with host TPM quotes in a single session, ensuring replay protection and launch binding. The **VM SPIRE agent and Kata agent use vTPM‑resident keys for mTLS** to the SPIRE server and Keylime verifier.
-- **Inner ring (workload SVID):** Workload SVIDs are issued only if the VM SVID is valid, and KBS secrets are released only to workloads with valid workload SVIDs. Workload SVID issuance is authenticated by the VM SPIRE agent using its vTPM‑resident key.
-
-#### Role Inversion for Clarity
-- **VM Kata agent:** Dedicated to attestation collection (vTPM quotes, vm_claims_digest, evidence relay).
-- **VM SPIRE agent:** Repurposed as the container runtime and identity broker, consuming the VM SVID and issuing workload SVIDs. Its mTLS key is vTPM‑resident, ensuring non‑exportability.
+- **Outermost ring (BM SVID):** Bare‑metal SPIRE agent itself is attested and issued an SVID, anchored in host TPM + IMA evidence including geo-location if available. Its **mTLS private key is resident in the physical TPM** (via the SPIRE TPM plugin).
+- **Outer ring (VM SVID):** The **VM SPIRE agent (Kata agent is collapsed into VM SPIRE agent) use vTPM‑resident keys for mTLS** to connect to the SPIRE server. VM svid is issued only BM svid is valid.
+- **Inner ring (workload SVID):** Workload SVID issuance is authenticated by the VM SPIRE agent. Workload SVIDs are issued only if the VM SVID is valid, and KBS secrets are released only to workloads with valid workload SVIDs.
 
 #### Explicit Comms and Device Paths
-- **UDS** inside the VM (workload ↔ Kata agent, Kata agent ↔ VM SPIRE agent)
+- **UDS** inside the VM (workload ↔ VM SPIRE agent; VM SPIRE agent ↔ VM shim)
 - **vsock** between VM shim and BM SPIRE agent
 - **mTLS** for all SPIRE server, Keylime verifier, and KBS interactions, with **private keys anchored in TPM/vTPM**
 - **TPM device access:** `/dev/tpm0` for vTPM inside VM and physical TPM on host
 
-#### Nonce-Anchored Freshness and Fusion
-- Server‑issued `session_id`, `nonce_host`, and `nonce_vm` are cryptographically bound into both host and VM quotes.
-- Evidence is fused at the BM SPIRE agent, signed with its **TPM‑resident mTLS key**, and verified as a single bundle.
-
-#### Policy-Driven Selectors and Key Scoping
-- VM SVIDs are tied to fused selectors (host AK, VM AK, PCRs, VM image, sandbox config).
-- Workload SVIDs inherit trust from VM SVIDs.
-- KBS keys are released only to workloads with valid workload SVIDs, scoped for one‑time use and short TTL.
-
 #### Trust Chain and Cryptographic Inheritance
-- BM SVID → Root: Issued after host attestation, anchored to SPIRE CA, **signed with a TPM‑resident key**.
+- BM SVID → Root: Issued after host attestation, anchored to SPIRE CA, **signed with a physical TPM‑resident key**.
 - VM SVID → BM SVID: Issued only if BM SVID is valid; includes a reference to the BM SVID, binding VM identity to its attested host. **VM SPIRE agent authenticates with a vTPM‑resident key.**
-- Workload SVID → VM SVID: Issued only if VM SVID is valid; includes a reference to the VM SVID, creating a transitive link back to the BM SVID. **Workload SVID requests are authenticated with the VM agent’s vTPM key.**
+- Workload SVID → VM SVID: Issued only if VM SVID is valid; includes a reference to the VM SVID, creating a transitive link back to the BM SVID. **Workload SVID requests are authenticated with the VM SPIRE agent’s vTPM key.**
 - KBS enforcement: Validates the full chain before releasing scoped keys, ensuring that every workload secret is cryptographically rooted in host attestation.
 
 #### Residency and Geofencing Proofs
