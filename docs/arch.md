@@ -83,7 +83,7 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
 **Phase 0: Host attestation and BM SVID issuance**  
 - **Initiate:** BM SPIRE agent requests its node SVID from SPIRE server.  
 - **Comms:** mTLS (BM SPIRE agent ↔ SPIRE server) using a **private key generated and sealed in the physical TPM**.  
-- **Nonce:** SPIRE server issues a fresh nonce for BM attestation.  
+- **Server action:** SPIRE server issues a fresh nonce for BM attestation.  
 - **Evidence:** BM SPIRE agent asks Keylime agent to produce a TPM quote with that nonce in `extraData`, plus IMA runtime measurements and optional GPU/geolocation plugins.  
 - **TPM access:** `/dev/tpm0` (host physical TPM).  
 - **Verification:** Keylime verifier validates EK/AK chain, PCRs, IMA allowlist, event logs, and nonce binding.  
@@ -96,34 +96,25 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
 
 ### Outer ring: VM attestation and VM SVID  
 
-**Phase 1: Challenge issuance (server‑anchored nonces)**  
-- **Request:** VM Kata agent initiates “attest‑and‑SVID”.  
-- **Comms:** UDS (workload ↔ Kata agent), UDS (Kata agent ↔ VM shim), vsock (VM shim ↔ BM SPIRE agent), mTLS (BM SPIRE agent ↔ SPIRE server).  
-- **Server action:** SPIRE server issues `session_id`, `nonce_host`, `nonce_vm`, `expires_at`, and a signed challenge token.  
-- **Conditional:**  
+**Phase 1: VM Host attestation and VM SVID issuance**  
+- **Request:** VM Spire agent initiates “attest‑and‑SVID”.  
+- **Comms:** UDS (VM spire agent ↔ VM shim), vsock (VM shim ↔ BM SPIRE agent), mTLS (BM SPIRE agent ↔ SPIRE server).
+- **Server action:** SPIRE server issues `session_id`, `nonce_vm`, `expires_at`, and a signed challenge token.  
+- **TPM access:** `/dev/tpm0` inside VM (vTPM).  
+- **Evidence:** VM quote, AK pub, PCRs, event logs, `vm_claims_digest`, VM metadata.  
+- **Result:**  
   - If VM SVID expired/revoked: Full challenge/nonce exchange is triggered.  
   - If VM SVID valid: Skip challenge; reuse existing VM SVID.  
 - **Chain:** Challenge is authenticated under BM SVID, binding VM SVID issuance to the host’s attested identity.  
-
-**Phase 2: VM quote (vTPM)**  
-- **Compute:** `vm_claims_digest` over VM measured boot claims (PCRs, VMID, image digest, kata sandbox config hash).  
-- **Quote:** `TPM2_Quote(extraData = H(session_id || nonce_vm || vm_claims_digest))`.  
-- **TPM access:** `/dev/tpm0` inside VM (vTPM).  
-- **Comms:** UDS (Kata agent → VM shim), vsock (VM shim → BM SPIRE agent).  
-- **Evidence:** VM quote, AK pub, PCRs, event logs, `vm_claims_digest`, VM metadata.  
-- **Conditional:**  
-  - If VM SVID expired/revoked: Full VM quote collected.  
-  - If VM SVID valid: Skip VM quote; reuse existing VM SVID.  
-- **Chain:** Evidence is relayed under BM SVID, ensuring VM SVID is cryptographically tied to BM SVID.  
 
 ---
 
 ### Inner ring: Workload identity and key release  
 
-**Phase 5: Workload SVID issuance**  
+**Phase 2: Workload SVID issuance**  
 - **Request:** Workload asks VM SPIRE agent for identity.  
 - **Comms:** UDS (workload ↔ VM SPIRE agent), mTLS (VM SPIRE agent ↔ SPIRE server using a **vTPM‑resident key**).  
-- **Nonce:** SPIRE server issues a fresh nonce for workload attestation.  
+- **Server action:** SPIRE server issues a fresh nonce for workload attestation.  
 - **Selectors:** VM SPIRE agent collects workload selectors (UID, cgroup, labels) and binds the nonce into the request.  
 - **Result:** SPIRE server issues workload SVID (short TTL), **including a reference to the VM SVID**.
 - **Chain:** Workload SVID → VM SVID → BM SVID → SPIRE CA.
