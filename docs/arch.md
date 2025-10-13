@@ -69,7 +69,7 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
 
 **Phase 0: Host attestation and BM SVID issuance**  
 - **Initiate:** BM SPIRE agent requests its node SVID from SPIRE server.  
-- **Comms:** mTLS (BM SPIRE agent ↔ SPIRE server) using a **private key generated and sealed in the physical TPM**.  
+- **Comms:** mTLS (BM SPIRE agent ↔ SPIRE server) using a **private key generated and stored in the physical TPM**.  
 - **Server action:** SPIRE server issues a fresh nonce for BM attestation.  
 - **Evidence:** BM SPIRE agent asks Keylime agent to produce a TPM quote with that nonce in `extraData`, plus IMA runtime measurements and optional GPU/geolocation plugins.  
 - **TPM access:** `/dev/tpm0` (host physical TPM).  
