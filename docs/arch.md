@@ -116,26 +116,6 @@ This architecture unifies the outermost ring (BM SPIRE agent SVID), outer ring (
   - If VM SVID valid: Skip VM quote; reuse existing VM SVID.  
 - **Chain:** Evidence is relayed under BM SVID, ensuring VM SVID is cryptographically tied to BM SVID.  
 
-**Phase 3: Host quote (physical TPM via Keylime)**  
-- **Request:** BM SPIRE agent asks Keylime agent for host quote.  
-- **Quote:** `TPM2_Quote(extraData = H(session_id || nonce_host || host_claims_digest))`.  
-- **TPM access:** `/dev/tpm0` (host physical TPM).  
-- **Comms:** local RPC or mTLS (BM SPIRE agent ↔ Keylime agent).  
-- **Evidence:** Host quote, AK/EK chain, PCRs, IMA allowlist, event logs, `host_claims_digest`.  
-- **Conditional:**  
-  - If VM SVID expired/revoked: Fresh host quote collected.  
-  - If VM SVID valid: Skip host quote; reuse existing VM SVID.  
-- **Chain:** Host quote shares the same `session_id`, proving linkage to BM SVID context.  
-
-**Phase 4: Evidence bundling and verification**  
-- **Bundle:** BM SPIRE agent aggregates VM evidence + host evidence + server challenge token and signs the bundle with its **TPM‑resident mTLS key**.  
-- **Comms:** mTLS (BM SPIRE agent → SPIRE server), mTLS (SPIRE server ↔ Keylime verifier).  
-- **Verify:** Keylime verifier checks EK/AK chains, PCR profiles, IMA allowlists, event logs, nonce bindings, and shared `session_id`.  
-- **Result:**  
-  - If both host and VM pass: SPIRE server issues VM SVID (short TTL), **issued with an explicit reference to the BM SVID (parent SPIFFE ID or cert hash)**.  
-  - If VM SVID valid: Skip; reuse existing VM SVID.  
-- **Chain:** VM SVID → BM SVID → SPIRE CA.  
-
 ---
 
 ### Inner ring: Workload identity and key release  
