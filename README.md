@@ -193,7 +193,7 @@ The MNO integrates a ZKP mechanism into its RAN orchestrator to generate a verif
 
 Prover - MNO RAN Orchestrator:
 - Mechanism: Inputs the proprietary model weights ($W$) and the compliance logic ($A$) into a ZKP circuit as a private witness.
-- Statement proven (public): The logic contains a constraint that ensures $$\text{IF } \text{EmergencyTraffic} > T_{\text{threshold}} \text{ THEN } \text{Output} \ne \text{ "Power Down"}$$
+- Statement proven (public): The logic contains a constraint that ensures - $$\text{IF } \text{EmergencyTraffic} > T_{\text{threshold}} \text{ THEN } \text{Output} \ne \text{ "Power Down"}$$
 
 **Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
 
