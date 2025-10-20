@@ -198,6 +198,7 @@ Prover - MNO RAN Orchestrator:
 Verifier - Regulator:
 - Mechanism: Receives the small, compact ZKP and the public compliance statement.
 - Statement proven (public): The verifier is mathematically certain the safety protocol is implemented in the production code without learning the proprietary algorithm $W$ or $A$.
+  
 
 **Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
 
