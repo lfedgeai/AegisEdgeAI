@@ -142,6 +142,23 @@ Current security approaches for inference applications, secret stores, system ag
 
 - **Data provenance blind spots** — AI outputs lose regulatory and operational value if the hardware and software state producing them can’t be cryptographically tied to a known‑good baseline.
 
+## Problem Statement - AI RAN - Application Security
+
+### AI RAN Use Case: Verifiable Emergency Protocol Adherence
+This scenario addresses the critical need for a centralized AI system to cryptographically prove it is adhering to mandatory regulatory safety rules without revealing proprietary algorithms.
+
+### The Problem: Repudiation Gap
+The core problem is the lack of trust between the regulated entity (the Mobile Network Operator, or MNO) and the regulator/auditor regarding the AI's autonomous decision-making.
+
+Threat:
+- Repudiation of Compliance: The MNO cannot cryptographically prove its proprietary, centralized AI optimization algorithm follows legally mandated safety rules (e.g., Emergency Service Priority).
+
+Risk:
+- Safety Violation & Fine: The AI might prioritize power saving over network stability, inadvertently scheduling a base station shutdown when a high-priority emergency services channel (e.g., e-call, public safety communications) is active.
+
+Disclosure conflict:
+- The regulator demands assurance that the AI logic contains the safety constraint, but the MNO cannot reveal its entire, proprietary Power-Saving Algorithm (the core business IP) to the auditor.
+
 ## Solution Overview
 
 Building on the [IETF Verifiable Geofencing draft](https://github.com/nedmsmith/draft-klspa-wimse-verifiable-geo-fence/blob/main/draft-lkspa-wimse-verifiable-geo-fence.md) — which defines an architecture for cryptographically verifiable geofencing and residency proofs — this design offers an **edge‑focused, production‑ready microservice blueprint** for secure, verifiable data flows (e.g., operational metrics, federated learning) at the edge.
