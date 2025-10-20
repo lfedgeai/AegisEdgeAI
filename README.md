@@ -27,7 +27,7 @@
 - [Pranav Kirtani](https://github.com/pranavkirtani) (Independent) 
 - [Clyde D'Cruz](https://github.com/clydedacruz) (Independent)
   
-## Problem Statement - Common Threats
+## Problem Statement - Common Threats - Infrastructure Security
 
 Current security approaches for inference applications, secret stores, system agents, AI agents, and model repositories face **critical gaps** — gaps amplified in **edge AI** deployments and further complicated by emerging **multi‑agent** and **Model Context Protocol (MCP)** interoperability patterns. These challenges — documented in the [IETF Verifiable Geofencing draft](https://github.com/nedmsmith/draft-klspa-wimse-verifiable-geo-fence/blob/main/draft-lkspa-wimse-verifiable-geo-fence.md), and summarize below, which outlines broad use cases and deployment patterns, including edge computing — are summarized below.
 
@@ -74,7 +74,7 @@ Current security approaches for inference applications, secret stores, system ag
 
 5. **Data Provenance Blind Spots** Edge sensors, inference agents, and MCP‑mediated tool calls generate high‑value data for regulatory or safety‑critical decisions. Without binding *what* was measured to *where* and *by which attested agent/device*, compliance and tamper detection are impossible.
 
-## Problem Statement - AI Model Placement‑Driven Threats
+## Problem Statement - AI Model Placement‑Driven Threats - Infrastructure Security
 
 ### Local Model Placement
 
@@ -116,7 +116,7 @@ Current security approaches for inference applications, secret stores, system ag
 
 - **Attack surface diversity** Edge systems integrate heterogeneous hardware, firmware, and software stacks — creating multiple, intersecting vectors for compromise.
 
-## Problem Statement – Hardware and Software Supply Chain
+## Problem Statement – Hardware and Software Supply Chain - Infrastructure Security
 
 ### Hardware Supply Chain Threats
 
@@ -165,7 +165,7 @@ Building on the [IETF Verifiable Geofencing draft](https://github.com/nedmsmith/
 
 This approach begins addressing the critical security gaps in current inference, agent, and model‑repository patterns, while remaining open to further extension and innovation.
 
-### 1. Proof of Residency (PoR)
+### Proof of Residency (PoR)
 
 **Challenge addressed:** Weak bearer/proof‑of‑possession token models for system and AI agents in sensitive edge contexts.
 
@@ -175,7 +175,7 @@ This approach begins addressing the critical security gaps in current inference,
 - **Approved host platform hardware identity** (e.g., TPM PKI key)
 - **Platform policy** (e.g., Linux kernel version, measured boot state)
 
-### 2. Proof of Geofencing (PoG)
+### Proof of Geofencing (PoG)
 
 **Challenge addressed:** Token misuse risks and unreliable Source IP checks for location‑sensitive edge workloads.
 
@@ -185,21 +185,9 @@ This approach begins addressing the critical security gaps in current inference,
 
 This produces a PoG workload certificate/token, enabling verifiable enforcement of geographic policy at the workload level.
 
-### 3. Addressing Hardware and Software Supply Chain Threats (work in progress)
+### Addressing Hardware and Software Supply Chain Threats (work in progress)
 To mitigate the hardware and software supply chain threats above, AegisEdgeAI adopts a layered trust model that binds device identity, hardware integrity, and runtime state into a continuous attestation chain from manufacturing through operation.
-
-### 4. Addressing AI RAN Threats (work in progress)
-The MNO integrates a ZKP mechanism into its RAN orchestrator to generate a verifiable, non-repudiable proof of compliance.
-
-Prover - MNO RAN Orchestrator:
-- Mechanism: Inputs the proprietary model weights ($W$) and the compliance logic ($A$) into a ZKP circuit as a private witness.
-- Statement proven (public): The logic contains a constraint that ensures - $$\text{IF } \text{EmergencyTraffic} > T_{\text{threshold}} \text{ THEN } \text{Output} \ne \text{ "Power Down"}$$
-
-Verifier - Regulator:
-- Mechanism: Receives the small, compact ZKP and the public compliance statement.
-- Statement proven (public): The verifier is mathematically certain the safety protocol is implemented in the production code without learning the proprietary algorithm $W$ or $A$.
   
-
 **Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
 
 - **Approach:** At boot, the server's hardware management plane—anchored by the BMC—collects a signed inventory of components and firmware (NICs, GPUs, DIMMs, BIOS, etc.) via secure, out‑of‑band protocols (e.g., Redfish + Secured Component Verification). This inventory is compared against a purchase‑order‑bound allowlist maintained in the attestation policy service.
@@ -224,7 +212,25 @@ Verifier - Regulator:
 
 - **Edge Benefit:** Sustains runtime trust for AI workloads, ensuring inference and control loops run on verified software stacks.
 
-## Progress
+### Addressing AI RAN Threats using Zero Knowledge Proof (work in progress)
+The MNO integrates a Zero Knowledge Proof (ZKP) mechanism into its RAN orchestrator to generate a verifiable, non-repudiable proof of compliance without any vendor proprietary IP disclosure conflicts.
+
+Prover - MNO RAN Orchestrator:
+- Mechanism: Inputs the proprietary model weights ($W$) and the compliance logic ($A$) into a ZKP circuit as a private witness.
+- Statement proven (public): The logic contains a constraint that ensures - $$\text{IF } \text{EmergencyTraffic} > T_{\text{threshold}} \text{ THEN } \text{Output} \ne \text{ "Power Down"}$$
+
+Verifier - Regulator:
+- Mechanism: Receives the small, compact ZKP and the public compliance statement.
+- Statement proven (public): The verifier is mathematically certain the safety protocol is implemented in the production code without learning the proprietary algorithm $W$ or $A$.
+
+### Unified Application + Infrastrcuture secrity value for AI RAN by combining Proof of Residency (PoR), Proof of Geofencing (PoG) and Zero Knowledge Proof (ZKP)
+- Verifiable infrastrcuture
+  - PoR certifies which trusted host(s) the AI RAN model which generated zero knowledge proof of the confidential configuration was running
+  - PoG certifies the trusted geolocation of the trusted host(s)
+- Verifiable application
+  - ZKP generates non-repudiable proof of compliance without any vendor proprietary IP disclosure conflicts which can be verified by a 3rd party regulator.
+  
+## Implementation Progress
 
 ### Edge data collection
 
