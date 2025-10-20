@@ -223,7 +223,7 @@ Verifier - Regulator:
 - Mechanism: Receives the small, compact ZKP and the public compliance statement.
 - Statement proven (public): The verifier is mathematically certain the safety protocol is implemented in the production code without learning the proprietary algorithm $W$ or $A$.
 
-### Unified Application + Infrastrcuture secrity value for AI RAN by combining Proof of Residency (PoR), Proof of Geofencing (PoG) and Zero Knowledge Proof (ZKP)
+### Unified Application + Infrastrcuture security value for AI RAN - Combining Proof of Residency (PoR), Proof of Geofencing (PoG) and Zero Knowledge Proof (ZKP)
 - Verifiable infrastrcuture
   - PoR certifies which trusted host(s) the AI RAN model which generated zero knowledge proof of the confidential configuration was running
   - PoG certifies the trusted geolocation of the trusted host(s)
