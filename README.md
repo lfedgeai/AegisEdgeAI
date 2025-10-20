@@ -195,6 +195,10 @@ Prover - MNO RAN Orchestrator:
 - Mechanism: Inputs the proprietary model weights ($W$) and the compliance logic ($A$) into a ZKP circuit as a private witness.
 - Statement proven (public): The logic contains a constraint that ensures - $$\text{IF } \text{EmergencyTraffic} > T_{\text{threshold}} \text{ THEN } \text{Output} \ne \text{ "Power Down"}$$
 
+Verifier - Regulator:
+- Mechanism: Receives the small, compact ZKP and the public compliance statement.
+- Statement proven (public): The verifier is mathematically certain the safety protocol is implemented in the production code without learning the proprietary algorithm $W$ or $A$.
+
 **Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
 
 - **Approach:** At boot, the server's hardware management plane—anchored by the BMC—collects a signed inventory of components and firmware (NICs, GPUs, DIMMs, BIOS, etc.) via secure, out‑of‑band protocols (e.g., Redfish + Secured Component Verification). This inventory is compared against a purchase‑order‑bound allowlist maintained in the attestation policy service.
