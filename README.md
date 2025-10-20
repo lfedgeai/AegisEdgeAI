@@ -188,6 +188,13 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 ### 3. Addressing Hardware and Software Supply Chain Threats (work in progress)
 To mitigate the hardware and software supply chain threats above, AegisEdgeAI adopts a layered trust model that binds device identity, hardware integrity, and runtime state into a continuous attestation chain from manufacturing through operation.
 
+### 4. Addressing AI RAN Threats (work in progress)
+The MNO integrates a ZKP mechanism into its RAN orchestrator to generate a verifiable, non-repudiable proof of compliance.
+
+Prover - MNO RAN Orchestrator:
+- Mechanism: Inputs the proprietary model weights ($W$) and the compliance logic ($A$) into a ZKP circuit as a private witness.
+- Statement proven (public): The logic contains a constraint that ensures $$\text{IF } \text{EmergencyTraffic} > T_{\text{threshold}} \text{ THEN } \text{Output} \ne \text{ "Power Down"}$$
+
 **Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
 
 - **Approach:** At boot, the server's hardware management plane—anchored by the BMC—collects a signed inventory of components and firmware (NICs, GPUs, DIMMs, BIOS, etc.) via secure, out‑of‑band protocols (e.g., Redfish + Secured Component Verification). This inventory is compared against a purchase‑order‑bound allowlist maintained in the attestation policy service.
