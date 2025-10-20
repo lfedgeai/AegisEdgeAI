@@ -230,6 +230,9 @@ Verifier - Regulator:
 - Verifiable application
   - ZKP generates non-repudiable proof of compliance without any vendor proprietary IP disclosure conflicts which can be verified by a 3rd party regulator.
   
+### Note
+The current solutions don't include Trusted Execution Environments (TEEs) which can address threats such as 1) Malicious or Compromised Administrator 2) Kernel/Hypervisor Vulnerabilities 3) Side channel attacks for scraping system memory 
+
 ## Implementation Progress
 
 ### Edge data collection
