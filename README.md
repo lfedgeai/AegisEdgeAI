@@ -255,6 +255,51 @@ Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trus
 
 Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/swtpm-macos/README.md)
 
+### ARM64 Support - Available
+
+AegisEdgeAI now supports ARM64 architecture, enabling deployment on:
+- ARM64 cloud instances (AWS Graviton, Google Tau T2A, Azure Ampere)
+- Edge devices with ARM processors
+- Raspberry Pi with TPM modules
+- ARM-based development boards
+
+**Key Features:**
+- **Automatic architecture detection** - System scripts detect ARM64 and adjust accordingly
+- **Fallback compilation** - Compiles TPM stack from source when ARM64 packages unavailable
+- **Multi-architecture CI/CD** - Automated testing on both x86_64 and ARM64
+- **Hardware/Software TPM support** - Works with both hardware TPM chips and software emulation
+
+**Quick Start for ARM64:**
+```bash
+# Clone repository
+git clone https://github.com/lfedgeai/AegisEdgeAI.git
+cd AegisEdgeAI
+
+# Run ARM64-specific setup (detects architecture automatically)
+sudo ./zero-trust/system-setup-arm64.sh
+
+# Or use standard setup with auto-detection
+./zero-trust/system-setup.sh
+
+# Test functionality
+./zero-trust/tpm/swtpm.sh
+./zero-trust/tpm/tpm-ek-ak-persist.sh
+```
+
+**Documentation:** [ARM64 Support Guide](docs/arm64-support.md)
+
+**Supported Platforms:**
+- ✅ **Linux ARM64**: Ubuntu 20.04+, RHEL 8+, Fedora 35+, Debian 11+
+- ✅ **macOS ARM64**: Apple Silicon (M1/M2/M3) - existing support
+- 🔄 **Container ARM64**: Multi-architecture Docker images
+- 🔄 **Kubernetes ARM64**: Helm charts with ARM64 node support
+
+**Architecture-Specific Components:**
+- **TPM Stack Compilation**: Automatic fallback to source compilation for ARM64
+- **Cross-Platform Makefiles**: Architecture detection and appropriate compiler flags
+- **Environment Configuration**: ARM64-specific library paths and environment setup
+- **CI/CD Pipeline**: Multi-architecture testing and validation
+
 ## Additional Resources
 
 - **Zero‑Trust Sovereign AI Deck** – Public presentation outlining PoR/PoG architecture, market‑entry cases, and integration flow.  

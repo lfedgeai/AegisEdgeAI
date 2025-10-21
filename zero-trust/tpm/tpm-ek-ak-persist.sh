@@ -6,17 +6,44 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- CONFIG ---
 export SWTPM_PORT=2321
-export PREFIX="/opt/homebrew"
 
-if [[ "$(uname)" == "Darwin" ]]; then
-  export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
-  export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
-else
-  export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
-fi
+# Detect architecture and OS for appropriate configuration
+ARCH=$(uname -m)
+OS=$(uname -s)
 
-#EK_HANDLE=0x81010001
-#AK_HANDLE=0x8101000A
+case "$OS" in
+  Darwin)
+    # macOS (both Intel and Apple Silicon)
+    export PREFIX="/opt/homebrew"
+    export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
+    export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+    ;;
+  Linux)
+    # Linux (x86_64 and ARM64)
+    case "$ARCH" in
+      aarch64|arm64)
+        # ARM64 Linux - may have custom installation paths
+        export PREFIX="/usr/local"
+        export LD_LIBRARY_PATH="${PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+        export PATH="${PREFIX}/bin:${PATH}"
+        echo "[INFO] ARM64 Linux detected - using PREFIX=${PREFIX}"
+        ;;
+      *)
+        # x86_64 and other Linux architectures
+        export PREFIX="/usr"
+        ;;
+    esac
+    export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+    ;;
+  *)
+    echo "[WARN] Unknown OS: $OS - using default configuration"
+    export PREFIX="/usr"
+    export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+    ;;
+esac
+
+EK_HANDLE=0x81010001
+AK_HANDLE=0x8101000A
 
 echo "[STEP] Using TPM2TOOLS_TCTI=$TPM2TOOLS_TCTI"
 echo "[STEP] EK handle will be $EK_HANDLE"
