@@ -5,4 +5,4 @@ The Scenario: Fidelity is deploying a new Retirement Advice Agent (RAA) to both 
 Fidelity needs to prove that the propritary system prompt has not been tampered with in the MLOps pipeline before it handles PII and financial secrets.
 
 ## Solution
-The RAA generates a ZKP proving that its proprietary System Prompt contains the mandated compliance rules (e.g., "Always redact SSNs") without revealing the secret logic itself. This is critical for auditing AI Safety10.
+The RAA generates a ZKP proving that its proprietary System Prompt contains the mandated compliance rules (e.g., "Always redact SSNs") without revealing the secret logic itself. This is critical for auditing AI Safety.
