@@ -2,7 +2,7 @@
 The Scenario: A Financial Services company is deploying a new Retirement Advice Agent (RAA) to both its internal On-Prem Data Centers (for BRT/Recordkeeping data) and its Cloud region (for high-availability customer-facing interfaces). The RAA uses an LLM that must access encrypted customer records.
 
 ## The Problem 
-Financial services company needs to prove to regulators that the propritary system prompt has not been tampered with in the MLOps pipeline before it handles PII and financial secrets.
+Financial services company needs to prove to regulators that the propritary business logic (AI model system prompt etc.) has not been tampered with in the MLOps pipeline.
 
 ## Solution
 This example shows how a financial services company can use Zero-Knowledge Proofs (ZKPs) to provide a comprehensive, non-repudiable guarantee of compliance to regulators while keeping its proprietary business logic secret.
