@@ -8,7 +8,7 @@ Financial services company needs to prove to regulators that the propritary syst
 This example shows how a financial services company can use Zero-Knowledge Proofs (ZKPs) to provide a comprehensive, non-repudiable guarantee of compliance to regulators while keeping its proprietary business logic secret.
 
 ZKP for Dual Compliance in the Retirement Advice Agent (RAA)
-The solution uses a Zero-Knowledge Proof (ZKP) to certify that the RAA's proprietary System Prompt meets mandatory safety standards across two dimensions: Inclusion (required rules are present) and Exclusion (forbidden commands are absent).
+* The solution uses a Zero-Knowledge Proof (ZKP) to certify that the RAA's proprietary System Prompt meets mandatory safety standards across two dimensions: Inclusion (required rules are present) and Exclusion (forbidden commands are absent).
 
 1. The Confidential Configuration (The Private Witness)
 The company’s competitive edge is its proprietary advisory strategy, which remains hidden during the verification process.
