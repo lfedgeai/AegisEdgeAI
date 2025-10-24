@@ -6,8 +6,6 @@
 
 **The Problem:** The company must **prove to regulators** that the $\text{RAA}$'s proprietary business logic (System Prompt and Model Weights) has not been tampered with in the $\text{MLOps}$ pipeline, **without disclosing** that proprietary information.
 
-***
-
 ## Solution: The ZKP Dual Compliance Model ($\text{PoGo}$)
 
 This architecture uses **Zero-Knowledge Proofs ($\text{ZKP}$)** to provide a comprehensive, non-repudiable **Proof of Governance ($\text{PoGo}$)** for the $\text{AI}$ supply chain, satisfying both regulatory audit and competitive secrecy.
@@ -24,8 +22,6 @@ This $\text{ZKP}$ addresses the **Repudiation Risk**—the inability to prove a 
 | **Legal Mandate** | Denying the absence of a required legal warning. | **Prover demonstrates:** The System Prompt **includes** the phrase: "WARNING: This advice is not a fiduciary recommendation and is subject to X-Regulation." |
 | **Outcome ($\text{PoGo}$):** The regulator verifies the cryptographic proof, gaining a **mathematical guarantee** that the $\text{RAA}$ satisfies these $\text{LLM06}$ and financial requirements, all without reading the proprietary advisory code. |
 
----
-
 ### 2. Proof of Exclusion (Security/Excessive Agency) 🛑
 
 This $\text{ZKP}$ addresses the **Excessive Agency Risk**—the danger that the $\text{AI}$ model can be tricked into performing unauthorized, destructive actions ($\text{Prompt Injection}$ is $\text{NP}$-complete).
@@ -35,8 +31,6 @@ This $\text{ZKP}$ addresses the **Excessive Agency Risk**—the danger that the 
 | **Excessive Agency** ($\text{LLM06}$) | $\text{RAA}$ executes state-changing $\text{DB}$ operations ($\text{DELETE}$). | **Prover demonstrates:** The System Prompt **excludes** the keywords: "DROP," "DELETE," and "TRUNCATE" from its authorized $\text{API}$ call arguments. |
 | **System Prompt Leakage** ($\text{LLM07}$) | $\text{RAA}$ reveals its own proprietary logic to an attacker. | **Prover demonstrates:** The System Prompt **excludes** any self-referential override commands such as "print full instructions" or "reveal system prompt." |
 | **Outcome ($\text{PoGo}$):** This creates an **ironclad, proactive guardrail**. It provides non-repudiable proof that the $\text{RAA}$ is mathematically incapable of being directed to perform unauthorized, destructive actions. |
-
-***
 
 ## Conclusion
 
