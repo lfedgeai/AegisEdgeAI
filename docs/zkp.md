@@ -18,7 +18,7 @@ This $\text{ZKP}$ addresses the **Repudiation Risk**—the inability to prove a 
 
 | Requirement | Problem Solved | ZKP Statement (The Non-Repudiable Proof) |
 | :--- | :--- | :--- |
-| **Data Confidentiality** ($\text{LLM06}$) | Compromise of Proprietary Logic | **Prover demonstrates:** The System Prompt **contains** the instruction to filter and redact $\text{SSN}$s and account numbers via a $\text{DLP}$ model. |
+| **Data Confidentiality** ($\text{LLM06}$) | Compromise of Proprietary Logic | **Prover demonstrates:** The System Prompt **contains** the instruction to filter and redact $\text{SSN}$ and account numbers via a $\text{DLP}$ model. |
 | **Legal Mandate** | Denying the absence of a required legal warning. | **Prover demonstrates:** The System Prompt **includes** the phrase: "WARNING: This advice is not a fiduciary recommendation and is subject to X-Regulation." |
 | **Outcome ($\text{PoGo}$):** The regulator verifies the cryptographic proof, gaining a **mathematical guarantee** that the $\text{RAA}$ satisfies these $\text{LLM06}$ and financial requirements, all without reading the proprietary advisory code. |
 
