@@ -1,11 +1,43 @@
-# Financial Service Example: The Retirement Advice Agent
-The Scenario: A Financial Services company is deploying a new Retirement Advice Agent (RAA) to both its internal On-Prem Data Centers (for BRT/Recordkeeping data) and its Cloud region (for high-availability customer-facing interfaces). The RAA uses an LLM that must access encrypted customer records.
+# Financial Service Example: The Retirement Advice Agent ($\text{RAA}$)
 
-# The Problem 
-Financial services company needs to prove to regulators that the propritary business logic (AI model system prompt etc.) has not been tampered with in the MLOps pipeline.
+## Scenario & Problem Statement
 
-# ZKP Dual Compliance Model
-ZKP Dual Compliance ModelThis model is a perfect example of advanced governance ($\text{PoGo}$) applied to an $\text{AI}$ supply chain, satisfying both regulatory audit and competitive secrecy.1. Proof of Inclusion (Regulatory Compliance) ✅This ZKP addresses the Repudiation Risk—the inability to prove a safety mechanism exists.Problem Solved: Traditional security means showing the regulator the system prompt code. If that code contains proprietary investment secrets, you've compromised your competitive edge.ZKP Solution: The prover (the financial firm) generates a proof that the massive, proprietary system prompt ($\text{Witness}$) contains specific, mandatory text strings (the $\text{DLP}$ filter instruction and the legal disclaimer).Outcome ($\text{PoGo}$): The regulator verifies the cryptographic proof and gets a mathematical guarantee that the $\text{RAA}$ must sanitize data and issue the legal warning, satisfying $\text{LLM06}$ and general financial regulations, all without ever reading the $\text{RAA}$'s proprietary advisory logic.2. Proof of Exclusion (Security/Excessive Agency) 🛑This ZKP addresses the Excessive Agency Risk—the danger that the $\text{AI}$ model can be tricked into performing unauthorized, destructive actions.Problem Solved: $\text{Prompt injection}$ and $\text{LLM}$ jailbreaking are $\text{NP}$-complete problems. You cannot prevent every possible bad input.ZKP Solution: The prover demonstrates that the system prompt excludes certain highly dangerous, state-changing commands ($\text{DROP}$, $\text{DELETE}$, $\text{TRUNCATE}$).Outcome ($\text{PoGo}$): This acts as an ironclad internal guardrail. It provides non-repudiable proof that the $\text{RAA}$ is mathematically incapable of being instructed to delete the database, regardless of how cleverly an external attacker attempts to trick it. This is a powerful, proactive defense against $\text{LLM06}$ and $\text{LLM07}$ vulnerabilities.
+**The Scenario:** A Financial Services company is deploying a new **Retirement Advice Agent ($\text{RAA}$)**, which utilizes an $\text{LLM}$ to access encrypted customer records. The $\text{RAA}$ operates in a hybrid environment: internal On-Prem Data Centers (for BRT/Recordkeeping) and Cloud regions (for customer interfaces).
 
-# Conclusion
-By using this verifiable dual approach, the financial services company provides a non-repudiable, mathematically sound guarantee of safety to the regulator while fully protecting its proprietary logic.
+**The Problem:** The company must **prove to regulators** that the $\text{RAA}$'s proprietary business logic (System Prompt and Model Weights) has not been tampered with in the $\text{MLOps}$ pipeline, **without disclosing** that proprietary information.
+
+***
+
+## Solution: The ZKP Dual Compliance Model ($\text{PoGo}$)
+
+This architecture uses **Zero-Knowledge Proofs ($\text{ZKP}$)** to provide a comprehensive, non-repudiable **Proof of Governance ($\text{PoGo}$)** for the $\text{AI}$ supply chain, satisfying both regulatory audit and competitive secrecy.
+
+The company's competitive edge—the proprietary advisory strategy—remains hidden as the **Witness** (the secret).
+
+### 1. Proof of Inclusion (Regulatory Compliance) ✅
+
+This $\text{ZKP}$ addresses the **Repudiation Risk**—the inability to prove a safety mechanism exists.
+
+| Requirement | Problem Solved | ZKP Statement (The Non-Repudiable Proof) |
+| :--- | :--- | :--- |
+| **Data Confidentiality** ($\text{LLM06}$) | Compromise of Proprietary Logic | **Prover demonstrates:** The System Prompt **contains** the instruction to filter and redact $\text{SSN}$s and account numbers via a $\text{DLP}$ model. |
+| **Legal Mandate** | Denying the absence of a required legal warning. | **Prover demonstrates:** The System Prompt **includes** the phrase: "WARNING: This advice is not a fiduciary recommendation and is subject to X-Regulation." |
+| **Outcome ($\text{PoGo}$):** The regulator verifies the cryptographic proof, gaining a **mathematical guarantee** that the $\text{RAA}$ satisfies these $\text{LLM06}$ and financial requirements, all without reading the proprietary advisory code. |
+
+---
+
+### 2. Proof of Exclusion (Security/Excessive Agency) 🛑
+
+This $\text{ZKP}$ addresses the **Excessive Agency Risk**—the danger that the $\text{AI}$ model can be tricked into performing unauthorized, destructive actions ($\text{Prompt Injection}$ is $\text{NP}$-complete).
+
+| Security Risk | Problem Solved | ZKP Statement (The Ironclad Guardrail) |
+| :--- | :--- | :--- |
+| **Excessive Agency** ($\text{LLM06}$) | $\text{RAA}$ executes state-changing $\text{DB}$ operations ($\text{DELETE}$). | **Prover demonstrates:** The System Prompt **excludes** the keywords: "DROP," "DELETE," and "TRUNCATE" from its authorized $\text{API}$ call arguments. |
+| **System Prompt Leakage** ($\text{LLM07}$) | $\text{RAA}$ reveals its own proprietary logic to an attacker. | **Prover demonstrates:** The System Prompt **excludes** any self-referential override commands such as "print full instructions" or "reveal system prompt." |
+| **Outcome ($\text{PoGo}$):** This creates an **ironclad, proactive guardrail**. It provides non-repudiable proof that the $\text{RAA}$ is mathematically incapable of being directed to perform unauthorized, destructive actions. |
+
+***
+
+## Conclusion
+
+By leveraging this verifiable dual $\text{ZKP}$ approach, the financial services company provides a **non-repudiable, mathematically sound guarantee of safety** to the regulator while fully **protecting its proprietary business logic**—a critical solution for security architects in the $\text{AI}$ supply chain.
