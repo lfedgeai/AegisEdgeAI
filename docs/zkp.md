@@ -6,7 +6,7 @@
 
 **The Problem:** The company must **prove to regulators** that the $\text{RAA}$'s proprietary business logic (System Prompt and Model Weights) has not been tampered with in the $\text{MLOps}$ pipeline, **without disclosing** that proprietary information.
 
-## Solution: The ZKP Dual Compliance Model ($\text{PoGo}$)
+## Solution: The ZKP Dual Compliance Model
 
 This architecture uses **Zero-Knowledge Proofs ($\text{ZKP}$)** to provide a comprehensive, non-repudiable **Proof of Governance ($\text{PoGo}$)** for the $\text{AI}$ supply chain, satisfying both regulatory audit and competitive secrecy.
 
