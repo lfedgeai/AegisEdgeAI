@@ -2,7 +2,7 @@
 
 ## Scenario & Problem Statement
 
-**The Scenario:** A Financial Services company is deploying a new **Retirement Advice Agent ($\text{RAA}$)**, which utilizes an $\text{LLM}$ to access encrypted customer records. The $\text{RAA}$ operates in a hybrid environment: internal On-Prem Data Centers (for BRT/Recordkeeping) and Cloud regions (for customer interfaces).
+**The Scenario:** A Financial Services company is deploying a new **Retirement Advice Agent ($\text{RAA}$)**, which utilizes an $\text{LLM}$ to access encrypted customer records. The $\text{RAA}$ operates in a hybrid environment: internal On-Prem Data Centers (for Recordkeeping) and Cloud regions (for customer interfaces).
 
 **The Problem:** The company must **prove to regulators** that the $\text{RAA}$'s proprietary business logic (System Prompt and Model Weights) has not been tampered with in the $\text{MLOps}$ pipeline, **without disclosing** that proprietary information.
 
