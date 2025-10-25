@@ -28,8 +28,8 @@ This $\text{ZKP}$ addresses the **Excessive Agency Risk**—the danger that the 
 
 | Security Risk | Problem Solved | ZKP Statement (The Ironclad Guardrail) |
 | :--- | :--- | :--- |
-| **Excessive Agency** ($\text{LLM06}$) | $\text{RAA}$ executes state-changing $\text{DB}$ operations ($\text{DELETE}$). | **Prover demonstrates:** The System Prompt **excludes** the keywords: "DROP," "DELETE," and "TRUNCATE" from its authorized $\text{API}$ call arguments. |
-| **System Prompt Leakage** ($\text{LLM07}$) | $\text{RAA}$ reveals its own proprietary logic to an attacker. | **Prover demonstrates:** The System Prompt **excludes** any self-referential override commands such as "print full instructions" or "reveal system prompt." |
+| **Excessive Agency** ($\text{LLM06}$) | $\text{RAA}$ executes state-changing $\text{DB}$ operations ($\text{DELETE}$). | **Prover demonstrates:** The System Prompt **is designed to exclude** the keywords: "DROP," "DELETE," and "TRUNCATE" from its authorized $\text{API}$ call arguments. |
+| **System Prompt Leakage** ($\text{LLM07}$) | $\text{RAA}$ reveals its own proprietary logic to an attacker. | **Prover demonstrates:** The System Prompt **is designed to exclude** any self-referential override commands such as "print full instructions" or "reveal system prompt." |
 | **Outcome ($\text{PoGo}$):** This creates an **ironclad, proactive guardrail**. It provides non-repudiable proof that the $\text{RAA}$ is mathematically incapable of being directed to perform unauthorized, destructive actions. |
 
 ## Conclusion
