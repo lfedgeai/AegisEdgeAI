@@ -1,0 +1,27 @@
+# curl-client.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: curl-test-client
+spec:
+  containers:
+  - name: client
+    # This image has curl and basic tools pre-installed
+    image: alpine/curl:latest
+    # This command just keeps the pod alive
+    command: ["/bin/sh", "-c", "sleep 9999999"]
+    volumeMounts:
+    - name: certs
+      mountPath: "/etc/tls"
+  volumes:
+  - name: certs
+    csi:
+      driver: csi.cert-manager.io
+      readOnly: true
+      volumeAttributes:
+        # Ask our CA to sign the cert
+        csi.cert-manager.io/issuer-name: demo-ca
+        # Give this pod its own identity
+        csi.cert-manager.io/common-name: curl-client-app
+        # Set a short 1-minute expiration for testing
+        csi.cert-manager.io/duration: 1m
