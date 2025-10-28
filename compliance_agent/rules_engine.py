@@ -62,19 +62,41 @@ class RulesEngine:
 
 # --- Define Specific Compliance Rules ---
 
-rule_host_type = Rule(
-    name="Host Type Check",
-    control_mapping="PCI DSS Req. 2.1",
-    explanation="Ensures that workloads are running on approved hardware types (baremetal).",
-    validation_logic=lambda log: log.get("host-type") == "baremetal"
+rule_pci_dss_1_2_1 = Rule(
+    name="Restrict inbound and outbound...",
+    control_mapping="PCI DSS Req. 1.2.1",
+    explanation="Restrict inbound and outbound traffic to that which is necessary for the cardholder data environment, and specifically deny all other traffic.",
+    # TODO: Implement the validation logic for this rule.
+    # Recommended evidence sources: firewall_rules, network_flow_logs
+    validation_logic=lambda log: True # Placeholder logic
 )
 
-rule_residency = Rule(
-    name="Data Residency Check",
+rule_pci_dss_2_1 = Rule(
+    name="Always change vendor-supplied defaults...",
+    control_mapping="PCI DSS Req. 2.1",
+    explanation="Always change vendor-supplied defaults and remove or disable unnecessary default accounts before installing a system on the network.",
+    # TODO: Implement the validation logic for this rule.
+    # Recommended evidence sources: os_configuration, hardening_checklists
+    validation_logic=lambda log: False # Placeholder logic
+)
+
+rule_pci_dss_4_2 = Rule(
+    name="Never send unprotected PANs...",
     control_mapping="PCI DSS Req. 4.2",
-    explanation="Verifies that data is processed in approved geographic regions (us-west-2).",
-    validation_logic=lambda log: log.get("residency") == "us-west-2"
+    explanation="Never send unprotected PANs by end-user messaging technologies (for example, e-mail, instant messaging, SMS, chat, etc.).",
+    # TODO: Implement the validation logic for this rule.
+    # Recommended evidence sources: email_dlp_logs, chat_logs
+    validation_logic=lambda log: False # Placeholder logic
+)
+
+rule_pci_dss_10_2 = Rule(
+    name="Implement automated audit trails...",
+    control_mapping="PCI DSS Req. 10.2",
+    explanation="Implement automated audit trails for all system components to reconstruct all individual user accesses to cardholder data.",
+    # TODO: Implement the validation logic for this rule.
+    # Recommended evidence sources: database_audit_logs, os_event_logs, application_logs
+    validation_logic=lambda log: False # Placeholder logic
 )
 
 # A list of all rules for the engine to use
-ALL_RULES = [rule_host_type, rule_residency]
+ALL_RULES = [rule_pci_dss_10_2, rule_pci_dss_4_2, rule_pci_dss_2_1, rule_pci_dss_1_2_1]
