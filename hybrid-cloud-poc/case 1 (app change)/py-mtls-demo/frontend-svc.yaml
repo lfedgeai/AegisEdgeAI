@@ -1,0 +1,13 @@
+# frontend-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+spec:
+  selector:
+    app: frontend  # This matches your frontend-deployment
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080       # The Service listens on port 8080
+    targetPort: 8080 # The pod (gunicorn) also listens on 8080
