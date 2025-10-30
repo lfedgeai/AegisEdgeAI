@@ -57,22 +57,39 @@ python3 --version
 # build the tools one by one
 ../swtpm-macos/system-setup-mac-apple.sh
 
-# Append SWTPM environment variables to ~/.bashrc
+# Append TPM environment variables to ~/.bashrc
 cat <<'EOF' >> ~/.bashrc
 
 # SWTPM and TPM2TOOLS environment variables
 export SWTPM_DIR="$HOME/.swtpm/ztpm"
 export SWTPM_PORT=2321
 export SWTPM_CTRL=2322
-if [[ "$(uname)" == "Darwin" ]]; then
-  export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
-  export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+
+# Detect hardware TPM first
+if [[ -e /dev/tpmrm0 || -e /dev/tpm0 ]]; then
+  if [[ -e /dev/tpmrm0 ]]; then
+    export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
+  else
+    export TPM2TOOLS_TCTI="device:/dev/tpm0"
+  fi
+  echo "[INFO] Using hardware TPM via ${TPM2TOOLS_TCTI}"
 else
-  export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+  # No hardware TPM, fall back to swtpm
+  if [[ "$(uname)" == "Darwin" ]]; then
+    export PREFIX="/opt/homebrew"
+    export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
+    export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+  else
+    export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+  fi
+  echo "[INFO] Using swtpm emulator via ${TPM2TOOLS_TCTI}"
 fi
+
+# Common handles
 export EK_HANDLE=0x81010001
 export AK_HANDLE=0x8101000A
 export APP_HANDLE=0x8101000B
+
 EOF
 
 source ~/.bashrc

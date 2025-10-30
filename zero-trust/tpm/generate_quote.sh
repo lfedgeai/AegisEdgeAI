@@ -4,16 +4,26 @@ set -euo pipefail
 # TPM Quote Generation Script
 # This script generates a TPM quote using the Attestation Key (AK)
 
-# Load configuration from environment or use defaults
-export SWTPM_PORT="${SWTPM_PORT:-2321}"
-export AK_HANDLE="${AK_HANDLE:-0x8101000A}"
-export PREFIX="/opt/homebrew"
-
-if [[ "$(uname)" == "Darwin" ]]; then
-  export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
-  export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+if [[ -e /dev/tpmrm0 || -e /dev/tpm0 ]]; then
+  # Prefer the resource manager device if available
+  if [[ -e /dev/tpmrm0 ]]; then
+    export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
+  else
+    export TPM2TOOLS_TCTI="device:/dev/tpm0"
+  fi
+  echo "[INFO] Using hardware TPM via ${TPM2TOOLS_TCTI}"
 else
-  export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+  # Load configuration from environment or use defaults
+  export SWTPM_PORT="${SWTPM_PORT:-2321}"
+  export AK_HANDLE="${AK_HANDLE:-0x8101000A}"
+  export PREFIX="/opt/homebrew"
+
+  if [[ "$(uname)" == "Darwin" ]]; then
+    export TPM2TOOLS_TCTI="libtss2-tcti-swtpm.dylib:host=127.0.0.1,port=${SWTPM_PORT}"
+    export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+  else
+    export TPM2TOOLS_TCTI="${TPM2TOOLS_TCTI:-swtpm:host=127.0.0.1,port=${SWTPM_PORT}}"
+  fi
 fi
 
 echo "[INFO] TPM Quote Generation Script"
