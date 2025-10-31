@@ -37,14 +37,13 @@ This model separates stable identity claims from dynamic assurance claims, enabl
 #### Flow Breakdown
 1.  **Core Token Issuance:** The Enterprise IDP issues a standard JWT containing **only** the stable **Identity and Role** claims. This JWT can have a longer TTL.
 2.  **Request Flow:** The user's request, carrying the JWT, enters the Service Provider's network (e.g., **API Gateway**).
-3.  **Header Injection (Crucial Step):** The Gateway verifies the JWT, then dynamically fetches the *current, real-time* TPM status and Attested Geolocation from the SP's internal **Trusted Attestation Service**. 
-4.  **Injection:** The dynamic values are injected into the request as **HTTP Extension Headers** (e.g., `X-Claim-TPM-Attest: Verified`).
-5.  **Policy Engine Logic:** The final application policy engine evaluates the claims from **both sources**. 
+3.  **Injection:** The dynamic values are injected into the request as **HTTP Extension Headers** (e.g., `X-Claim-TPM-Attest: Verified`) in the enterprise host. 
+4.  **Policy Engine Logic:** The SP verifies the signature in the extension header in the API gateway based on the configured enterprise signing public key. The final application policy engine evaluates the claims from **both sources**. 
 
 #### Trade-Offs (Model 2)
 * **PRO:** **High Agility.** Real-time claims can be updated instantly (per request) without requiring JWT re-issuance, improving user experience and system responsiveness.
-* **CON:** **Security Complexity.** The SP must enforce a robust **Zero Trust** boundary and use strong internal network security (like Mutual TLS or a trusted service mesh) to prevent an attacker from tampering with the non-signed HTTP headers before they reach the final policy engine.
+* **CON:** **Security Complexity.** HTTP extension header management.
 
 ### 🌟 Conclusion
 
-The optimal model depends on the organization's risk profile: **Model 1** provides gold-standard **cryptographic proof** at the cost of operational overhead. **Model 2** provides high **operational agility** and real-time context, requiring the SP to assume full security responsibility for the claims once they are inside its trusted network boundary.
+The optimal model depends on the organization's risk profile: **Model 1** provides gold-standard **cryptographic proof** at the cost of operational overhead. **Model 2** provides high **operational agility** and real-time context at the expense of a new HTTP extension header.
