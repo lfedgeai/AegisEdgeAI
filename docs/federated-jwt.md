@@ -23,8 +23,6 @@ This model prioritizes security integrity by embedding *all* claims - identity, 
 * **PRO:** **Unquestionable Integrity.** The Enterprise's signature covers the hardware assurance claims, eliminating all risk of tampering after issuance.
 * **CON:** **Low Agility.** If the attested claims (e.g., location) change, the **entire JWT is instantly stale**. This necessitates a very short Time-to-Live (TTL) and high-overhead token re-issuance requests, impacting performance.
 
----
-
 ### ⚙️ Model 2: Hybrid Claims (Maximum Operational Agility)
 
 This model separates stable identity claims from dynamic assurance claims, enabling real-time policy updates without constant token refresh.
