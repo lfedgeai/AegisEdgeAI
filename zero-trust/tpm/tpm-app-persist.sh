@@ -65,6 +65,13 @@ AGENT_PRIV_FILE="${SCRIPT_DIR}/${base_name}.priv"
 
 tpm2 create -C "${PRIMARY_CTX}" -G rsa -u "${AGENT_PUB_FILE}" -r "${AGENT_PRIV_FILE}"
 
+# Environment‑aware cleanup: on swtpm, free a slot before loading
+if [[ ! -e /dev/tpmrm0 && ! -e /dev/tpm0 ]]; then
+  # Likely running against swtpm without a resource manager
+  echo "[INFO] Flushing transients to avoid 0x902 on swtpm..."
+  tpm2 flushcontext --transient-object || true
+fi
+
 # [5] Load AppSK
 echo "[STEP] Loading AppSK..."
 tpm2 load -C "${PRIMARY_CTX}" -u "${AGENT_PUB_FILE}" -r "${AGENT_PRIV_FILE}" -c "${AGENT_CTX_PATH}"
