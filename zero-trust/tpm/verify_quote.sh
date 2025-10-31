@@ -46,7 +46,7 @@ tpm2 flushcontext -t
 echo "[STEP] Verifying AppSK certification signature..."
 tpm2_verifysignature -c "$SCRIPT_DIR/ak.ctx" \
                      -g sha256 \
-                     -m "$SCRIPT_DIR/app_certify.out" \
+                     -m "$SCRIPT_DIR/appsig_info.bin" \
                      -s "$SCRIPT_DIR/app_certify.sig"
 
 if [ $? -eq 0 ]; then

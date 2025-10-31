@@ -112,16 +112,22 @@ echo "   Gateway URL: $GATEWAY_URL"
 echo "   Collector URL: $COLLECTOR_URL"
 echo ""
 
-# Check if swtpm is running before proceeding
+# Check if hardware TPM or swtpm is available before proceeding
 echo -e "${YELLOW}0.5. Checking TPM prerequisite...${NC}"
-if ! pgrep -f "swtpm" >/dev/null 2>&1; then
-    echo -e "${RED}❌ swtpm (software TPM) is not running${NC}"
-    echo "   Please start swtpm first:"
-    echo "   bash tpm/swtpm.sh"
-    echo "   Then run the test again"
-    exit 1
+
+if [[ -e /dev/tpmrm0 || -e /dev/tpm0 ]]; then
+    echo -e "   ✅ Hardware TPM detected at /dev/tpmrm0 or /dev/tpm0"
+else
+    if ! pgrep -f "swtpm" >/dev/null 2>&1; then
+        echo -e "${RED}❌ No hardware TPM found and swtpm (software TPM) is not running${NC}"
+        echo "   Please start swtpm first:"
+        echo "   bash tpm/swtpm.sh"
+        echo "   Then run the test again"
+        exit 1
+    fi
+    echo "   ✅ swtpm is running"
 fi
-echo "   ✅ swtpm is running"
+
 echo ""
 
 # Main test logic - runs for both full and gateway-allowlist modes

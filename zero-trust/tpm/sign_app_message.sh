@@ -49,12 +49,17 @@ fi
 
 echo "[INFO] Using TPM context file: $KEY_CTX"
 
-# Copy message to target location (only if different)
-if [[ "$MESSAGE" != "$APPSIG_INFO" ]]; then
-    cp "$MESSAGE" "$APPSIG_INFO"
-    echo "[INFO] Message copied to: $APPSIG_INFO"
+# Ensure the target file exists, copy if needed
+if [[ ! -f "$APPSIG_INFO" ]]; then
+    if [[ -f "$MESSAGE" && "$MESSAGE" != "$APPSIG_INFO" ]]; then
+        cp "$MESSAGE" "$APPSIG_INFO"
+        echo "[INFO] Message copied to: $APPSIG_INFO"
+    else
+        echo "[ERROR] Target message file not found: $APPSIG_INFO"
+        exit 1
+    fi
 else
-    echo "[INFO] Message file already in correct location: $APPSIG_INFO"
+    echo "[INFO] Message file already present: $APPSIG_INFO"
 fi
 
 # Ensure the target file exists
