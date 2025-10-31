@@ -48,5 +48,3 @@ This model separates stable identity claims from dynamic assurance claims, enabl
 ### 🌟 Conclusion
 
 The optimal model depends on the organization's risk profile: **Model 1** provides gold-standard **cryptographic proof** at the cost of operational overhead. **Model 2** provides high **operational agility** and real-time context, requiring the SP to assume full security responsibility for the claims once they are inside its trusted network boundary.
-
-Would you like a detailed **architecture diagram** for one of these models?
