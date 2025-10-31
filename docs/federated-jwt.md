@@ -4,7 +4,7 @@ The foundation of this architecture is **Federated Identity** between the **Ente
 
 ### 🏛️ Model 1: JWT-Only Claims (Maximum Cryptographic Assurance)
 
-This model prioritizes security integrity by embedding *all* claims—identity, role, and hardware assurance—into a single, cryptographically **signed JWT**.
+This model prioritizes security integrity by embedding *all* claims - identity, role, and hardware assurance - into a single, cryptographically **signed JWT**.
 
 #### 🔑 Security Claims and Sourcing
 | Claim Type | Location | Assurance Level | Source & Signing Authority |
@@ -41,15 +41,11 @@ This model separates stable identity claims from dynamic assurance claims, enabl
 2.  **Request Flow:** The user's request, carrying the JWT, enters the Service Provider's network (e.g., **API Gateway**).
 3.  **Header Injection (Crucial Step):** The Gateway verifies the JWT, then dynamically fetches the *current, real-time* TPM status and Attested Geolocation from the SP's internal **Trusted Attestation Service**. 
 4.  **Injection:** The dynamic values are injected into the request as **HTTP Extension Headers** (e.g., `X-Claim-TPM-Attest: Verified`).
-5.  **Policy Engine Logic:** The final application policy engine evaluates the claims from **both sources**. The logic is complex but highly granular:
-
-    $$\text{Access Granted if: } [(\text{JWT.role} = \text{"senior\_dev"}) \land (\text{Header.X-Claim-TPM-Attest} = \text{"Verified"})]$$
+5.  **Policy Engine Logic:** The final application policy engine evaluates the claims from **both sources**. 
 
 #### Trade-Offs (Model 2)
 * **PRO:** **High Agility.** Real-time claims can be updated instantly (per request) without requiring JWT re-issuance, improving user experience and system responsiveness.
 * **CON:** **Security Complexity.** The SP must enforce a robust **Zero Trust** boundary and use strong internal network security (like Mutual TLS or a trusted service mesh) to prevent an attacker from tampering with the non-signed HTTP headers before they reach the final policy engine.
-
----
 
 ### 🌟 Conclusion
 
