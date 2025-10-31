@@ -1,10 +1,10 @@
-## High-Assurance Federated Authorization Models
+## ✨ High-Assurance Federated Authorization Models
 
-The foundation of this architecture is **Federated Identity** between the **Enterprise IDP** and the **Service Provider (SP)**. The advanced requirement is to securely convey **HW-rooted TPM attestation** and **Attested Geographic location** to the SP's policy engine.
+The foundational architecture is **Federated Identity** between the **Enterprise IDP** and the **Service Provider (SP)**. The objective is to securely and reliably convey **HW-rooted TPM attestation** and **Attested Geographic location** for granular policy enforcement.
 
 ### 🏛️ Model 1: JWT-Only Claims (Maximum Cryptographic Assurance)
 
-This model prioritizes security integrity by embedding *all* claims - identity, role, and hardware assurance - into a single, cryptographically **signed JWT**.
+This model prioritizes security integrity by embedding *all* claims—identity, role, and hardware assurance—into a single, cryptographically **signed JWT**.
 
 #### 🔑 Security Claims and Sourcing
 | Claim Type | Location | Assurance Level | Source & Signing Authority |
@@ -14,36 +14,33 @@ This model prioritizes security integrity by embedding *all* claims - identity, 
 | **Attested Geolocation** | **JWT Payload** | **Highest (HW-Rooted)** | Enterprise-Trusted Attestation Service |
 
 #### Flow Breakdown
-1.  **Comprehensive Token Issuance:** The **Enterprise IDP** (or its trusted Security Token Service) authenticates the user, then contacts a **Trusted Attestation Service (TAS)** to gather the current TPM status and attested location for the workload.
-2.  **Single Signed Token:** The IDP compiles **all claims** and creates one large **JWT**, which it **signs** with its private key. 
-3.  **Simplified SP Enforcement:** The Service Provider receives the token and performs a **single signature verification**. If valid, the SP trusts every claim inside.
-4.  **Policy Engine Logic:** The SP's Policy Engine reads and acts directly on the combined claims.
+1.  **Comprehensive Token Issuance:** The **Enterprise IDP** authenticates the user, gathers **all claims** (including TPM/Geo from the TAS), compiles them, and creates one large, single **JWT**. 
+2.  **Single Signature:** The IDP **signs** the entire JWT with its private key.
+3.  **Simplified SP Enforcement:** The Service Provider performs a **single signature verification** using the Enterprise's public key. If valid, the SP trusts every claim inside.
 
 #### Trade-Offs (Model 1)
-* **PRO:** **Unquestionable Integrity.** The Enterprise's signature covers the hardware assurance claims, eliminating all risk of tampering after issuance.
-* **CON:** **Low Agility.** If the attested claims (e.g., location) change, the **entire JWT is instantly stale**. This necessitates a very short Time-to-Live (TTL) and high-overhead token re-issuance requests, impacting performance.
+* **PRO:** **Unquestionable Integrity.** The single signature guarantees the authenticity and non-tampering of *all* authorization data.
+* **CON:** **Low Agility.** The token's Time-to-Live (TTL) must be very short to reflect real-time changes in TPM or location, causing frequent, high-overhead token re-issuance requests.
 
-### ⚙️ Model 2: Hybrid Claims (Maximum Operational Agility)
+### 🛡️ Model 2: Hybrid Claims with Nested Signature (Maximum Agility & Integrity)
 
-This model separates stable identity claims from dynamic assurance claims, enabling real-time policy updates without constant token refresh.
+This model offers the best of both worlds: high operational agility using dynamic HTTP headers, combined with high integrity using a **nested signature** on the real-time claims.
 
-#### ⚙️ Security Claims and Sourcing
+#### 🛡️ Security Claims and Sourcing
 | Claim Type | Location | Assurance Level | Source & Integrity Mechanism |
 | :--- | :--- | :--- | :--- |
-| **Identity & Role** | **JWT Payload** | High | Enterprise IDP (Cryptographically Signed) |
-| **TPM Attestation** | **HTTP Extension Header** | High (Internal) | SP-Internal Trusted Attestation Service |
-| **Attested Geolocation** | **HTTP Extension Header** | High (Internal) | SP-Internal Trusted Attestation Service |
+| **Identity & Role** | **JWT Payload** | High | Enterprise IDP (Signed) |
+| **TPM/Geo Claims** | **Nested JWT** in **HTTP Header** | **Highest** (Signed) | Enterprise/Device-Signed Token |
 
 #### Flow Breakdown
-1.  **Core Token Issuance:** The Enterprise IDP issues a standard JWT containing **only** the stable **Identity and Role** claims. This JWT can have a longer TTL.
-2.  **Request Flow:** The user's request, carrying the JWT, enters the Service Provider's network (e.g., **API Gateway**).
-3.  **Injection:** The dynamic values are injected into the request as **HTTP Extension Headers** (e.g., `X-Claim-TPM-Attest: Verified`) in the enterprise host. 
-4.  **Policy Engine Logic:** The SP verifies the signature in the extension header in the API gateway based on the configured enterprise signing public key. The final application policy engine evaluates the claims from **both sources**. 
+1.  **Core Token Issuance:** The Enterprise IDP issues a stable, longer-lived JWT containing **only** the stable **Identity and Role** claims.
+2.  **Dynamic Claim Generation:** The Enterprise client/workload dynamically generates a small, independent **Nested JWT** containing the latest TPM and Geo claims, which it signs with a **device-specific key**.
+3.  **Request Flow:** The Enterprise client sends the **Identity JWT** in the standard `Authorization` header and the **Nested JWT** as an **HTTP Extension Header** (e.g., `X-Claim-Attest`).
+4.  **Verification (Split and Decoupled):**
+    * The **SP API Gateway** verifies the signature of the **Identity JWT**.
+    * The **SP Policy Engine** extracts the **Nested JWT** from the header and verifies its signature using the **device's public key** (obtained via a secure key lookup). 
+5.  **Policy Engine Logic:** The policy engine uses the combination of stable claims from the Identity JWT and the verified real-time claims from the Nested JWT.
 
 #### Trade-Offs (Model 2)
-* **PRO:** **High Agility.** Real-time claims can be updated instantly (per request) without requiring JWT re-issuance, improving user experience and system responsiveness.
-* **CON:** **Security Complexity.** HTTP extension header management.
-
-### 🌟 Conclusion
-
-The optimal model depends on the organization's risk profile: **Model 1** provides gold-standard **cryptographic proof** at the cost of operational overhead. **Model 2** provides high **operational agility** and real-time context at the expense of a new HTTP extension header.
+* **PRO:** **Highest Flexibility.** Claims can be updated instantly (per request) by the device, maintaining high operational agility without requiring a full token re-issue.
+* **CON:** **Maximum Complexity.** Requires sophisticated client-side logic (to generate the nested signed token) and a complex infrastructure on the SP side (to manage and verify device signing keys).
