@@ -1,6 +1,6 @@
 🔒 Trust Assumptions for Simplified Flow
 
-This flow relies on core security assumptions to enable the simplified architectural model where the SPIRE Server orchestrates host verification independently of the SPIRE Agent/Keylime Agent communication.
+This flow relies on three critical security assumptions to enable the simplified architectural model where the SPIRE Server orchestrates host verification independently of the SPIRE Agent/Keylime Agent communication.
 
 Component
 
