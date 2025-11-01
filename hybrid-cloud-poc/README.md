@@ -1,9 +1,3 @@
-It sounds like you want the complete, consolidated guide for installing Keylime using the Bash installer, formatted in Markdown.
-
-Here are the step-by-step instructions to install Keylime on Ubuntu 22.04 using the official **Keylime Bash Installer** script.
-
------
-
 ## 🚀 Keylime Installation on Ubuntu 22.04 (Bash Installer)
 
 The recommended approach for a quick setup is to use the `installer.sh` script included in the Keylime source code, which handles dependencies and the installation of the core components (Verifier, Registrar, Agent, Tenant).
