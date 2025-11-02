@@ -57,6 +57,18 @@ type Service struct {
 	useLegacyDownstreamX509CATTL bool
 }
 
+// Mock Keylime Verifier API
+type MockKeylimeVerifier struct{}
+
+func (m *MockKeylimeVerifier) Verify(attestation *svidv1.SovereignAttestation) (*svidv1.AttestedClaims, error) {
+	// In a real implementation, this would make a request to the Keylime Verifier.
+	// For Phase 1, we'll just return a hardcoded response.
+	return &svidv1.AttestedClaims{
+		Geolocation:         "Spain",
+		HostIntegrityStatus: svidv1.AttestedClaims_PASSED_ALL_CHECKS,
+	}, nil
+}
+
 func (s *Service) MintX509SVID(ctx context.Context, req *svidv1.MintX509SVIDRequest) (*svidv1.MintX509SVIDResponse, error) {
 	log := rpccontext.Logger(ctx)
 	rpccontext.AddRPCAuditFields(ctx, logrus.Fields{
@@ -205,7 +217,22 @@ func (s *Service) BatchNewX509SVID(ctx context.Context, req *svidv1.BatchNewX509
 		})
 	}
 
-	return &svidv1.BatchNewX509SVIDResponse{Results: results}, nil
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	var attestedClaims []*svidv1.AttestedClaims
+	if req.SovereignAttestation != nil {
+		// In Phase 1, we'll use a mock Keylime Verifier.
+		keylimeVerifier := &MockKeylimeVerifier{}
+		claims, err := keylimeVerifier.Verify(req.SovereignAttestation)
+		if err != nil {
+			return nil, api.MakeErr(log, codes.Internal, "failed to verify attestation", err)
+		}
+		attestedClaims = append(attestedClaims, claims)
+	}
+
+	return &svidv1.BatchNewX509SVIDResponse{
+		Results:       results,
+		AttestedClaims: attestedClaims,
+	}, nil
 }
 
 func (s *Service) findEntries(ctx context.Context, log logrus.FieldLogger, entries map[string]struct{}) (map[string]api.ReadOnlyEntry, error) {
