@@ -440,7 +440,7 @@ Response (Keylime → SPIRE Server) example:
     "attested_claims": {
       "geolocation": "Spain: N40.4168, W3.7038",
       "host_integrity_status": "passed_all_checks",
-      "gpu_metrics_health": "healthy: utilization_15%"
+      "gpu_metrics_health": { "status":"healthy", "utilization_pct":15.0, "memory_mb": 10240 }
     }
   }
 }
