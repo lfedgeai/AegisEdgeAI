@@ -247,8 +247,6 @@ See the protobuf snippets above (SovereignAttestation / AttestedClaims) and the 
 
 ## Full end-to-end flow (with API details)
 
-This section shows a minimal, example-driven flow. These examples are illustrative; actual protobuf and REST payloads should be defined in source-controlled API specs and validated.
-
 ### 1) Workload identity initiation (nonce request)
 
 - The SPIRE Agent requests a challenge nonce from the SPIRE Server. The request includes workload selectors and an optional workload code hash.
@@ -311,6 +309,7 @@ To avoid insecure file sharing of the Attestation Key (AK) context, the low-priv
   "api_version": "v1",
   "command": "certify_app_key",
   "app_key_public": "PUBLIC_KEY_OF_TPM_APP_KEY"
+  "app_ctx": "PRIVATE_CONTEXT_OF_TPM_APP_KEY"
 }
 ```
 
