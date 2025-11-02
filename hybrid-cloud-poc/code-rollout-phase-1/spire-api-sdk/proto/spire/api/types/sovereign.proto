@@ -1,0 +1,41 @@
+syntax = "proto3";
+package spire.api.types;
+option go_package = "github.com/spiffe/spire-api-sdk/proto/spire/api/types";
+
+// A hardware-rooted PoR package produced by the Agent.
+message SovereignAttestation {
+  // Base64-encoded TPM Quote (portable string). Validation: non-empty, base64,
+  // size <= 64kB
+  string tpm_signed_attestation = 1;
+
+  // The App Key public key (PEM or base64-encoded). Preferred format: PEM.
+  // Validation: when present must parse; server-side validation enforced.
+  string app_key_public = 2;
+
+  // Optional base64-encoded DER or PEM certificate proving the App Key was
+  // issued/signed by the host AK.
+  // **CLARIFICATION:** This field MUST be Base64-encoded when transmitted over
+  // a JSON/REST boundary (e.g., to Keylime).
+  // Validation: when present must parse to X.509 cert; chain verification will
+  // be performed by Keylime.
+  bytes app_key_certificate = 3;
+
+  // The SPIRE Server nonce used for freshness verification.
+  string challenge_nonce = 4;
+
+  // Optional workload code hash used as an additional selector/assertion.
+  string workload_code_hash = 5;
+}
+
+message AttestedClaims {
+  message GpuMetrics {
+    string status = 1;        // 'healthy', 'degraded', 'failed'
+    double utilization_pct = 2; // 0..100
+    int64 memory_mb = 3;
+  }
+
+  string geolocation = 1;    // structured preferred; free-form fallback allowed
+  enum HostIntegrity { HOST_INTEGRITY_UNSPECIFIED = 0; PASSED_ALL_CHECKS = 1; FAILED = 2; PARTIAL = 3; }
+  HostIntegrity host_integrity_status = 2;
+  GpuMetrics gpu_metrics_health = 3;
+}

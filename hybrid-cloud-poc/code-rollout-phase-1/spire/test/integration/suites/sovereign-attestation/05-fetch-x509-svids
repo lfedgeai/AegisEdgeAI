@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+
+docker-compose exec -T spire-agent bin/spire-agent api fetch x509 -write /tmp/svids
+docker-compose exec -T spire-agent cat /tmp/svids

@@ -211,9 +211,15 @@ func (h *Handler) ValidateJWTSVID(ctx context.Context, req *workload.ValidateJWT
 
 // FetchX509SVID processes request for a x509 SVID. In case of multiple fetched SVIDs with same hint, the SVID that has the oldest
 // associated entry will be returned.
-func (h *Handler) FetchX509SVID(_ *workload.X509SVIDRequest, stream workload.SpiffeWorkloadAPI_FetchX509SVIDServer) error {
+func (h *Handler) FetchX509SVID(req *workload.X509SVIDRequest, stream workload.SpiffeWorkloadAPI_FetchX509SVIDServer) error {
 	ctx := stream.Context()
 	log := rpccontext.Logger(ctx)
+
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// If the request contains a SovereignAttestation, we'll log it.
+	if req.SovereignAttestation != nil {
+		log.WithField("attestation", req.SovereignAttestation).Info("Unified Identity - Phase 1: Received sovereign attestation from workload")
+	}
 
 	selectors, err := h.c.Attestor.Attest(ctx)
 	if err != nil {
@@ -352,6 +358,18 @@ func composeX509BundlesResponse(update *cache.WorkloadUpdate) (*workload.X509Bun
 }
 
 func sendX509SVIDResponse(update *cache.WorkloadUpdate, stream workload.SpiffeWorkloadAPI_FetchX509SVIDServer, selectors []*common.Selector, log logrus.FieldLogger, quietLogging bool) (err error) {
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// We are adding a stubbed AttestedClaims to the response.
+	attestedClaims := &workload.AttestedClaims{
+		Geolocation: "es-es",
+		GpuMetricsHealth: &workload.AttestedClaims_GpuMetrics{
+			Status:         "healthy",
+			UtilizationPct: 50.0,
+			MemoryMb:       1024,
+		},
+		HostIntegrityStatus: workload.AttestedClaims_PASSED_ALL_CHECKS,
+	}
+
 	if len(update.Identities) == 0 {
 		if !quietLogging {
 			log.WithFields(logrus.Fields{
@@ -364,7 +382,7 @@ func sendX509SVIDResponse(update *cache.WorkloadUpdate, stream workload.SpiffeWo
 
 	log = log.WithField(telemetry.Registered, true)
 
-	resp, err := composeX509SVIDResponse(update)
+	resp, err := composeX509SVIDResponse(update, attestedClaims)
 	if err != nil {
 		log.WithError(err).Error("Could not serialize X.509 SVID response")
 		return status.Errorf(codes.Unavailable, "could not serialize response: %v", err)
@@ -393,10 +411,11 @@ func sendX509SVIDResponse(update *cache.WorkloadUpdate, stream workload.SpiffeWo
 	return nil
 }
 
-func composeX509SVIDResponse(update *cache.WorkloadUpdate) (*workload.X509SVIDResponse, error) {
+func composeX509SVIDResponse(update *cache.WorkloadUpdate, attestedClaims *workload.AttestedClaims) (*workload.X509SVIDResponse, error) {
 	resp := new(workload.X509SVIDResponse)
 	resp.Svids = []*workload.X509SVID{}
 	resp.FederatedBundles = make(map[string][]byte)
+	resp.AttestedClaims = []*workload.AttestedClaims{attestedClaims}
 
 	bundle := marshalBundle(update.Bundle.X509Authorities())
 

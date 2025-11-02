@@ -155,8 +155,38 @@ func (s *Service) MintJWTSVID(ctx context.Context, req *svidv1.MintJWTSVIDReques
 	}, nil
 }
 
+// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// This function simulates a call to the Keylime verifier. In a real implementation, this would be a
+// network call to the Keylime verifier, which would then perform the necessary TPM quote verification.
+func (s *Service) stubbedKeylimeVerifier(ctx context.Context, attestation *types.SovereignAttestation) (*types.AttestedClaims, error) {
+	log := rpccontext.Logger(ctx)
+	log.Info("Unified Identity - Phase 1: Stubbed Keylime Verifier called")
+
+	// In a real implementation, we would verify the attestation data here.
+	// For now, we'll just return a hardcoded set of claims.
+	return &types.AttestedClaims{
+		Geolocation: "es-es",
+		GpuMetricsHealth: &types.AttestedClaims_GpuMetrics{
+			Status:         "healthy",
+			UtilizationPct: 50.0,
+			MemoryMb:       1024,
+		},
+		HostIntegrityStatus: types.AttestedClaims_PASSED_ALL_CHECKS,
+	}, nil
+}
+
 func (s *Service) BatchNewX509SVID(ctx context.Context, req *svidv1.BatchNewX509SVIDRequest) (*svidv1.BatchNewX509SVIDResponse, error) {
 	log := rpccontext.Logger(ctx)
+
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// If the request contains a SovereignAttestation, we'll call the stubbed Keylime verifier.
+	if req.SovereignAttestation != nil {
+		claims, err := s.stubbedKeylimeVerifier(ctx, req.SovereignAttestation)
+		if err != nil {
+			return nil, api.MakeErr(log, codes.Internal, "failed to verify sovereign attestation", err)
+		}
+		log.WithField("claims", claims).Info("Unified Identity - Phase 1: Sovereign attestation verified")
+	}
 
 	if len(req.Params) == 0 {
 		return nil, api.MakeErr(log, codes.InvalidArgument, "missing parameters", nil)

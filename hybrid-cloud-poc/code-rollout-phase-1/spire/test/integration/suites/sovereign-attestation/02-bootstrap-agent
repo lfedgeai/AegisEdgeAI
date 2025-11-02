@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+
+docker-compose exec -T spire-server bin/spire-server agent evict -spiffeID spiffe://example.org/spire/agent/test
+docker-compose exec -T spire-server bin/spire-server agent create -spiffeID spiffe://example.org/spire/agent/test -token test-token

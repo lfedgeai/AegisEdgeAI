@@ -1751,9 +1751,15 @@ func TestServiceBatchNewX509SVID(t *testing.T) {
 			}
 
 			// Batch svids
-			resp, err := test.client.BatchNewX509SVID(ctx, &svidv1.BatchNewX509SVIDRequest{
+			req := &svidv1.BatchNewX509SVIDRequest{
 				Params: params,
-			})
+			}
+			if tt.name == "with sovereign attestation" {
+				req.SovereignAttestation = &types.SovereignAttestation{
+					TpmSignedAttestation: "test",
+				}
+			}
+			resp, err := test.client.BatchNewX509SVID(ctx, req)
 			expectLogs := tt.expectLogs(csrMap)
 			spiretest.AssertLogs(t, test.logHook.AllEntries(), expectLogs)
 			if tt.err != "" {

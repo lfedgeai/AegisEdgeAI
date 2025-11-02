@@ -1,0 +1,15 @@
+version: '3'
+services:
+  spire-server:
+    image: spire-server
+    command: ["-config", "conf/server/server.conf"]
+    volumes:
+      - ../../:/opt/spire
+  spire-agent:
+    image: spire-agent
+    command: ["-config", "conf/agent/agent.conf"]
+    volumes:
+      - ../../:/opt/spire
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - spire-server

@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spiffe/go-spiffe/v2/bundle/spiffebundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"github.com/spiffe/spire/pkg/agent/client"
 	"github.com/spiffe/spire/pkg/agent/manager/cache"
 	"github.com/spiffe/spire/pkg/agent/workloadkey"
@@ -248,7 +249,18 @@ func (m *manager) fetchSVIDs(ctx context.Context, csrs []csrRequest) (_ *cache.U
 		csrsIn[csr.EntryID] = csrBytes
 	}
 
-	svidsOut, err := m.client.NewX509SVIDs(ctx, csrsIn)
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Create a stubbed SovereignAttestation message. In a real implementation, this data would be
+	// collected from the TPM.
+	attestation := &types.SovereignAttestation{
+		TpmSignedAttestation: "stubbed-tpm-signed-attestation",
+		AppKeyPublic:         "stubbed-app-key-public",
+		AppKeyCertificate:    []byte("stubbed-app-key-certificate"),
+		ChallengeNonce:       "stubbed-challenge-nonce",
+		WorkloadCodeHash:     "stubbed-workload-code-hash",
+	}
+
+	svidsOut, err := m.client.NewX509SVIDs(ctx, csrsIn, attestation)
 	if err != nil {
 		// Reduce csr size for next invocation
 		m.csrSizeLimitedBackoff.Failure()

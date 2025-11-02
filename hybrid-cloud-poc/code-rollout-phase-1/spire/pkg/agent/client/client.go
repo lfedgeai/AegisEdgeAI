@@ -76,7 +76,10 @@ type Client interface {
 	FetchUpdates(ctx context.Context) (*Update, error)
 	SyncUpdates(ctx context.Context, cachedEntries map[string]*common.RegistrationEntry, cachedBundles map[string]*common.Bundle) (SyncStats, error)
 	RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error)
-	NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[string]*X509SVID, error)
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// The NewX509SVIDs function is responsible for creating new X.509 SVIDs. We are modifying it to include
+	// the SovereignAttestation data, which will be sent to the server for verification.
+	NewX509SVIDs(ctx context.Context, csrs map[string][]byte, attestation *types.SovereignAttestation) (map[string]*X509SVID, error)
 	NewJWTSVID(ctx context.Context, entryID string, audience []string) (*JWTSVID, error)
 
 	// Release releases any resources that were held by this Client, if any.
@@ -261,7 +264,7 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 	}, nil
 }
 
-func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[string]*X509SVID, error) {
+func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte, attestation *types.SovereignAttestation) (map[string]*X509SVID, error) {
 	c.c.RotMtx.RLock()
 	defer c.c.RotMtx.RUnlock()
 
@@ -277,7 +280,9 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 		})
 	}
 
-	protoSVIDs, err := c.fetchSVIDs(ctx, params)
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// We are adding the SovereignAttestation to the request.
+	protoSVIDs, err := c.fetchSVIDs(ctx, params, attestation)
 	if err != nil {
 		return nil, err
 	}
@@ -639,16 +644,21 @@ func (c *client) fetchBundles(ctx context.Context, federatedBundles []string) ([
 	return bundles, nil
 }
 
-func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDParams) ([]*types.X509SVID, error) {
+func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDParams, attestation *types.SovereignAttestation) ([]*types.X509SVID, error) {
 	svidClient, connection, err := c.newSVIDClient()
 	if err != nil {
 		return nil, err
 	}
 	defer connection.Release()
 
-	resp, err := svidClient.BatchNewX509SVID(ctx, &svidv1.BatchNewX509SVIDRequest{
-		Params: params,
-	})
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// We are adding the SovereignAttestation to the request.
+	req := &svidv1.BatchNewX509SVIDRequest{
+		Params:                params,
+		SovereignAttestation: attestation,
+	}
+
+	resp, err := svidClient.BatchNewX509SVID(ctx, req)
 	if err != nil {
 		c.release(connection)
 		c.withErrorFields(err).Error("Failed to batch new X509 SVID(s)")

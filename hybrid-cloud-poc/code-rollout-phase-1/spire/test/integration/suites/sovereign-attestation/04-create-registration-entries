@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+
+docker-compose exec -T spire-server bin/spire-server entry create -spiffeID spiffe://example.org/workload -parentID spiffe://example.org/spire/agent/test -selector unix:uid:$(id -u)
