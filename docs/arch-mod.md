@@ -1,44 +1,21 @@
-Architecture — Implementation Specification for PoR/PoG Flow
+# Architecture — Implementation Specification for PoR/PoG Flow
 
-Introduction: Unified Identity for Sovereign AI
+## Introduction: Unified Identity for Sovereign AI
 
 This document provides the technical specification for implementing the Zero-Trust Sovereign AI architecture. This system is designed to meet strict regulatory and compliance requirements (e.g., data residency and geofencing) by replacing vulnerable network-based trust controls with hardware-rooted cryptographic proofs.
 
 The core innovation involves establishing a Unified Workload Identity by extending the SPIRE framework. This identity binds the workload's cryptographic identity with verifiable Proof of Residency (PoR) and Proof of Geofencing (PoG) facts retrieved through the Keylime Verifier. The flow is structured to reuse existing Keylime endpoints, simplifying Keylime's role to a trusted fact-provider, while centralizing final policy evaluation and SVID issuance within the SPIRE Server.
 
-🔒 Trust Assumptions
+## 🔒 Trust Assumptions
 
 This flow relies on several critical security primitives and architectural assumptions to enable the simplified, delegated verification model.
 
-Component
-
-Trust Assumption
-
-Purpose in Flow
-
-Trusted Platform Module (TPM)
-
-The TPM is the hardware root of trust on the host, is non-compromised, and its keys (EK, AK) are secure and accurate.
-
-Anchors the host's identity (EK/AK) and enables the cryptographic proofs for the Proof of Residency (PoR) via the App Key.
-
-Keylime & SPIRE (Trusted Components)
-
-The Keylime Verifier and SPIRE Server are both secure, non-compromised, and communicate over a trusted, mutually authenticated (mTLS) channel.
-
-Architectural Simplification: Allows the SPIRE Server to act as the central orchestrator, delegating TPM validation to Keylime and integrating the verified facts into the SVID.
-
-TPM Application Key (App Key)
-
-The App Key is certified by the host's AK and is protected by the TPM, preventing extraction or cloning.
-
-Provides the unique key used to sign the runtime PoR proof (the TPM Quote), establishing irrefutable assurance that the workload is running on the expected host.
-
-Keylime's Attestation Data
-
-The Keylime system is trusted to securely and accurately gather and persist the hardware-rooted geolocation and GPU metrics data, making it a reliable fact-provider.
-
-Provides the verifiable host health, integrity, and location data necessary for the Proof of Geofencing (PoG) claim.
+| Component | Trust Assumption | Purpose in Flow |
+| :--- | :--- | :--- |
+| **Trusted Platform Module (TPM)** | The TPM is the hardware root of trust on the host, is non-compromised, and its keys (EK, AK) are secure and accurate. | Anchors the host's identity (EK/AK) and enables the cryptographic proofs for the Proof of Residency (PoR) via the App Key. |
+| **Keylime & SPIRE (Trusted Components)** | The Keylime Verifier and SPIRE Server are both secure, non-compromised, and communicate over a trusted, mutually authenticated (mTLS) channel. | Architectural Simplification: Allows the SPIRE Server to act as the central orchestrator, delegating TPM validation to Keylime and integrating the verified facts into the SVID. |
+| **TPM Application Key (App Key)** | The App Key is certified by the host's AK and is protected by the TPM, preventing extraction or cloning. | Provides the unique key used to sign the runtime PoR proof (the TPM Quote), establishing irrefutable assurance that the workload is running on the expected host. |
+| **Keylime's Attestation Data** | The Keylime system is trusted to securely and accurately gather and persist the hardware-rooted geolocation and GPU metrics data, making it a reliable fact-provider. | Provides the verifiable host health, integrity, and location data necessary for the Proof of Geofencing (PoG) claim. |
 
 ---
 
@@ -74,7 +51,7 @@ To implement the above flow, we need to make specific API changes to both the SP
 
 The following section merges the full API changes, protobuf schemas, field-level validations, OpenAPI snippets, responsibility matrix, migration notes, security guidance, tests, and an implementation checklist. This is intended to be copy/paste-ready for engineering teams implementing the flow.
 
-1) SPIRE protobuf changes (SovereignAttestation & AttestedClaims)
+### 1) SPIRE protobuf changes (SovereignAttestation & AttestedClaims)
 
 Add the following messages to the SPIRE workload protobufs. Choose tag numbers that do not conflict with existing definitions in your repository.
 
@@ -141,7 +118,7 @@ Validation recommendations for proto fields:
 - `app_key_public`: PEM or base64; validate parsing on receipt.
 - `challenge_nonce`: must match a server-issued nonce and be single-use / time-limited.
 
-2) Keylime API (OpenAPI-style) — reuse endpoint
+### 2) Keylime API (OpenAPI-style) — reuse endpoint
 
 We reuse `POST /v2.4/verify/evidence` and document the tpm-app-key flow fields and responses.
 
@@ -150,9 +127,9 @@ Request (tpm-app-key annotated):
 ```json
 {
   "data": {
-    "nonce": "string",                
-    "quote": "string (Base64-encoded TPM Quote)",        
-    "hash_alg": "sha256",             
+    "nonce": "string",
+    "quote": "string (Base64-encoded TPM Quote)",
+    "hash_alg": "sha256",
     "app_key_public": "string",
     "app_key_certificate": "string (Base64-encoded X.509 DER/PEM)",
     "tpm_ak": "string (optional)",
@@ -187,7 +164,7 @@ Response (success):
 
 HTTP codes: 200 (OK — check `results.verified`), 400 (bad request), 401/403 (auth), 422 (certificate/validation errors), 500 (server err).
 
-3) Field-level validation & constraints
+### 3) Field-level validation & constraints
 
 - `quote` / `tpm_signed_attestation`: base64 string; must decode to valid TPM quote; size <= 64 KiB.
 - `app_key_certificate`: DER bytes or PEM string; size <= 16 KiB; must parse to X.509.
@@ -196,21 +173,21 @@ HTTP codes: 200 (OK — check `results.verified`), 400 (bad request), 401/403 (a
 - `geolocation`: structured preferred. If free-form, limit length (<= 256 chars).
 - `gpu_metrics_health.utilization_pct`: 0..100; `memory_mb` >= 0.
 
-4) Responsibility matrix
+### 4) Responsibility matrix
 
 - SPIRE Agent: generate TPM quote; optionally create `app_key_certificate` via TPM plugin; send `SovereignAttestation` in `X509SVIDRequest`.
 - SPIRE Server: issue nonce; validate request fields; forward evidence to Keylime; evaluate `attested_claims` against registration policy; embed claims in SVID or trigger remediation.
 - Keylime Verifier: authenticate caller; validate `app_key_certificate` chain; verify `quote` signature using app key; validate nonce/timestamps; return `attested_claims` and `verification_details`.
 - Registrar/Operator: manage trust anchors (AK CA) and registrar state.
 
-5) Migration & backward-compatibility
+### 5) Migration & backward-compatibility
 
 - Preserve `POST /v2.4/verify/evidence` as canonical endpoint. Existing clients without app_key fields remain supported.
 - Encourage SPIRE Agents to include `app_key_certificate` when available for higher assurance.
 - Add metadata `submission_type = PoR/tpm-app-key` so operators can filter logs.
 - Optionally add `/v2.4/verify/evidence/tpm-app-key` as an alias later.
 
-6) Security & operational notes
+### 6) Security & operational notes
 
 - Enforce mTLS with client auth for SPIRE Server → Keylime traffic.
 - Require Keylime to validate `app_key_certificate` against a configured trust store (AK/CA); consider CRL/OCSP.
@@ -218,28 +195,28 @@ HTTP codes: 200 (OK — check `results.verified`), 400 (bad request), 401/403 (a
 - Return an `audit_id` from Keylime and persist it in SPIRE for traceability.
 - Rate-limit and ACL tpm-app-key submissions; redact sensitive binary blobs in logs.
 
-7) Tests & validation harness
+### 7) Tests & validation harness
 
 - Unit tests for cert parsing, pubkey matching, quote signature verification, nonce reuse detection.
 - Integration tests with swtpm and a test Keylime: full E2E from Agent -> SPIRE Server -> Keylime -> SPIRE Server policy -> SVID issuance.
 - Failure-mode tests: missing cert, mismatched pubkey, reused nonce, oversized payload.
 
-8) Implementation checklist & rollout plan
+### 8) Implementation checklist & rollout plan
 
-Phase 1 — Proto & Agent
+#### Phase 1 — Proto & Agent
 - Reserve proto tags; create PR for `SovereignAttestation` and `AttestedClaims` changes.
 - Update SPIRE TPM plugin to optionally emit `app_key_certificate` + app key public.
 
-Phase 2 — Keylime
+#### Phase 2 — Keylime
 - Accept annotated `POST /v2.4/verify/evidence`; implement cert chain verification; verify quote using app key; emit `attested_claims` + `audit_id`.
 
-Phase 3 — SPIRE Server
+#### Phase 3 — SPIRE Server
 - Forward evidence to Keylime; evaluate `attested_claims` in policy engine; embed claims into SVID extensions and handle remediation paths.
 
-Phase 4 — Testing & rollout
+#### Phase 4 — Testing & rollout
 - Perform swtpm-based E2E tests; stage rollout; monitor audit logs and rate-limits.
 
-Appendix: sample proto snippets and examples
+### Appendix: sample proto snippets and examples
 
 See the protobuf snippets above (SovereignAttestation / AttestedClaims) and the Keylime JSON examples for exact request/response shapes.
 
@@ -290,7 +267,7 @@ Internal response (example):
 {
   "tpm_signed_attestation": "BASE64_ENCODED_TPM_QUOTE_FOR_WORKLOAD",
   "app_key_public": "PUBLIC_KEY_OF_TPM_APP_KEY",
-  "app_key_certificate": "BASE64_ENCODED_APP_KEY_CERT_BY_AK" // OPTIONAL: SPIRE TPM plugin can generate this certificate for the App Key
+  "app_key_certificate": "BASE64_ENCODED_APP_KEY_CERT_BY_AK",
   "workload_code_hash": "a2b3c4d5e6f7..."
 }
 ```
@@ -309,7 +286,7 @@ To avoid insecure file sharing of the Attestation Key (AK) context, the low-priv
 {
   "api_version": "v1",
   "command": "certify_app_key",
-  "app_key_public": "PUBLIC_KEY_OF_TPM_APP_KEY"
+  "app_key_public": "PUBLIC_KEY_OF_TPM_APP_KEY",
   "app_ctx": "PRIVATE_CONTEXT_OF_TPM_APP_KEY"
 }
 ```
@@ -339,7 +316,7 @@ Example payload:
   "sovereign_attestation": {
     "tpm_signed_attestation": "BASE64_ENCODED_TPM_QUOTE_FOR_WORKLOAD",
     "app_key_public": "PUBLIC_KEY_OF_TPM_APP_KEY",
-    "app_key_certificate": "BASE64_ENCODED_APP_KEY_CERT_BY_AK", // NEW: certificate proving the App Key's legitimacy
+    "app_key_certificate": "BASE64_ENCODED_APP_KEY_CERT_BY_AK",
     "challenge_nonce": "e3k7h9p1d5r2n4m6..."
   }
 }
@@ -351,9 +328,7 @@ Example payload:
 
 - The SPIRE Server verifies the PoR signature locally and delegates location and additional host checks to Keylime via the new endpoint.
 
-Example request (SPIRE → Keylime):
-
-Revised Keylime role
+#### Revised Keylime role
 
 We reuse Keylime's existing verifier endpoint `POST /v2.4/verify/evidence` but simplify its responsibilities: Keylime should only validate the TPM quote (signature and nonce) and return the raw, hardware-attested facts. Policy evaluation (PoG, GPU thresholds) is performed by the SPIRE Server's policy engine.
 
@@ -368,7 +343,7 @@ Minimal request shape (SPIRE → Keylime):
     "tpm_ak": "PUBLIC_KEY_OF_HOSTS_AK (optional)",
     "tpm_ek": "HOST_EK_KEY_HASH (optional)",
     "app_key_public": "PUBLIC_KEY_OF_TPM_APP_KEY",
-    "app_key_certificate": "BASE64_ENCODED_APP_KEY_CERT_BY_AK" // OPTIONAL: certificate proving the App Key's legitimacy (can be generated by SPIRE TPM plugin)
+    "app_key_certificate": "BASE64_ENCODED_APP_KEY_CERT_BY_AK"
   },
   "metadata": { "source": "SPIRE Server", "submission_type": "PoR" }
 }
@@ -379,7 +354,7 @@ Keylime MUST verify the App Key Certificate prior to using the App Key to valida
 1. Validate the `app_key_certificate` signature chain up to a trusted authority (AK) or verifier store.
 2. Extract the `app_key_public` from the certificate and use it to verify the `quote` signature.
 
-Using the existing endpoint for TPM App Key submissions
+#### Using the existing endpoint for TPM App Key submissions
 
 We recommend reusing `POST /v2.4/verify/evidence` for TPM App Key-backed submissions. To make the contract explicit for "tpm-app-key" flows, the SPIRE Server should include the additional fields below and Keylime should perform the corresponding validations. This keeps the API backward-compatible while making App Key flows explicit.
 
@@ -474,6 +449,5 @@ Kubernetes remediation example:
   "reason": "Host_Attestation_Failure: Geofencing_Violation",
   "action": "drain_and_taint_node"
 }
+}
 ```
-
----
