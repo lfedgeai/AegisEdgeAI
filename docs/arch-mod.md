@@ -476,10 +476,3 @@ Kubernetes remediation example:
 ```
 
 ---
-
-## Notes and next steps
-
-- These examples are intentionally minimal; the next step is to translate them into concrete protobuf schema changes (with field-level types and validations) and to add automated tests for round-trip verification.
-- Decide how claims map to certificate extensions and ensure the SPIRE CA signing policy and auditing are updated accordingly.
-
----
