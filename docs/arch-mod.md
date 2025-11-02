@@ -278,7 +278,7 @@ Note: the SPIRE TPM plugin can optionally generate an `app_key_certificate` (the
 
 ### 2a) Delegated Certification (SPIRE Agent -> Keylime Agent)
 
-To avoid insecure file sharing of the Attestation Key (AK) context, the low-privilege SPIRE Agent delegates the App Key certification to the high-privilege Keylime Agent via a secure local API (e.g., gRPC over a UNIX socket).
+- To avoid insecure file sharing of the Attestation Key (AK) context, the low-privilege SPIRE Agent delegates the App Key certification to the high-privilege Keylime Agent via a secure local API (e.g., gRPC over a UNIX socket).
 
 **Local API Request (SPIRE Agent -> Keylime Agent):**
 
@@ -448,6 +448,5 @@ Kubernetes remediation example:
   "target_tpm_id": "EK-Pub-Key-Hash-123",
   "reason": "Host_Attestation_Failure: Geofencing_Violation",
   "action": "drain_and_taint_node"
-}
 }
 ```
