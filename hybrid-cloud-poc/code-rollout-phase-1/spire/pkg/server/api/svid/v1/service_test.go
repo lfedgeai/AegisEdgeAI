@@ -1818,6 +1818,44 @@ func TestServiceBatchNewX509SVID(t *testing.T) {
 	}
 }
 
+// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+func TestBatchNewX509SVIDWithSovereignAttestation(t *testing.T) {
+	test := setupServiceTest(t)
+	defer test.Cleanup()
+
+	workloadEntry := &types.Entry{
+		Id:       "workload",
+		ParentId: api.ProtoFromID(agentID),
+		SpiffeId: &types.SPIFFEID{TrustDomain: "example.org", Path: "/workload1"},
+	}
+	test.ef.entries = []*types.Entry{workloadEntry}
+
+	csr := createCSR(t, &x509.CertificateRequest{})
+	params := []*svidv1.NewX509SVIDParams{
+		{
+			EntryId: workloadEntry.Id,
+			Csr:     csr,
+		},
+	}
+
+	test.withCallerID = true
+	test.rateLimiter.count = 1
+
+	resp, err := test.client.BatchNewX509SVID(context.Background(), &svidv1.BatchNewX509SVIDRequest{
+		Params: params,
+		SovereignAttestation: &svidv1.SovereignAttestation{
+			TpmSignedAttestation: "test_attestation",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	require.Equal(t, int32(codes.OK), resp.Results[0].Status.Code)
+	require.Len(t, resp.AttestedClaims, 1)
+	require.Equal(t, "Spain", resp.AttestedClaims[0].Geolocation)
+}
+
 func TestNewDownstreamX509CA(t *testing.T) {
 	type downstreamCaTest struct {
 		name           string

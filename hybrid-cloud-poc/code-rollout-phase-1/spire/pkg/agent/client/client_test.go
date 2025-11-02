@@ -1088,6 +1088,15 @@ func (c *fakeSVIDServer) BatchNewX509SVID(_ context.Context, in *svidv1.BatchNew
 		go c.simulateRelease()
 	}
 
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Assert that the SovereignAttestation data is present.
+	if in.SovereignAttestation == nil {
+		return nil, errors.New("SovereignAttestation is missing")
+	}
+	if in.SovereignAttestation.TpmSignedAttestation != "stubbed_tpm_signed_attestation" {
+		return nil, errors.New("incorrect TpmSignedAttestation")
+	}
+
 	var results []*svidv1.BatchNewX509SVIDResponse_Result
 	for _, param := range in.Params {
 		svid, ok := c.x509SVIDs[param.EntryId]
