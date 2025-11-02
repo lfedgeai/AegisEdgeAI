@@ -491,7 +491,7 @@ The goal is to complete the easiest-to-stub parts first, which are the API chang
 
 | Action | Description |
 | :--- | :--- |
-| **E2E Test** | Run the complete flow: Agent &to; Server &to; Keylime Verifier &to; Server Policy &to; SVID Issuance. Use a virtual TPM environment (`swtpm`) for real hardware-rooted cryptographic proofs. |
+| **E2E Test** | Run the complete flow for SVID Issuance. Use a hardware TPM real hardware-rooted cryptographic proofs. Ensure /dev/tpmrm0 (TPM resource manager) is used so that spire agent TPM plugin and keylime agent can concurrently access TPM |
 | **Failure Mode Tests** | Test all failure conditions: Geofence mismatch, nonce replay, invalid App Key Certificate, etc., and confirm the correct remediation actions are triggered. |
 
 ### Conclusion on Phasing
