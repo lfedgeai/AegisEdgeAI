@@ -92,6 +92,7 @@ message SovereignAttestation {
   string app_key_public = 2;
 
   // Optional base64-encoded DER or PEM certificate proving the App Key was issued/signed by the host AK.
+  // **CLARIFICATION:** This field MUST be Base64-encoded when transmitted over a JSON/REST boundary (e.g., to Keylime).
   // Validation: when present must parse to X.509 cert; chain verification will be performed by Keylime.
   bytes app_key_certificate = 3;
 
@@ -150,10 +151,10 @@ Request (tpm-app-key annotated):
 {
   "data": {
     "nonce": "string",                
-    "quote": "string",                
+    "quote": "string (Base64-encoded TPM Quote)",        
     "hash_alg": "sha256",             
-    "app_key_public": "string",       
-    "app_key_certificate": "string",  
+    "app_key_public": "string",
+    "app_key_certificate": "string (Base64-encoded X.509 DER/PEM)",
     "tpm_ak": "string (optional)",
     "tpm_ek": "string (optional)"
   },
