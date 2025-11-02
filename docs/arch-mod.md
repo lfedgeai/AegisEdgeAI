@@ -456,3 +456,22 @@ Kubernetes remediation example:
 - These examples are intentionally minimal; the next step is to translate them into concrete protobuf schema changes (with field-level types and validations) and to add automated tests for round-trip verification.
 - Decide how claims map to certificate extensions and ensure the SPIRE CA signing policy and auditing are updated accordingly.
 
+---
+
+## Secure Architectural Solution: Delegated Certification
+
+The correct solution avoids file sharing entirely by introducing a privileged local API that delegates the certification task from the low-privilege SPIRE Agent to the high-privilege Keylime Agent.
+This aligns with best practices in TPM key management, where a key's sensitive context is never written to disk or shared unnecessarily.
+
+### Modified Flow: App Key Certification
+
+| Phase | Component | Action | Necessary Privilege | Communication Method |
+| :--- | :--- | :--- | :--- | :--- |
+| 1. App Key Creation | SPIRE Agent TPM Plugin | Creates the new App Key pair inside the TPM. The App Key's private part never leaves the TPM. | Low (SPIRE Agent privilege) | Internal TPM call |
+| 2. Certification Request | SPIRE Agent | Requests the Keylime Agent to certify the new App Key using the AK. | Low (Needs access to Keylime Agent's local API) | New Local API Call (e.g., local gRPC/UNIX socket) |
+| 3. Certification Execution | Keylime Agent | Uses its privileged access to the loaded AK context to execute the tpm2_certify command on the TPM. | High (Requires ak.ctx access) | Internal TPM call |
+| 4. Certificate Delivery | Keylime Agent | Returns the newly generated App Key Certificate to the SPIRE Agent. | Low (Secure API response) | New Local API Response |
+
+### Keylime Agent Storage (ak.ctx Persistence)
+
+Yes, the Keylime Agent (or a host-level service it relies on) must securely manage the persistence of the AK context (ak.ctx or similar handle) to ensure the AK can be used across reboots. This context is typically saved to a secured file location with permissions restricted only to the service that needs it, as it represents the loaded private key handle.
