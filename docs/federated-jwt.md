@@ -33,13 +33,16 @@ This model separates stable identity claims from dynamic assurance claims, placi
 2.  **PRO:** **Highest Flexibility.** Claims can be updated instantly by the device (per request) without refreshing the Identity JWT, maximizing agility and performance.
 3.  **CON (General):** **Maximum Complexity.** Requires a sophisticated client and a complex Service Provider infrastructure to manage and verify a large set of ephemeral device signing keys.
 
+### Model 3: Service Account Workload specific
+This model replaces the JWT for the primary identity and role claims with a short-lived X.509 Certificate (SVID), issued to the workload. The assurance claims (TPM/Geo) are then anchored to the certificate.
+
 ### 🎯 Strategic Conclusion: The Ownership Factor
 
-The critical differentiator for selecting the optimal model lies in the ownership of the application (the Service Provider):
+The optimal authorization model hinges entirely on the ownership and trust relationship between the Enterprise workload and the Service Provider (SP) application.
 
-| Deployment Context | Key Challenge | Recommended Model | Rationale |
-| :--- | :--- | :--- | :--- |
-| **B2B (SP is external)** | Complexity of managing device keys across organizational boundaries (PKI). | **Model 1** (Tolerate high latency for simplicity and high integrity). | External organizations may struggle to exchange and trust device-specific keys securely and reliably. |
-| **Internal (SP is Enterprise app)** | High-latency token refreshes (Model 1 CON). | **Model 2** (The best balance). | Since the **Enterprise owns the device, the IDP, and the SP application**, the necessary **PKI and key lookup** is entirely controlled internally, significantly reducing the complexity of Model 2 and making its agility benefits attainable. |
+Deployment Context,Key Challenge,Recommended Model,Rationale
+B2B (SP is external),Trust & Complexity: Difficulty in establishing a shared PKI for device-specific keys across organizations.,Model 1,Relies on the simplest trust anchor (the established Enterprise IDP signature) and is the most easily consumed by an external Service Provider.
+Internal (SP is Enterprise app),"Performance & Agility: Overcoming the high-overhead, low-agility bottleneck of Model 1.",Model 2 (Transitional),Solves the agility problem immediately by delegating dynamic claims to the device without requiring a full Workload Identity System deployment.
+Internal (SP is Enterprise app),"Highest Security & Scalability: Achieving HW-rooted identity, automated renewal, and mutual authentication.",Model 3 (Gold Standard),"Since the Enterprise owns the entire stack, the operational complexity is an acceptable investment to achieve the highest level of assurance, agility, and security via SVIDs and mTLS."
 
-In the specific context of an Enterprise leveraging its own hardware and applications (like Edge AI), **Model 2 is the clear long-term solution** for achieving both real-time authorization and cryptographic integrity.
+
