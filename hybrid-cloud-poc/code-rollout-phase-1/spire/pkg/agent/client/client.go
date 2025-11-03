@@ -646,9 +646,20 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 	}
 	defer connection.Release()
 
-	resp, err := svidClient.BatchNewX509SVID(ctx, &svidv1.BatchNewX509SVIDRequest{
+	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Add stubbed SovereignAttestation data.
+	req := &svidv1.BatchNewX509SVIDRequest{
 		Params: params,
-	})
+		SovereignAttestation: &svidv1.SovereignAttestation{
+			TpmSignedAttestation: "stubbed_tpm_signed_attestation",
+			AppKeyPublic:         "stubbed_app_key_public",
+			AppKeyCertificate:    []byte("stubbed_app_key_certificate"),
+			ChallengeNonce:       "stubbed_challenge_nonce",
+			WorkloadCodeHash:     "stubbed_workload_code_hash",
+		},
+	}
+
+	resp, err := svidClient.BatchNewX509SVID(ctx, req)
 	if err != nil {
 		c.release(connection)
 		c.withErrorFields(err).Error("Failed to batch new X509 SVID(s)")
