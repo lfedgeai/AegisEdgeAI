@@ -1,5 +1,0 @@
-#!/bin/bash
-
-docker-up spire-agent-1
-docker-up spire-agent-2
-docker-up spire-agent-3
