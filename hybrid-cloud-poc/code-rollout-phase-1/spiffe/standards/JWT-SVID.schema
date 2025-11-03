@@ -1,0 +1,67 @@
+$id: "https://github.com/spiffe/spiffe/tree/master/standards/JWT-SVID.schema"
+$schema: "http://json-schema.org/draft-07/schema#"
+description: "SPIFFE schema to validate JWT-SVID"
+type: "object"
+properties:
+  header:
+    type: "object"
+    properties:
+      alg:
+        type: "string"
+        description: |
+          The alg (algorithm) Header Parameter as defined in RFC 7518.
+          See https://github.com/spiffe/spiffe/blob/main/standards/JWT-SVID.md#21-algorithm for the supported values for JWT-SVIDs.
+          This Header Parameter is REQUIRED.
+        enum:
+          - "RS256"
+          - "RS384"
+          - "RS512"
+          - "ES256"
+          - "ES384"
+          - "ES512"
+          - "PS256"
+          - "PS384"
+          - "PS512"
+      kid:
+        type: "string"
+        description: |
+          The kid (key identifier) Header Parameter as defined in RFC 7515.
+          See https://github.com/spiffe/spiffe/blob/main/standards/JWT-SVID.md#22-key-id.
+          This Header Parameter is OPTIONAL.
+      typ:
+        type: "string"
+        description: |
+          The `typ` (type) Header Parameter as defined in RFC 7519.
+          See https://github.com/spiffe/spiffe/blob/main/standards/JWT-SVID.md#23-type.
+          This Header Parameter is OPTIONAL.
+        enum:
+          - "JWT"
+          - "JOSE"
+    required:
+      - "alg"
+  payload:
+    type: "object"
+    properties:
+      sub:
+        type: "string"
+        description: |
+          The `sub` (subject) claim as defined in RFC 7519.
+          For JWT-SVIDs, the "sub" claim contains the SPIFFE ID.
+          See https://github.com/spiffe/spiffe/blob/main/standards/JWT-SVID.md#31-subject
+          This claim is REQUIRED.
+      aud:
+        type: "string"
+        description: |
+          The "aud" (audience) claim as defined in RFC 7519.
+          See https://github.com/spiffe/spiffe/blob/main/standards/JWT-SVID.md#32-audience
+          This claim is REQUIRED.
+      exp:
+        type: "integer"
+        description: |
+          The "exp" (expiration time) claim as defined in RFC 7519.
+          See https://github.com/spiffe/spiffe/blob/main/standards/JWT-SVID.md#33-expiration-time
+          This claim is REQUIRED.
+    required:
+      - "sub"
+      - "aud"
+      - "exp"
