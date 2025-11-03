@@ -220,12 +220,15 @@ func (s *Service) BatchNewX509SVID(ctx context.Context, req *svidv1.BatchNewX509
 	// Unified Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 	var attestedClaims []*svidv1.AttestedClaims
 	if req.SovereignAttestation != nil {
+		log.Info("Received SovereignAttestation data; verifying with Keylime.")
 		// In Phase 1, we'll use a mock Keylime Verifier.
 		keylimeVerifier := &MockKeylimeVerifier{}
 		claims, err := keylimeVerifier.Verify(req.SovereignAttestation)
 		if err != nil {
+			log.WithError(err).Error("Failed to verify attestation")
 			return nil, api.MakeErr(log, codes.Internal, "failed to verify attestation", err)
 		}
+		log.WithField("claims", claims).Info("Attestation verified successfully")
 		attestedClaims = append(attestedClaims, claims)
 	}
 
