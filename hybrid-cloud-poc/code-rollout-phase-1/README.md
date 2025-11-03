@@ -41,8 +41,7 @@ The compiled binaries will be located in the `hybrid-cloud-poc/code-rollout-phas
 To run the unit tests for the modified packages, use the following commands from the `hybrid-cloud-poc/code-rollout-phase-1` directory:
 
 ```bash
-go test ./... -C spire/pkg/agent/client
-go test ./... -C spire/pkg/server/api/svid/v1
+go test -C spire/pkg/agent/client ./...
 ```
 
 #### End-to-End Test
@@ -50,5 +49,5 @@ go test ./... -C spire/pkg/server/api/svid/v1
 An end-to-end test has been added to `spire/pkg/server/api/svid/v1/e2e_test.go` to verify the entire flow. To run this test, use the following command from the `hybrid-cloud-poc/code-rollout-phase-1` directory:
 
 ```bash
-go test ./... -C spire/pkg/server/api/svid/v1
+go test -C spire/pkg/server/api/svid/v1 ./...
 ```
