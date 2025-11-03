@@ -33,7 +33,7 @@ This model separates stable identity claims from dynamic assurance claims, placi
 2.  **PRO:** **Highest Flexibility.** Claims can be updated instantly by the device (per request) without refreshing the Identity JWT, maximizing agility and performance.
 3.  **CON (General):** **Maximum Complexity.** Requires a sophisticated client and a complex Service Provider infrastructure to manage and verify a large set of ephemeral device signing keys.
 
-### Model 3: Service Account Workload specific
+### Model 3: New Claims with a short-lived X.509 Certificate (SVID)
 This model replaces the JWT for the primary identity and role claims with a short-lived X.509 Certificate (SVID), issued to the workload. The assurance claims (TPM/Geo) are then anchored to the certificate.
 
 ### 🎯 Strategic Conclusion: The Ownership Factor
