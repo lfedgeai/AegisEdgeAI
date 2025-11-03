@@ -26,3 +26,4 @@ zero-trust/spire-tpm-plugin/*.out
 zero-trust/spire-tpm-plugin/*.msg
 zero-trust/spire-tpm-plugin/*.pcrs
 zero-trust/spire-tpm-plugin/*.hash
+hybrid-cloud-poc/code-rollout-phase-1/spire/bin/
