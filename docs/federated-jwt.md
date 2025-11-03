@@ -2,7 +2,7 @@
 
 The challenge is to securely convey **HW-rooted TPM attestation** and **Attested Geographic location** from the Enterprise workload to the Service Provider's (SP) policy engine in a robust **Federated Identity** architecture.
 
-### 🏛️ Model 1: JWT-Only Claims (Maximum Cryptographic Assurance)
+### 🏛️ Model 1: Single Identity JWT with all claims
 
 This model embeds *all* claims—identity, role, and hardware assurance—into a single, comprehensive, and fully **signed JWT**.
 
@@ -18,9 +18,9 @@ This model embeds *all* claims—identity, role, and hardware assurance—into a
 2.  **PRO:** **Unquestionable Integrity.** The single signature guarantees the authenticity and non-tampering of *all* authorization data, simplifying SP validation.
 3.  **CON:** **Low Agility.** The token's Time-to-Live (TTL) must be extremely short (e.g., minutes) to ensure the TPM/Geo data is current, leading to **high-overhead, frequent token re-issuance** requests.
 
-### 🛡️ Model 2: Hybrid Claims with Nested Signature (Maximum Agility & Integrity)
+### 🛡️ Model 2: Identity JWT + New Claims in a signed JWT within a HTTP header
 
-This model separates stable identity claims from dynamic assurance claims, placing the latter in a dynamically generated, **signed Nested JWT** within an HTTP header.
+This model separates stable identity claims from dynamic assurance claims, placing the latter in a dynamically generated, **signed  JWT** within a HTTP header.
 
 #### 🛡️ Security Claims and Sourcing
 | Claim Type | Location | Assurance Level | Source & Integrity Mechanism |
@@ -29,7 +29,7 @@ This model separates stable identity claims from dynamic assurance claims, placi
 | **TPM/Geo Claims** | **Nested JWT** in **HTTP Header** | **Highest** (Signed) | Enterprise/Device-Signed Token |
 
 #### Flow and Trade-Offs
-1.  **Flow:** The Enterprise client generates and signs the Nested JWT for the latest TPM/Geo data. The SP verifies **two signatures**—one for the Identity JWT (IDP key) and one for the Nested JWT (device key). 
+1.  **Flow:** The Enterprise client generates and signs the Nested JWT for the latest TPM/Geo data. The SP verifies **two signatures** - one for the Identity JWT (IDP key) and one for the HTTP header JWT (device key). 
 2.  **PRO:** **Highest Flexibility.** Claims can be updated instantly by the device (per request) without refreshing the Identity JWT, maximizing agility and performance.
 3.  **CON (General):** **Maximum Complexity.** Requires a sophisticated client and a complex Service Provider infrastructure to manage and verify a large set of ephemeral device signing keys.
 
