@@ -658,6 +658,7 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 			WorkloadCodeHash:     "stubbed_workload_code_hash",
 		},
 	}
+	c.c.Log.Debug("Sending SovereignAttestation data to the server")
 
 	resp, err := svidClient.BatchNewX509SVID(ctx, req)
 	if err != nil {
