@@ -33,7 +33,7 @@ func (repo *nodeAttestorRepository) Versions() []catalog.Version {
 }
 
 func (repo *nodeAttestorRepository) BuiltIns() []catalog.BuiltIn {
-	builtIns := []catalog.BuiltIn{
+	return []catalog.BuiltIn{
 		awsiid.BuiltIn(),
 		azuremsi.BuiltIn(),
 		gcpiit.BuiltIn(),
@@ -44,7 +44,6 @@ func (repo *nodeAttestorRepository) BuiltIns() []catalog.BuiltIn {
 		tpmdevid.BuiltIn(),
 		x509pop.BuiltIn(),
 	}
-	return appendBuiltIns(builtIns)
 }
 
 type nodeAttestorV1 struct{}

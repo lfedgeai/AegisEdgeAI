@@ -19,12 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SpiffeWorkloadAPI_FetchX509SVID_FullMethodName               = "/SpiffeWorkloadAPI/FetchX509SVID"
-	SpiffeWorkloadAPI_FetchX509Bundles_FullMethodName            = "/SpiffeWorkloadAPI/FetchX509Bundles"
-	SpiffeWorkloadAPI_FetchJWTSVID_FullMethodName                = "/SpiffeWorkloadAPI/FetchJWTSVID"
-	SpiffeWorkloadAPI_FetchJWTBundles_FullMethodName             = "/SpiffeWorkloadAPI/FetchJWTBundles"
-	SpiffeWorkloadAPI_ValidateJWTSVID_FullMethodName             = "/SpiffeWorkloadAPI/ValidateJWTSVID"
-	SpiffeWorkloadAPI_PerformSovereignAttestation_FullMethodName = "/SpiffeWorkloadAPI/PerformSovereignAttestation"
+	SpiffeWorkloadAPI_FetchX509SVID_FullMethodName    = "/SpiffeWorkloadAPI/FetchX509SVID"
+	SpiffeWorkloadAPI_FetchX509Bundles_FullMethodName = "/SpiffeWorkloadAPI/FetchX509Bundles"
+	SpiffeWorkloadAPI_FetchJWTSVID_FullMethodName     = "/SpiffeWorkloadAPI/FetchJWTSVID"
+	SpiffeWorkloadAPI_FetchJWTBundles_FullMethodName  = "/SpiffeWorkloadAPI/FetchJWTBundles"
+	SpiffeWorkloadAPI_ValidateJWTSVID_FullMethodName  = "/SpiffeWorkloadAPI/ValidateJWTSVID"
 )
 
 // SpiffeWorkloadAPIClient is the client API for SpiffeWorkloadAPI service.
@@ -52,8 +51,6 @@ type SpiffeWorkloadAPIClient interface {
 	// Validates a JWT-SVID against the requested audience. Returns the SPIFFE
 	// ID of the JWT-SVID and JWT claims.
 	ValidateJWTSVID(ctx context.Context, in *ValidateJWTSVIDRequest, opts ...grpc.CallOption) (*ValidateJWTSVIDResponse, error)
-	// PerformSovereignAttestation performs a sovereign attestation flow.
-	PerformSovereignAttestation(ctx context.Context, in *PerformSovereignAttestationRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PerformSovereignAttestationResponse], error)
 }
 
 type spiffeWorkloadAPIClient struct {
@@ -141,25 +138,6 @@ func (c *spiffeWorkloadAPIClient) ValidateJWTSVID(ctx context.Context, in *Valid
 	return out, nil
 }
 
-func (c *spiffeWorkloadAPIClient) PerformSovereignAttestation(ctx context.Context, in *PerformSovereignAttestationRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PerformSovereignAttestationResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &SpiffeWorkloadAPI_ServiceDesc.Streams[3], SpiffeWorkloadAPI_PerformSovereignAttestation_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[PerformSovereignAttestationRequest, PerformSovereignAttestationResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type SpiffeWorkloadAPI_PerformSovereignAttestationClient = grpc.ServerStreamingClient[PerformSovereignAttestationResponse]
-
 // SpiffeWorkloadAPIServer is the server API for SpiffeWorkloadAPI service.
 // All implementations must embed UnimplementedSpiffeWorkloadAPIServer
 // for forward compatibility.
@@ -185,8 +163,6 @@ type SpiffeWorkloadAPIServer interface {
 	// Validates a JWT-SVID against the requested audience. Returns the SPIFFE
 	// ID of the JWT-SVID and JWT claims.
 	ValidateJWTSVID(context.Context, *ValidateJWTSVIDRequest) (*ValidateJWTSVIDResponse, error)
-	// PerformSovereignAttestation performs a sovereign attestation flow.
-	PerformSovereignAttestation(*PerformSovereignAttestationRequest, grpc.ServerStreamingServer[PerformSovereignAttestationResponse]) error
 	mustEmbedUnimplementedSpiffeWorkloadAPIServer()
 }
 
@@ -211,9 +187,6 @@ func (UnimplementedSpiffeWorkloadAPIServer) FetchJWTBundles(*JWTBundlesRequest, 
 }
 func (UnimplementedSpiffeWorkloadAPIServer) ValidateJWTSVID(context.Context, *ValidateJWTSVIDRequest) (*ValidateJWTSVIDResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateJWTSVID not implemented")
-}
-func (UnimplementedSpiffeWorkloadAPIServer) PerformSovereignAttestation(*PerformSovereignAttestationRequest, grpc.ServerStreamingServer[PerformSovereignAttestationResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method PerformSovereignAttestation not implemented")
 }
 func (UnimplementedSpiffeWorkloadAPIServer) mustEmbedUnimplementedSpiffeWorkloadAPIServer() {}
 func (UnimplementedSpiffeWorkloadAPIServer) testEmbeddedByValue()                           {}
@@ -305,17 +278,6 @@ func _SpiffeWorkloadAPI_ValidateJWTSVID_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SpiffeWorkloadAPI_PerformSovereignAttestation_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(PerformSovereignAttestationRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(SpiffeWorkloadAPIServer).PerformSovereignAttestation(m, &grpc.GenericServerStream[PerformSovereignAttestationRequest, PerformSovereignAttestationResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type SpiffeWorkloadAPI_PerformSovereignAttestationServer = grpc.ServerStreamingServer[PerformSovereignAttestationResponse]
-
 // SpiffeWorkloadAPI_ServiceDesc is the grpc.ServiceDesc for SpiffeWorkloadAPI service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -346,11 +308,6 @@ var SpiffeWorkloadAPI_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "FetchJWTBundles",
 			Handler:       _SpiffeWorkloadAPI_FetchJWTBundles_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "PerformSovereignAttestation",
-			Handler:       _SpiffeWorkloadAPI_PerformSovereignAttestation_Handler,
 			ServerStreams: true,
 		},
 	},
