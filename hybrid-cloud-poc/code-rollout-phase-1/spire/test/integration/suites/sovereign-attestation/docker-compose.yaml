@@ -1,0 +1,34 @@
+version: "3.7"
+
+services:
+  spire-server:
+    build:
+      context: ../../../..
+      dockerfile: test/integration/suites/sovereign-attestation/Dockerfile.spire
+      target: spire-server
+    hostname: spire-server
+    volumes:
+      - ../../../..:/opt/spire
+    command: ["run", "-config", "/opt/spire/test/integration/suites/sovereign-attestation/conf/server.conf"]
+
+  spire-agent:
+    build:
+      context: ../../../..
+      dockerfile: test/integration/suites/sovereign-attestation/Dockerfile.spire
+      target: spire-agent
+    hostname: spire-agent
+    depends_on:
+      - spire-server
+    volumes:
+      - ../../../..:/opt/spire
+    command: ["run", "-config", "/opt/spire/test/integration/suites/sovereign-attestation/conf/agent.conf"]
+
+  sovereign-attestation:
+    build:
+      context: ../../../..
+      dockerfile: test/integration/suites/sovereign-attestation/Dockerfile.client
+    hostname: sovereign-attestation
+    depends_on:
+      - spire-agent
+    volumes:
+      - ../../../..:/opt/spire

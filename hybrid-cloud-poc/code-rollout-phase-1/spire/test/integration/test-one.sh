@@ -12,13 +12,13 @@ source "${COMMON}"
 TESTDIR="$( cd "$1" && pwd )"
 TESTNAME="$(basename "${TESTDIR}")"
 
-# Capture the top level directory of the repository
-REPODIR=$(git rev-parse --show-toplevel)
+# The SPIRE repository root is two directories up from the integration test root
+REPODIR=$(cd "${ROOTDIR}/../.." && pwd)
 
 # Set and export the PATH to one that includes a go binary installed by the
 # Makefile, if necessary.
-PATH=$(cd "${REPODIR}" || exit; make go-bin-path)
-export PATH
+GO_BIN_PATH=$(cd "${REPODIR}" && make go-bin-path)
+export PATH="${GO_BIN_PATH}:${PATH}"
 
 log-info "running \"${TESTNAME}\" test suite..."
 
