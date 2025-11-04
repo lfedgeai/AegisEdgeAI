@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.30.2
-// source: workload.proto
+// source: spiffe/workload/workload.proto
 
 package workload
 
@@ -354,5 +354,5 @@ var SpiffeWorkloadAPI_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "workload.proto",
+	Metadata: "spiffe/workload/workload.proto",
 }
