@@ -1,0 +1,16 @@
+FROM golang:1.20 as builder
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN go build -tags unified_identity -o /build/sovereign-attestation ./test/integration/setup/sovereign-attestation
+
+FROM debian:11
+
+COPY --from=builder /build/sovereign-attestation /usr/bin/sovereign-attestation
+
+ENTRYPOINT ["/usr/bin/sovereign-attestation"]
