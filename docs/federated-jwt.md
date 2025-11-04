@@ -35,7 +35,7 @@ This model separates stable identity claims from dynamic assurance claims, placi
 2. **PRO:** **Highest Flexibility.** Claims can be updated instantly by the device (per request) without refreshing the Identity JWT.  
 3. **CON:** **Maximum Complexity.** Requires sophisticated client logic and SP infrastructure to manage and verify many ephemeral device signing keys.  
 
-## Model 3: New Claims with a short-lived X.509 Certificate (SPIFFE/SPIRE SVID)
+## Model 3: New Claims with a short-lived X.509 Certificate (e.g., SPIFFE/SPIRE SVID)
 
 This model replaces the JWT for primary identity and role claims with a short-lived **X.509 Certificate (SVID)** issued to the workload. The assurance claims (TPM/Geo) are then anchored to the certificate.
 
@@ -47,4 +47,4 @@ The optimal authorization model depends on the **ownership and trust relationshi
 |-----------------------------|-------------------------------------------------------------------------------|-------------------|-----------|
 | **B2B (federation)**   | Trust & Complexity: Difficulty in establishing shared PKI for device-specific keys across orgs. | **Model 1**       | Simplest trust anchor (Enterprise IDP signature), easiest for external SPs. |
 | **Internal (no federation)** | Performance & Agility: Overcoming high-overhead, low-agility bottleneck of Model 1. | **Model 2 (Transitional)** | Delegates dynamic claims to device without full Workload Identity System. |
-| **Internal (no federation) or External (federation, e.g. SPIFFE/SPIRE)** | Highest Security & Scalability: Achieving HW-rooted identity, automated renewal, and mutual authentication. | **Model 3 (Gold Standard)** | Workload identity identity standard (e.g. SPIFFE/SPIRE) across organizations. |
+| **Internal (no federation) or External (federation, e.g., SPIFFE/SPIRE)** | Highest Security & Scalability: Achieving HW-rooted identity, automated renewal, and mutual authentication. | **Model 3 (Gold Standard)** | Workload identity identity standard (e.g. SPIFFE/SPIRE) across organizations. |
