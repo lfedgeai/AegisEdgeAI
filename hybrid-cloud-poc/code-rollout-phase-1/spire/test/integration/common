@@ -7,7 +7,7 @@ yellow=$(tput setaf 3) || true
 bold=$(tput bold) || true
 
 timestamp() {
-    date -u "+[%Y-%m-%dT%H:%M:%SZ]"
+    /bin/date -u "+[%Y-%m-%dT%H:%M:%SZ]"
 }
 
 log-info() {
