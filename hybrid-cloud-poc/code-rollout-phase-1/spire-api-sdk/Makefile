@@ -28,6 +28,7 @@ protos := \
 	proto/spire/api/types/spiffeid.proto \
 	proto/spire/api/types/status.proto \
 	proto/spire/api/types/x509svid.proto \
+	proto/spiffe/workload/workload.proto
 
 
 apiprotos := \
@@ -42,6 +43,7 @@ apiprotos := \
 	proto/spire/api/server/logger/v1/logger.proto \
 	proto/spire/api/server/trustdomain/v1/trustdomain.proto \
 	proto/spire/api/server/svid/v1/svid.proto \
+	proto/spiffe/workload/workload.proto
 
 # Used to force some rules to run every time
 FORCE: ;
