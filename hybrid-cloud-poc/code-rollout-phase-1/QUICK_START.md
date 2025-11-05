@@ -4,6 +4,13 @@
 
 This comprehensive guide covers building, testing, and using the Phase 1 Unified Identity feature in SPIRE. It includes step-by-step instructions for building, running unit tests, integration tests, and enabling the feature flag.
 
+**Related Documentation:**
+- See [`README.md`](README.md) for overview and summary
+- See [`TEST_RESULTS.md`](TEST_RESULTS.md) for detailed unit test results
+- See [`END_TO_END_TEST_STATUS.md`](END_TO_END_TEST_STATUS.md) for end-to-end test status
+- See [`BUILD_INSTRUCTIONS.md`](BUILD_INSTRUCTIONS.md) for detailed build steps
+- See [`DOCUMENTATION.md`](DOCUMENTATION.md) for complete documentation index
+
 ## Prerequisites
 
 ### Required Software
@@ -181,6 +188,8 @@ Failed: 0
 All tests passed!
 ```
 
+**For detailed test results, see [`TEST_RESULTS.md`](TEST_RESULTS.md).**
+
 ## Step 3: Run Integration Tests
 
 ### 3.1 Integration Test Setup
@@ -227,6 +236,8 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/spire/test/integration/su
 ```
 
 **Note**: Full end-to-end integration testing requires running SPIRE Server and Agent with the feature flag enabled (see Step 4).
+
+**For comprehensive end-to-end test status and manual testing procedures, see [`END_TO_END_TEST_STATUS.md`](END_TO_END_TEST_STATUS.md).**
 
 ## Feature Flag
 
@@ -472,6 +483,8 @@ go test ./pkg/server/api/svid/v1/... -v -run FeatureFlagDisabled
 go test ./pkg/agent/endpoints/workload/... -run FeatureFlagDisabled -v
 ```
 
+**See [`TEST_RESULTS.md`](TEST_RESULTS.md) for detailed results of all unit tests with both flag states.**
+
 ### 7.4 Complete Test Checklist
 
 Run this complete checklist to verify everything works:
@@ -705,10 +718,21 @@ Agent → Workload (Response with AttestedClaims)
 ## Support
 
 For issues or questions:
-1. Check BUILD_INSTRUCTIONS.md for build issues
-2. Check IMPLEMENTATION_SUMMARY.md for implementation details
-3. Check COMPLETION_STATUS.md for current status
-4. Review logs with "Unified-Identity - Phase 1:" prefix
+1. Check [`BUILD_INSTRUCTIONS.md`](BUILD_INSTRUCTIONS.md) for build issues
+2. Check [`IMPLEMENTATION_SUMMARY.md`](IMPLEMENTATION_SUMMARY.md) for implementation details
+3. Check [`COMPLETION_STATUS.md`](COMPLETION_STATUS.md) for current status
+4. Check [`TEST_RESULTS.md`](TEST_RESULTS.md) for detailed unit test results
+5. Check [`END_TO_END_TEST_STATUS.md`](END_TO_END_TEST_STATUS.md) for end-to-end test status
+6. Review logs with "Unified-Identity - Phase 1:" prefix
+
+## Related Documentation
+
+- **[`README.md`](README.md)**: Overview and summary of Phase 1 implementation
+- **[`BUILD_INSTRUCTIONS.md`](BUILD_INSTRUCTIONS.md)**: Detailed build steps and troubleshooting
+- **[`IMPLEMENTATION_SUMMARY.md`](IMPLEMENTATION_SUMMARY.md)**: Technical implementation details
+- **[`COMPLETION_STATUS.md`](COMPLETION_STATUS.md)**: Current status and verification checklist
+- **[`TEST_RESULTS.md`](TEST_RESULTS.md)**: Comprehensive unit test results with both feature flag states
+- **[`END_TO_END_TEST_STATUS.md`](END_TO_END_TEST_STATUS.md)**: End-to-end test status and manual testing guide
 
 ---
 

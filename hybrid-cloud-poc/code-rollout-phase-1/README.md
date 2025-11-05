@@ -8,6 +8,9 @@ This phase introduces the initial implementation of the "Unified Identity" featu
 - **Build Instructions**: See [`BUILD_INSTRUCTIONS.md`](BUILD_INSTRUCTIONS.md) for detailed build steps
 - **Implementation Details**: See [`IMPLEMENTATION_SUMMARY.md`](IMPLEMENTATION_SUMMARY.md) for technical details
 - **Status**: See [`COMPLETION_STATUS.md`](COMPLETION_STATUS.md) for current completion status
+- **Test Results**: See [`TEST_RESULTS.md`](TEST_RESULTS.md) for comprehensive unit test results
+- **End-to-End Tests**: See [`END_TO_END_TEST_STATUS.md`](END_TO_END_TEST_STATUS.md) for end-to-end test status and manual testing guide
+- **Documentation Index**: See [`DOCUMENTATION.md`](DOCUMENTATION.md) for complete documentation navigation guide
 
 ## Summary of Changes
 
@@ -153,6 +156,8 @@ cd ..
 
 **See `QUICK_START.md` for detailed testing instructions including unit tests and integration tests.**
 
+**See `TEST_RESULTS.md` for comprehensive unit test results with both feature flag states (enabled/disabled).**
+
 ### Integration Tests
 
 Integration tests are available in `spire/test/integration/suites/sovereign-attestation/`:
@@ -161,6 +166,8 @@ Integration tests are available in `spire/test/integration/suites/sovereign-atte
 - Binary build verification
 
 **See `QUICK_START.md` Step 3 for detailed integration test instructions.**
+
+**See `END_TO_END_TEST_STATUS.md` for comprehensive end-to-end test status and manual testing procedures.**
 
 ### Backward Compatibility
 
@@ -213,16 +220,21 @@ All log messages are prefixed with "Unified-Identity - Phase 1:" for easy filter
 
 If you see compilation errors about undefined types like `workload.SovereignAttestation` or `workload.AttestedClaims`, this means the protobuf code needs to be regenerated. The Makefiles will automatically download the required `protoc` version and tools if they're not available.
 
-See `BUILD_INSTRUCTIONS.md` for detailed troubleshooting steps.
+See [`BUILD_INSTRUCTIONS.md`](BUILD_INSTRUCTIONS.md) for detailed troubleshooting steps.
+
+For test-related issues, see [`TEST_RESULTS.md`](TEST_RESULTS.md) and [`END_TO_END_TEST_STATUS.md`](END_TO_END_TEST_STATUS.md).
 
 ## Documentation
 
 For detailed instructions, see:
 
-- **`QUICK_START.md`**: Comprehensive guide for building, testing, and running with feature flag enabled
-- **`BUILD_INSTRUCTIONS.md`**: Detailed build steps and troubleshooting
-- **`IMPLEMENTATION_SUMMARY.md`**: Technical implementation details
-- **`COMPLETION_STATUS.md`**: Current status and verification checklist
+- **[`QUICK_START.md`](QUICK_START.md)**: Comprehensive guide for building, testing, and running with feature flag enabled
+- **[`BUILD_INSTRUCTIONS.md`](BUILD_INSTRUCTIONS.md)**: Detailed build steps and troubleshooting
+- **[`IMPLEMENTATION_SUMMARY.md`](IMPLEMENTATION_SUMMARY.md)**: Technical implementation details
+- **[`COMPLETION_STATUS.md`](COMPLETION_STATUS.md)**: Current status and verification checklist
+- **[`TEST_RESULTS.md`](TEST_RESULTS.md)**: Detailed unit test results with both feature flag states
+- **[`END_TO_END_TEST_STATUS.md`](END_TO_END_TEST_STATUS.md)**: End-to-end test status and manual testing guide
+- **[`DOCUMENTATION.md`](DOCUMENTATION.md)**: Complete documentation index and navigation guide
 
 ## Next Steps (Future Phases)
 

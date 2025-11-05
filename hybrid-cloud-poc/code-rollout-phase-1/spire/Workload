@@ -1,8 +1,8 @@
 === RUN   TestGenerateStubbedSovereignAttestation_FeatureFlagDisabled
 --- PASS: TestGenerateStubbedSovereignAttestation_FeatureFlagDisabled (0.00s)
 === RUN   TestGenerateStubbedSovereignAttestation_FeatureFlagEnabled
-time="2025-11-05T02:19:38+01:00" level=info msg="Unified-Identity - Phase 1: Generating stubbed sovereign attestation"
-time="2025-11-05T02:19:38+01:00" level=info msg="Unified-Identity - Phase 1: Generated stubbed sovereign attestation" has_app_key=true has_app_key_cert=true has_nonce=true has_tpm_quote=true workload_code_hash=
+time="2025-11-05T04:01:35+01:00" level=info msg="Unified-Identity - Phase 1: Generating stubbed sovereign attestation"
+time="2025-11-05T04:01:35+01:00" level=info msg="Unified-Identity - Phase 1: Generated stubbed sovereign attestation" has_app_key=true has_app_key_cert=true has_nonce=true has_tpm_quote=true workload_code_hash=
 --- PASS: TestGenerateStubbedSovereignAttestation_FeatureFlagEnabled (0.00s)
 === RUN   TestValidateSovereignAttestation
 === RUN   TestValidateSovereignAttestation/nil_attestation
@@ -22,7 +22,7 @@ time="2025-11-05T02:19:38+01:00" level=info msg="Unified-Identity - Phase 1: Gen
 === RUN   TestProcessSovereignAttestation/nil_request
 === RUN   TestProcessSovereignAttestation/request_with_valid_sovereign_attestation
 === RUN   TestProcessSovereignAttestation/request_with_invalid_sovereign_attestation
-time="2025-11-05T02:19:38+01:00" level=error msg="Unified-Identity - Phase 1: Invalid sovereign attestation in request" error="tpm_signed_attestation is required"
+time="2025-11-05T04:01:35+01:00" level=error msg="Unified-Identity - Phase 1: Invalid sovereign attestation in request" error="tpm_signed_attestation is required"
 --- PASS: TestProcessSovereignAttestation (0.00s)
     --- PASS: TestProcessSovereignAttestation/nil_request (0.00s)
     --- PASS: TestProcessSovereignAttestation/request_with_valid_sovereign_attestation (0.00s)
@@ -204,7 +204,7 @@ time="2025-11-05T02:19:38+01:00" level=error msg="Unified-Identity - Phase 1: In
     server.go:130: Server serve returned <nil>
     server.go:122: Waiting for handlers to drain
     server.go:124: Handlers drained
---- PASS: TestFetchJWTSVID (0.04s)
+--- PASS: TestFetchJWTSVID (0.03s)
     --- PASS: TestFetchJWTSVID/missing_required_audience (0.00s)
     --- PASS: TestFetchJWTSVID/spiffe_id_set,_but_not_a_valid_SPIFFE_ID (0.00s)
     --- PASS: TestFetchJWTSVID/no_identity_issued (0.00s)
@@ -214,7 +214,7 @@ time="2025-11-05T02:19:38+01:00" level=error msg="Unified-Identity - Phase 1: In
     --- PASS: TestFetchJWTSVID/fetch_error (0.00s)
     --- PASS: TestFetchJWTSVID/success_all (0.00s)
     --- PASS: TestFetchJWTSVID/success_specific (0.00s)
-    --- PASS: TestFetchJWTSVID/identities_with_duplicated_hints (0.01s)
+    --- PASS: TestFetchJWTSVID/identities_with_duplicated_hints (0.00s)
 === RUN   TestFetchJWTBundles
 === RUN   TestFetchJWTBundles/no_identity_issued
     server.go:126: Gracefully stopping gRPC server
@@ -264,8 +264,8 @@ time="2025-11-05T02:19:38+01:00" level=error msg="Unified-Identity - Phase 1: In
     --- PASS: TestFetchJWTBundles/subscribe_to_cache_changes_error (0.00s)
     --- PASS: TestFetchJWTBundles/cache_update_unexpectedly_missing_bundle (0.00s)
     --- PASS: TestFetchJWTBundles/success (0.01s)
-    --- PASS: TestFetchJWTBundles/when_allowed_to_fetch_without_identity (0.01s)
-    --- PASS: TestFetchJWTBundles/federated_bundle_with_JWKS_empty_keys_array (0.00s)
+    --- PASS: TestFetchJWTBundles/when_allowed_to_fetch_without_identity (0.00s)
+    --- PASS: TestFetchJWTBundles/federated_bundle_with_JWKS_empty_keys_array (0.01s)
 === RUN   TestFetchJWTBundles_MultipleUpdates
     server.go:126: Gracefully stopping gRPC server
     server.go:128: Server stopped
@@ -334,8 +334,8 @@ time="2025-11-05T02:19:38+01:00" level=error msg="Unified-Identity - Phase 1: In
     --- PASS: TestValidateJWTSVID/missing_required_svid (0.00s)
     --- PASS: TestValidateJWTSVID/malformed_svid (0.00s)
     --- PASS: TestValidateJWTSVID/attest_error (0.00s)
-    --- PASS: TestValidateJWTSVID/success (0.01s)
-    --- PASS: TestValidateJWTSVID/success_with_federated_SVID (0.00s)
+    --- PASS: TestValidateJWTSVID/success (0.00s)
+    --- PASS: TestValidateJWTSVID/success_with_federated_SVID (0.01s)
     --- PASS: TestValidateJWTSVID/success_with_federated_SVID_with_allowed_foreign_claims (0.00s)
     --- PASS: TestValidateJWTSVID/failure_with_federated_SVID (0.00s)
 PASS
