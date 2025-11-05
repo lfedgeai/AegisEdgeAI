@@ -1,6 +1,0 @@
-#!/bin/bash
-
-set -e
-
-docker-stop downstream-spire-server
-docker-stop upstream-spire-server
