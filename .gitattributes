@@ -1,0 +1,2 @@
+spire-server filter=lfs diff=lfs merge=lfs -text
+spire-agent filter=lfs diff=lfs merge=lfs -text
