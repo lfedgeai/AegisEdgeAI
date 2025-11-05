@@ -1,0 +1,30 @@
+=== RUN   TestNewClient
+--- PASS: TestNewClient (0.00s)
+=== RUN   TestVerifyEvidence_FeatureFlagDisabled
+--- PASS: TestVerifyEvidence_FeatureFlagDisabled (0.00s)
+=== RUN   TestVerifyEvidence_FeatureFlagEnabled
+time="2025-11-05T02:06:05+01:00" level=info msg="Unified-Identity - Phase 1: Processing sovereign attestation request (stubbed Keylime)" has_app_key=true has_app_key_cert=false has_tpm_quote=true nonce=test-nonce workload_code_hash=
+time="2025-11-05T02:06:05+01:00" level=info msg="Unified-Identity - Phase 1: Using stubbed Keylime Verifier (returning fixed claims)"
+time="2025-11-05T02:06:05+01:00" level=info msg="Unified-Identity - Phase 1: Returning stubbed attested claims from Keylime Verifier" geolocation="Spain: N40.4168, W3.7038" gpu_memory_mb=10240 gpu_status=healthy gpu_utilization=15 host_integrity=PASSED_ALL_CHECKS
+--- PASS: TestVerifyEvidence_FeatureFlagEnabled (0.00s)
+=== RUN   TestVerifyEvidence_ValidationErrors
+=== RUN   TestVerifyEvidence_ValidationErrors/nil_attestation
+time="2025-11-05T02:06:05+01:00" level=error msg="Unified-Identity - Phase 1: Invalid sovereign attestation" error="attestation cannot be nil"
+=== RUN   TestVerifyEvidence_ValidationErrors/missing_tpm_quote
+time="2025-11-05T02:06:05+01:00" level=error msg="Unified-Identity - Phase 1: Invalid sovereign attestation" error="tpm_signed_attestation is required"
+=== RUN   TestVerifyEvidence_ValidationErrors/invalid_base64_tpm_quote
+time="2025-11-05T02:06:05+01:00" level=error msg="Unified-Identity - Phase 1: Invalid sovereign attestation" error="tpm_signed_attestation must be valid base64: illegal base64 data at input byte 7"
+=== RUN   TestVerifyEvidence_ValidationErrors/missing_nonce
+time="2025-11-05T02:06:05+01:00" level=error msg="Unified-Identity - Phase 1: Invalid sovereign attestation" error="challenge_nonce is required"
+=== RUN   TestVerifyEvidence_ValidationErrors/missing_app_key_public
+time="2025-11-05T02:06:05+01:00" level=error msg="Unified-Identity - Phase 1: Invalid sovereign attestation" error="app_key_public is required"
+--- PASS: TestVerifyEvidence_ValidationErrors (0.00s)
+    --- PASS: TestVerifyEvidence_ValidationErrors/nil_attestation (0.00s)
+    --- PASS: TestVerifyEvidence_ValidationErrors/missing_tpm_quote (0.00s)
+    --- PASS: TestVerifyEvidence_ValidationErrors/invalid_base64_tpm_quote (0.00s)
+    --- PASS: TestVerifyEvidence_ValidationErrors/missing_nonce (0.00s)
+    --- PASS: TestVerifyEvidence_ValidationErrors/missing_app_key_public (0.00s)
+=== RUN   TestBuildVerifyRequest
+--- PASS: TestBuildVerifyRequest (0.00s)
+PASS
+ok  	github.com/spiffe/spire/pkg/server/sovereign/keylime	(cached)
