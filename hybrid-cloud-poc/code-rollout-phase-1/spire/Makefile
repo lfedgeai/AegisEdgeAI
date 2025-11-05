@@ -26,6 +26,14 @@ help:
 	@echo
 	@echo "$(bold)Build:$(reset)"
 	@echo "  $(cyan)build$(reset)                                 - build all SPIRE binaries (default)"
+	@echo "  $(cyan)build-if-needed$(reset)                       - build binaries only if they don't exist"
+	@echo "  $(cyan)build-static$(reset)                         - build static binaries for Docker images"
+	@echo "  $(cyan)build-static-if-needed$(reset)               - build static binaries only if they don't exist"
+	@echo "  $(cyan)images-no-load-if-needed$(reset)              - build Docker images only if they don't exist"
+	@echo
+	@echo "$(bold)Environment Variables:$(reset)"
+	@echo "  $(cyan)SKIP_BUILD=1$(reset)                          - skip building binaries"
+	@echo "  $(cyan)SKIP_IMAGE_BUILD=1$(reset)                    - skip building Docker images"
 	@echo
 	@echo "$(bold)Test:$(reset)"
 	@echo "  $(cyan)test$(reset)                                  - run unit tests"
@@ -34,6 +42,7 @@ help:
 	@echo "                                          support 'SUITES' variable for executing specific tests"
 	@echo "                                          and 'IGNORE_SUITES' variable for ignoring tests"
 	@echo "                                          e.g. SUITES='suites/join-token suites/k8s' make integration"
+	@echo "                                          use SKIP_IMAGE_BUILD=1 to skip image building"
 	@echo "  $(cyan)integration-windows$(reset)                   - run integration tests for windows (requires Docker images)"
 	@echo "                                          support 'SUITES' variable for executing specific tests"
 	@echo "                                          e.g. SUITES='windows-suites/windows-workload-attestor' make integration-windows"
@@ -256,8 +265,23 @@ endif
 # Build Targets
 #############################################################################
 
-.PHONY: build
+.PHONY: build build-if-needed
 build: tidy $(addprefix bin/,$(binaries))
+
+# Build only if binaries don't exist
+build-if-needed:
+	@if [ -z "$(SKIP_BUILD)" ]; then \
+		for bin in $(binaries); do \
+			if [ ! -f "bin/$$bin" ]; then \
+				echo "Binary bin/$$bin not found, building..."; \
+				$(MAKE) build; \
+				exit 0; \
+			fi; \
+		done; \
+		echo "All binaries exist, skipping build."; \
+	else \
+		echo "SKIP_BUILD is set, skipping build."; \
+	fi
 
 go_build := $(go_path) go build $(go_flags) -ldflags '$(go_ldflags)' -o
 
@@ -273,11 +297,26 @@ bin/%: support/% FORCE | go-check
 # Build static binaries for docker images
 #############################################################################
 
-.PHONY: build-static
+.PHONY: build-static build-static-if-needed
 # The build-static is intended to statically link to musl libc.
 # There are possibilities of unexpected errors when statically link to GLIBC.
 # https://7thzero.com/blog/golang-w-sqlite3-docker-scratch-image
 build-static: tidy $(addprefix bin/static/,$(binaries))
+
+# Build static binaries only if they don't exist
+build-static-if-needed:
+	@if [ -z "$(SKIP_BUILD)" ]; then \
+		for bin in $(binaries); do \
+			if [ ! -f "bin/static/$$bin" ]; then \
+				echo "Static binary bin/static/$$bin not found, building..."; \
+				$(MAKE) build-static; \
+				exit 0; \
+			fi; \
+		done; \
+		echo "All static binaries exist, skipping build."; \
+	else \
+		echo "SKIP_BUILD is set, skipping static build."; \
+	fi
 
 go_build_static := $(go_path) go build $(go_flags) -ldflags '$(go_ldflags) -linkmode external -extldflags "-static"' -o
 
@@ -334,15 +373,31 @@ container-builder: $(dockertls)
 define image_rule
 .PHONY: $1
 $1: $3 container-builder
-	@echo Building docker image $2 $(PLATFORM)…
-	$(E)docker buildx build \
-		--platform $(PLATFORMS) \
-		--build-arg goversion=$(go_version) \
-		--build-arg TAG=$(TAG) \
-		--target $2 \
-		-o type=oci,dest=$2-image.tar \
-		-f $3 \
-		.
+	@if [ -z "$(SKIP_IMAGE_BUILD)" ]; then \
+		echo Building docker image $2 $(PLATFORM)…; \
+		$(E)docker buildx build \
+			--platform $(PLATFORMS) \
+			--build-arg goversion=$(go_version) \
+			--build-arg TAG=$(TAG) \
+			--target $2 \
+			-o type=oci,dest=$2-image.tar \
+			-f $3 \
+			.; \
+	else \
+		echo "SKIP_IMAGE_BUILD is set, skipping image build for $2."; \
+	fi
+
+# Build image only if it doesn't exist locally
+.PHONY: $1-if-needed
+$1-if-needed: $3 container-builder
+	@if [ -n "$(SKIP_IMAGE_BUILD)" ]; then \
+		echo "SKIP_IMAGE_BUILD is set, skipping image build for $2."; \
+	elif docker images -q $2:latest-local 2>/dev/null | grep -q . || [ -f "$2-image.tar" ]; then \
+		echo "Docker image $2:latest-local already exists or OCI archive found, skipping build."; \
+	else \
+		echo "Docker image $2:latest-local not found, building..."; \
+		$(MAKE) $1; \
+	fi
 
 endef
 
@@ -350,8 +405,11 @@ $(eval $(call image_rule,spire-server-image,spire-server,Dockerfile))
 $(eval $(call image_rule,spire-agent-image,spire-agent,Dockerfile))
 $(eval $(call image_rule,oidc-discovery-provider-image,oidc-discovery-provider,Dockerfile))
 
-.PHONY: images-no-load
+.PHONY: images-no-load images-no-load-if-needed
 images-no-load: $(addsuffix -image,$(binaries))
+
+# Build images only if they don't exist
+images-no-load-if-needed: $(addsuffix -image-if-needed,$(binaries))
 
 .PHONY: images
 images: images-no-load
