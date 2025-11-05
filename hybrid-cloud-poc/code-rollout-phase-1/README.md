@@ -129,6 +129,8 @@ go test ./...
 
 ## Testing
 
+See [TESTING_AND_VALIDATION.md](./TESTING_AND_VALIDATION.md) for comprehensive testing and validation results.
+
 ### Unit Tests
 
 #### Policy Engine Tests (`spire/pkg/server/unifiedidentity/policy_test.go`)
