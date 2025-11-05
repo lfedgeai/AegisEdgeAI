@@ -83,6 +83,47 @@ docker-cleanup() {
     docker compose down -v --remove-orphans
 }
 
+# Ensure Docker images exist, building only if needed
+ensure-images() {
+    local images=("$@")
+    local build_needed=false
+    local missing_images=()
+    
+    for image in "${images[@]}"; do
+        if ! docker images -q "${image}" 2>/dev/null | grep -q .; then
+            missing_images+=("${image}")
+            build_needed=true
+        fi
+    done
+    
+    if [ "${build_needed}" = true ]; then
+        if [ -n "${SKIP_IMAGE_BUILD}" ]; then
+            log-warn "Missing images: ${missing_images[*]}"
+            log-warn "SKIP_IMAGE_BUILD is set, but images are required. Please build them first:"
+            log-warn "  cd ${REPODIR} && make images"
+            fail-now "Required Docker images are missing and SKIP_IMAGE_BUILD is set"
+        fi
+        
+        log-info "Building missing Docker images: ${missing_images[*]}"
+        cd "${REPODIR}" || fail-now "Cannot change to repository directory"
+        make images
+        cd - > /dev/null || true
+    else
+        log-info "All required Docker images already exist"
+    fi
+}
+
+# Check if Docker images exist (returns 0 if all exist, 1 otherwise)
+check-images() {
+    local images=("$@")
+    for image in "${images[@]}"; do
+        if ! docker images -q "${image}" 2>/dev/null | grep -q .; then
+            return 1
+        fi
+    done
+    return 0
+}
+
 docker-spire-server-up() {
     docker-up "$@"
 
