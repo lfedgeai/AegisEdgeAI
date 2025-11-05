@@ -1,0 +1,24 @@
+#!/bin/bash
+# Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+# Integration test for sovereign attestation flow
+
+set -e -o pipefail
+
+. "${ROOTDIR}/common/common.sh"
+
+log-info "Running sovereign attestation integration test..."
+
+# This is a placeholder test that verifies the components are built correctly
+# Full end-to-end testing would require a more complex setup with actual SPIRE instances
+# For Phase 1, we verify that the binaries were built successfully
+
+if [ ! -f "${ROOTDIR}/suites/sovereign-attestation/spire-server" ]; then
+    fail-now "SPIRE Server binary not found"
+fi
+
+if [ ! -f "${ROOTDIR}/suites/sovereign-attestation/spire-agent" ]; then
+    fail-now "SPIRE Agent binary not found"
+fi
+
+log-info "Sovereign attestation integration test passed"
+
