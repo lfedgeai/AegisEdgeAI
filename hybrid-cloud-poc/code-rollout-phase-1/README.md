@@ -11,6 +11,7 @@ This directory contains the implementation of **Phase 1** of the Unified Identit
 - [Feature Flag](#feature-flag)
   - [Enabling the Feature Flag](#enabling-the-feature-flag)
   - [Disabling the Feature Flag](#disabling-the-feature-flag)
+- [Sovereign SVID Format](#sovereign-svid-format)
 - [API Changes](#api-changes)
   - [Protobuf Definitions](#protobuf-definitions)
   - [Keylime Verifier API](#keylime-verifier-api)
@@ -113,6 +114,22 @@ make build
 ### Disabling the Feature Flag
 
 Remove `"Unified-Identity"` from the `feature_flags` array in configuration files. If using rebuilt SPIRE binaries, restart the services.
+
+## Sovereign SVID Format
+
+**Important:** The X.509 certificate itself is **unchanged** - it remains a standard SPIFFE SVID. The new Phase 1 fields are in the API request/response, not in the certificate.
+
+### New Fields
+
+**Request Field:** `SovereignAttestation` (input)
+- Sent when requesting an SVID with sovereign attestation
+- Contains TPM quote, app key, challenge nonce, etc.
+
+**Response Field:** `AttestedClaims` (output)
+- Returned after Keylime verification and policy evaluation
+- Contains geolocation, host integrity status, GPU metrics
+
+For complete details, see **[SOVEREIGN_SVID_FORMAT.md](SOVEREIGN_SVID_FORMAT.md)**.
 
 ## API Changes
 

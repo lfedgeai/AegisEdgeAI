@@ -42,9 +42,9 @@ func TestSovereignAttestationIntegration(t *testing.T) {
 				Status:        "healthy",
 				UtilizationPct: 15.0,
 				MemoryMB:      10240,
-			},
-		},
-	}
+						},
+					},
+				}
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Create policy engine with permissive policy
@@ -76,7 +76,7 @@ func TestSovereignAttestationIntegration(t *testing.T) {
 	log.SetLevel(logrus.DebugLevel)
 
 	claims, err := service.processSovereignAttestation(ctx, log, sovereignAttestation, "spiffe://test.example/workload/test")
-	require.NoError(t, err)
+			require.NoError(t, err)
 	require.NotNil(t, claims)
 	assert.Equal(t, "Spain: N40.4168, W3.7038", claims.Geolocation)
 	assert.Equal(t, types.AttestedClaims_PASSED_ALL_CHECKS, claims.HostIntegrityStatus)
@@ -172,9 +172,9 @@ func TestFeatureFlagDisabled(t *testing.T) {
 	sovereignAttestation := &types.SovereignAttestation{
 		TpmSignedAttestation: "dGVzdC1xdW90ZQ==",
 		ChallengeNonce:       "test-nonce",
-	}
+			}
 
-	ctx := context.Background()
+			ctx := context.Background()
 	log := logrus.New()
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)

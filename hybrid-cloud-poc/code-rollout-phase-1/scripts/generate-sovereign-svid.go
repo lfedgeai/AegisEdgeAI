@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -65,7 +66,20 @@ func main() {
 
 	// Step 3: Connect to SPIRE Server
 	log.Printf("Step 3: Connecting to SPIRE Server at %s...", *serverSocketPath)
-	conn, err := grpc.NewClient(*serverSocketPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	
+	// Parse socket path (remove unix:// prefix if present)
+	socketPath := strings.TrimPrefix(*serverSocketPath, "unix://")
+	
+	// Create dialer for unix socket
+	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
+	}
+	
+	// Use passthrough resolver to bypass DNS lookup for unix sockets
+	addr := "passthrough:///unix:" + socketPath
+	conn, err := grpc.NewClient(addr, 
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(dialer))
 	if err != nil {
 		log.Fatalf("Failed to connect to SPIRE Server: %v", err)
 	}
