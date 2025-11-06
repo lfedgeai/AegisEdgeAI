@@ -10,12 +10,14 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -150,6 +152,17 @@ func main() {
 		log.Fatalf("Failed to save certificate: %v", err)
 	}
 	log.Printf("✓ Certificate saved to: %s", *outputCert)
+
+	// Save AttestedClaims if present
+	if len(result.AttestedClaims) > 0 {
+		claimsJSON, err := json.MarshalIndent(result.AttestedClaims[0], "", "  ")
+		if err == nil {
+			attestedFile := strings.TrimSuffix(*outputCert, ".crt") + "_attested_claims.json"
+			if err := ioutil.WriteFile(attestedFile, claimsJSON, 0644); err == nil {
+				log.Printf("✓ AttestedClaims saved to: %s", attestedFile)
+			}
+		}
+	}
 
 	// Save private key
 	keyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)

@@ -30,8 +30,13 @@ This directory contains the implementation of **Phase 1** of the Unified Identit
   - [Step 4: Call BatchNewX509SVID API](#step-4-call-batchnewx509svid-api)
   - [Step 5: Verify Response](#step-5-verify-response)
   - [Step 6: Verify Logs](#step-6-verify-logs)
-  - [Complete Example Script](#complete-example-script)
+  - [Complete Working Script](#complete-working-script)
+  - [Dumping and Highlighting SVID with Phase 1 Additions](#dumping-and-highlighting-svid-with-phase-1-additions)
   - [Notes](#notes)
+- [Kubernetes Integration](#kubernetes-integration)
+  - [Quick Start](#quick-start)
+  - [Dumping SVID from Kubernetes Workloads](#dumping-svid-from-kubernetes-workloads)
+  - [Cleanup and Teardown](#cleanup-and-teardown)
 - [Next Steps](#next-steps)
 - [References](#references)
 
@@ -584,7 +589,73 @@ Step 5: Verifying and saving SVID...
 - Calls BatchNewX509SVID with SovereignAttestation
 - Verifies and displays SVID details
 - Displays AttestedClaims if feature flag is enabled
-- Saves certificate and private key to files
+- Saves certificate, private key, and AttestedClaims JSON to files
+
+### Dumping and Highlighting SVID with Phase 1 Additions
+
+After generating an SVID, use the `dump-svid` script to view the SVID and highlight Phase 1 additions:
+
+**Build the script:**
+```bash
+cd scripts
+go build -o dump-svid dump-svid.go
+```
+
+**Usage:**
+```bash
+# Pretty format (default, with color highlighting)
+./dump-svid -cert svid.crt -attested svid_attested_claims.json
+
+# JSON format
+./dump-svid -cert svid.crt -attested svid_attested_claims.json -format json
+
+# Detailed format (includes certificate extensions)
+./dump-svid -cert svid.crt -attested svid_attested_claims.json -format detailed
+
+# Without color (for terminals that don't support it)
+./dump-svid -cert svid.crt -color false
+```
+
+**Output Example:**
+```
+╔════════════════════════════════════════════════════════════════╗
+║              SPIFFE Verifiable Identity Document (SVID)        ║
+╚════════════════════════════════════════════════════════════════╝
+
+📋 Standard SVID Information:
+──────────────────────────────────────────────────────────────────────
+  Subject: CN=sovereign-workload
+  Issuer: CN=SPIRE
+  Serial Number: 1234567890
+  Valid From: 2024-11-06T10:00:00Z
+  Valid Until: 2024-11-06T11:00:00Z
+  SPIFFE ID: spiffe://example.org/workload/test
+
+🆕 Phase 1 Additions (Unified-Identity):
+═══════════════════════════════════════════════════════════════════════
+
+  ➕ 📍 Geolocation: Spain: N40.4168, W3.7038
+  ➕ 🔒 Host Integrity Status: PASSED_ALL_CHECKS
+  ➕ 🎮 GPU Metrics Health:
+    ➕ Status: healthy
+    ➕ Utilization: 15.00%
+    ➕ Memory: 10240 MB
+
+──────────────────────────────────────────────────────────────────────
+✓ This SVID includes Phase 1 AttestedClaims (Unified-Identity)
+```
+
+The script highlights:
+- **Standard SVID fields**: Normal formatting
+- **Phase 1 additions**: Highlighted with ➕ symbol and green color
+  - Geolocation
+  - Host Integrity Status
+  - GPU Metrics Health
+
+**Run example script:**
+```bash
+./dump-svid-example.sh
+```
 
 ### Notes
 
@@ -593,14 +664,136 @@ Step 5: Verifying and saving SVID...
 - **Backward Compatibility**: If feature flag is disabled, `SovereignAttestation` field is ignored and normal SVID flow continues
 - **Stubbed Data**: In Phase 1, all TPM data is stubbed - use base64-encoded test strings
 
+## Kubernetes Integration
+
+Phase 1 supports Kubernetes workloads using the SPIRE CSI driver, with SPIRE Server and Agent running **outside** the Kubernetes cluster for security.
+
+### Quick Start
+
+**Note:** If you have a previous setup, run `k8s-integration/teardown.sh` first.
+
+1. **Set up Kubernetes cluster** (using kind):
+   ```bash
+   sudo kind create cluster --name aegis-spire --config - << 'EOF'
+   kind: Cluster
+   apiVersion: kind.x-k8s.io/v1alpha4
+   name: aegis-spire
+   nodes:
+   - role: control-plane
+     extraMounts:
+     - hostPath: /tmp/spire-agent/public
+       containerPath: /tmp/spire-agent/public
+       readOnly: true
+   EOF
+   ```
+
+2. **Start SPIRE outside Kubernetes**:
+   ```bash
+   cd k8s-integration
+   ./setup-spire.sh
+   ```
+
+3. **Run end-to-end test**:
+   ```bash
+   cd k8s-integration
+   ./test-sovereign-svid.sh
+   ```
+
+See [k8s-integration/README.md](k8s-integration/README.md) for detailed Kubernetes integration documentation.
+
+### Dumping SVID from Kubernetes Workloads
+
+For Kubernetes workloads, you can dump the SVID using several methods:
+
+**Method 1: Automated Script (Recommended)**
+```bash
+cd k8s-integration
+./dump-svid-from-k8s.sh <pod-name> <namespace> <output-dir>
+
+# Then view with Phase 1 highlights
+cd ../scripts
+./dump-svid -cert <output-dir>/svid.crt
+```
+
+**Method 2: Generate from Host (Best for Phase 1 Testing)**
+Since Phase 1 requires `SovereignAttestation` at generation time, generate the SVID from the host:
+```bash
+cd scripts
+./generate-sovereign-svid \
+    -entryID <ENTRY_ID> \
+    -spiffeID spiffe://example.org/workload/test-k8s
+
+# Dump with Phase 1 highlights
+./dump-svid -cert svid.crt -attested svid_attested_claims.json
+```
+
+**Method 3: Manual Extraction from Pod**
+```bash
+# Exec into pod and extract SVID
+kubectl exec -it <pod-name> -- spire-agent api fetch \
+    -socketPath /run/spire/sockets/api.sock > /tmp/svid.pem
+
+# Copy to host and extract certificate
+kubectl cp <namespace>/<pod-name>:/tmp/svid.pem /tmp/svid.pem
+```
+
+See [k8s-integration/README.md](k8s-integration/README.md) for detailed instructions.
+
+### Cleanup and Teardown
+
+To clean up Kubernetes resources and SPIRE components:
+
+**Full Teardown (Interactive):**
+```bash
+cd k8s-integration
+./teardown.sh
+```
+
+This will:
+- Delete Kubernetes workloads and cluster
+- Stop SPIRE Server, Agent, and Keylime Stub
+- Clean up sockets
+- Optionally remove logs and data directories
+
+**Quick Teardown (Non-Interactive):**
+```bash
+cd k8s-integration
+./teardown-quick.sh
+```
+
+**Manual Cleanup:**
+```bash
+# Stop SPIRE processes
+kill $(cat /tmp/spire-server.pid) $(cat /tmp/spire-agent.pid) $(cat /tmp/keylime-stub.pid) 2>/dev/null || true
+
+# Delete Kubernetes cluster
+sudo kind delete cluster --name aegis-spire
+
+# Remove kubeconfig files
+rm -f /tmp/kubeconfig-kind.yaml
+
+# Remove kind cluster context from ~/.kube/config
+kubectl config delete-context kind-aegis-spire 2>/dev/null || true
+
+# Remove admin.conf from ~/.kube/
+rm -f ~/.kube/admin.conf
+
+# Remove sockets
+rm -f /tmp/spire-server/private/api.sock /tmp/spire-agent/public/api.sock
+```
+
+For detailed cleanup instructions, see [k8s-integration/README.md](k8s-integration/README.md#cleanup).
+
 ## Next Steps
 
 1. **Regenerate Protobuf Files**: Run `./regenerate-protos.sh` (if modifying proto files)
 2. **Run Tests**: See [TESTING.md](TESTING.md) for detailed testing instructions
 3. **Integration Testing**: Test SVID generation with SovereignAttestation using the steps above
+4. **Kubernetes Testing**: Test with Kubernetes workloads using the CSI driver (see [k8s-integration/README.md](k8s-integration/README.md))
 
 ## References
 
 - [Architecture Document](../../README-arch.md)
 - [SPIRE Documentation](https://spiffe.io/docs/latest/spire/)
 - [Keylime Documentation](https://keylime.readthedocs.io/)
+- [SPIRE CSI Driver](https://github.com/spiffe/spiffe-csi)
