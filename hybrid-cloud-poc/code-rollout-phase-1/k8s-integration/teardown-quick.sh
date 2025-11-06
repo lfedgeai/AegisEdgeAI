@@ -89,8 +89,33 @@ else
     echo "  ✓ All SPIRE and Keylime processes stopped"
 fi
 
+# Clean up SPIRE registration entries (if server socket is accessible)
+echo "Cleaning up SPIRE registration entries..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SPIRE_DIR="${SCRIPT_DIR}/../spire"
+SERVER_SOCKET="/tmp/spire-server/private/api.sock"
+
+if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
+    # List all entries and delete them
+    ENTRY_LIST=$("${SPIRE_DIR}/bin/spire-server" entry list -socketPath "$SERVER_SOCKET" 2>/dev/null || echo "")
+    if [ -n "$ENTRY_LIST" ]; then
+        # Extract entry IDs and delete them
+        echo "$ENTRY_LIST" | grep -oP 'Entry ID\s+:\s+\K[a-f0-9-]+' | while read -r entry_id; do
+            if [ -n "$entry_id" ]; then
+                "${SPIRE_DIR}/bin/spire-server" entry delete -entryID "$entry_id" -socketPath "$SERVER_SOCKET" >/dev/null 2>&1 || true
+            fi
+        done
+        echo "  ✓ Registration entries cleaned up"
+    else
+        echo "  ⚠ No entries found or server not accessible"
+    fi
+else
+    echo "  ⚠ SPIRE Server socket not accessible, skipping entry cleanup"
+fi
+
 # Note: SPIRE data directories in /opt/spire/data are NOT removed by default
-# to preserve registration entries and keys. To fully clean, manually remove:
+# to preserve keys. Registration entries are cleaned up above.
+# To fully clean data, manually remove:
 # sudo rm -rf /opt/spire/data
 
 echo ""
