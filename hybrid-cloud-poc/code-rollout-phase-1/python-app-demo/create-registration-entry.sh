@@ -8,12 +8,24 @@ SPIRE_DIR="${SCRIPT_DIR}/../spire"
 
 # Get agent SPIFFE ID
 echo "Getting agent SPIFFE ID..."
+# Extract SPIFFE ID from "SPIFFE ID         : spiffe://..."
 AGENT_ID=$("${SPIRE_DIR}/bin/spire-server" agent list \
     -socketPath /tmp/spire-server/private/api.sock \
-    | grep "spiffe://" | head -1 | awk '{print $1}')
+    | grep "SPIFFE ID" | awk -F': ' '{print $2}' | awk '{print $1}')
 
-if [ -z "$AGENT_ID" ]; then
+# Fallback: try sed if awk doesn't work
+if [ -z "$AGENT_ID" ] || [ "$AGENT_ID" = "SPIFFE" ]; then
+    AGENT_ID=$("${SPIRE_DIR}/bin/spire-server" agent list \
+        -socketPath /tmp/spire-server/private/api.sock \
+        | grep "spiffe://" | head -1 | sed 's/.*SPIFFE ID[[:space:]]*:[[:space:]]*\(spiffe:\/\/[^[:space:]]*\).*/\1/')
+fi
+
+# Final validation
+if [ -z "$AGENT_ID" ] || [ "$AGENT_ID" = "SPIFFE" ] || [ "${AGENT_ID#spiffe://}" = "$AGENT_ID" ]; then
     echo "Error: Could not get agent SPIFFE ID"
+    echo "Debug: Agent list output:"
+    "${SPIRE_DIR}/bin/spire-server" agent list \
+        -socketPath /tmp/spire-server/private/api.sock
     exit 1
 fi
 
