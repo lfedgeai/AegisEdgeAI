@@ -1,0 +1,50 @@
+{
+    "entries": [
+        {
+            "entry_id": "entry-id-1",
+            "selectors": [
+                {
+                    "type": "unix",
+                    "value": "uid:1111"
+                }
+            ],
+            "spiffe_id": "spiffe://example.org/Blog",
+            "parent_id": "spiffe://example.org/spire/agent/join_token/TokenBlog",
+            "x509_svid_ttl": 200,
+            "jwt_svid_ttl": 300,
+            "admin": true,
+            "hint": "external"
+        },
+        {
+            "entry_id": "entry-id-2",
+            "selectors": [
+                {
+                    "type": "unix",
+                    "value": "uid:1111"
+                }
+            ],
+            "spiffe_id": "spiffe://example.org/Database",
+            "parent_id": "spiffe://example.org/spire/agent/join_token/TokenDatabase",
+            "x509_svid_ttl": 200,
+            "jwt_svid_ttl": 300
+        },
+        {
+            "entry_id": "entry-id-3",
+            "selectors": [
+                {
+                    "type": "type",
+                    "value": "key1:value"
+                },
+                {
+                    "type": "type",
+                    "value": "key2:value"
+                }
+            ],
+            "spiffe_id": "spiffe://example.org/Storesvid",
+            "parent_id": "spiffe://example.org/spire/agent/join_token/TokenDatabase",
+	    "store_svid": true,
+            "x509_svid_ttl": 200,
+            "jwt_svid_ttl": 300
+        }
+    ]
+}
