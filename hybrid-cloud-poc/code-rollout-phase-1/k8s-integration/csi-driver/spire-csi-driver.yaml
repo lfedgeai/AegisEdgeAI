@@ -1,90 +1,29 @@
 # Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
-# SPIRE CSI Driver configuration for external SPIRE Agent
+# SPIRE CSI Driver for external SPIRE Agent (Production Pattern)
+# This deploys the official SPIRE CSI driver that connects to an external SPIRE Agent
 
 apiVersion: v1
 kind: Namespace
 metadata:
   name: spire-system
 ---
+# CSIDriver resource
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
   name: csi.spiffe.io
-  namespace: spire-system
 spec:
   attachRequired: false
   podInfoOnMount: true
 ---
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: spire-csi-driver
-  namespace: spire-system
-spec:
-  selector:
-    matchLabels:
-      app: spire-csi-driver
-  template:
-    metadata:
-      labels:
-        app: spire-csi-driver
-    spec:
-      serviceAccountName: spire-csi-driver
-      hostNetwork: true
-      containers:
-      - name: driver-registrar
-        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.8.0
-        args:
-        - --v=5
-        - --csi-address=/csi/csi.sock
-        - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.spiffe.io/csi.sock
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: plugin-dir
-          mountPath: /csi
-        - name: registration-dir
-          mountPath: /registration
-      - name: spire-agent-socket
-        image: curlimages/curl:latest
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          while true; do
-            if [ -S /run/spire/agent-socket/api.sock ]; then
-              echo "SPIRE Agent socket found"
-              break
-            fi
-            echo "Waiting for SPIRE Agent socket..."
-            sleep 5
-          done
-          sleep infinity
-        volumeMounts:
-        - name: agent-socket
-          mountPath: /run/spire/agent-socket
-          readOnly: true
-      volumes:
-      - name: plugin-dir
-        hostPath:
-          path: /var/lib/kubelet/plugins/csi.spiffe.io
-          type: DirectoryOrCreate
-      - name: registration-dir
-        hostPath:
-          path: /var/lib/kubelet/plugins_registry
-          type: Directory
-      - name: agent-socket
-        # Unified-Identity - Phase 1: Mount external agent socket from host
-        # For kind, we'll need to mount this via kind cluster configuration
-        hostPath:
-          path: /tmp/spire-agent/public
-          type: DirectoryOrCreate
----
+# ServiceAccount for CSI driver
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: spire-csi-driver
   namespace: spire-system
 ---
+# ClusterRole for CSI driver
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -93,7 +32,11 @@ rules:
 - apiGroups: [""]
   resources: ["nodes"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
 ---
+# ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -106,4 +49,77 @@ subjects:
 - kind: ServiceAccount
   name: spire-csi-driver
   namespace: spire-system
-
+---
+# DaemonSet for CSI driver node plugin
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-csi-driver
+  namespace: spire-system
+  labels:
+    app: spire-csi-driver
+spec:
+  selector:
+    matchLabels:
+      app: spire-csi-driver
+  template:
+    metadata:
+      labels:
+        app: spire-csi-driver
+    spec:
+      serviceAccountName: spire-csi-driver
+      hostNetwork: true
+      containers:
+      # CSI Node Driver Registrar (sidecar)
+      - name: node-driver-registrar
+        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.8.0
+        args:
+        - --v=5
+        - --csi-address=/csi/csi.sock
+        - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.spiffe.io/csi.sock
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: plugin-dir
+          mountPath: /csi
+        - name: registration-dir
+          mountPath: /registration
+      # SPIRE CSI Driver (main container)
+      - name: spire-csi-driver
+        image: ghcr.io/spiffe/spire-csi-driver:0.4.0
+        args:
+        - --node-socket=/csi/csi.sock
+        - --workload-api-socket-path=/run/spire/sockets/workload_api.sock
+        - --agent-socket-path=/run/spire/agent-socket/api.sock
+        env:
+        - name: SPIFFE_ENDPOINT_SOCKET
+          value: /run/spire/agent-socket/api.sock
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: plugin-dir
+          mountPath: /csi
+        - name: agent-socket
+          mountPath: /run/spire/agent-socket
+          readOnly: true
+        - name: workload-api-socket
+          mountPath: /run/spire/sockets
+      volumes:
+      - name: plugin-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/csi.spiffe.io
+          type: DirectoryOrCreate
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: Directory
+      - name: agent-socket
+        # Unified-Identity - Phase 1: Mount external agent socket from host
+        # The socket is mounted via kind cluster extraMounts configuration
+        hostPath:
+          path: /tmp/spire-agent/public
+          type: Directory
+      - name: workload-api-socket
+        hostPath:
+          path: /var/lib/kubelet/pods
+          type: Directory

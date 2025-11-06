@@ -87,7 +87,7 @@ The SPIRE Agent is configured with **both** workload attestors to support hybrid
    # Then disconnect and reconnect SSH
    ```
 
-**Note:** If SPIRE runs as a non-root user (recommended), you typically don't need `sudo` for kind operations. The `setup-spire.sh` script sets appropriate socket permissions (666) so containers can access the agent socket.
+**Note:** SPIRE runs as a non-root user. With proper Docker permissions (user in `docker` group), you don't need `sudo` for kind operations. The `setup-spire.sh` script sets appropriate socket permissions (666) so containers can access the agent socket.
 
 ## Setup Steps
 
@@ -122,11 +122,32 @@ After running `setup-spire.sh`, verify everything is running:
 
 ```bash
 # Check processes
-ps aux | grep -E "spire-server|spire-agent|keylime" | grep -v grep
+ps aux | grep -E "spire-server|spire-agent|keylime|go run main.go" | grep -v grep
 
-# Check sockets
+# Check SPIRE sockets
 ls -la /tmp/spire-server/private/api.sock
 ls -la /tmp/spire-agent/public/api.sock
+
+# Check Keylime stub is running and listening
+if pgrep -f "go run main.go" > /dev/null 2>&1 || pgrep -f "keylime-stub" > /dev/null 2>&1; then
+    echo "✓ Keylime stub process is running"
+else
+    echo "⚠ Keylime stub process not found"
+fi
+
+# Check Keylime stub port (8888) is listening
+if netstat -tlnp 2>/dev/null | grep -q ":8888" || ss -tlnp 2>/dev/null | grep -q ":8888"; then
+    echo "✓ Keylime stub is listening on port 8888"
+else
+    echo "⚠ Keylime stub port 8888 not listening"
+fi
+
+# Test Keylime stub endpoint (optional)
+curl -s -X POST http://localhost:8888/v2.4/verify/evidence \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"nonce": "test"}}' > /dev/null 2>&1 && \
+  echo "✓ Keylime stub endpoint responding" || \
+  echo "⚠ Keylime stub endpoint not responding"
 
 # Check agent joined successfully
 cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1
@@ -135,33 +156,26 @@ cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1
 # Check logs
 tail -f /tmp/spire-server.log | grep "Unified-Identity"
 tail -f /tmp/spire-agent.log | grep "Unified-Identity"
+tail -f /tmp/keylime-stub.log | grep "Unified-Identity"
 ```
 
 **Note:** The agent may take 30-60 seconds to fully join and create the workload API socket. If the socket doesn't appear immediately, wait and check the logs.
 
+**Important:** 
+- The agent is configured with `use_anonymous_authentication = true`, which allows it to start without a Kubernetes cluster. Once the cluster is created (Step 3), the agent will **dynamically discover and use it** - **no restart needed** if the agent is already running.
+- The Keylime stub should be running and listening on port 8888. If it's not running, check `/tmp/keylime-stub.log` for errors and restart it if needed.
+
+**Troubleshooting:**
+- If the agent failed to start, check `/tmp/spire-agent.log` for errors
+- If you need to rejoin the agent, use: `./rejoin-agent.sh`
+
 ### Step 3: Create Kubernetes Cluster with Socket Mount
 
-The kind cluster is created with the agent socket mounted:
+**Note:** The agent will automatically discover and use the cluster once it's created - **no restart needed** if the agent is already running (from Step 1).
 
-**Note:** If SPIRE is running as a non-root user (recommended) and your user is in the `docker` group, you don't need `sudo` for kind.
+Create the kind cluster with the SPIRE Agent socket mounted:
 
-**Check Docker access:**
 ```bash
-# Test if you can run docker without sudo
-docker ps
-
-# If that fails with permission denied, even though you're in docker group:
-# - Disconnect and reconnect SSH (or start a new session)
-# - Group membership changes require a new login session
-
-# If you're not in docker group, add your user (requires logout/login):
-# sudo usermod -aG docker $USER
-# Then disconnect and reconnect SSH
-```
-
-**Create the cluster:**
-```bash
-# If docker works without sudo (recommended):
 kind create cluster --name aegis-spire --config - << 'EOF'
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -173,63 +187,143 @@ nodes:
     containerPath: /tmp/spire-agent/public
     readOnly: true
 EOF
-
-# OR if you need sudo (only if not in docker group):
-# sudo kind create cluster --name aegis-spire --config - << 'EOF'
-# ... (same config as above)
-# EOF
 ```
 
-**Important:** After creating the cluster, set up the kubeconfig:
+**Note:** If you're in the `docker` group (which you should be), you don't need `sudo` for kind commands.
 
-**Option A: Using the helper script (recommended):**
+**Set up kubeconfig:**
+
+After creating the cluster, configure kubectl:
+
 ```bash
-cd k8s-integration
+# Using the helper script (recommended):
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
 ./setup-kubeconfig.sh aegis-spire
-export KUBECONFIG=/tmp/kubeconfig-kind.yaml
-```
-
-**Option B: Manual setup:**
-```bash
-# Save kind kubeconfig to expected location
-# Try without sudo first (if cluster was created without sudo):
-kind get kubeconfig --name aegis-spire > /tmp/kubeconfig-kind.yaml
-
-# OR if cluster was created with sudo:
-# sudo kind get kubeconfig --name aegis-spire > /tmp/kubeconfig-kind.yaml
-# sudo chown $USER:$USER /tmp/kubeconfig-kind.yaml
-
-# Export KUBECONFIG environment variable
 export KUBECONFIG=/tmp/kubeconfig-kind.yaml
 
 # Verify cluster access
 kubectl cluster-info --context kind-aegis-spire
 ```
 
+**Verify Agent is Running:**
+
+```bash
+# Check if agent is running
+ps aux | grep spire-agent | grep -v grep
+
+# If not running, use the rejoin script:
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
+./rejoin-agent.sh
+```
+
 ### Step 4: Create Registration Entry
+
+First, get the agent SPIFFE ID:
 
 ```bash
 export KUBECONFIG=/tmp/kubeconfig-kind.yaml
 
-# Create registration entry for test workload
+# Get the agent SPIFFE ID
 cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/spire
+AGENT_SPIFFE_ID=$(./bin/spire-server agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 | \
+    grep "SPIFFE ID" | awk -F': ' '/SPIFFE ID/ {print $2}' | awk '{print $1}' | head -1)
+
+echo "Agent SPIFFE ID: $AGENT_SPIFFE_ID"
+```
+
+Then create the registration entry:
+
+```bash
+# Create registration entry for test workload
 ./bin/spire-server entry create \
     -spiffeID spiffe://example.org/workload/test-k8s \
-    -parentID spiffe://example.org/spire/agent-external \
+    -parentID "$AGENT_SPIFFE_ID" \
     -selector k8s:ns:default \
     -selector k8s:sa:test-workload
 ```
 
-### Step 5: Deploy Test Workload
+**Note:** The `parentID` must match the actual agent SPIFFE ID from `spire-server agent list`. The agent ID format is typically `spiffe://example.org/spire/agent/join_token/<token>`.
 
-For Phase 1 testing, we can use a simple hostPath mount to access the agent socket:
+### Step 5: Deploy Test Workload (Simple Option - Recommended for Testing)
+
+**Option A: Simple hostPath Mount (Recommended for Phase 1 Testing)**
+
+This is the simplest approach and works immediately without CSI driver:
 
 ```bash
 export KUBECONFIG=/tmp/kubeconfig-kind.yaml
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
+
+# Deploy workload using simple hostPath mount
 kubectl apply -f workloads/test-workload-simple.yaml
+
+# Verify the pod is running
+kubectl get pods -l app=test-sovereign-workload
+
+# Wait for pod to be ready
+kubectl wait --for=condition=ready pod -l app=test-sovereign-workload --timeout=60s
 ```
 
-### Step 6: Test Workload Attestors
+**Option B: SPIRE CSI Driver (Production Pattern - Pending Image Resolution)**
+
+**Note:** The CSI driver image `ghcr.io/spiffe/spire-csi-driver:0.4.0` currently has image pull issues. This option is documented for future use once the image issue is resolved.
+
+```bash
+export KUBECONFIG=/tmp/kubeconfig-kind.yaml
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
+
+# Deploy CSI driver (when image is available)
+kubectl apply -f csi-driver/spire-csi-driver.yaml
+
+# Wait for CSI driver to be ready
+kubectl wait --for=condition=ready pod -l app=spire-csi-driver -n spire-system --timeout=60s
+
+# Deploy workload using CSI driver
+kubectl apply -f workloads/test-workload.yaml
+```
+
+**CSI Driver Status:** The image `ghcr.io/spiffe/spire-csi-driver:0.4.0` may require authentication or a different tag. Check the [SPIRE CSI Driver repository](https://github.com/spiffe/spire-csi-driver) for the latest available images and build instructions.
+
+### Step 6: Dump SVID from Workload Pod
+
+After the workload is running, dump the SVID using the simple kubectl exec approach:
+
+```bash
+export KUBECONFIG=/tmp/kubeconfig-kind.yaml
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
+
+# Use the simple kubectl exec script (recommended - easiest method)
+./scripts/dump-svid-kubectl-exec.sh test-sovereign-workload default /tmp/k8s-svid-dump
+
+# View the SVID with Phase 1 highlights
+cd ../scripts
+./dump-svid -cert /tmp/k8s-svid-dump/svid.crt
+```
+
+**Manual kubectl exec (if script doesn't work):**
+
+```bash
+# Get pod name
+POD_NAME=$(kubectl get pods -l app=test-sovereign-workload -o jsonpath='{.items[0].metadata.name}')
+
+# Copy spire-agent binary to pod
+kubectl cp ../spire/bin/spire-agent default/$POD_NAME:/tmp/spire-agent
+kubectl exec $POD_NAME -- chmod +x /tmp/spire-agent
+
+# Fetch SVID
+kubectl exec $POD_NAME -- /tmp/spire-agent api fetch -socketPath /run/spire/sockets/api.sock -write /tmp
+
+# Copy SVID back to host
+kubectl cp default/$POD_NAME:/tmp/svid.0.pem /tmp/k8s-svid.crt
+
+# View SVID
+cd ../scripts
+./dump-svid -cert /tmp/k8s-svid.crt
+```
+
+### Step 7: Test Workload Attestors (Optional - Verification Only)
+
+**Note:** This step is optional and is for verification/testing purposes only. Step 4 already creates the necessary Kubernetes workload registration entry. This step verifies that both workload attestors are properly configured and working.
 
 Test both `unix` and `k8s` workload attestors:
 
@@ -240,90 +334,99 @@ cd k8s-integration
 
 This script:
 - Verifies SPIRE Server and Agent are running
-- Tests `unix` workload attestor by creating a registration entry with `unix:uid` selector
-- Tests `k8s` workload attestor by creating a registration entry with `k8s:ns` and `k8s:sa` selectors (if Kubernetes cluster exists)
+- Tests `unix` workload attestor by creating a test registration entry with `unix:uid` selector (for non-Kubernetes workloads)
+- Tests `k8s` workload attestor by creating a test registration entry with `k8s:ns` and `k8s:sa` selectors (verifies the k8s attestor works, separate from Step 4's entry)
 - Verifies both attestors are loaded in agent logs
 - Provides cleanup commands for test entries
+
+**Why this step?**
+- Step 4 creates the registration entry for your actual workload
+- Step 6 verifies that the workload attestors themselves are working correctly
+- Useful for troubleshooting if workloads aren't getting SVIDs
+- Tests the `unix` attestor (which Step 4 doesn't test)
 
 **Expected Output:**
 - ✓ Unix workload attestor: Tested
 - ✓ K8s workload attestor: Tested (if cluster exists)
 
-### Step 7: Test Sovereign SVID Generation (Optional)
+**You can skip this step** if you're confident the attestors are working and proceed directly to Step 8 to test SVID generation with your actual workload.
 
-**Option A: Dump SVID from Kubernetes Pod (Automated)**
+### Step 8: Test Sovereign SVID Generation (Optional)
 
-Use the provided script to dump SVID from a running pod:
+**Note:** The `BatchNewX509SVID` API requires agent credentials for authorization. For Phase 1 testing, use Step 6 to verify SVID generation from workloads. See `TESTING_STATUS.md` for details.
+
+**Option A: Generate SVID from Host (Requires Agent Credentials)**
+
+**Status:** ⚠️ **API Authorization Limitation**
+
+The `BatchNewX509SVID` API requires agent credentials (`allow_agent: true` in SPIRE authorization policy). Direct client calls will receive `PermissionDenied`. This is a security feature, not a bug.
+
+**For Phase 1 Testing:**
+- Use Step 6 (Dump SVID from Pod) - This demonstrates the complete workflow and works correctly
+- The sovereign attestation code path is implemented and tested via unit tests
+- For testing `AttestedClaims`, see `TESTING_STATUS.md` for workarounds
+
+**If you want to test the API directly (advanced):**
+```bash
+# Get the entry ID created in Step 4
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/spire
+ENTRY_ID=$(./bin/spire-server entry show -spiffeID spiffe://example.org/workload/test-k8s \
+    -socketPath /tmp/spire-server/private/api.sock 2>&1 | \
+    grep "Entry ID" | awk '{print $3}')
+
+echo "Entry ID: $ENTRY_ID"
+
+# Note: This will fail with PermissionDenied unless using agent credentials
+cd ../scripts
+./generate-sovereign-svid \
+    -entryID "$ENTRY_ID" \
+    -spiffeID spiffe://example.org/workload/test-k8s \
+    -outputCert /tmp/svid.crt \
+    -verbose
+```
+
+**Option B: Dump SVID from Kubernetes Pod**
+
+**Note:** The pod image (`curlimages/curl`) is minimal and may not have required libraries. Automatic extraction may fail.
 
 ```bash
 export KUBECONFIG=/tmp/kubeconfig-kind.yaml
-cd k8s-integration
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
 
-# Dump SVID from pod
+# Attempt to dump SVID from pod
 ./dump-svid-from-k8s.sh test-sovereign-workload default /tmp/k8s-svid-dump
 
-# View the dumped SVID with Phase 1 highlights
+# If successful, display it:
 cd ../scripts
 ./dump-svid -cert /tmp/k8s-svid-dump/svid.crt
 ```
 
-**Option B: Manual SVID Extraction from Pod**
+## SPIRE CSI Driver Details (Pending Image Resolution)
 
-```bash
-# Check pod logs
-kubectl logs -f deployment/test-sovereign-workload
+**Current Status:** The CSI driver image `ghcr.io/spiffe/spire-csi-driver:0.4.0` currently has image pull issues (403 Forbidden). For Phase 1 testing, use the simple hostPath mount option (Step 5, Option A).
 
-# Exec into pod
-kubectl exec -it deployment/test-sovereign-workload -- /bin/sh
+**Production Pattern (When Image is Available):**
 
-# Inside pod, if spire-agent is available:
-spire-agent api fetch -socketPath /run/spire/sockets/api.sock > /tmp/svid.pem
+The SPIRE CSI driver provides the production pattern for injecting SPIFFE identities into Kubernetes workloads:
 
-# Copy certificate back to host
-# (from host, in another terminal)
-kubectl cp default/$(kubectl get pod -l app=test-sovereign-workload -o jsonpath='{.items[0].metadata.name}'):/tmp/svid.pem /tmp/svid.pem
+1. The CSI driver runs as a DaemonSet on each node
+2. It connects to the external SPIRE Agent socket (mounted via kind's `extraMounts`)
+3. Workloads request volumes using `csi.spiffe.io` driver
+4. The CSI driver mounts the Workload API socket into the pod
+5. Workloads can then fetch SVIDs via the Workload API
 
-# Extract first certificate
-sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' /tmp/svid.pem | head -n 100 > /tmp/svid.crt
+**Configuration:**
+- CSI driver image: `ghcr.io/spiffe/spire-csi-driver:0.4.0` (pending resolution)
+- Agent socket path: `/tmp/spire-agent/public/api.sock` (external, on host)
+- Workload API socket: `/run/spire/sockets/workload_api.sock` (in pod)
 
-# Dump with Phase 1 highlights
-cd scripts
-./dump-svid -cert /tmp/svid.crt
-```
+**To Resolve CSI Driver Image Issue:**
+- Check the [SPIRE CSI Driver repository](https://github.com/spiffe/spire-csi-driver) for:
+  - Latest available image tags
+  - Build instructions if you need to build from source
+  - Authentication requirements for ghcr.io images
 
-**Option C: Generate SVID from Host (Recommended for Phase 1 Testing)**
-
-Since Phase 1 requires `SovereignAttestation` which is provided at SVID generation time, you can generate and dump the SVID from the host:
-
-```bash
-# Generate SVID with SovereignAttestation (from host)
-cd scripts
-./generate-sovereign-svid \
-    -entryID <ENTRY_ID> \
-    -spiffeID spiffe://example.org/workload/test-k8s \
-    -verbose
-
-# Dump and highlight Phase 1 additions
-./dump-svid -cert svid.crt -attested svid_attested_claims.json
-```
-
-**Note:** For Phase 1 testing, generating the SVID from the host with `SovereignAttestation` is recommended because:
-- The `SovereignAttestation` must be provided at SVID generation time
-- The `AttestedClaims` are returned in the API response and saved to JSON
-- The `dump-svid` script can highlight both the certificate and AttestedClaims
-
-## SPIRE CSI Driver (Future)
-
-For production use, deploy the official SPIRE CSI driver:
-
-```bash
-# Install SPIRE CSI driver
-helm repo add spiffe https://spiffe.github.io/helm-charts/
-helm install spire-csi-driver spiffe/spire-csi-driver \
-  --namespace spire-system \
-  --create-namespace \
-  --set agentSocketPath=/tmp/spire-agent/public/api.sock
-```
+**For Phase 1 Testing:** Use the simple hostPath mount option (Step 5, Option A) which works immediately without CSI driver.
 
 ## Verification
 
@@ -366,6 +469,69 @@ helm install spire-csi-driver spiffe/spire-csi-driver \
 - Check if running: `pgrep -f keylime-stub`
 - Check logs: `tail -f /tmp/keylime-stub.log`
 - Restart: `./setup-spire.sh`
+
+## Automated Testing
+
+### Test All Critical Steps (1-6)
+
+Run the automated Python test script to test all critical steps:
+
+```bash
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
+python3 test-all-steps.py
+```
+
+This script:
+1. **Cleans up** any existing setup (teardown, stop processes, delete cluster)
+2. **Step 1**: Starts SPIRE (Server, Agent, Keylime Stub)
+3. **Step 2**: Verifies SPIRE Setup (processes, sockets, Keylime stub)
+4. **Step 3**: Creates Kubernetes Cluster with socket mount
+5. **Step 4**: Creates Registration Entry
+6. **Step 5**: Deploys Test Workload
+7. **Step 6**: Dumps SVID from Workload Pod
+
+**Output:**
+- Color-coded success/warning/error messages
+- Detailed verification at each step
+- Summary at the end showing which steps passed/failed
+- Exit code 0 if all steps pass, 1 if any step fails
+
+**Example:**
+```bash
+$ python3 test-all-steps.py
+
+╔════════════════════════════════════════════════════════════════╗
+║  Unified-Identity - Phase 1: Automated Test Script             ║
+║  Testing Steps 1-6 from Kubernetes Integration README          ║
+╚════════════════════════════════════════════════════════════════╝
+
+Step 0: Cleaning Up Existing Setup
+  ✓ Cleanup complete
+
+Step 1: Start SPIRE (Outside Kubernetes)
+  ✓ SPIRE setup script completed
+
+Step 2: Verify SPIRE Setup
+  ✓ SPIRE Server is running
+  ✓ SPIRE Agent is running
+  ✓ SPIRE Server socket exists
+  ✓ SPIRE Agent socket exists
+  ✓ Keylime stub is listening on port 8888
+  ✓ Agent joined successfully
+
+... (continues through all steps)
+
+Test Summary
+  ✓ cleanup: PASSED
+  ✓ step1: PASSED
+  ✓ step2: PASSED
+  ✓ step3: PASSED
+  ✓ step4: PASSED
+  ✓ step5: PASSED
+  ✓ step6: PASSED
+
+✅ All steps completed successfully!
+```
 
 ## Cleanup
 
@@ -450,7 +616,7 @@ If you prefer manual cleanup:
 kill $(cat /tmp/spire-server.pid) $(cat /tmp/spire-agent.pid) $(cat /tmp/keylime-stub.pid) 2>/dev/null || true
 
 # Delete Kubernetes cluster
-sudo kind delete cluster --name aegis-spire
+kind delete cluster --name aegis-spire
 
 # Remove sockets
 rm -f /tmp/spire-server/private/api.sock

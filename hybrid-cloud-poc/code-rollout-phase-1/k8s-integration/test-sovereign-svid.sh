@@ -37,7 +37,7 @@ echo "✓ Registration entry created: $ENTRY_ID"
 # Step 3: Deploy test workload
 echo ""
 echo "Step 3: Deploying test workload..."
-kubectl apply -f "${SCRIPT_DIR}/workloads/test-workload-simple.yaml"
+kubectl apply -f "${SCRIPT_DIR}/workloads/test-workload.yaml"
 sleep 10
 
 # Step 4: Wait for pod to be ready

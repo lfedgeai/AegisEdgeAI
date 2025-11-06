@@ -1,5 +1,5 @@
 # Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
-# Test Kubernetes workload using SPIRE CSI driver for sovereign SVID
+# Production pattern: Kubernetes workload using SPIRE CSI driver
 
 apiVersion: v1
 kind: ServiceAccount
@@ -32,53 +32,43 @@ spec:
         args:
         - |
           echo "Unified-Identity - Phase 1: Testing Sovereign SVID in Kubernetes"
-          echo "Waiting for SPIRE Workload API socket..."
-          while [ ! -S /run/spire/sockets/workload_api.sock ]; do
+          echo "SPIRE Workload API socket location: /run/spire/sockets/workload_api.sock"
+          echo ""
+          # Wait for socket (CSI driver will mount it)
+          for i in $(seq 1 60); do
+            if [ -S /run/spire/sockets/workload_api.sock ]; then
+              echo "✓ SPIRE Workload API socket found!"
+              break
+            fi
+            echo "Waiting for SPIRE Workload API socket... ($i/60)"
             sleep 1
           done
-          echo "SPIRE Workload API socket found!"
+          
+          if [ ! -S /run/spire/sockets/workload_api.sock ]; then
+            echo "✗ SPIRE Workload API socket not found"
+            ls -la /run/spire/sockets/ || true
+            exit 1
+          fi
+          
           echo ""
-          echo "Testing SVID retrieval..."
-          # Use spire-agent api watch to test
-          /opt/spire/bin/spire-agent api watch -socketPath /run/spire/sockets/workload_api.sock || echo "spire-agent not available, testing with workload API directly"
+          echo "Socket details:"
+          ls -la /run/spire/sockets/workload_api.sock
+          echo ""
+          echo "✓ Socket accessible - ready for SVID retrieval"
+          echo ""
+          echo "Note: To retrieve SVID, use a workload API client or spire-agent CLI"
+          echo "      For Phase 1 testing with SovereignAttestation, use generate-sovereign-svid"
+          echo "      script from the host instead."
+          echo ""
           sleep 3600
         volumeMounts:
-        - name: spire-socket
+        - name: spire-workload-api
           mountPath: /run/spire/sockets
           readOnly: true
       volumes:
-      - name: spire-socket
+      - name: spire-workload-api
+        # Unified-Identity - Phase 1: Production pattern using SPIRE CSI driver
         csi:
           driver: csi.spiffe.io
-          # Unified-Identity - Phase 1: CSI driver will mount the agent socket
           volumeAttributes:
             workloadAPI: "/run/spire/sockets/workload_api.sock"
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: test-sovereign-pod
-  namespace: default
-  labels:
-    app: test-sovereign-pod
-spec:
-  serviceAccountName: test-workload
-  containers:
-  - name: test-container
-    image: curlimages/curl:latest
-    command: ["/bin/sh", "-c"]
-    args:
-    - |
-      echo "Unified-Identity - Phase 1: Testing Sovereign SVID"
-      echo "SPIRE Workload API socket location: /run/spire/sockets/workload_api.sock"
-      ls -la /run/spire/sockets/ || echo "Socket directory not found"
-      sleep 3600
-    volumeMounts:
-    - name: spire-socket
-      mountPath: /run/spire/sockets
-      readOnly: true
-  volumes:
-  - name: spire-socket
-    csi:
-      driver: csi.spiffe.io
-

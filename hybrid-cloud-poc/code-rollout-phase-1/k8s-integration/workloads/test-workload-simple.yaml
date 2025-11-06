@@ -1,6 +1,6 @@
 # Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
-# Simplified test workload using hostPath mount for external SPIRE Agent socket
-# This is for testing Phase 1 - in production, use SPIRE CSI driver
+# Simple test workload using hostPath mount (non-CSI driver option)
+# This is a simpler alternative while CSI driver image issue is resolved
 
 apiVersion: v1
 kind: ServiceAccount
@@ -55,14 +55,11 @@ spec:
           echo "Socket details:"
           ls -la /run/spire/sockets/api.sock
           echo ""
-          echo "Testing workload API access..."
-          # Note: For full testing, we'd use spire-agent or workload API client
-          # For now, just verify socket exists and is accessible
           echo "✓ Socket accessible - ready for SVID retrieval"
           echo ""
-          echo "To test SVID generation, use the script:"
-          echo "  cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/scripts"
-          echo "  ./generate-sovereign-svid -entryID <ENTRY_ID> -spiffeID spiffe://example.org/workload/test-k8s"
+          echo "To dump SVID from this pod, use:"
+          echo "  kubectl exec <pod-name> -- spire-agent api fetch -socketPath /run/spire/sockets/api.sock -write /tmp"
+          echo "  kubectl cp <pod-name>:/tmp/svid.0.pem /tmp/svid.crt"
           echo ""
           sleep 3600
         volumeMounts:
@@ -71,44 +68,8 @@ spec:
           readOnly: true
       volumes:
       - name: spire-agent-socket
-        # Unified-Identity - Phase 1: Mount external agent socket from host
-        # In production, this would be via SPIRE CSI driver
+        # Unified-Identity - Phase 1: Simple hostPath mount (non-CSI driver option)
+        # This is a simpler alternative while CSI driver image issue is resolved
         hostPath:
           path: /tmp/spire-agent/public
           type: Directory
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: test-sovereign-pod
-  namespace: default
-  labels:
-    app: test-sovereign-pod
-spec:
-  serviceAccountName: test-workload
-  containers:
-  - name: test-container
-    image: curlimages/curl:latest
-    command: ["/bin/sh", "-c"]
-    args:
-    - |
-      echo "Unified-Identity - Phase 1: Testing Sovereign SVID Pod"
-      echo "Checking SPIRE Agent socket..."
-      ls -la /run/spire/sockets/ || echo "Socket directory not found"
-      if [ -S /run/spire/sockets/api.sock ]; then
-        echo "✓ SPIRE Agent socket found and accessible"
-        stat /run/spire/sockets/api.sock
-      else
-        echo "✗ SPIRE Agent socket not found"
-      fi
-      sleep 3600
-    volumeMounts:
-    - name: spire-agent-socket
-      mountPath: /run/spire/sockets
-      readOnly: true
-  volumes:
-  - name: spire-agent-socket
-    hostPath:
-      path: /tmp/spire-agent/public
-      type: Directory
-

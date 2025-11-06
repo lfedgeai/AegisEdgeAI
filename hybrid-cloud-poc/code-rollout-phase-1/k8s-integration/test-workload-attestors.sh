@@ -146,7 +146,7 @@ if kubectl cluster-info &>/dev/null; then
         fi
     else
         echo -e "${YELLOW}⚠ Test workload deployment not found${NC}"
-        echo "Deploy test workload with: kubectl apply -f ${SCRIPT_DIR}/workloads/test-workload-simple.yaml"
+        echo "Deploy test workload with: kubectl apply -f ${SCRIPT_DIR}/workloads/test-workload.yaml"
     fi
 else
     echo -e "${YELLOW}⚠ Kubernetes cluster not detected - skipping k8s workload attestor test${NC}"

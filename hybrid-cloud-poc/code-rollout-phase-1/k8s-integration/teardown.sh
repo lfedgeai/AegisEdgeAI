@@ -39,8 +39,8 @@ export KUBECONFIG="$KUBECONFIG_FILE"
 
 if kubectl cluster-info > /dev/null 2>&1; then
     echo "  Deleting test workloads..."
-    kubectl delete -f "${SCRIPT_DIR}/workloads/test-workload-simple.yaml" 2>/dev/null || true
     kubectl delete -f "${SCRIPT_DIR}/workloads/test-workload.yaml" 2>/dev/null || true
+    kubectl delete -f "${SCRIPT_DIR}/csi-driver/spire-csi-driver.yaml" 2>/dev/null || true
     
     # Delete any remaining pods with test labels
     kubectl delete pods -l app=test-sovereign-workload --ignore-not-found=true 2>/dev/null || true
