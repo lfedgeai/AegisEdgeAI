@@ -102,8 +102,40 @@ fi
 
 echo ""
 
-# Step 3: Stop SPIRE Agent
-echo -e "${YELLOW}Step 3: Stopping SPIRE Agent...${NC}"
+# Step 3: Clean up SPIRE registration entries (BEFORE stopping server)
+echo -e "${YELLOW}Step 3: Cleaning up SPIRE registration entries...${NC}"
+SPIRE_DIR="${SCRIPT_DIR}/../spire"
+SERVER_SOCKET="/tmp/spire-server/private/api.sock"
+
+if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
+    # List all entries and delete them
+    ENTRY_LIST=$("${SPIRE_DIR}/bin/spire-server" entry list -socketPath "$SERVER_SOCKET" 2>/dev/null || echo "")
+    if [ -n "$ENTRY_LIST" ]; then
+        ENTRY_COUNT=$(echo "$ENTRY_LIST" | grep -c "Entry ID" || echo "0")
+        if [ "$ENTRY_COUNT" -gt 0 ]; then
+            echo "  Found $ENTRY_COUNT registration entries"
+            # Extract entry IDs and delete them
+            echo "$ENTRY_LIST" | grep -oP 'Entry ID\s+:\s+\K[a-f0-9-]+' | while read -r entry_id; do
+                if [ -n "$entry_id" ]; then
+                    "${SPIRE_DIR}/bin/spire-server" entry delete -entryID "$entry_id" -socketPath "$SERVER_SOCKET" >/dev/null 2>&1 && \
+                        echo "    Deleted entry: $entry_id" || echo "    Failed to delete entry: $entry_id"
+                fi
+            done
+            echo -e "  ${GREEN}✓ Registration entries cleaned up${NC}"
+        else
+            echo -e "  ${YELLOW}⚠ No entries found${NC}"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ Could not list entries or server not accessible${NC}"
+    fi
+else
+    echo -e "  ${YELLOW}⚠ SPIRE Server socket not accessible, skipping entry cleanup${NC}"
+fi
+
+echo ""
+
+# Step 4: Stop SPIRE Agent
+echo -e "${YELLOW}Step 4: Stopping SPIRE Agent...${NC}"
 if check_process "/tmp/spire-agent.pid" "spire-agent"; then
     SPIRE_AGENT_PID=$(cat /tmp/spire-agent.pid)
     echo "  Stopping SPIRE Agent (PID: $SPIRE_AGENT_PID)..."
@@ -125,8 +157,8 @@ fi
 
 echo ""
 
-# Step 4: Stop SPIRE Server
-echo -e "${YELLOW}Step 4: Stopping SPIRE Server...${NC}"
+# Step 5: Stop SPIRE Server (renumbered from Step 4)
+echo -e "${YELLOW}Step 5: Stopping SPIRE Server...${NC}"
 if check_process "/tmp/spire-server.pid" "spire-server"; then
     SPIRE_SERVER_PID=$(cat /tmp/spire-server.pid)
     echo "  Stopping SPIRE Server (PID: $SPIRE_SERVER_PID)..."
@@ -148,8 +180,8 @@ fi
 
 echo ""
 
-# Step 5: Stop Keylime Stub
-echo -e "${YELLOW}Step 5: Stopping Keylime Stub...${NC}"
+# Step 6: Stop Keylime Stub (renumbered from Step 5)
+echo -e "${YELLOW}Step 6: Stopping Keylime Stub...${NC}"
 if check_process "/tmp/keylime-stub.pid" "keylime-stub"; then
     KEYLIME_STUB_PID=$(cat /tmp/keylime-stub.pid)
     echo "  Stopping Keylime Stub (PID: $KEYLIME_STUB_PID)..."
@@ -171,8 +203,8 @@ fi
 
 echo ""
 
-# Step 6: Clean up sockets (optional)
-echo -e "${YELLOW}Step 6: Cleaning up sockets...${NC}"
+# Step 7: Clean up sockets (renumbered from Step 6)
+echo -e "${YELLOW}Step 7: Cleaning up sockets...${NC}"
 if [ -S "/tmp/spire-server/private/api.sock" ]; then
     rm -f /tmp/spire-server/private/api.sock
     echo -e "  ${GREEN}✓ SPIRE Server socket removed${NC}"
@@ -185,11 +217,11 @@ fi
 
 echo ""
 
-# Step 7: Optional cleanup of logs and data
+# Step 8: Optional cleanup of logs and data (renumbered from Step 7)
 read -p "Do you want to remove log files and data directories? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}Step 7: Cleaning up logs and data...${NC}"
+    echo -e "${YELLOW}Step 8: Cleaning up logs and data...${NC}"
     
     # Remove log files
     rm -f /tmp/spire-server.log
@@ -209,7 +241,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "  ${YELLOW}⚠ Data directories preserved${NC}"
     fi
 else
-    echo -e "${YELLOW}Step 7: Skipping log and data cleanup${NC}"
+    echo -e "${YELLOW}Step 8: Skipping log and data cleanup${NC}"
 fi
 
 echo ""

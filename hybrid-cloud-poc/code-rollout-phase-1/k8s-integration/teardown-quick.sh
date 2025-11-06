@@ -10,6 +10,45 @@ KUBECONFIG_FILE="/tmp/kubeconfig-kind.yaml"
 echo "Unified-Identity - Phase 1: Quick Teardown"
 echo ""
 
+# Clean up SPIRE registration entries FIRST (before stopping server)
+echo "Cleaning up SPIRE registration entries..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SPIRE_DIR="${SCRIPT_DIR}/../spire"
+SERVER_SOCKET="/tmp/spire-server/private/api.sock"
+
+if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
+    # List all entries and delete them
+    ENTRY_LIST=$("${SPIRE_DIR}/bin/spire-server" entry list -socketPath "$SERVER_SOCKET" 2>/dev/null || echo "")
+    if [ -n "$ENTRY_LIST" ] && echo "$ENTRY_LIST" | grep -q "Entry ID"; then
+        # Extract entry IDs using multiple methods (grep -oP might not be available on all systems)
+        ENTRY_IDS=$(echo "$ENTRY_LIST" | grep "Entry ID" | sed -n 's/.*Entry ID[[:space:]]*:[[:space:]]*\([a-f0-9-]\+\).*/\1/p' || \
+                    echo "$ENTRY_LIST" | grep -oE 'Entry ID[[:space:]]+:[[:space:]]+[a-f0-9-]+' | awk '{print $NF}' || \
+                    echo "$ENTRY_LIST" | awk '/Entry ID/ {print $NF}')
+        
+        ENTRY_COUNT=0
+        # Use process substitution to avoid subshell issue with while loop
+        while IFS= read -r entry_id; do
+            if [ -n "$entry_id" ] && [ "$entry_id" != "Entry" ] && [ "$entry_id" != "ID" ] && [ "$entry_id" != ":" ]; then
+                if "${SPIRE_DIR}/bin/spire-server" entry delete -entryID "$entry_id" -socketPath "$SERVER_SOCKET" >/dev/null 2>&1; then
+                    ENTRY_COUNT=$((ENTRY_COUNT + 1))
+                fi
+            fi
+        done <<< "$ENTRY_IDS"
+        
+        if [ "$ENTRY_COUNT" -gt 0 ]; then
+            echo "  ✓ Deleted $ENTRY_COUNT registration entry/entries"
+        else
+            echo "  ⚠ No entries found to delete (or deletion failed)"
+        fi
+    else
+        echo "  ⚠ No entries found or server not accessible"
+    fi
+else
+    echo "  ⚠ SPIRE Server socket not accessible, skipping entry cleanup"
+fi
+
+echo ""
+
 # Stop processes
 echo "Stopping processes..."
 
@@ -87,30 +126,6 @@ if pgrep -f "spire-server|spire-agent|keylime-stub" > /dev/null 2>&1; then
     echo "  ⚠ Some processes may still be running, consider running teardown.sh for full cleanup"
 else
     echo "  ✓ All SPIRE and Keylime processes stopped"
-fi
-
-# Clean up SPIRE registration entries (if server socket is accessible)
-echo "Cleaning up SPIRE registration entries..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SPIRE_DIR="${SCRIPT_DIR}/../spire"
-SERVER_SOCKET="/tmp/spire-server/private/api.sock"
-
-if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
-    # List all entries and delete them
-    ENTRY_LIST=$("${SPIRE_DIR}/bin/spire-server" entry list -socketPath "$SERVER_SOCKET" 2>/dev/null || echo "")
-    if [ -n "$ENTRY_LIST" ]; then
-        # Extract entry IDs and delete them
-        echo "$ENTRY_LIST" | grep -oP 'Entry ID\s+:\s+\K[a-f0-9-]+' | while read -r entry_id; do
-            if [ -n "$entry_id" ]; then
-                "${SPIRE_DIR}/bin/spire-server" entry delete -entryID "$entry_id" -socketPath "$SERVER_SOCKET" >/dev/null 2>&1 || true
-            fi
-        done
-        echo "  ✓ Registration entries cleaned up"
-    else
-        echo "  ⚠ No entries found or server not accessible"
-    fi
-else
-    echo "  ⚠ SPIRE Server socket not accessible, skipping entry cleanup"
 fi
 
 # Note: SPIRE data directories in /opt/spire/data are NOT removed by default

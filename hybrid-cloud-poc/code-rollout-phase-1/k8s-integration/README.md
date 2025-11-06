@@ -244,9 +244,11 @@ Then create the registration entry:
 
 **Note:** The `parentID` must match the actual agent SPIFFE ID from `spire-server agent list`. The agent ID format is typically `spiffe://example.org/spire/agent/join_token/<token>`.
 
-### Step 5: Deploy Test Workload (Simple Option - Recommended for Testing)
+### Step 5: Deploy Test Workload
 
 **Option A: Simple hostPath Mount (Recommended for Phase 1 Testing)**
+
+This option mounts the SPIRE Agent socket directly via hostPath:
 
 This is the simplest approach and works immediately without CSI driver:
 
@@ -283,6 +285,45 @@ kubectl apply -f workloads/test-workload.yaml
 ```
 
 **CSI Driver Status:** The image `ghcr.io/spiffe/spire-csi-driver:0.4.0` may require authentication or a different tag. Check the [SPIRE CSI Driver repository](https://github.com/spiffe/spire-csi-driver) for the latest available images and build instructions.
+
+**Option C: Workload with SVID Files Mounted (Production Pattern for File-Based Apps)**
+
+For applications that need SVID certificate, private key, and CA bundle as regular files (not just the socket), use `test-workload-with-svid-files.yaml`:
+
+```bash
+export KUBECONFIG=/tmp/kubeconfig-kind.yaml
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
+
+# Deploy workload with SVID files mounted
+kubectl apply -f workloads/test-workload-with-svid-files.yaml
+
+# Verify the pod is running
+kubectl get pods -l app=test-sovereign-workload-with-files
+
+# Wait for pod to be ready
+kubectl wait --for=condition=ready pod -l app=test-sovereign-workload-with-files --timeout=60s
+```
+
+**How it works:**
+- Uses an init container to fetch SVID from the workload API socket
+- Writes SVID files to a shared `emptyDir` volume (in-memory for security)
+- Main container mounts the volume read-only with files at:
+  - `/svid-files/svid.pem` - SVID certificate
+  - `/svid-files/svid.key` - SVID private key
+  - `/svid-files/bundle.pem` - SPIRE CA bundle
+
+**Note:** The example uses placeholder files. In production, use `spire-agent` or a Go client in the init container to fetch real SVID files from the workload API.
+
+**Copying SVID files from pod:**
+```bash
+# Get pod name
+POD_NAME=$(kubectl get pods -l app=test-sovereign-workload-with-files -o jsonpath='{.items[0].metadata.name}')
+
+# Copy SVID files
+kubectl cp default/$POD_NAME:/svid-files/svid.pem /tmp/svid.pem
+kubectl cp default/$POD_NAME:/svid-files/svid.key /tmp/svid.key
+kubectl cp default/$POD_NAME:/svid-files/bundle.pem /tmp/bundle.pem
+```
 
 ### Step 6: Dump SVID from Workload Pod
 
@@ -535,6 +576,8 @@ Test Summary
 
 ## Cleanup
 
+**Note:** Both teardown scripts (`teardown.sh` and `teardown-quick.sh`) now automatically clean up SPIRE registration entries as part of the cleanup process. This ensures a clean state for subsequent test runs.
+
 ### Full Teardown (Interactive)
 
 The `teardown.sh` script provides a comprehensive cleanup with options:
@@ -547,14 +590,15 @@ cd k8s-integration
 This script will:
 1. **Delete Kubernetes workloads** - Removes test pods and service accounts
 2. **Delete kind cluster** - Removes the Kubernetes cluster
-3. **Remove kubeconfig file** - Always removes `/tmp/kubeconfig-kind.yaml` (even if cluster was already deleted)
-4. **Remove kubeconfig context** - Removes `kind-aegis-spire` context from `~/.kube/config`
-5. **Remove admin.conf** - Removes `~/.kube/admin.conf` if it exists
-6. **Stop SPIRE Agent** - Gracefully stops the agent process
-7. **Stop SPIRE Server** - Gracefully stops the server process
-8. **Stop Keylime Stub** - Stops the stub service
-9. **Clean up sockets** - Removes Unix domain sockets
-10. **Optional cleanup** - Prompts to remove log files and data directories
+3. **Clean up SPIRE registration entries** - Automatically deletes all registration entries
+4. **Remove kubeconfig file** - Always removes `/tmp/kubeconfig-kind.yaml` (even if cluster was already deleted)
+5. **Remove kubeconfig context** - Removes `kind-aegis-spire` context from `~/.kube/config`
+6. **Remove admin.conf** - Removes `~/.kube/admin.conf` if it exists
+7. **Stop SPIRE Agent** - Gracefully stops the agent process
+8. **Stop SPIRE Server** - Gracefully stops the server process
+9. **Stop Keylime Stub** - Stops the stub service
+10. **Clean up sockets** - Removes Unix domain sockets
+11. **Optional cleanup** - Prompts to remove log files and data directories
 
 **Example output:**
 ```
@@ -573,16 +617,21 @@ Step 2: Deleting kind cluster 'aegis-spire'...
   ✓ Context removed from ~/.kube/config
   ✓ admin.conf removed from ~/.kube/
 
-Step 3: Stopping SPIRE Agent...
+Step 3: Cleaning up SPIRE registration entries...
+  Found 1 registration entries
+    Deleted entry: <entry-id>
+  ✓ Registration entries cleaned up
+
+Step 4: Stopping SPIRE Agent...
   ✓ SPIRE Agent stopped
 
-Step 4: Stopping SPIRE Server...
+Step 5: Stopping SPIRE Server...
   ✓ SPIRE Server stopped
 
-Step 5: Stopping Keylime Stub...
+Step 6: Stopping Keylime Stub...
   ✓ Keylime Stub stopped
 
-Step 6: Cleaning up sockets...
+Step 7: Cleaning up sockets...
   ✓ SPIRE Server socket removed
   ✓ SPIRE Agent socket removed
 

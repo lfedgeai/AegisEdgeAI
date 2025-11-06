@@ -1,0 +1,174 @@
+# Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+# Test workload with SVID files mounted as in-memory files
+# This demonstrates how standard apps use SVID cert and CA bundle as files
+#
+# This uses an init container to fetch SVID from the workload API socket
+# and write the files to a shared emptyDir volume, which is then mounted
+# to the main container. This is the production pattern for apps that need
+# SVID files as regular files (not just the socket).
+#
+# Note: Private key is NOT exposed to the main container for security.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-workload
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-sovereign-workload-with-files
+  namespace: default
+  labels:
+    app: test-sovereign-workload-with-files
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-sovereign-workload-with-files
+  template:
+    metadata:
+      labels:
+        app: test-sovereign-workload-with-files
+    spec:
+      serviceAccountName: test-workload
+      # Init container to fetch SVID and write to shared volume
+      initContainers:
+      - name: fetch-svid
+        # Use alpine image which has better compatibility
+        image: alpine:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Unified-Identity - Phase 1: Fetching SVID files"
+          echo "SPIRE Agent socket: /run/spire/sockets/api.sock"
+          echo "Output directory: /svid-files"
+          
+          # Install curl for basic operations
+          apk add --no-cache curl >/dev/null 2>&1 || true
+          
+          # Debug: List available sockets
+          echo "Checking for SPIRE Agent socket..."
+          ls -la /run/spire/sockets/ 2>&1 || echo "Socket directory not found"
+          
+          # Wait for socket (check both possible paths)
+          SOCKET_FOUND=false
+          for i in $(seq 1 30); do
+            if [ -S /run/spire/sockets/api.sock ]; then
+              echo "✓ SPIRE Agent socket found at /run/spire/sockets/api.sock"
+              SOCKET_FOUND=true
+              break
+            elif [ -S /run/spire/sockets/workload_api.sock ]; then
+              echo "✓ SPIRE Agent socket found at /run/spire/sockets/workload_api.sock"
+              # Create symlink for consistency
+              ln -sf /run/spire/sockets/workload_api.sock /run/spire/sockets/api.sock
+              SOCKET_FOUND=true
+              break
+            fi
+            echo "Waiting for SPIRE Agent socket... ($i/30)"
+            sleep 1
+          done
+          
+          if [ "$SOCKET_FOUND" != "true" ]; then
+            echo "✗ SPIRE Agent socket not found"
+            echo "Available files in /run/spire/sockets/:"
+            ls -la /run/spire/sockets/ 2>&1 || echo "Directory does not exist"
+            exit 1
+          fi
+          
+          # Create output directory
+          mkdir -p /svid-files
+          
+          # Note: spire-agent binary is not available in kind containers (can't mount arbitrary host paths)
+          # In production, use a container image that includes spire-agent or a Go client
+          echo "Note: Using placeholder files for Phase 1 testing"
+          echo "In production, the init container would use spire-agent or a Go client to fetch real SVIDs"
+          echo ""
+          echo "Production pattern would be:"
+          echo "  spire-agent api fetch -socketPath /run/spire/sockets/api.sock -write /svid-files"
+          echo ""
+          echo "This would create:"
+          echo "  /svid-files/svid.0.pem  (SVID certificate)"
+          echo "  /svid-files/bundle.0.pem (SPIRE CA bundle)"
+          echo ""
+          
+          # Create placeholder files to demonstrate the pattern
+          echo "Creating placeholder files to demonstrate file mounting pattern..."
+          echo "PLACEHOLDER: SVID Certificate" > /svid-files/svid.pem
+          echo "PLACEHOLDER: SPIRE CA Bundle" > /svid-files/bundle.pem
+          
+          echo "✓ SVID files created in /svid-files"
+          ls -la /svid-files/
+        volumeMounts:
+        - name: spire-agent-socket
+          mountPath: /run/spire/sockets
+          readOnly: true
+        - name: svid-files
+          mountPath: /svid-files
+      containers:
+      - name: workload
+        image: curlimages/curl:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Unified-Identity - Phase 1: Testing Sovereign SVID in Kubernetes"
+          echo "SVID files mounted as in-memory files:"
+          echo ""
+          echo "SVID Certificate: /svid-files/svid.pem"
+          echo "SPIRE CA Bundle: /svid-files/bundle.pem"
+          echo ""
+          echo "Note: Private key is NOT exposed to the main container for security"
+          echo ""
+          
+          # Verify files exist
+          if [ -f /svid-files/svid.pem ]; then
+            echo "✓ SVID certificate file found"
+            file_size=$(wc -c < /svid-files/svid.pem)
+            echo "  Size: $file_size bytes"
+            # Check if it's a real certificate or placeholder
+            if head -1 /svid-files/svid.pem | grep -q "BEGIN CERTIFICATE"; then
+              echo "  Type: Real X.509 certificate (PEM format)"
+            else
+              echo "  Type: Placeholder file"
+              echo "  Content: $(head -1 /svid-files/svid.pem)"
+            fi
+          fi
+          
+          if [ -f /svid-files/bundle.pem ]; then
+            echo "✓ SPIRE CA bundle file found"
+            file_size=$(wc -c < /svid-files/bundle.pem)
+            echo "  Size: $file_size bytes"
+            if head -1 /svid-files/bundle.pem | grep -q "BEGIN CERTIFICATE"; then
+              echo "  Type: Real CA bundle (PEM format)"
+            else
+              echo "  Type: Placeholder file"
+            fi
+          fi
+          
+          echo ""
+          echo "These files can now be used by the application:"
+          echo "  - Load certificate for mTLS connections"
+          echo "  - Use CA bundle to verify peer certificates"
+          echo "  - Copy files to other locations if needed"
+          echo ""
+          echo "In production, these files are fetched from the SPIRE Workload API"
+          echo "and automatically refreshed by the init container or sidecar."
+          echo ""
+          sleep 3600
+        volumeMounts:
+        - name: svid-files
+          mountPath: /svid-files
+          readOnly: true
+      volumes:
+      - name: spire-agent-socket
+        # Unified-Identity - Phase 1: Simple hostPath mount (non-CSI driver option)
+        hostPath:
+          path: /tmp/spire-agent/public
+          type: Directory
+      - name: svid-files
+        # Unified-Identity - Phase 1: EmptyDir volume for SVID files (in-memory)
+        # This is mounted as read-only to the main container after init container writes files
+        emptyDir:
+          medium: Memory  # In-memory filesystem for security
+          sizeLimit: 10Mi
