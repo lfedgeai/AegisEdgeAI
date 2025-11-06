@@ -48,7 +48,7 @@ All Phase 1 code changes are wrapped under the **`Unified-Identity`** feature fl
 
 ### Enabling the Feature Flag
 
-To enable the Unified-Identity feature, rebuild SPIRE with the feature flag enabled:
+To enable the Unified-Identity feature, configure SPIRE with the feature flag enabled:
 
 1. **SPIRE Server Configuration** (`spire-server.conf`):
 ```hcl
@@ -66,15 +66,17 @@ agent {
 }
 ```
 
-3. **Rebuild SPIRE**:
+3. **Optional: Rebuild SPIRE** (only if using modified SPIRE binaries with Phase 1 changes):
 ```bash
 cd spire
 make build
 ```
 
+**Note**: If using existing SPIRE binaries without Phase 1 changes, the feature flag will be ignored and SovereignAttestation will not be processed (backward compatible behavior).
+
 ### Disabling the Feature Flag
 
-Remove `"Unified-Identity"` from the `feature_flags` array in configuration files and rebuild.
+Remove `"Unified-Identity"` from the `feature_flags` array in configuration files. If using rebuilt SPIRE binaries, restart the services.
 
 ## API Changes
 
@@ -323,12 +325,189 @@ This is a **stubbed implementation**:
 3. **Remediation**: Policy failures return errors - no actual remediation actions
 4. **Cryptographic Verification**: Certificate chain validation is stubbed
 
+## Generating an SVID with SovereignAttestation
+
+This section provides verified steps to generate an X509-SVID with the new `SovereignAttestation` format.
+
+### Prerequisites
+
+1. **SPIRE Server** running with feature flag enabled
+2. **SPIRE Agent** running with feature flag enabled (if using agent-based flow)
+3. **Keylime Stub** running (see [Components](#components) section)
+4. **Registration Entry** created in SPIRE Server
+
+### Step 1: Create Registration Entry
+
+```bash
+# Create a registration entry for the workload
+spire-server entry create \
+    -spiffeID spiffe://example.org/workload/test \
+    -parentID spiffe://example.org/agent \
+    -selector unix:uid:1000
+```
+
+Note the `entry_id` from the output (e.g., `entry-id-123`).
+
+### Step 2: Generate Certificate Signing Request (CSR)
+
+Create a CSR with the SPIFFE ID in the URI SAN:
+
+```bash
+# Generate a private key
+openssl genrsa -out key.pem 2048
+
+# Create CSR with SPIFFE ID
+openssl req -new -key key.pem -out csr.pem \
+    -subj "/CN=test-workload" \
+    -addext "subjectAltName=URI:spiffe://example.org/workload/test"
+```
+
+Convert CSR to DER format:
+```bash
+openssl req -in csr.pem -out csr.der -outform DER
+```
+
+### Step 3: Prepare SovereignAttestation
+
+For Phase 1 (stubbed), create a stubbed `SovereignAttestation`:
+
+**Go Example**:
+```go
+import (
+    "encoding/base64"
+    "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
+)
+
+// Create stubbed SovereignAttestation
+sovereignAttestation := &types.SovereignAttestation{
+    TpmSignedAttestation: base64.StdEncoding.EncodeToString([]byte("stubbed-tpm-quote")),
+    AppKeyPublic:         "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+    AppKeyCertificate:    []byte("stubbed-certificate"),
+    ChallengeNonce:       "nonce-123456789",
+    WorkloadCodeHash:     "hash-abc123",
+}
+```
+
+**JSON Example** (for REST API or testing):
+```json
+{
+  "tpm_signed_attestation": "c3R1YmJlZC10cG0tcXVvdGU=",
+  "app_key_public": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+  "app_key_certificate": "c3R1YmJlZC1jZXJ0aWZpY2F0ZQ==",
+  "challenge_nonce": "nonce-123456789",
+  "workload_code_hash": "hash-abc123"
+}
+```
+
+### Step 4: Call BatchNewX509SVID API
+
+**Using SPIRE API Client** (Go):
+
+```go
+import (
+    "context"
+    "io/ioutil"
+    "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
+    "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
+    "google.golang.org/grpc"
+)
+
+// Read CSR
+csrBytes, _ := ioutil.ReadFile("csr.der")
+
+// Create request
+req := &svidv1.BatchNewX509SVIDRequest{
+    Params: []*svidv1.NewX509SVIDParams{
+        {
+            EntryId: "entry-id-123", // From Step 1
+            Csr:     csrBytes,
+            SovereignAttestation: sovereignAttestation, // From Step 3
+        },
+    },
+}
+
+// Call API (assuming you have a gRPC client)
+conn, _ := grpc.Dial("unix:///tmp/spire-server/private/api.sock")
+client := svidv1.NewSVIDClient(conn)
+
+resp, err := client.BatchNewX509SVID(context.Background(), req)
+if err != nil {
+    // Handle error
+}
+
+// Check response
+for _, result := range resp.Results {
+    if result.Status.Code == 0 { // OK
+        // SVID available in result.Svid
+        // AttestedClaims available in result.AttestedClaims (if feature flag enabled)
+        fmt.Printf("SVID ID: %s\n", result.Svid.Id)
+        fmt.Printf("AttestedClaims: %v\n", result.AttestedClaims)
+    } else {
+        fmt.Printf("Error: %s\n", result.Status.Message)
+    }
+}
+```
+
+### Step 5: Verify Response
+
+The response should include:
+
+1. **X509-SVID**: Certificate chain in `result.Svid.CertChain`
+2. **AttestedClaims** (if feature flag enabled): Verified claims from Keylime
+   ```go
+   if len(result.AttestedClaims) > 0 {
+       claims := result.AttestedClaims[0]
+       fmt.Printf("Geolocation: %s\n", claims.Geolocation)
+       fmt.Printf("Host Integrity: %s\n", claims.HostIntegrityStatus)
+       fmt.Printf("GPU Status: %s\n", claims.GpuMetricsHealth.Status)
+   }
+   ```
+
+### Step 6: Verify Logs
+
+Check SPIRE Server logs for:
+```
+INFO Unified-Identity - Phase 1: Processing SovereignAttestation
+INFO Unified-Identity - Phase 1: Calling Keylime Verifier to verify evidence
+INFO Unified-Identity - Phase 1: Received AttestedClaims from Keylime
+INFO Unified-Identity - Phase 1: Policy evaluation passed
+```
+
+### Complete Example Script
+
+```bash
+#!/bin/bash
+# Example: Generate SVID with SovereignAttestation
+
+# 1. Create entry
+ENTRY_ID=$(spire-server entry create \
+    -spiffeID spiffe://example.org/workload/test \
+    -parentID spiffe://example.org/agent \
+    -selector unix:uid:1000 | grep "Entry ID" | awk '{print $3}')
+
+# 2. Generate CSR
+openssl genrsa -out key.pem 2048
+openssl req -new -key key.pem -out csr.pem \
+    -subj "/CN=test" \
+    -addext "subjectAltName=URI:spiffe://example.org/workload/test"
+openssl req -in csr.pem -out csr.der -outform DER
+
+# 3. Use SPIRE API client to call BatchNewX509SVID with SovereignAttestation
+# (Implementation depends on your API client)
+```
+
+### Notes
+
+- **Feature Flag Required**: `SovereignAttestation` is only processed when `feature_flags = ["Unified-Identity"]` is set
+- **Keylime Stub**: Must be running and accessible from SPIRE Server
+- **Backward Compatibility**: If feature flag is disabled, `SovereignAttestation` field is ignored and normal SVID flow continues
+- **Stubbed Data**: In Phase 1, all TPM data is stubbed - use base64-encoded test strings
+
 ## Next Steps
 
-1. **Regenerate Protobuf Files**: Run `./regenerate-protos.sh`
-2. **Fix Compilation Issues**: Resolve import/type issues after protobuf generation
-3. **Run Tests**: See [TESTING.md](TESTING.md) for detailed testing instructions
-4. **Integration Testing**: Test with rebuilt SPIRE Server/Agent and Keylime stub
+1. **Regenerate Protobuf Files**: Run `./regenerate-protos.sh` (if modifying proto files)
+2. **Run Tests**: See [TESTING.md](TESTING.md) for detailed testing instructions
+3. **Integration Testing**: Test SVID generation with SovereignAttestation using the steps above
 
 ## References
 
