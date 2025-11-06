@@ -4,6 +4,37 @@
 
 This directory contains the implementation of **Phase 1** of the Unified Identity for Sovereign AI architecture. This phase implements all necessary SPIRE API changes and policy logic without relying on a functional Keylime or TPM plugin.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Feature Flag](#feature-flag)
+  - [Enabling the Feature Flag](#enabling-the-feature-flag)
+  - [Disabling the Feature Flag](#disabling-the-feature-flag)
+- [API Changes](#api-changes)
+  - [Protobuf Definitions](#protobuf-definitions)
+  - [Keylime Verifier API](#keylime-verifier-api)
+- [Code Changes Summary](#code-changes-summary)
+- [Components](#components)
+  - [Keylime Verifier Stub](#keylime-verifier-stub)
+  - [SPIRE Server Integration](#spire-server-integration)
+  - [Policy Engine](#policy-engine)
+- [Regenerating Protobuf Files](#regenerating-protobuf-files)
+- [Logging](#logging)
+- [Limitations (Phase 1)](#limitations-phase-1)
+- [Generating an SVID with SovereignAttestation](#generating-an-svid-with-sovereignattestation)
+  - [Prerequisites](#prerequisites)
+  - [Step 1: Create Registration Entry](#step-1-create-registration-entry)
+  - [Step 2: Generate Certificate Signing Request (CSR)](#step-2-generate-certificate-signing-request-csr)
+  - [Step 3: Prepare SovereignAttestation](#step-3-prepare-sovereignattestation)
+  - [Step 4: Call BatchNewX509SVID API](#step-4-call-batchnewx509svid-api)
+  - [Step 5: Verify Response](#step-5-verify-response)
+  - [Step 6: Verify Logs](#step-6-verify-logs)
+  - [Complete Example Script](#complete-example-script)
+  - [Notes](#notes)
+- [Next Steps](#next-steps)
+- [References](#references)
+
 ## Overview
 
 Phase 1 focuses on:
@@ -473,28 +504,87 @@ INFO Unified-Identity - Phase 1: Received AttestedClaims from Keylime
 INFO Unified-Identity - Phase 1: Policy evaluation passed
 ```
 
-### Complete Example Script
+### Complete Working Script
 
+A complete working Go script is provided in `scripts/generate-sovereign-svid.go` that demonstrates the full flow.
+
+**Location**: `scripts/generate-sovereign-svid.go`
+
+**Build the script:**
 ```bash
-#!/bin/bash
-# Example: Generate SVID with SovereignAttestation
+cd scripts
+go mod tidy
+go build -o generate-sovereign-svid generate-sovereign-svid.go
+```
 
-# 1. Create entry
-ENTRY_ID=$(spire-server entry create \
+**Test the script:**
+```bash
+cd scripts
+./test-sovereign-svid.sh
+```
+
+**Usage:**
+```bash
+# 1. First, create a registration entry and note the entry ID
+spire-server entry create \
     -spiffeID spiffe://example.org/workload/test \
     -parentID spiffe://example.org/agent \
-    -selector unix:uid:1000 | grep "Entry ID" | awk '{print $3}')
+    -selector unix:uid:1000
 
-# 2. Generate CSR
-openssl genrsa -out key.pem 2048
-openssl req -new -key key.pem -out csr.pem \
-    -subj "/CN=test" \
-    -addext "subjectAltName=URI:spiffe://example.org/workload/test"
-openssl req -in csr.pem -out csr.der -outform DER
+# 2. Run the script with the entry ID
+./generate-sovereign-svid \
+    -entryID "entry-id-from-step-1" \
+    -spiffeID "spiffe://example.org/workload/test" \
+    -serverSocketPath "unix:///tmp/spire-server/private/api.sock" \
+    -verbose
 
-# 3. Use SPIRE API client to call BatchNewX509SVID with SovereignAttestation
-# (Implementation depends on your API client)
+# 3. The script will:
+#    - Generate a CSR automatically
+#    - Create stubbed SovereignAttestation
+#    - Call BatchNewX509SVID API
+#    - Save the SVID certificate and private key
+#    - Display AttestedClaims if feature flag is enabled
 ```
+
+**Script Output Example:**
+```
+Unified-Identity - Phase 1: Generating SVID with SovereignAttestation
+Step 1: Generating CSR...
+✓ CSR generated for SPIFFE ID: spiffe://example.org/workload/test
+Step 2: Preparing SovereignAttestation (stubbed)...
+✓ SovereignAttestation prepared
+Step 3: Connecting to SPIRE Server at unix:///tmp/spire-server/private/api.sock...
+✓ Connected to SPIRE Server
+Step 4: Calling BatchNewX509SVID API...
+✓ SVID generated successfully
+Step 5: Verifying and saving SVID...
+✓ SVID Details:
+  - SPIFFE ID: spiffe://example.org/workload/test
+  - Expires At: 2024-11-07T10:30:00Z
+  - Subject: CN=sovereign-workload
+  - Serial Number: 1234567890
+✓ AttestedClaims received:
+  - Geolocation: Spain: N40.4168, W3.7038
+  - Host Integrity: PASSED_ALL_CHECKS
+  - GPU Status: healthy
+  - GPU Utilization: 15.00%
+  - GPU Memory: 10240 MB
+✓ Certificate saved to: svid.crt
+✓ Private key saved to: svid.key
+
+✅ Successfully generated SVID with SovereignAttestation!
+   Certificate: svid.crt
+   Private Key: svid.key
+```
+
+**Script Features:**
+- Automatically generates CSR with proper SPIFFE ID
+- Creates stubbed SovereignAttestation for Phase 1 testing
+- Connects to SPIRE Server via gRPC
+- Calls BatchNewX509SVID with SovereignAttestation
+- Verifies and displays SVID details
+- Displays AttestedClaims if feature flag is enabled
+- Saves certificate and private key to files
 
 ### Notes
 
