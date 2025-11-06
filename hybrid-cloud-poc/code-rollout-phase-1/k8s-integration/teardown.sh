@@ -58,7 +58,10 @@ echo ""
 
 # Step 2: Delete kind cluster
 echo -e "${YELLOW}Step 2: Deleting kind cluster '${KIND_CLUSTER_NAME}'...${NC}"
-if sudo kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+# Try without sudo first, then with sudo
+if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
+    kind delete cluster --name "$KIND_CLUSTER_NAME" 2>&1
+elif sudo kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
     sudo kind delete cluster --name "$KIND_CLUSTER_NAME" 2>&1
     echo -e "  ${GREEN}✓ Kind cluster deleted${NC}"
 else

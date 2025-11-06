@@ -278,6 +278,55 @@ Test enabling/disabling feature flag without rebuilding.
 2. Restart SPIRE Server/Agent (same binaries)
 3. Verify: SovereignAttestation is processed, Keylime calls made
 
+## Workload Attestor Tests
+
+### Test Both Workload Attestors
+
+The SPIRE Agent is configured with both `unix` and `k8s` workload attestors. Test both:
+
+```bash
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/k8s-integration
+./test-workload-attestors.sh
+```
+
+This test:
+1. Verifies SPIRE Server and Agent are running
+2. Tests `unix` workload attestor:
+   - Creates registration entry with `unix:uid` selector
+   - Verifies entry is created correctly
+3. Tests `k8s` workload attestor (if Kubernetes cluster exists):
+   - Creates registration entry with `k8s:ns` and `k8s:sa` selectors
+   - Verifies entry is created correctly
+4. Checks agent logs for both attestors
+5. Provides cleanup commands
+
+**Manual Testing:**
+
+**Unix Workload Attestor:**
+```bash
+# Create entry
+spire-server entry create \
+    -spiffeID spiffe://example.org/workload/test-unix \
+    -parentID spiffe://example.org/spire/agent/... \
+    -selector unix:uid:$(id -u)
+
+# Verify entry
+spire-server entry show -id <entry-id>
+```
+
+**K8s Workload Attestor:**
+```bash
+# Create entry
+spire-server entry create \
+    -spiffeID spiffe://example.org/workload/test-k8s \
+    -parentID spiffe://example.org/spire/agent/... \
+    -selector k8s:ns:default \
+    -selector k8s:sa:test-workload
+
+# Verify entry
+spire-server entry show -id <entry-id>
+```
+
 ## Integration Test Checklist
 
 ### Rebuilt SPIRE (Phase 1 Changes)
@@ -294,6 +343,9 @@ Test enabling/disabling feature flag without rebuilding.
 - [ ] Policy evaluation works correctly
 - [ ] AttestedClaims returned in response
 - [ ] Logs include "Unified-Identity - Phase 1" tags
+- [ ] Unix workload attestor works (test with `unix:uid` selector)
+- [ ] K8s workload attestor works (test with `k8s:ns` and `k8s:sa` selectors)
+- [ ] Both workload attestors can be used simultaneously
 
 ### Existing SPIRE (Backward Compatibility)
 

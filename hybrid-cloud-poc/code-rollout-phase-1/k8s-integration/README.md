@@ -42,10 +42,30 @@ This directory contains the setup for testing sovereign SVID generation with Kub
 ## Scripts Overview
 
 - **`setup-spire.sh`** - Starts SPIRE Server, Agent, and Keylime Stub outside Kubernetes
-- **`test-sovereign-svid.sh`** - End-to-end test script for sovereign SVID generation
+- **`setup-kubeconfig.sh`** - Sets up kubeconfig for kind cluster (helper script)
+- **`test-sovereign-svid.sh`** - End-to-end test script for sovereign SVID generation with Kubernetes
+- **`test-workload-attestors.sh`** - Tests both `unix` and `k8s` workload attestors
 - **`dump-svid-from-k8s.sh`** - Dumps SVID from a Kubernetes pod (automated extraction)
 - **`teardown.sh`** - Full interactive teardown (removes cluster, stops processes, optional cleanup)
 - **`teardown-quick.sh`** - Quick non-interactive teardown (stops processes, removes cluster)
+
+## Workload Attestation
+
+The SPIRE Agent is configured with **both** workload attestors to support hybrid environments:
+
+1. **`unix` workload attestor**: Attests processes running directly on the host (non-Kubernetes workloads)
+   - Works for any process on the host system
+   - No additional configuration required
+
+2. **`k8s` workload attestor**: Attests Kubernetes pods
+   - When the agent runs **outside Kubernetes**, the k8s workload attestor requires:
+     - Access to the Kubernetes API server (via kubeconfig or service account token)
+     - Access to kubelet on each node (for pod information)
+     - For external agents, you may need to configure `token_path` in `spire-agent/agent.conf`
+   - The k8s workload attestor will attempt to use the default service account token path (`/var/run/secrets/kubernetes.io/serviceaccount/token`) if not configured
+   - For Phase 1 testing, `skip_kubelet_verification = true` is set to simplify setup
+
+**Configuration:** See `spire-agent/agent.conf` for workload attestor settings.
 
 ## Prerequisites
 
@@ -53,6 +73,21 @@ This directory contains the setup for testing sovereign SVID generation with Kub
 2. **SPIRE Binaries**: Built SPIRE Server and Agent with Phase 1 changes
 3. **Keylime Stub**: Running on host at `http://localhost:8888`
 4. **Docker/Kind**: For running the Kubernetes cluster
+5. **Docker Access**: Your user should be in the `docker` group (or have Docker access)
+   ```bash
+   # Check if you can run docker without sudo:
+   docker ps
+   
+   # If that fails with permission denied, even though you're in docker group:
+   # - Disconnect and reconnect SSH (or start a new session)
+   # - Group membership changes require a new login session
+   
+   # If you're not in docker group, add your user (requires logout/login):
+   # sudo usermod -aG docker $USER
+   # Then disconnect and reconnect SSH
+   ```
+
+**Note:** If SPIRE runs as a non-root user (recommended), you typically don't need `sudo` for kind operations. The `setup-spire.sh` script sets appropriate socket permissions (666) so containers can access the agent socket.
 
 ## Setup Steps
 
@@ -78,14 +113,56 @@ This script:
 - Starts Keylime Stub
 - Starts SPIRE Server with Unified-Identity feature flag
 - Starts SPIRE Agent with Unified-Identity feature flag
+- Configures agent with both `unix` and `k8s` workload attestors
 - Creates necessary sockets accessible to the cluster
 
-### Step 2: Create Kubernetes Cluster with Socket Mount
+### Step 2: Verify SPIRE Setup
+
+After running `setup-spire.sh`, verify everything is running:
+
+```bash
+# Check processes
+ps aux | grep -E "spire-server|spire-agent|keylime" | grep -v grep
+
+# Check sockets
+ls -la /tmp/spire-server/private/api.sock
+ls -la /tmp/spire-agent/public/api.sock
+
+# Check agent joined successfully
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1
+./spire/bin/spire-server agent list -socketPath /tmp/spire-server/private/api.sock
+
+# Check logs
+tail -f /tmp/spire-server.log | grep "Unified-Identity"
+tail -f /tmp/spire-agent.log | grep "Unified-Identity"
+```
+
+**Note:** The agent may take 30-60 seconds to fully join and create the workload API socket. If the socket doesn't appear immediately, wait and check the logs.
+
+### Step 3: Create Kubernetes Cluster with Socket Mount
 
 The kind cluster is created with the agent socket mounted:
 
+**Note:** If SPIRE is running as a non-root user (recommended) and your user is in the `docker` group, you don't need `sudo` for kind.
+
+**Check Docker access:**
 ```bash
-sudo kind create cluster --name aegis-spire --config - << 'EOF'
+# Test if you can run docker without sudo
+docker ps
+
+# If that fails with permission denied, even though you're in docker group:
+# - Disconnect and reconnect SSH (or start a new session)
+# - Group membership changes require a new login session
+
+# If you're not in docker group, add your user (requires logout/login):
+# sudo usermod -aG docker $USER
+# Then disconnect and reconnect SSH
+```
+
+**Create the cluster:**
+```bash
+# If docker works without sudo (recommended):
+kind create cluster --name aegis-spire --config - << 'EOF'
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: aegis-spire
@@ -96,9 +173,40 @@ nodes:
     containerPath: /tmp/spire-agent/public
     readOnly: true
 EOF
+
+# OR if you need sudo (only if not in docker group):
+# sudo kind create cluster --name aegis-spire --config - << 'EOF'
+# ... (same config as above)
+# EOF
 ```
 
-### Step 3: Create Registration Entry
+**Important:** After creating the cluster, set up the kubeconfig:
+
+**Option A: Using the helper script (recommended):**
+```bash
+cd k8s-integration
+./setup-kubeconfig.sh aegis-spire
+export KUBECONFIG=/tmp/kubeconfig-kind.yaml
+```
+
+**Option B: Manual setup:**
+```bash
+# Save kind kubeconfig to expected location
+# Try without sudo first (if cluster was created without sudo):
+kind get kubeconfig --name aegis-spire > /tmp/kubeconfig-kind.yaml
+
+# OR if cluster was created with sudo:
+# sudo kind get kubeconfig --name aegis-spire > /tmp/kubeconfig-kind.yaml
+# sudo chown $USER:$USER /tmp/kubeconfig-kind.yaml
+
+# Export KUBECONFIG environment variable
+export KUBECONFIG=/tmp/kubeconfig-kind.yaml
+
+# Verify cluster access
+kubectl cluster-info --context kind-aegis-spire
+```
+
+### Step 4: Create Registration Entry
 
 ```bash
 export KUBECONFIG=/tmp/kubeconfig-kind.yaml
@@ -112,7 +220,7 @@ cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/spire
     -selector k8s:sa:test-workload
 ```
 
-### Step 4: Deploy Test Workload
+### Step 5: Deploy Test Workload
 
 For Phase 1 testing, we can use a simple hostPath mount to access the agent socket:
 
@@ -121,7 +229,27 @@ export KUBECONFIG=/tmp/kubeconfig-kind.yaml
 kubectl apply -f workloads/test-workload-simple.yaml
 ```
 
-### Step 5: Test Sovereign SVID Generation
+### Step 6: Test Workload Attestors
+
+Test both `unix` and `k8s` workload attestors:
+
+```bash
+cd k8s-integration
+./test-workload-attestors.sh
+```
+
+This script:
+- Verifies SPIRE Server and Agent are running
+- Tests `unix` workload attestor by creating a registration entry with `unix:uid` selector
+- Tests `k8s` workload attestor by creating a registration entry with `k8s:ns` and `k8s:sa` selectors (if Kubernetes cluster exists)
+- Verifies both attestors are loaded in agent logs
+- Provides cleanup commands for test entries
+
+**Expected Output:**
+- ✓ Unix workload attestor: Tested
+- ✓ K8s workload attestor: Tested (if cluster exists)
+
+### Step 7: Test Sovereign SVID Generation (Optional)
 
 **Option A: Dump SVID from Kubernetes Pod (Automated)**
 

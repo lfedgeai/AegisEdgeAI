@@ -22,6 +22,8 @@ done
 
 # Delete kind cluster
 echo "Deleting kind cluster..."
+# Try without sudo first, then with sudo
+kind delete cluster --name "$KIND_CLUSTER_NAME" 2>/dev/null || \
 sudo kind delete cluster --name "$KIND_CLUSTER_NAME" 2>/dev/null || true
 
 # Remove kubeconfig (always remove, even if cluster was already deleted)
