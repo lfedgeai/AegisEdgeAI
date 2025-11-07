@@ -247,6 +247,8 @@ Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trus
 
 - **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system.
 
+- **GPU Telemetry Integration** → AI/ML edge workloads can securely collect GPU metrics (utilization, temperature, memory) from DCGM exporters via Unix Domain Sockets (UDS - secure default) or HTTP (network mode). GPU metrics follow the same TPM-signed trust chain as system metrics, with support for both local and distributed GPU cluster monitoring.
+
 #### How to test Prototype?
 
 - Refer [README_demo.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trust/README_demo.md)
