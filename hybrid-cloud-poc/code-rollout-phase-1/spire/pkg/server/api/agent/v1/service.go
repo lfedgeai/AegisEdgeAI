@@ -14,6 +14,7 @@ import (
 	agentv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/agent/v1"
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"github.com/spiffe/spire/pkg/common/errorutil"
+	"github.com/spiffe/spire/pkg/common/fflag"
 	"github.com/spiffe/spire/pkg/common/idutil"
 	"github.com/spiffe/spire/pkg/common/nodeutil"
 	"github.com/spiffe/spire/pkg/common/selector"
@@ -24,6 +25,8 @@ import (
 	"github.com/spiffe/spire/pkg/server/ca"
 	"github.com/spiffe/spire/pkg/server/catalog"
 	"github.com/spiffe/spire/pkg/server/datastore"
+	"github.com/spiffe/spire/pkg/server/keylime"
+	"github.com/spiffe/spire/pkg/server/policy"
 	"github.com/spiffe/spire/pkg/server/plugin/nodeattestor"
 	"github.com/spiffe/spire/proto/spire/common"
 	"google.golang.org/grpc"
@@ -40,6 +43,10 @@ type Config struct {
 	DataStore   datastore.DataStore
 	ServerCA    ca.ServerCA
 	TrustDomain spiffeid.TrustDomain
+
+	// Unified-Identity - Phase 1: Optional Keylime client and policy engine
+	KeylimeClient *keylime.Client
+	PolicyEngine  *policy.Engine
 }
 
 // Service implements the v1 agent service
@@ -51,6 +58,10 @@ type Service struct {
 	ds  datastore.DataStore
 	ca  ca.ServerCA
 	td  spiffeid.TrustDomain
+
+	// Unified-Identity - Phase 1
+	keylimeClient *keylime.Client
+	policyEngine  *policy.Engine
 }
 
 // New creates a new agent service
@@ -61,6 +72,8 @@ func New(config Config) *Service {
 		ds:  config.DataStore,
 		ca:  config.ServerCA,
 		td:  config.TrustDomain,
+		keylimeClient: config.KeylimeClient,
+		policyEngine:  config.PolicyEngine,
 	}
 }
 
@@ -362,6 +375,28 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 		return err
 	}
 
+	var attestedClaims []*types.AttestedClaims
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
+		if params.Params != nil && params.Params.SovereignAttestation != nil {
+			claims, err := s.processSovereignAttestation(ctx, log, params.Params.SovereignAttestation, agentID.String())
+			if err != nil {
+				return api.MakeErr(log, codes.Internal, "failed to process sovereign attestation", err)
+			}
+			if claims != nil {
+				attestedClaims = []*types.AttestedClaims{claims}
+				log.WithFields(logrus.Fields{
+					"geolocation":   claims.Geolocation,
+					"integrity":     claims.HostIntegrityStatus.String(),
+					"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
+					"gpu_util_pct":  claims.GpuMetricsHealth.GetUtilizationPct(),
+					"gpu_memory_mb": claims.GpuMetricsHealth.GetMemoryMb(),
+				}).Info("Unified-Identity - Phase 1: AttestedClaims attached to agent bootstrap SVID")
+			}
+		} else {
+			log.Warn("Unified-Identity - Phase 1: SovereignAttestation missing from agent attestation params")
+		}
+	}
+
 	// dedupe and store node selectors
 	err = s.ds.SetNodeSelectors(ctx, agentID.String(), selector.Dedupe(attestResult.Selectors))
 	if err != nil {
@@ -393,7 +428,7 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 	}
 
 	// build and send response
-	response := getAttestAgentResponse(agentID, svid, attestResult.CanReattest)
+	response := getAttestAgentResponse(agentID, svid, attestResult.CanReattest, attestedClaims)
 
 	if p, ok := peer.FromContext(ctx); ok {
 		log = log.WithField(telemetry.Address, p.Addr.String())
@@ -447,6 +482,17 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		return nil, api.MakeErr(log, codes.InvalidArgument, "missing CSR", nil)
 	}
 
+	var attestedClaims []*types.AttestedClaims
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) && req.Params.SovereignAttestation != nil {
+		claims, err := s.processSovereignAttestation(ctx, log, req.Params.SovereignAttestation, callerID.String())
+		if err != nil {
+			return nil, api.MakeErr(log, codes.Internal, "failed to process sovereign attestation", err)
+		}
+		if claims != nil {
+			attestedClaims = []*types.AttestedClaims{claims}
+		}
+	}
+
 	agentSVID, err := s.signSvid(ctx, callerID, req.Params.Csr, log)
 	if err != nil {
 		return nil, err
@@ -467,11 +513,101 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 	rpccontext.AuditRPC(ctx)
 
 	// Send response with new X509 SVID
+	if len(attestedClaims) > 0 {
+		claim := attestedClaims[0]
+		log.WithFields(logrus.Fields{
+			"geolocation":   claim.Geolocation,
+			"integrity":     claim.HostIntegrityStatus.String(),
+			"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
+			"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
+			"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
+		}).Info("Unified-Identity - Phase 1: AttestedClaims attached to agent SVID")
+	}
+
 	return &agentv1.RenewAgentResponse{
 		Svid: &types.X509SVID{
 			Id:        api.ProtoFromID(callerID),
 			ExpiresAt: agentSVID[0].NotAfter.Unix(),
 			CertChain: x509util.RawCertsFromCertificates(agentSVID),
+		},
+		AttestedClaims: attestedClaims,
+	}, nil
+}
+
+// Unified-Identity - Phase 1: Process SovereignAttestation for agent renewals
+func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.FieldLogger, sovereignAttestation *types.SovereignAttestation, spiffeID string) (*types.AttestedClaims, error) {
+	if s.keylimeClient == nil {
+		log.Warn("Unified-Identity - Phase 1: Keylime client not configured, skipping attestation verification")
+		return nil, nil
+	}
+
+	keylimeReq, err := keylime.BuildVerifyEvidenceRequest(&keylime.SovereignAttestationProto{
+		TpmSignedAttestation: sovereignAttestation.TpmSignedAttestation,
+		AppKeyPublic:         sovereignAttestation.AppKeyPublic,
+		AppKeyCertificate:    sovereignAttestation.AppKeyCertificate,
+		ChallengeNonce:       sovereignAttestation.ChallengeNonce,
+		WorkloadCodeHash:     sovereignAttestation.WorkloadCodeHash,
+	}, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to build Keylime request: %w", err)
+	}
+
+	keylimeClaims, err := s.keylimeClient.VerifyEvidence(keylimeReq)
+	if err != nil {
+		return nil, fmt.Errorf("keylime verification failed: %w", err)
+	}
+
+	log.WithFields(logrus.Fields{
+		"geolocation": keylimeClaims.Geolocation,
+		"integrity":   keylimeClaims.HostIntegrityStatus,
+		"gpu_status":  keylimeClaims.GPUMetricsHealth.Status,
+	}).Info("Unified-Identity - Phase 1: Received AttestedClaims from Keylime (agent)")
+
+	if s.policyEngine != nil {
+		policyClaims := policy.ConvertKeylimeAttestedClaims(&policy.KeylimeAttestedClaims{
+			Geolocation:         keylimeClaims.Geolocation,
+			HostIntegrityStatus: keylimeClaims.HostIntegrityStatus,
+			GPUMetricsHealth: struct {
+				Status        string
+				UtilizationPct float64
+				MemoryMB      int64
+			}{
+				Status:        keylimeClaims.GPUMetricsHealth.Status,
+				UtilizationPct: keylimeClaims.GPUMetricsHealth.UtilizationPct,
+				MemoryMB:      keylimeClaims.GPUMetricsHealth.MemoryMB,
+			},
+		})
+
+		policyResult, err := s.policyEngine.Evaluate(policyClaims)
+		if err != nil {
+			return nil, fmt.Errorf("policy evaluation failed: %w", err)
+		}
+
+		if !policyResult.Allowed {
+			log.WithField("reason", policyResult.Reason).Warn("Unified-Identity - Phase 1: Policy evaluation failed for agent")
+			return nil, fmt.Errorf("policy evaluation failed: %s", policyResult.Reason)
+		}
+
+		log.Info("Unified-Identity - Phase 1: Policy evaluation passed for agent")
+	}
+
+	hostIntegrityStatus := types.AttestedClaims_HOST_INTEGRITY_UNSPECIFIED
+	switch keylimeClaims.HostIntegrityStatus {
+	case "passed_all_checks":
+		hostIntegrityStatus = types.AttestedClaims_PASSED_ALL_CHECKS
+	case "failed":
+		hostIntegrityStatus = types.AttestedClaims_FAILED
+	case "partial":
+		hostIntegrityStatus = types.AttestedClaims_PARTIAL
+	}
+
+	return &types.AttestedClaims{
+		Geolocation:         keylimeClaims.Geolocation,
+		HostIntegrityStatus: hostIntegrityStatus,
+		GpuMetricsHealth: &types.AttestedClaims_GpuMetrics{
+			Status:        keylimeClaims.GPUMetricsHealth.Status,
+			UtilizationPct: keylimeClaims.GPUMetricsHealth.UtilizationPct,
+			MemoryMb:      keylimeClaims.GPUMetricsHealth.MemoryMB,
 		},
 	}, nil
 }
@@ -705,7 +841,7 @@ func validateAttestAgentParams(params *agentv1.AttestAgentRequest_Params) error 
 	}
 }
 
-func getAttestAgentResponse(spiffeID spiffeid.ID, certificates []*x509.Certificate, canReattest bool) *agentv1.AttestAgentResponse {
+func getAttestAgentResponse(spiffeID spiffeid.ID, certificates []*x509.Certificate, canReattest bool, attestedClaims []*types.AttestedClaims) *agentv1.AttestAgentResponse {
 	svid := &types.X509SVID{
 		Id:        api.ProtoFromID(spiffeID),
 		CertChain: x509util.RawCertsFromCertificates(certificates),
@@ -715,8 +851,9 @@ func getAttestAgentResponse(spiffeID spiffeid.ID, certificates []*x509.Certifica
 	return &agentv1.AttestAgentResponse{
 		Step: &agentv1.AttestAgentResponse_Result_{
 			Result: &agentv1.AttestAgentResponse_Result{
-				Svid:         svid,
-				Reattestable: canReattest,
+				Svid:           svid,
+				Reattestable:   canReattest,
+				AttestedClaims: attestedClaims,
 			},
 		},
 	}

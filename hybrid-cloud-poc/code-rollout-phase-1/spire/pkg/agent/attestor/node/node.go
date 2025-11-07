@@ -21,6 +21,7 @@ import (
 	"github.com/spiffe/spire/pkg/agent/storage"
 	"github.com/spiffe/spire/pkg/common/bundleutil"
 	"github.com/spiffe/spire/pkg/common/cryptoutil"
+	"github.com/spiffe/spire/pkg/common/fflag"
 	"github.com/spiffe/spire/pkg/common/idutil"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	telemetry_agent "github.com/spiffe/spire/pkg/common/telemetry/agent"
@@ -315,6 +316,14 @@ type ServerStream struct {
 }
 
 func (ss *ServerStream) SendAttestationData(ctx context.Context, attestationData nodeattestor.AttestationData) ([]byte, error) {
+	x509Params := &agentv1.AgentX509SVIDParams{
+		Csr: ss.Csr,
+	}
+
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
+		x509Params.SovereignAttestation = client.BuildSovereignAttestationStub()
+	}
+
 	return ss.sendRequest(ctx, &agentv1.AttestAgentRequest{
 		Step: &agentv1.AttestAgentRequest_Params_{
 			Params: &agentv1.AttestAgentRequest_Params{
@@ -322,9 +331,7 @@ func (ss *ServerStream) SendAttestationData(ctx context.Context, attestationData
 					Type:    attestationData.Type,
 					Payload: attestationData.Payload,
 				},
-				Params: &agentv1.AgentX509SVIDParams{
-					Csr: ss.Csr,
-				},
+				Params: x509Params,
 			},
 		},
 	})
@@ -363,6 +370,19 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 	svid, err := getSVIDFromAttestAgentResponse(resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse attestation response: %w", err)
+	}
+
+	if result := resp.GetResult(); result != nil {
+		if claims := result.GetAttestedClaims(); len(claims) > 0 {
+			claim := claims[0]
+			ss.Log.WithFields(logrus.Fields{
+				"geolocation":   claim.Geolocation,
+				"integrity":     claim.HostIntegrityStatus.String(),
+				"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
+				"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
+				"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
+			}).Info("Unified-Identity - Phase 1: Received AttestedClaims during agent bootstrap")
+		}
 	}
 
 	if err := ss.stream.CloseSend(); err != nil {

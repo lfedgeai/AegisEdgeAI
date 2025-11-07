@@ -171,11 +171,13 @@ func (c *Config) makeAPIServers(entryFetcher api.AuthorizedEntryFetcher) APIServ
 
 	return APIServers{
 		AgentServer: agentv1.New(agentv1.Config{
-			DataStore:   ds,
-			ServerCA:    c.ServerCA,
-			TrustDomain: c.TrustDomain,
-			Catalog:     c.Catalog,
-			Clock:       c.Clock,
+			DataStore:     ds,
+			ServerCA:      c.ServerCA,
+			TrustDomain:   c.TrustDomain,
+			Catalog:       c.Catalog,
+			Clock:         c.Clock,
+			KeylimeClient: c.KeylimeClient,
+			PolicyEngine:  c.PolicyEngine,
 		}),
 		BundleServer: bundlev1.New(bundlev1.Config{
 			TrustDomain:       c.TrustDomain,

@@ -112,6 +112,19 @@ The Python app demo (`python-app-demo/`) successfully demonstrates the complete 
   }
   ```
 
+### Automated Test
+
+An automated regression test is available to verify the entire flow (including agent bootstrap SVID, Python workload SVID, and Unified-Identity logs):
+
+```bash
+cd scripts
+./test-python-demo.sh
+```
+
+The test starts the SPIRE stack, verifies agent bootstrap AttestedClaims, fetches the Python app SVID via gRPC, validates the generated SVID/AttestedClaims files, checks Keylime/SPIRE logs, and then tears everything down.
+
+See `python-app-demo/README.md` for details.
+
 ## Feature Flag
 
 All Phase 1 code changes are wrapped under the **`Unified-Identity`** feature flag, which is **disabled by default**.
@@ -846,8 +859,9 @@ For detailed cleanup instructions, see [k8s-integration/README.md](k8s-integrati
 
 1. **Regenerate Protobuf Files**: Run `./regenerate-protos.sh` (if modifying proto files)
 2. **Run Tests**: See [TESTING.md](TESTING.md) for detailed testing instructions
-3. **Integration Testing**: Test SVID generation with SovereignAttestation using the steps above
-4. **Kubernetes Testing**: ⚠️ **PENDING** - Kubernetes integration is pending resolution of CSI driver image pull issues. See [k8s-integration/README.md](k8s-integration/README.md) for details. The Python app demo provides a working alternative.
+3. **Python Demo Test**: `scripts/test-python-demo.sh`
+4. **Integration Testing**: Test SVID generation with SovereignAttestation using the steps above
+5. **Kubernetes Testing**: ⚠️ **PENDING** - Kubernetes integration is pending resolution of CSI driver image pull issues. See [k8s-integration/README.md](k8s-integration/README.md) for details. The Python app demo provides a working alternative.
 
 ## References
 

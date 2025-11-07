@@ -244,10 +244,17 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 	}
 	defer connection.Release()
 
+	params := &agentv1.AgentX509SVIDParams{
+		Csr: csr,
+	}
+
+	// Unified-Identity - Phase 1: Include SovereignAttestation when feature flag is enabled
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
+		params.SovereignAttestation = BuildSovereignAttestationStub()
+	}
+
 	resp, err := agentClient.RenewAgent(ctx, &agentv1.RenewAgentRequest{
-		Params: &agentv1.AgentX509SVIDParams{
-			Csr: csr,
-		},
+		Params: params,
 	})
 	if err != nil {
 		c.release(connection)
@@ -259,9 +266,21 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 	for _, cert := range resp.Svid.CertChain {
 		certChain = append(certChain, cert...)
 	}
+	if len(resp.AttestedClaims) > 0 {
+		claim := resp.AttestedClaims[0]
+		c.c.Log.WithFields(logrus.Fields{
+			"geolocation":   claim.Geolocation,
+			"integrity":     claim.HostIntegrityStatus.String(),
+			"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
+			"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
+			"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
+		}).Info("Unified-Identity - Phase 1: Received AttestedClaims for agent SVID")
+	}
+
 	return &X509SVID{
-		CertChain: certChain,
-		ExpiresAt: resp.Svid.ExpiresAt,
+		CertChain:      certChain,
+		ExpiresAt:      resp.Svid.ExpiresAt,
+		AttestedClaims: resp.AttestedClaims,
 	}, nil
 }
 
@@ -283,7 +302,7 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 		// Unified-Identity - Phase 1: Add SovereignAttestation if feature flag is enabled
 		// In Phase 1, we stub the TPM quote with fixed data
 		if fflag.IsSet(fflag.FlagUnifiedIdentity) {
-			param.SovereignAttestation = c.buildSovereignAttestationStub()
+			param.SovereignAttestation = BuildSovereignAttestationStub()
 		}
 		
 		params = append(params, param)
@@ -699,7 +718,7 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 
 // Unified-Identity - Phase 1: Build stub SovereignAttestation
 // In Phase 1, we use fixed stub data since TPM is not implemented
-func (c *client) buildSovereignAttestationStub() *types.SovereignAttestation {
+func BuildSovereignAttestationStub() *types.SovereignAttestation {
 	// Phase 1: Stub TPM quote with fixed data (base64-encoded for Keylime stub validation)
 	// In future phases, this will be a real TPM quote
 	// Use base64-encoded stub data to pass Keylime stub validation

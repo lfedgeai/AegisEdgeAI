@@ -8,6 +8,7 @@ import "spire/api/types/agent.proto";
 import "spire/api/types/attestation.proto";
 import "spire/api/types/jointoken.proto";
 import "spire/api/types/selector.proto";
+import "spire/api/types/sovereignattestation.proto";
 import "spire/api/types/spiffeid.proto";
 import "spire/api/types/x509svid.proto";
 
@@ -180,6 +181,9 @@ message AttestAgentResponse {
 
 	// Whether or not the attested agent can reattest to renew its X509-SVID
 	bool reattestable = 2;
+
+	// Unified-Identity - Phase 1: Optional AttestedClaims returned from Keylime and policy evaluation.
+	repeated spire.api.types.AttestedClaims attested_claims = 3;
     }
 
     oneof step {
@@ -200,6 +204,10 @@ message RenewAgentRequest {
 message RenewAgentResponse {
     // The renewed X509-SVID
     spire.api.types.X509SVID svid = 1;
+
+    // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+    // Optional AttestedClaims returned from Keylime and policy evaluation.
+    repeated spire.api.types.AttestedClaims attested_claims = 2;
 }
 
 message CreateJoinTokenRequest {
@@ -221,6 +229,10 @@ message AgentX509SVIDParams {
     // CSR is only used to convey the public key; other fields in the CSR are
     // ignored. The agent X509-SVID attributes are determined by the server.
     bytes csr = 1;
+
+    // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+    // Optional SovereignAttestation payload sent by the agent during bootstrap/renewal.
+    spire.api.types.SovereignAttestation sovereign_attestation = 2;
 }
 
 message PostStatusRequest {

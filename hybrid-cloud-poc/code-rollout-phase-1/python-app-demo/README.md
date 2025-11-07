@@ -40,6 +40,8 @@ This will:
 - Start SPIRE Agent
 - Create necessary directories and sockets
 
+> Internally this calls the shared `../scripts/start-unified-identity.sh`, so the same setup can be reused outside of the demo.
+
 ### Step 2: Create Registration Entry
 
 ```bash
@@ -97,13 +99,7 @@ To stop all components and clean up:
 ./cleanup.sh
 ```
 
-Or manually:
-
-```bash
-kill $(cat /tmp/spire-server.pid) $(cat /tmp/spire-agent.pid) $(cat /tmp/keylime-stub.pid)
-rm -rf /tmp/spire-server /tmp/spire-agent
-sudo rm -rf /opt/spire/data
-```
+This script delegates to the shared `../scripts/stop-unified-identity.sh` to ensure SPIRE processes, sockets, registration entries, and logs are fully cleaned up.
 
 ## How It Works
 
@@ -122,7 +118,7 @@ sudo rm -rf /opt/spire/data
 
 **Important**: The Python app does NOT communicate directly with SPIRE Server. All communication goes through the SPIRE Agent Workload API, which is the standard and secure way for workloads to get their SVIDs.
 
-**✅ Verified**: The complete flow is working end-to-end. AttestedClaims are successfully passed from Keylime stub → Server → Agent → Workload.
+**✅ Verified**: The complete flow is working end-to-end. AttestedClaims are successfully passed from Keylime stub → Server → Agent → Python App.
 
 ## AttestedClaims
 
@@ -135,6 +131,24 @@ The AttestedClaims returned from Keylime stub include:
   - Memory: `10240 MB`
 
 These are successfully passed through the complete flow: Keylime Stub → SPIRE Server → SPIRE Agent → Python App.
+
+## Automated Test
+
+An automated regression test validates the entire flow (including agent bootstrap SVID claims, workload SVID, and component logs):
+
+```bash
+cd ../scripts
+./test-python-demo.sh
+```
+
+The script will:
+1. Stop any existing setup
+2. Start SPIRE/Keylime using the shared stack scripts
+3. Verify that the agent bootstrap SVID includes AttestedClaims (server + agent logs)
+4. Create the Python app registration entry and fetch the sovereign SVID via gRPC
+5. Validate the generated `svid.pem` and `attested_claims.json`
+6. Confirm relevant Unified-Identity logs for server, agent, and Keylime stub
+7. Tear everything down
 
 ## Troubleshooting
 

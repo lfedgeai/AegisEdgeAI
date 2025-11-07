@@ -4,6 +4,45 @@ This directory contains utility scripts for working with sovereign SVIDs.
 
 ## Scripts
 
+### start-unified-identity.sh / stop-unified-identity.sh
+
+Shared scripts used by the Python demo (and other automation) to start and stop the SPIRE Server, SPIRE Agent, and Keylime stub with the Unified-Identity feature flag enabled.
+
+**Start stack:**
+```bash
+./start-unified-identity.sh
+```
+
+Environment variables:
+- `SERVER_CONFIG` – path to `spire-server.conf` (defaults to `python-app-demo/spire-server.conf`)
+- `AGENT_CONFIG` – path to `spire-agent.conf` (defaults to `python-app-demo/spire-agent.conf`)
+- `AGENT_SPIFFE_ID` – host SPIFFE ID for the agent (defaults to `spiffe://example.org/host/python-demo-agent`)
+
+**Stop stack:**
+```bash
+./stop-unified-identity.sh
+```
+
+The stop script also removes sockets, PID files, registration entries, and cleans up `/tmp/svid-dump` artifacts.
+
+### test-python-demo.sh
+
+Automated regression test that exercises the entire Phase 1 flow (agent bootstrap SVID, Python workload SVID, and log verification).
+
+```bash
+./test-python-demo.sh
+```
+
+The script:
+1. Stops any existing setup
+2. Ensures Python dependencies and protobuf stubs are present
+3. Starts the SPIRE/Keylime stack
+4. Verifies agent bootstrap AttestedClaims via server, agent, and Keylime logs
+5. Creates the Python app registration entry and fetches the sovereign SVID via gRPC
+6. Validates `svid.pem` and `attested_claims.json`
+7. Checks component logs for Unified-Identity messages
+8. Dumps the SVID for inspection and tears everything down
+
 ### generate-sovereign-svid.go
 
 Generates an X509-SVID with `SovereignAttestation` using the SPIRE API.
