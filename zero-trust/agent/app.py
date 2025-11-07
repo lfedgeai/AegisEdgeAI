@@ -236,6 +236,139 @@ class MetricsGenerator:
                 "instance_id": os.getenv("INSTANCE_ID", "unknown")
             }
         }
+    
+    @staticmethod
+    def generate_gpu_metrics(
+        endpoint: str = "http://localhost:9400/metrics",
+        use_uds: bool = True,
+        uds_socket_path: str = "/tmp/dcgm-metrics/metrics.sock"
+    ) -> Dict[str, Any]:
+        """
+        Scrape GPU metrics from DCGM exporter (fake or real) via Unix Domain Socket or HTTP.
+        
+        Security by default: UDS is preferred for local communication (no network exposure).
+        Use HTTP explicitly when remote scraping is required.
+        
+        Args:
+            endpoint: DCGM exporter HTTP endpoint (used when use_uds=False)
+            use_uds: Use Unix Domain Socket (default: True for security)
+            uds_socket_path: Path to UDS socket file (default: /tmp/dcgm-metrics/metrics.sock)
+            
+        Returns:
+            Dict containing GPU metrics in Prometheus format
+        """
+        try:
+            if use_uds:
+                logger.info("Scraping GPU metrics via UDS (secure local)", socket_path=uds_socket_path)
+                metrics_text = MetricsGenerator._scrape_via_uds(uds_socket_path)
+                source = f"uds://{uds_socket_path}"
+            else:
+                logger.info("Scraping GPU metrics via HTTP (remote)", endpoint=endpoint)
+                response = requests.get(endpoint, timeout=5)
+                response.raise_for_status()
+                metrics_text = response.text
+                source = endpoint
+            
+            # Parse metrics
+            metric_lines = [line for line in metrics_text.split('\n') 
+                          if line and not line.startswith('#')]
+            
+            return {
+                "timestamp": datetime.utcnow().isoformat(),
+                "metrics": {
+                    "raw_prometheus": metrics_text,
+                    "source": source,
+                    "transport": "uds" if use_uds else "http",
+                    "metric_count": len(metric_lines),
+                    "exporter_type": "dcgm"
+                },
+                "service": {
+                    "name": settings.service_name,
+                    "version": settings.service_version,
+                    "type": "gpu_telemetry"
+                }
+            }
+        except Exception as e:
+            logger.error("Failed to scrape GPU metrics", 
+                        endpoint=endpoint if not use_uds else uds_socket_path,
+                        transport="uds" if use_uds else "http",
+                        error=str(e))
+            return {
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": f"Failed to scrape GPU metrics: {str(e)}",
+                "source": source if 'source' in locals() else "unknown",
+                "transport": "uds" if use_uds else "http"
+            }
+    
+    @staticmethod
+    def _scrape_via_uds(socket_path: str) -> str:
+        """
+        Scrape metrics from DCGM exporter via Unix Domain Socket.
+        
+        Args:
+            socket_path: Path to the Unix Domain Socket
+            
+        Returns:
+            Prometheus metrics text
+            
+        Raises:
+            ConnectionError: If socket connection fails
+            TimeoutError: If socket read times out
+        """
+        import socket
+        import os
+        
+        # Validate socket exists
+        if not os.path.exists(socket_path):
+            raise FileNotFoundError(f"UDS socket not found: {socket_path}")
+        
+        # Create Unix socket connection
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(5)  # 5 second timeout
+        
+        try:
+            # Connect to socket
+            sock.connect(socket_path)
+            
+            # Send HTTP request (UDS server expects HTTP format)
+            request = b'GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n'
+            sock.sendall(request)
+            
+            # Read response
+            response_data = b''
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response_data += chunk
+                # Check if we've received complete response
+                if b'\r\n\r\n' in response_data:
+                    # Check if it's chunked or has content-length
+                    if b'Transfer-Encoding: chunked' not in response_data:
+                        # For non-chunked, wait a bit more to ensure full response
+                        sock.settimeout(0.1)
+                        try:
+                            while True:
+                                chunk = sock.recv(4096)
+                                if not chunk:
+                                    break
+                                response_data += chunk
+                        except socket.timeout:
+                            break
+                    break
+            
+            # Parse HTTP response to get body
+            response_str = response_data.decode('utf-8')
+            
+            # Split headers and body
+            if '\r\n\r\n' in response_str:
+                _, body = response_str.split('\r\n\r\n', 1)
+                return body
+            else:
+                raise ValueError("Invalid HTTP response from UDS server")
+                
+        finally:
+            sock.close()
 
 
 class CollectorClient:
@@ -561,8 +694,35 @@ def generate_and_send_metrics():
                 metrics_data = MetricsGenerator.generate_system_metrics()
             elif metric_type == "application":
                 metrics_data = MetricsGenerator.generate_application_metrics()
+            elif metric_type == "gpu":
+                # GPU metrics - scrape from DCGM exporter via UDS (default) or HTTP (explicit)
+                # Security by default: UDS preferred for local communication
+                use_http = data.get("use_http", False)
+                
+                if use_http:
+                    # HTTP mode (explicit for remote scraping)
+                    gpu_endpoint = data.get("dcgm_endpoint", "http://localhost:9400/metrics")
+                    metrics_data = MetricsGenerator.generate_gpu_metrics(
+                        endpoint=gpu_endpoint,
+                        use_uds=False
+                    )
+                else:
+                    # Unix Domain Socket mode (default for security)
+                    uds_socket_path = data.get("uds_socket_path", "/tmp/dcgm-metrics/metrics.sock")
+                    metrics_data = MetricsGenerator.generate_gpu_metrics(
+                        use_uds=True,
+                        uds_socket_path=uds_socket_path
+                    )
+                
+                # Check for errors
+                if "error" in metrics_data:
+                    return jsonify({
+                        "status": "error",
+                        "message": metrics_data["error"],
+                        "transport": "http" if use_http else "uds"
+                    }), 500
             else:
-                return jsonify({"error": "Invalid metric_type"}), 400
+                return jsonify({"error": "Invalid metric_type. Use 'system', 'application', or 'gpu'"}), 400
             
             # Add custom data if provided
             if custom_data:
