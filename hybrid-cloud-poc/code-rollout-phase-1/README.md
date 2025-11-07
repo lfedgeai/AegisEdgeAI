@@ -1,5 +1,3 @@
-# Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
-
 ## Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 
 **✅ STATUS: COMPLETE AND TESTED** (with **⚠️ Kubernetes Integration: INCOMPLETE**)
@@ -22,36 +20,18 @@ This directory contains the implementation of **Phase 1** of the Unified Identit
 
 - [Overview](#overview)
 - [Architecture](#architecture)
+- [Implementation Status](#implementation-status)
+- [Quick Start Demo](#quick-start-demo)
 - [Feature Flag](#feature-flag)
-  - [Enabling the Feature Flag](#enabling-the-feature-flag)
-  - [Disabling the Feature Flag](#disabling-the-feature-flag)
 - [Sovereign SVID Format](#sovereign-svid-format)
 - [API Changes](#api-changes)
-  - [Protobuf Definitions](#protobuf-definitions)
-  - [Keylime Verifier API](#keylime-verifier-api)
 - [Code Changes Summary](#code-changes-summary)
 - [Components](#components)
-  - [Keylime Verifier Stub](#keylime-verifier-stub)
-  - [SPIRE Server Integration](#spire-server-integration)
-  - [Policy Engine](#policy-engine)
 - [Regenerating Protobuf Files](#regenerating-protobuf-files)
 - [Logging](#logging)
 - [Limitations (Phase 1)](#limitations-phase-1)
 - [Generating an SVID with SovereignAttestation](#generating-an-svid-with-sovereignattestation)
-  - [Prerequisites](#prerequisites)
-  - [Step 1: Create Registration Entry](#step-1-create-registration-entry)
-  - [Step 2: Generate Certificate Signing Request (CSR)](#step-2-generate-certificate-signing-request-csr)
-  - [Step 3: Prepare SovereignAttestation](#step-3-prepare-sovereignattestation)
-  - [Step 4: Call BatchNewX509SVID API](#step-4-call-batchnewx509svid-api)
-  - [Step 5: Verify Response](#step-5-verify-response)
-  - [Step 6: Verify Logs](#step-6-verify-logs)
-  - [Complete Working Script](#complete-working-script)
-  - [Dumping and Highlighting SVID with Phase 1 Additions](#dumping-and-highlighting-svid-with-phase-1-additions)
-  - [Notes](#notes)
 - [Kubernetes Integration](#kubernetes-integration)
-  - [Quick Start](#quick-start)
-  - [Dumping SVID from Kubernetes Workloads](#dumping-svid-from-kubernetes-workloads)
-  - [Cleanup and Teardown](#cleanup-and-teardown)
 - [Next Steps](#next-steps)
 - [References](#references)
 
@@ -113,76 +93,27 @@ Phase 1 focuses on:
   - Workload SVID processing log messages (INFO/DEBUG level)
   - All logs highlighted in demo scripts and automated tests
 
-### Verified Working Demo
+### Quick Start Demo
 
-The Python app demo (`python-app-demo/`) successfully demonstrates the complete flow:
-
-**Interactive Demo** (`python-app-demo/run-demo.sh`):
-- Step-by-step execution with **interactive prompts** to review logs at each stage
-- Highlights AttestedClaims in server and agent logs with diagnostic messages
-- Shows agent bootstrap AttestedClaims with detailed log snippets:
-  - Server receiving `SovereignAttestation` during bootstrap
-  - Server attaching `AttestedClaims` to agent bootstrap SVID
-  - Agent receiving `AttestedClaims` during bootstrap
-- Shows workload SVID AttestedClaims with server and agent log highlights
-- Displays complete SVID dump with Phase 1 additions
-- Automatically detects if running interactively and prompts for user input
-
-**Flow**:
-1. **Agent Bootstrap**: Agent sends `SovereignAttestation` during initial attestation
-   - Server receives and processes via Keylime stub
-   - Server attaches `AttestedClaims` to agent bootstrap SVID
-   - Agent receives and logs `AttestedClaims` during bootstrap
-2. **Workload SVID**: Python app fetches SVID via SPIRE Agent Workload API (gRPC)
-   - Agent sends `SovereignAttestation` to server
-   - Server processes via Keylime stub and policy engine
-   - `AttestedClaims` are returned and displayed:
-     ```json
-     {
-       "geolocation": "Spain: N40.4168, W3.7038",
-       "host_integrity_status": "PASSED_ALL_CHECKS",
-       "gpu_metrics_health": {
-         "status": "healthy",
-         "utilization_pct": 15.0,
-         "memory_mb": 10240
-       }
-     }
-     ```
-
-**Run the interactive demo:**
+**Interactive Demo** (recommended):
 ```bash
 cd python-app-demo
 ./run-demo.sh
 ```
+- Step-by-step execution with interactive prompts to review logs
+- Shows agent bootstrap and workload SVID with AttestedClaims
+- Highlights all relevant Unified-Identity logs
 
-### Automated Test
-
-An automated regression test is available to verify the entire flow:
-
+**Automated Test**:
 ```bash
 cd scripts
 ./test-python-demo.sh
 ```
+- Verifies agent bootstrap AttestedClaims and workload SVID
+- Validates SVID certificate and AttestedClaims JSON structure
+- Checks all Unified-Identity log messages
 
-**Test Coverage**:
-- ✅ **Agent Bootstrap AttestedClaims**: Comprehensive verification including:
-  - Server receives `SovereignAttestation` during bootstrap (with log snippet)
-  - Server processes via Keylime stub and policy engine
-  - Server attaches `AttestedClaims` to agent bootstrap SVID (with log snippet)
-  - Agent receives `AttestedClaims` during bootstrap (with log snippet)
-  - All log messages verified with highlighted snippets
-- ✅ **Workload SVID**: Complete verification including:
-  - Server processes `SovereignAttestation` for workload (with log snippet)
-  - Server adds `AttestedClaims` to workload SVID response (with log snippet)
-  - Agent fetches workload SVID (with log snippet)
-  - Python app receives `AttestedClaims` via gRPC
-- ✅ **Log Verification**: Checks for all Unified-Identity log messages in server, agent, and Keylime stub logs with highlighted snippets
-- ✅ **SVID Validation**: Validates SVID certificate and `AttestedClaims` JSON structure (geolocation, host_integrity_status, gpu_metrics_health)
-- ✅ **Cleanup**: Automatically tears down all components
-
-The test starts the SPIRE stack, verifies agent bootstrap AttestedClaims with detailed log verification and highlighted snippets, fetches the Python app SVID via gRPC, validates the generated SVID/AttestedClaims files, checks all Unified-Identity logs with highlighted snippets, and then tears everything down.
-
-See `python-app-demo/README.md` for details.
+See `python-app-demo/README.md` for detailed documentation.
 
 ## Feature Flag
 
@@ -420,23 +351,7 @@ message AttestedClaims {
 12. **`spire-api-sdk/Makefile`**
    - Added `sovereignattestation.proto` to protos list
 
-### Key Implementation Details
-
-**Feature Flag Wrapping**:
-```go
-if fflag.IsSet(fflag.FlagUnifiedIdentity) && param.SovereignAttestation != nil {
-    log.Info("Unified-Identity - Phase 1: Processing SovereignAttestation")
-    claims, err := s.processSovereignAttestation(ctx, log, param.SovereignAttestation, spiffeID.String())
-    // ... handle claims ...
-}
-```
-
-**Code Comments**: All changes tagged with:
-```go
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
-```
-
-**Logging**: All logging includes the tag and appropriate levels (INFO, DEBUG, WARN, ERROR)
+**Note**: All code changes are tagged with `// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)` and wrapped under the feature flag.
 
 ## Components
 
@@ -471,40 +386,17 @@ if fflag.IsSet(fflag.FlagUnifiedIdentity) && param.SovereignAttestation != nil {
 **SVID Service** (`spire/pkg/server/api/svid/v1/service.go`):
 - Processes `SovereignAttestation` when feature flag enabled
 - Calls Keylime client to verify evidence
-- Evaluates `AttestedClaims` against policy
+- Evaluates `AttestedClaims` against policy (geolocation, host integrity, GPU metrics)
 - Returns `AttestedClaims` in response or error on policy failure
-
-### Policy Engine
-
-**Policy Checks**:
-1. **Geolocation**: Validates against allowed patterns
-2. **Host Integrity**: Optionally requires `passed_all_checks`
-3. **GPU Utilization**: Validates against maximum threshold
-4. **GPU Memory**: Validates against minimum threshold
-
-**Policy Evaluation Flow**:
-1. SPIRE Server receives `SovereignAttestation` in `BatchNewX509SVID` request
-2. Server calls Keylime Verifier to verify evidence and get `AttestedClaims`
-3. Server evaluates `AttestedClaims` against configured policy
-4. If policy passes, SVID is issued with `AttestedClaims` in response
-5. If policy fails, error is returned (remediation stubbed in Phase 1)
 
 ## Regenerating Protobuf Files
 
 After modifying `.proto` files, regenerate Go code:
-
-**Option 1: Use the provided script** (recommended):
 ```bash
-cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1
 ./regenerate-protos.sh
 ```
 
-**Option 2: Manual regeneration**:
-```bash
-cd go-spiffe && make generate
-cd ../spire-api-sdk && make generate
-cd ../spire && make generate
-```
+Or manually: `cd go-spiffe && make generate && cd ../spire-api-sdk && make generate && cd ../spire && make generate`
 
 ## Logging
 
@@ -516,30 +408,12 @@ All Phase 1 code includes logging with tag: **"Unified-Identity - Phase 1: SPIRE
 - **WARN**: Policy violations, missing configuration, SovereignAttestation processing issues
 - **ERROR**: Failures in Keylime communication, policy errors
 
-**Enhanced Diagnostic Logging**:
-- **Server Logs**: Comprehensive diagnostic logging including:
-  - `DEBUG`: "Received SovereignAttestation in agent bootstrap request" - Confirms server received SovereignAttestation during agent bootstrap
-  - `INFO`: "AttestedClaims attached to agent bootstrap SVID" - Confirms AttestedClaims were attached to agent bootstrap SVID
-  - `INFO`: "Processing SovereignAttestation" - Server processing SovereignAttestation for workload SVID
-  - `DEBUG`: "Added AttestedClaims to response" - Server added AttestedClaims to SVID response
-  - `WARN`: Diagnostic messages if `SovereignAttestation` is missing or `params.Params` is nil
-- **Agent Logs**: Highlight when `AttestedClaims` are received:
-  - `INFO`: "Received AttestedClaims during agent bootstrap" - Agent received AttestedClaims during bootstrap
-  - `INFO`: "Received AttestedClaims for agent SVID" - Agent received AttestedClaims during SVID renewal
-- **Log Highlighting**: Demo scripts and automated tests highlight AttestedClaims in logs with detailed snippets for easy verification
-
 **Key Log Messages**:
-- **Agent Bootstrap Flow**:
-  - `DEBUG`: "Received SovereignAttestation in agent bootstrap request" - Server received SovereignAttestation during agent bootstrap
-  - `INFO`: "AttestedClaims attached to agent bootstrap SVID" - Server attached AttestedClaims to agent bootstrap SVID (includes geolocation, integrity, GPU metrics)
-  - `INFO`: "Received AttestedClaims during agent bootstrap" - Agent received AttestedClaims during bootstrap (includes geolocation, integrity, GPU metrics)
-- **Workload SVID Flow**:
-  - `INFO`: "Processing SovereignAttestation" - Server processing SovereignAttestation for workload SVID
-  - `DEBUG`: "Added AttestedClaims to response" - Server added AttestedClaims to SVID response
-- **Diagnostic Messages** (for troubleshooting):
-  - `WARN`: "SovereignAttestation is nil in agent attestation params" - Indicates agent may not be sending SovereignAttestation
-  - `WARN`: "params.Params is nil in agent attestation request" - Indicates request structure issue
-  - `WARN`: "processSovereignAttestation returned nil claims" - Indicates Keylime or policy processing issue
+- **Agent Bootstrap**: `DEBUG` "Received SovereignAttestation in agent bootstrap request", `INFO` "AttestedClaims attached to agent bootstrap SVID", `INFO` "Received AttestedClaims during agent bootstrap"
+- **Workload SVID**: `INFO` "Processing SovereignAttestation", `DEBUG` "Added AttestedClaims to response"
+- **Diagnostics**: `WARN` messages for missing/invalid `SovereignAttestation` or processing failures
+
+Demo scripts and automated tests highlight these log messages for easy verification.
 
 ## Limitations (Phase 1)
 
@@ -551,298 +425,26 @@ This is a **stubbed implementation**:
 
 ## Generating an SVID with SovereignAttestation
 
-This section provides verified steps to generate an X509-SVID with the new `SovereignAttestation` format.
+**Recommended**: Use the Python app demo (`python-app-demo/run-demo.sh`) which demonstrates the complete flow automatically.
 
-### Prerequisites
+**For programmatic access**, use the provided scripts:
 
-1. **SPIRE Server** running with feature flag enabled
-2. **SPIRE Agent** running with feature flag enabled (if using agent-based flow)
-3. **Keylime Stub** running (see [Components](#components) section)
-4. **Registration Entry** created in SPIRE Server
+### Using the Go Script
 
-### Step 1: Create Registration Entry
+See `scripts/README.md` for details on `generate-sovereign-svid.go` and `dump-svid.go`.
 
-```bash
-# Create a registration entry for the workload
-spire-server entry create \
-    -spiffeID spiffe://example.org/workload/test \
-    -parentID spiffe://example.org/agent \
-    -selector unix:uid:1000
-```
-
-Note the `entry_id` from the output (e.g., `entry-id-123`).
-
-### Step 2: Generate Certificate Signing Request (CSR)
-
-Create a CSR with the SPIFFE ID in the URI SAN:
-
-```bash
-# Generate a private key
-openssl genrsa -out key.pem 2048
-
-# Create CSR with SPIFFE ID
-openssl req -new -key key.pem -out csr.pem \
-    -subj "/CN=test-workload" \
-    -addext "subjectAltName=URI:spiffe://example.org/workload/test"
-```
-
-Convert CSR to DER format:
-```bash
-openssl req -in csr.pem -out csr.der -outform DER
-```
-
-### Step 3: Prepare SovereignAttestation
-
-For Phase 1 (stubbed), create a stubbed `SovereignAttestation`:
-
-**Go Example**:
-```go
-import (
-    "encoding/base64"
-    "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
-)
-
-// Create stubbed SovereignAttestation
-sovereignAttestation := &types.SovereignAttestation{
-    TpmSignedAttestation: base64.StdEncoding.EncodeToString([]byte("stubbed-tpm-quote")),
-    AppKeyPublic:         "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-    AppKeyCertificate:    []byte("stubbed-certificate"),
-    ChallengeNonce:       "nonce-123456789",
-    WorkloadCodeHash:     "hash-abc123",
-}
-```
-
-**JSON Example** (for REST API or testing):
-```json
-{
-  "tpm_signed_attestation": "c3R1YmJlZC10cG0tcXVvdGU=",
-  "app_key_public": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-  "app_key_certificate": "c3R1YmJlZC1jZXJ0aWZpY2F0ZQ==",
-  "challenge_nonce": "nonce-123456789",
-  "workload_code_hash": "hash-abc123"
-}
-```
-
-### Step 4: Call BatchNewX509SVID API
-
-**Using SPIRE API Client** (Go):
-
-```go
-import (
-    "context"
-    "io/ioutil"
-    "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
-    "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
-    "google.golang.org/grpc"
-)
-
-// Read CSR
-csrBytes, _ := ioutil.ReadFile("csr.der")
-
-// Create request
-req := &svidv1.BatchNewX509SVIDRequest{
-    Params: []*svidv1.NewX509SVIDParams{
-        {
-            EntryId: "entry-id-123", // From Step 1
-            Csr:     csrBytes,
-            SovereignAttestation: sovereignAttestation, // From Step 3
-        },
-    },
-}
-
-// Call API (assuming you have a gRPC client)
-conn, _ := grpc.Dial("unix:///tmp/spire-server/private/api.sock")
-client := svidv1.NewSVIDClient(conn)
-
-resp, err := client.BatchNewX509SVID(context.Background(), req)
-if err != nil {
-    // Handle error
-}
-
-// Check response
-for _, result := range resp.Results {
-    if result.Status.Code == 0 { // OK
-        // SVID available in result.Svid
-        // AttestedClaims available in result.AttestedClaims (if feature flag enabled)
-        fmt.Printf("SVID ID: %s\n", result.Svid.Id)
-        fmt.Printf("AttestedClaims: %v\n", result.AttestedClaims)
-    } else {
-        fmt.Printf("Error: %s\n", result.Status.Message)
-    }
-}
-```
-
-### Step 5: Verify Response
-
-The response should include:
-
-1. **X509-SVID**: Certificate chain in `result.Svid.CertChain`
-2. **AttestedClaims** (if feature flag enabled): Verified claims from Keylime
-   ```go
-   if len(result.AttestedClaims) > 0 {
-       claims := result.AttestedClaims[0]
-       fmt.Printf("Geolocation: %s\n", claims.Geolocation)
-       fmt.Printf("Host Integrity: %s\n", claims.HostIntegrityStatus)
-       fmt.Printf("GPU Status: %s\n", claims.GpuMetricsHealth.Status)
-   }
-   ```
-
-### Step 6: Verify Logs
-
-Check SPIRE Server logs for:
-```
-INFO Unified-Identity - Phase 1: Processing SovereignAttestation
-INFO Unified-Identity - Phase 1: Calling Keylime Verifier to verify evidence
-INFO Unified-Identity - Phase 1: Received AttestedClaims from Keylime
-INFO Unified-Identity - Phase 1: Policy evaluation passed
-```
-
-### Complete Working Script
-
-A complete working Go script is provided in `scripts/generate-sovereign-svid.go` that demonstrates the full flow.
-
-**Location**: `scripts/generate-sovereign-svid.go`
-
-**Build the script:**
+**Quick usage:**
 ```bash
 cd scripts
-go mod tidy
+# Build scripts
 go build -o generate-sovereign-svid generate-sovereign-svid.go
-```
-
-**Test the script:**
-```bash
-cd scripts
-./test-sovereign-svid.sh
-```
-
-**Usage:**
-```bash
-# 1. First, create a registration entry and note the entry ID
-spire-server entry create \
-    -spiffeID spiffe://example.org/workload/test \
-    -parentID spiffe://example.org/agent \
-    -selector unix:uid:1000
-
-# 2. Run the script with the entry ID
-./generate-sovereign-svid \
-    -entryID "entry-id-from-step-1" \
-    -spiffeID "spiffe://example.org/workload/test" \
-    -serverSocketPath "unix:///tmp/spire-server/private/api.sock" \
-    -verbose
-
-# 3. The script will:
-#    - Generate a CSR automatically
-#    - Create stubbed SovereignAttestation
-#    - Call BatchNewX509SVID API
-#    - Save the SVID certificate and private key
-#    - Display AttestedClaims if feature flag is enabled
-```
-
-**Script Output Example:**
-```
-Unified-Identity - Phase 1: Generating SVID with SovereignAttestation
-Step 1: Generating CSR...
-✓ CSR generated for SPIFFE ID: spiffe://example.org/workload/test
-Step 2: Preparing SovereignAttestation (stubbed)...
-✓ SovereignAttestation prepared
-Step 3: Connecting to SPIRE Server at unix:///tmp/spire-server/private/api.sock...
-✓ Connected to SPIRE Server
-Step 4: Calling BatchNewX509SVID API...
-✓ SVID generated successfully
-Step 5: Verifying and saving SVID...
-✓ SVID Details:
-  - SPIFFE ID: spiffe://example.org/workload/test
-  - Expires At: 2024-11-07T10:30:00Z
-  - Subject: CN=sovereign-workload
-  - Serial Number: 1234567890
-✓ AttestedClaims received:
-  - Geolocation: Spain: N40.4168, W3.7038
-  - Host Integrity: PASSED_ALL_CHECKS
-  - GPU Status: healthy
-  - GPU Utilization: 15.00%
-  - GPU Memory: 10240 MB
-✓ Certificate saved to: svid.crt
-✓ Private key saved to: svid.key
-
-✅ Successfully generated SVID with SovereignAttestation!
-   Certificate: svid.crt
-   Private Key: svid.key
-```
-
-**Script Features:**
-- Automatically generates CSR with proper SPIFFE ID
-- Creates stubbed SovereignAttestation for Phase 1 testing
-- Connects to SPIRE Server via gRPC
-- Calls BatchNewX509SVID with SovereignAttestation
-- Verifies and displays SVID details
-- Displays AttestedClaims if feature flag is enabled
-- Saves certificate, private key, and AttestedClaims JSON to files
-
-### Dumping and Highlighting SVID with Phase 1 Additions
-
-After generating an SVID, use the `dump-svid` script to view the SVID and highlight Phase 1 additions:
-
-**Build the script:**
-```bash
-cd scripts
 go build -o dump-svid dump-svid.go
-```
 
-**Usage:**
-```bash
-# Pretty format (default, with color highlighting)
+# Generate SVID (after creating registration entry)
+./generate-sovereign-svid -entryID <ENTRY_ID> -spiffeID <SPIFFE_ID>
+
+# Dump SVID with Phase 1 highlights
 ./dump-svid -cert svid.crt -attested svid_attested_claims.json
-
-# JSON format
-./dump-svid -cert svid.crt -attested svid_attested_claims.json -format json
-
-# Detailed format (includes certificate extensions)
-./dump-svid -cert svid.crt -attested svid_attested_claims.json -format detailed
-
-# Without color (for terminals that don't support it)
-./dump-svid -cert svid.crt -color false
-```
-
-**Output Example:**
-```
-╔════════════════════════════════════════════════════════════════╗
-║              SPIFFE Verifiable Identity Document (SVID)        ║
-╚════════════════════════════════════════════════════════════════╝
-
-📋 Standard SVID Information:
-──────────────────────────────────────────────────────────────────────
-  Subject: CN=sovereign-workload
-  Issuer: CN=SPIRE
-  Serial Number: 1234567890
-  Valid From: 2024-11-06T10:00:00Z
-  Valid Until: 2024-11-06T11:00:00Z
-  SPIFFE ID: spiffe://example.org/workload/test
-
-🆕 Phase 1 Additions (Unified-Identity):
-═══════════════════════════════════════════════════════════════════════
-
-  ➕ 📍 Geolocation: Spain: N40.4168, W3.7038
-  ➕ 🔒 Host Integrity Status: PASSED_ALL_CHECKS
-  ➕ 🎮 GPU Metrics Health:
-    ➕ Status: healthy
-    ➕ Utilization: 15.00%
-    ➕ Memory: 10240 MB
-
-──────────────────────────────────────────────────────────────────────
-✓ This SVID includes Phase 1 AttestedClaims (Unified-Identity)
-```
-
-The script highlights:
-- **Standard SVID fields**: Normal formatting
-- **Phase 1 additions**: Highlighted with ➕ symbol and green color
-  - Geolocation
-  - Host Integrity Status
-  - GPU Metrics Health
-
-**Run example script:**
-```bash
-./dump-svid-example.sh
 ```
 
 ### Notes
@@ -879,180 +481,43 @@ Kubernetes integration with SPIRE CSI driver is **incomplete** and currently pen
 
 **Architecture**: Phase 1 is designed to support Kubernetes workloads using the SPIRE CSI driver, with SPIRE Server and Agent running **outside** the Kubernetes cluster for security. However, this integration is not yet complete.
 
-### Quick Start
-
-**⚠️ Note**: Kubernetes integration is **incomplete**. The steps below will set up a basic Kubernetes cluster and SPIRE, but the production pattern with CSI driver is not working. For a **fully working** Phase 1 demo, use the Python app demo instead:
-
+**⚠️ Note**: For a **fully working** Phase 1 demo, use the Python app demo instead:
 ```bash
 cd python-app-demo
 ./run-demo.sh
 ```
 
-**For Kubernetes Testing (Incomplete)**:
-
-**Note:** If you have a previous setup, run `k8s-integration/teardown.sh` first.
-
-1. **Set up Kubernetes cluster** (using kind):
-   ```bash
-   sudo kind create cluster --name aegis-spire --config - << 'EOF'
-   kind: Cluster
-   apiVersion: kind.x-k8s.io/v1alpha4
-   name: aegis-spire
-   nodes:
-   - role: control-plane
-     extraMounts:
-     - hostPath: /tmp/spire-agent/public
-       containerPath: /tmp/spire-agent/public
-       readOnly: true
-   EOF
-   ```
-
-2. **Start SPIRE outside Kubernetes**:
-   ```bash
-   cd k8s-integration
-   ./setup-spire.sh
-   ```
-
-3. **Deploy simple workload** (hostPath-based, not production pattern):
-   ```bash
-   cd k8s-integration
-   kubectl apply -f workloads/test-workload-simple.yaml
-   ```
-
-4. **Note**: The CSI driver workflow is not functional. See [k8s-integration/README.md](k8s-integration/README.md) for detailed documentation and known issues.
-
-### Dumping SVID from Kubernetes Workloads
-
-For Kubernetes workloads, you can dump the SVID using several methods:
-
-**Method 1: Automated Script (Recommended)**
-```bash
-cd k8s-integration
-./dump-svid-from-k8s.sh <pod-name> <namespace> <output-dir>
-
-# Then view with Phase 1 highlights
-cd ../scripts
-./dump-svid -cert <output-dir>/svid.crt
-```
-
-**Method 2: Generate from Host (Best for Phase 1 Testing)**
-Since Phase 1 requires `SovereignAttestation` at generation time, generate the SVID from the host:
-```bash
-cd scripts
-./generate-sovereign-svid \
-    -entryID <ENTRY_ID> \
-    -spiffeID spiffe://example.org/workload/test-k8s
-
-# Dump with Phase 1 highlights
-./dump-svid -cert svid.crt -attested svid_attested_claims.json
-```
-
-**Method 3: Manual Extraction from Pod**
-```bash
-# Exec into pod and extract SVID
-kubectl exec -it <pod-name> -- spire-agent api fetch \
-    -socketPath /run/spire/sockets/api.sock > /tmp/svid.pem
-
-# Copy to host and extract certificate
-kubectl cp <namespace>/<pod-name>:/tmp/svid.pem /tmp/svid.pem
-```
-
-See [k8s-integration/README.md](k8s-integration/README.md) for detailed instructions.
-
-### Cleanup and Teardown
-
-To clean up Kubernetes resources and SPIRE components:
-
-**Full Teardown (Interactive):**
-```bash
-cd k8s-integration
-./teardown.sh
-```
-
-This will:
-- Delete Kubernetes workloads and cluster
-- Stop SPIRE Server, Agent, and Keylime Stub
-- Clean up sockets
-- Optionally remove logs and data directories
-
-**Quick Teardown (Non-Interactive):**
-```bash
-cd k8s-integration
-./teardown-quick.sh
-```
-
-**Manual Cleanup:**
-```bash
-# Stop SPIRE processes
-kill $(cat /tmp/spire-server.pid) $(cat /tmp/spire-agent.pid) $(cat /tmp/keylime-stub.pid) 2>/dev/null || true
-
-# Delete Kubernetes cluster
-sudo kind delete cluster --name aegis-spire
-
-# Remove kubeconfig files
-rm -f /tmp/kubeconfig-kind.yaml
-
-# Remove kind cluster context from ~/.kube/config
-kubectl config delete-context kind-aegis-spire 2>/dev/null || true
-
-# Remove admin.conf from ~/.kube/
-rm -f ~/.kube/admin.conf
-
-# Remove sockets
-rm -f /tmp/spire-server/private/api.sock /tmp/spire-agent/public/api.sock
-```
-
-For detailed cleanup instructions, see [k8s-integration/README.md](k8s-integration/README.md#cleanup).
+See [k8s-integration/README.md](k8s-integration/README.md) for incomplete Kubernetes integration details and known issues.
 
 ## Next Steps
 
-1. **Rebuild SPIRE** (if using modified SPIRE binaries):
+1. **Run the Demo** (recommended):
+   ```bash
+   cd python-app-demo
+   ./run-demo.sh
+   ```
+
+2. **Run Automated Test**:
+   ```bash
+   cd scripts
+   ./test-python-demo.sh
+   ```
+
+3. **Rebuild SPIRE** (if using modified binaries):
    ```bash
    cd spire
    go build -o bin/spire-server ./cmd/spire-server
    go build -o bin/spire-agent ./cmd/spire-agent
    ```
-   The rebuilt binaries include **enhanced diagnostic logging** for `SovereignAttestation` processing:
-   - Server logs when `SovereignAttestation` is received during agent bootstrap
-   - Server logs when `AttestedClaims` are attached to agent bootstrap SVID
-   - Diagnostic warnings if `SovereignAttestation` is missing or processing fails
-   - Agent logs when `AttestedClaims` are received during bootstrap
 
-2. **Run Interactive Demo**: Experience the complete flow with step-by-step prompts:
+4. **Regenerate Protobuf Files** (if modifying proto files):
    ```bash
-   cd python-app-demo
-   ./run-demo.sh
+   ./regenerate-protos.sh
    ```
-   This demo:
-   - Shows agent bootstrap AttestedClaims with highlighted log snippets
-   - Shows workload SVID with AttestedClaims
-   - Prompts for user input at each step to review logs
-   - Highlights all relevant Unified-Identity logs with diagnostic messages
-   - Displays complete SVID dump with Phase 1 additions
 
-3. **Run Automated Test**: Verify the entire flow with comprehensive automated regression test:
-   ```bash
-   cd scripts
-   ./test-python-demo.sh
-   ```
-   This test:
-   - Verifies agent bootstrap AttestedClaims with detailed log verification
-   - Verifies workload SVID with AttestedClaims
-   - Checks all Unified-Identity log messages with highlighted snippets
-   - Validates SVID certificate and AttestedClaims JSON structure
-   - Automatically tears down all components
+5. **Run Unit/Integration Tests**: See [TESTING.md](TESTING.md)
 
-4. **Regenerate Protobuf Files**: Run `./regenerate-protos.sh` (if modifying proto files)
-
-5. **Run Unit/Integration Tests**: See [TESTING.md](TESTING.md) for detailed testing instructions
-
-6. **Integration Testing**: Test SVID generation with SovereignAttestation using the steps above
-
-7. **Kubernetes Testing**: ⚠️ **INCOMPLETE - PENDING** - Kubernetes integration is incomplete and pending resolution of:
-   - CSI driver image pull issues (403 Forbidden)
-   - Production pattern end-to-end testing
-   - See [k8s-integration/README.md](k8s-integration/README.md) for detailed status and known issues
-   - **Recommended**: Use the Python app demo (`python-app-demo/`) for a fully working Phase 1 demonstration
+6. **Kubernetes Integration**: ⚠️ **INCOMPLETE** - See [k8s-integration/README.md](k8s-integration/README.md) for status. Use Python app demo for working Phase 1 demonstration.
 
 ## References
 
