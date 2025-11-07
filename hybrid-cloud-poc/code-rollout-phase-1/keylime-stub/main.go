@@ -72,6 +72,8 @@ type KeylimeStub struct {
 	stubbedGeolocation string
 	stubbedIntegrity   string
 	stubbedGPUStatus   string
+	// Whether to require mTLS (only when TLS is enabled)
+	requireMTLS bool
 }
 
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
@@ -85,11 +87,13 @@ func NewKeylimeStub() *KeylimeStub {
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Allow configuration via environment variables for testing
+	requireMTLS := getEnvOrDefault("KEYLIME_STUB_REQUIRE_MTLS", "false") == "true"
 	stub := &KeylimeStub{
 		logger:             logger,
 		stubbedGeolocation: getEnvOrDefault("KEYLIME_STUB_GEOLOCATION", "Spain: N40.4168, W3.7038"),
 		stubbedIntegrity:   getEnvOrDefault("KEYLIME_STUB_INTEGRITY", "passed_all_checks"),
 		stubbedGPUStatus:   getEnvOrDefault("KEYLIME_STUB_GPU_STATUS", "healthy"),
+		requireMTLS:        requireMTLS,
 	}
 
 	stub.logger.WithFields(logrus.Fields{
@@ -107,19 +111,23 @@ func (ks *KeylimeStub) VerifyEvidence(w http.ResponseWriter, r *http.Request) {
 	ks.logger.WithField("method", r.Method).WithField("path", r.URL.Path).Info("Unified-Identity - Phase 1: Received verify evidence request")
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
-	// Validate mTLS - ensure client certificate is present
-	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-		ks.logger.Warn("Unified-Identity - Phase 1: Request missing mTLS client certificate")
-		http.Error(w, "mTLS authentication required", http.StatusUnauthorized)
-		return
-	}
+	// Validate mTLS only if required (when TLS is enabled)
+	if ks.requireMTLS {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+			ks.logger.Warn("Unified-Identity - Phase 1: Request missing mTLS client certificate")
+			http.Error(w, "mTLS authentication required", http.StatusUnauthorized)
+			return
+		}
 
-	clientCert := r.TLS.PeerCertificates[0]
-	ks.logger.WithFields(logrus.Fields{
-		"subject":      clientCert.Subject.String(),
-		"issuer":       clientCert.Issuer.String(),
-		"serial":       clientCert.SerialNumber.String(),
-	}).Info("Unified-Identity - Phase 1: Validated mTLS client certificate")
+		clientCert := r.TLS.PeerCertificates[0]
+		ks.logger.WithFields(logrus.Fields{
+			"subject":      clientCert.Subject.String(),
+			"issuer":       clientCert.Issuer.String(),
+			"serial":       clientCert.SerialNumber.String(),
+		}).Info("Unified-Identity - Phase 1: Validated mTLS client certificate")
+	} else {
+		ks.logger.Debug("Unified-Identity - Phase 1: mTLS not required (Phase 1 testing mode)")
+	}
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Parse request body
@@ -283,9 +291,15 @@ func main() {
 	}).Info("Unified-Identity - Phase 1: Starting Keylime stub server")
 
 	if certFile != "" && keyFile != "" {
+		// When TLS is enabled, require mTLS
+		stub.requireMTLS = true
 		log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
 	} else {
+		// When running without TLS, don't require mTLS (Phase 1 testing)
+		stub.requireMTLS = false
 		stub.logger.Warn("Unified-Identity - Phase 1: Running without TLS (testing only)")
+		// Remove TLS config when not using TLS
+		server.TLSConfig = nil
 		log.Fatal(server.ListenAndServe())
 	}
 }

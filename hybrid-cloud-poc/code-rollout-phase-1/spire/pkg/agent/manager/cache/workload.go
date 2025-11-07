@@ -6,16 +6,19 @@ import (
 
 	"github.com/spiffe/go-spiffe/v2/bundle/spiffebundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"github.com/spiffe/spire/proto/spire/common"
 )
 
 type Selectors []*common.Selector
 
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // Identity holds the data for a single workload identity
 type Identity struct {
-	Entry      *common.RegistrationEntry
-	SVID       []*x509.Certificate
-	PrivateKey crypto.Signer
+	Entry          *common.RegistrationEntry
+	SVID           []*x509.Certificate
+	PrivateKey     crypto.Signer
+	AttestedClaims []*types.AttestedClaims // AttestedClaims from server
 }
 
 // UpdateSVIDs holds information for an SVIDs update to the cache.
@@ -36,8 +39,10 @@ func (u *WorkloadUpdate) HasIdentity() bool {
 	return len(u.Identities) > 0
 }
 
-// X509SVID holds onto the SVID certificate chain and private key.
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// X509SVID holds onto the SVID certificate chain, private key, and AttestedClaims.
 type X509SVID struct {
-	Chain      []*x509.Certificate
-	PrivateKey crypto.Signer
+	Chain          []*x509.Certificate
+	PrivateKey     crypto.Signer
+	AttestedClaims []*types.AttestedClaims // AttestedClaims from server
 }

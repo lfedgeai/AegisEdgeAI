@@ -69,12 +69,8 @@ echo "Removing log files..."
 rm -f /tmp/spire-server.log /tmp/spire-agent.log /tmp/keylime-stub.log 2>/dev/null || true
 
 # Remove output files (optional)
-read -p "Remove SVID output files from /tmp/svid-dump? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    rm -rf /tmp/svid-dump /tmp/svid.pem /tmp/svid.key /tmp/svid_attested_claims.json 2>/dev/null || true
-    echo "  ✓ Removed SVID output files"
-fi
+rm -rf /tmp/svid-dump /tmp/svid.pem /tmp/svid.key /tmp/svid_attested_claims.json 2>/dev/null || true
+echo "Removed SVID output files"
 
 echo ""
 echo "✓ Cleanup complete"

@@ -18,6 +18,7 @@ import (
 	"github.com/spiffe/spire/pkg/common/diskutil"
 	"github.com/spiffe/spire/pkg/common/health"
 	"github.com/spiffe/spire/pkg/common/profiling"
+	"github.com/spiffe/spire/pkg/common/fflag"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	"github.com/spiffe/spire/pkg/common/uptime"
 	"github.com/spiffe/spire/pkg/common/util"
@@ -36,7 +37,9 @@ import (
 	"github.com/spiffe/spire/pkg/server/endpoints"
 	"github.com/spiffe/spire/pkg/server/hostservice/agentstore"
 	"github.com/spiffe/spire/pkg/server/hostservice/identityprovider"
+	"github.com/spiffe/spire/pkg/server/keylime"
 	"github.com/spiffe/spire/pkg/server/node"
+	"github.com/spiffe/spire/pkg/server/policy"
 	"github.com/spiffe/spire/pkg/server/plugin/bundlepublisher"
 	"github.com/spiffe/spire/pkg/server/registration"
 	"github.com/spiffe/spire/pkg/server/svid"
@@ -411,6 +414,40 @@ func (s *Server) newSVIDRotator(ctx context.Context, serverCA ca.ServerCA, metri
 	return svidRotator, nil
 }
 
+// Unified-Identity - Phase 1: Create Keylime client if feature flag is enabled
+func (s *Server) newKeylimeClient() *keylime.Client {
+	if !fflag.IsSet(fflag.FlagUnifiedIdentity) {
+		return nil
+	}
+	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Initialize Keylime client pointing to stub (localhost:8888)
+	// In Phase 1, we use a stub without mTLS for testing
+	client, err := keylime.NewClient(keylime.Config{
+		BaseURL: "http://localhost:8888",
+		Logger:  s.config.Log.WithField(telemetry.SubsystemName, "keylime"),
+	})
+	if err != nil {
+		s.config.Log.WithError(err).Warn("Unified-Identity - Phase 1: Failed to create Keylime client, SovereignAttestation will be skipped")
+		return nil
+	}
+	return client
+}
+
+// Unified-Identity - Phase 1: Create policy engine if feature flag is enabled
+func (s *Server) newPolicyEngine() *policy.Engine {
+	if !fflag.IsSet(fflag.FlagUnifiedIdentity) {
+		return nil
+	}
+	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Initialize policy engine with permissive policy for Phase 1 testing
+	// In production, this would be configured via server config
+	return policy.NewEngine(policy.PolicyConfig{
+		AllowedGeolocations: []string{"*"}, // Allow all geolocations in Phase 1
+		RequireIntegrity:   false,          // Don't require integrity checks in Phase 1
+		Logger:             s.config.Log.WithField(telemetry.SubsystemName, "policy"),
+	})
+}
+
 func (s *Server) newEndpointsServer(ctx context.Context, catalog catalog.Catalog, svidObserver svid.Observer, serverCA ca.ServerCA, metrics telemetry.Metrics, authorityManager manager.AuthorityManager, authPolicyEngine *authpolicy.Engine, bundleManager *bundle_client.Manager) (endpoints.Server, error) {
 	config := endpoints.Config{
 		TCPAddr:                      s.config.BindAddress,
@@ -436,6 +473,9 @@ func (s *Server) newEndpointsServer(ctx context.Context, catalog catalog.Catalog
 		BundleManager:                bundleManager,
 		AdminIDs:                     s.config.AdminIDs,
 		MaxAttestedNodeInfoStaleness: s.config.MaxAttestedNodeInfoStaleness,
+		// Unified-Identity - Phase 1: Initialize Keylime client and policy engine if feature flag is enabled
+		KeylimeClient: s.newKeylimeClient(),
+		PolicyEngine:  s.newPolicyEngine(),
 	}
 	if s.config.Federation.BundleEndpoint != nil {
 		config.BundleEndpoint.Address = s.config.Federation.BundleEndpoint.Address

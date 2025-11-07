@@ -21,6 +21,7 @@ import (
 	"github.com/spiffe/spire/pkg/common/jwtsvid"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	"github.com/spiffe/spire/pkg/common/x509util"
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"github.com/spiffe/spire/proto/spire/common"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -404,6 +405,8 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate) (*workload.X509SVIDRe
 		resp.FederatedBundles[td.IDString()] = marshalBundle(federatedBundle.X509Authorities())
 	}
 
+	// Unified-Identity - Phase 1: Collect AttestedClaims from all identities
+	var allAttestedClaims []*workload.AttestedClaims
 	for _, identity := range update.Identities {
 		id := identity.Entry.SpiffeId
 
@@ -421,9 +424,47 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate) (*workload.X509SVIDRe
 		}
 
 		resp.Svids = append(resp.Svids, svid)
+
+		// Unified-Identity - Phase 1: Convert AttestedClaims from types to workload protobuf
+		if len(identity.AttestedClaims) > 0 {
+			for _, claims := range identity.AttestedClaims {
+				if claims == nil {
+					continue
+				}
+				workloadClaims := &workload.AttestedClaims{
+					Geolocation:        claims.Geolocation,
+					HostIntegrityStatus: convertHostIntegrityStatus(claims.HostIntegrityStatus),
+				}
+				if claims.GpuMetricsHealth != nil {
+					workloadClaims.GpuMetricsHealth = &workload.AttestedClaims_GpuMetrics{
+						Status:        claims.GpuMetricsHealth.Status,
+						UtilizationPct: claims.GpuMetricsHealth.UtilizationPct,
+						MemoryMb:       claims.GpuMetricsHealth.MemoryMb,
+					}
+				}
+				allAttestedClaims = append(allAttestedClaims, workloadClaims)
+			}
+		}
 	}
 
+	// Unified-Identity - Phase 1: Add AttestedClaims to response
+	resp.AttestedClaims = allAttestedClaims
+
 	return resp, nil
+}
+
+// Unified-Identity - Phase 1: Convert HostIntegrity enum from types to workload protobuf
+func convertHostIntegrityStatus(status types.AttestedClaims_HostIntegrity) workload.AttestedClaims_HostIntegrity {
+	switch status {
+	case types.AttestedClaims_PASSED_ALL_CHECKS:
+		return workload.AttestedClaims_PASSED_ALL_CHECKS
+	case types.AttestedClaims_FAILED:
+		return workload.AttestedClaims_FAILED
+	case types.AttestedClaims_PARTIAL:
+		return workload.AttestedClaims_PARTIAL
+	default:
+		return workload.AttestedClaims_HOST_INTEGRITY_UNSPECIFIED
+	}
 }
 
 func sendJWTBundlesResponse(update *cache.WorkloadUpdate, stream workload.SpiffeWorkloadAPI_FetchJWTBundlesServer, selectors []*common.Selector, log logrus.FieldLogger, allowUnauthenticatedVerifiers bool, previousResponse *workload.JWTBundlesResponse) (*workload.JWTBundlesResponse, error) {

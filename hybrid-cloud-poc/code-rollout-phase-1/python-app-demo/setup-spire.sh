@@ -17,6 +17,15 @@ pkill -f "spire-server" >/dev/null 2>&1 || true
 pkill -f "spire-agent" >/dev/null 2>&1 || true
 pkill -f "keylime-stub" >/dev/null 2>&1 || true
 pkill -f "go run main.go" >/dev/null 2>&1 || true
+
+# Kill any process using port 8888 (Keylime stub)
+if command -v lsof >/dev/null 2>&1; then
+    lsof -ti:8888 | xargs kill -9 >/dev/null 2>&1 || true
+fi
+if command -v fuser >/dev/null 2>&1; then
+    fuser -k 8888/tcp >/dev/null 2>&1 || true
+fi
+
 sleep 2
 
 # Clean up old sockets and data
@@ -34,6 +43,10 @@ go run main.go > /tmp/keylime-stub.log 2>&1 &
 echo $! > /tmp/keylime-stub.pid
 sleep 2
 echo "✓ Keylime Stub started (PID: $(cat /tmp/keylime-stub.pid))"
+if [ -f /tmp/keylime-stub.log ]; then
+    echo "  Initial log:"
+    tail -2 /tmp/keylime-stub.log | sed 's/^/    /' || true
+fi
 
 # Initialize SPIRE Server
 echo "Initializing SPIRE Server..."
@@ -44,6 +57,10 @@ SPIRE_SERVER_PID=$!
 echo $SPIRE_SERVER_PID > /tmp/spire-server.pid
 sleep 3
 echo "✓ SPIRE Server started (PID: $SPIRE_SERVER_PID)"
+if [ -f /tmp/spire-server.log ]; then
+    echo "  Initial log:"
+    tail -2 /tmp/spire-server.log | sed 's/^/    /' || true
+fi
 
 # Wait for server to be ready
 echo "Waiting for SPIRE Server to be ready..."
@@ -90,6 +107,10 @@ SPIRE_AGENT_PID=$!
 echo $SPIRE_AGENT_PID > /tmp/spire-agent.pid
 sleep 3
 echo "✓ SPIRE Agent started (PID: $SPIRE_AGENT_PID)"
+if [ -f /tmp/spire-agent.log ]; then
+    echo "  Initial log:"
+    tail -2 /tmp/spire-agent.log | sed 's/^/    /' || true
+fi
 
 # Wait for agent socket
 echo "Waiting for SPIRE Agent socket..."

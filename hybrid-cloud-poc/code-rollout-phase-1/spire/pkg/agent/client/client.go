@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"sort"
@@ -19,6 +20,7 @@ import (
 	svidv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"github.com/spiffe/spire/pkg/common/bundleutil"
+	"github.com/spiffe/spire/pkg/common/fflag"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	"github.com/spiffe/spire/pkg/common/tlspolicy"
 	"github.com/spiffe/spire/proto/spire/common"
@@ -45,9 +47,11 @@ var (
 
 const rpcTimeout = 30 * time.Second
 
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 type X509SVID struct {
-	CertChain []byte
-	ExpiresAt int64
+	CertChain     []byte
+	ExpiresAt     int64
+	AttestedClaims []*types.AttestedClaims // AttestedClaims from server response
 }
 
 type JWTSVID struct {
@@ -271,31 +275,41 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 	svids := make(map[string]*X509SVID)
 	var params []*svidv1.NewX509SVIDParams
 	for entryID, csr := range csrs {
-		params = append(params, &svidv1.NewX509SVIDParams{
+		param := &svidv1.NewX509SVIDParams{
 			EntryId: entryID,
 			Csr:     csr,
-		})
+		}
+		
+		// Unified-Identity - Phase 1: Add SovereignAttestation if feature flag is enabled
+		// In Phase 1, we stub the TPM quote with fixed data
+		if fflag.IsSet(fflag.FlagUnifiedIdentity) {
+			param.SovereignAttestation = c.buildSovereignAttestationStub()
+		}
+		
+		params = append(params, param)
 	}
 
-	protoSVIDs, err := c.fetchSVIDs(ctx, params)
+	protoResults, err := c.fetchSVIDs(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
-	for i, s := range protoSVIDs {
+	for i, result := range protoResults {
 		entryID := params[i].EntryId
-		if s == nil {
+		if result == nil || result.Svid == nil {
 			c.c.Log.WithField(telemetry.RegistrationID, entryID).Debug("Entry not found")
 			continue
 		}
 		var certChain []byte
-		for _, cert := range s.CertChain {
+		for _, cert := range result.Svid.CertChain {
 			certChain = append(certChain, cert...)
 		}
 
+		// Unified-Identity - Phase 1: Include AttestedClaims from server response
 		svids[entryID] = &X509SVID{
-			CertChain: certChain,
-			ExpiresAt: s.ExpiresAt,
+			CertChain:     certChain,
+			ExpiresAt:     result.Svid.ExpiresAt,
+			AttestedClaims: result.AttestedClaims,
 		}
 	}
 
@@ -639,7 +653,14 @@ func (c *client) fetchBundles(ctx context.Context, federatedBundles []string) ([
 	return bundles, nil
 }
 
-func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDParams) ([]*types.X509SVID, error) {
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// fetchSVIDsResult holds both the SVID and AttestedClaims from the server response
+type fetchSVIDsResult struct {
+	Svid           *types.X509SVID
+	AttestedClaims []*types.AttestedClaims
+}
+
+func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDParams) ([]*fetchSVIDsResult, error) {
 	svidClient, connection, err := c.newSVIDClient()
 	if err != nil {
 		return nil, err
@@ -656,7 +677,7 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 	}
 
 	okStatus := int32(codes.OK)
-	var svids []*types.X509SVID
+	var results []*fetchSVIDsResult
 	for i, r := range resp.Results {
 		if r.Status.Code != okStatus {
 			c.c.Log.WithFields(logrus.Fields{
@@ -666,10 +687,30 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 			}).Warn("Failed to mint X509 SVID")
 		}
 
-		svids = append(svids, r.Svid)
+		// Unified-Identity - Phase 1: Extract AttestedClaims from server response
+		results = append(results, &fetchSVIDsResult{
+			Svid:           r.Svid,
+			AttestedClaims: r.AttestedClaims,
+		})
 	}
 
-	return svids, nil
+	return results, nil
+}
+
+// Unified-Identity - Phase 1: Build stub SovereignAttestation
+// In Phase 1, we use fixed stub data since TPM is not implemented
+func (c *client) buildSovereignAttestationStub() *types.SovereignAttestation {
+	// Phase 1: Stub TPM quote with fixed data (base64-encoded for Keylime stub validation)
+	// In future phases, this will be a real TPM quote
+	// Use base64-encoded stub data to pass Keylime stub validation
+	stubQuote := base64.StdEncoding.EncodeToString([]byte("stub-tpm-quote-phase1"))
+	return &types.SovereignAttestation{
+		TpmSignedAttestation: stubQuote,
+		AppKeyPublic:         "stub-app-key-public-phase1",
+		AppKeyCertificate:    []byte("stub-app-key-cert-phase1"),
+		ChallengeNonce:       "stub-nonce-phase-1",
+		WorkloadCodeHash:     "stub-workload-code-hash-phase1",
+	}
 }
 
 func (c *client) newEntryClient() (entryv1.EntryClient, *nodeConn, error) {

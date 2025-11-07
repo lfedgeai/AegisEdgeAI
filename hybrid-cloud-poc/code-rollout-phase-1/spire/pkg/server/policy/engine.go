@@ -137,8 +137,14 @@ func (e *Engine) Evaluate(claims *AttestedClaims) (*PolicyResult, error) {
 
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // matchesGeolocation checks if a geolocation matches a pattern
-// Patterns can be exact matches or wildcards (e.g., "Spain:*" matches "Spain: N40.4168, W3.7038")
+// Patterns can be exact matches or wildcards (e.g., "Spain:*" matches "Spain: N40.4168, W3.7038", "*" matches everything)
 func (e *Engine) matchesGeolocation(geolocation, pattern string) bool {
+	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Universal wildcard - matches everything
+	if pattern == "*" {
+		return true
+	}
+
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Exact match
 	if geolocation == pattern {

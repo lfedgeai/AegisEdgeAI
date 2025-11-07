@@ -1,0 +1,9 @@
+# Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+# Python dependencies for the Python app demo
+
+# SPIRE Workload API client library
+spiffe>=0.2.0
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+protobuf>=4.25.0
+

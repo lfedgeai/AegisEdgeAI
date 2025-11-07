@@ -87,7 +87,12 @@ func main() {
 	log.Println("✓ Connected to SPIRE Server")
 
 	// Step 4: Call BatchNewX509SVID API
+	// Note: BatchNewX509SVID uses the EntryId to look up the registration entry.
+	// The entry already contains the selectors (like UID) that were configured
+	// when the entry was created. The UID is NOT automatically extracted from
+	// the calling process - it comes from the registration entry.
 	log.Println("Step 4: Calling BatchNewX509SVID API...")
+	log.Printf("  Using EntryId: %s (selectors like UID come from this entry)", *entryID)
 	client := svidv1.NewSVIDClient(conn)
 
 	req := &svidv1.BatchNewX509SVIDRequest{

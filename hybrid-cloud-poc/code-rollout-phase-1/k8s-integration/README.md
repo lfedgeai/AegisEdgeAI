@@ -1,6 +1,10 @@
 # Unified-Identity - Phase 1: Kubernetes Integration with SPIRE CSI Driver
 
+**⚠️ STATUS: PENDING**
+
 This directory contains the setup for testing sovereign SVID generation with Kubernetes workloads using the SPIRE CSI driver, while SPIRE Server and Agent run **outside** the Kubernetes cluster for security.
+
+**Note**: Kubernetes integration is currently pending resolution of CSI driver image pull issues. For a working Phase 1 demo, see the Python app demo in `../python-app-demo/` which demonstrates the complete end-to-end flow.
 
 ## Architecture
 

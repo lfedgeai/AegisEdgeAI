@@ -275,9 +275,11 @@ func (m *manager) fetchSVIDs(ctx context.Context, csrs []csrRequest) (_ *cache.U
 			log.Warn("X509 SVID lifetime isn't long enough to guarantee the availability_target, falling back to the default rotation strategy")
 		}
 
+		// Unified-Identity - Phase 1: Include AttestedClaims from server response
 		byEntryID[entryID] = &cache.X509SVID{
-			Chain:      chain,
-			PrivateKey: privateKey,
+			Chain:          chain,
+			PrivateKey:     privateKey,
+			AttestedClaims: svid.AttestedClaims,
 		}
 	}
 

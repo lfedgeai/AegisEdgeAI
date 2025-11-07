@@ -1109,11 +1109,13 @@ func sortByTimestamps(records []recordAccessEvent) {
 	})
 }
 
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 func makeNewIdentity(record *lruCacheRecord, svid *X509SVID) Identity {
 	return Identity{
-		Entry:      record.entry,
-		SVID:       svid.Chain,
-		PrivateKey: svid.PrivateKey,
+		Entry:          record.entry,
+		SVID:           svid.Chain,
+		PrivateKey:     svid.PrivateKey,
+		AttestedClaims: svid.AttestedClaims,
 	}
 }
 

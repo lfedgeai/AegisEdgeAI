@@ -68,4 +68,9 @@ echo "  SPIFFE ID: $WORKLOAD_SPIFFE_ID"
 echo "  Parent: $AGENT_ID"
 echo "  Selector: unix:uid:$(id -u)"
 echo ""
+echo "  Checking SPIRE Server logs for entry creation..."
+if [ -f /tmp/spire-server.log ]; then
+    tail -5 /tmp/spire-server.log | grep -E "(entry|Entry|$WORKLOAD_SPIFFE_ID)" | tail -2 | sed 's/^/    /' || echo "    (No matching log entries found)"
+fi
+echo ""
 

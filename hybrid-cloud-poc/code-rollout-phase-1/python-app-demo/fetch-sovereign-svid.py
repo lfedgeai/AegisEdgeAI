@@ -1,210 +1,119 @@
 #!/usr/bin/env python3
 """
 Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
-Python script to fetch Sovereign SVID with AttestedClaims using SPIRE Server API
-"""
+Python script to fetch Sovereign SVID with AttestedClaims from SPIRE Agent Workload API.
 
+This script communicates ONLY with the SPIRE Agent via the Workload API.
+The agent handles all communication with the SPIRE Server.
+
+Requirements:
+    pip install -r requirements.txt
+"""
 import os
 import sys
 import json
-import subprocess
-import tempfile
 from pathlib import Path
+from cryptography.hazmat.primitives import serialization
 
-def get_registration_entry_id():
-    """Get the registration entry ID for the Python app."""
-    script_dir = Path(__file__).parent
-    spire_dir = script_dir.parent / "spire"
-    
-    try:
-        result = subprocess.run(
-            [str(spire_dir / "bin" / "spire-server"), "entry", "show",
-             "-spiffeID", "spiffe://example.org/python-app",
-             "-socketPath", "/tmp/spire-server/private/api.sock"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        
-        if result.returncode == 0:
-            # Extract entry ID from output
-            for line in result.stdout.split('\n'):
-                if 'Entry ID' in line:
-                    entry_id = line.split(':')[-1].strip()
-                    return entry_id
-    except Exception as e:
-        print(f"Warning: Could not get entry ID: {e}")
-    
-    return None
-
-def call_spire_server_api():
-    """Call SPIRE Server API to generate sovereign SVID."""
-    script_dir = Path(__file__).parent
-    spire_dir = script_dir.parent / "spire"
-    generate_script = script_dir.parent / "scripts" / "generate-sovereign-svid.go"
-    
-    if not generate_script.exists():
-        print(f"Error: generate-sovereign-svid.go not found at {generate_script}")
-        return None, None
-    
-    # Get registration entry ID
-    entry_id = get_registration_entry_id()
-    if not entry_id:
-        print("Error: Could not get registration entry ID")
-        print("Make sure you ran ./create-registration-entry.sh first")
-        return None, None
-    
-    print("Calling SPIRE Server API to generate sovereign SVID...")
-    print(f"Using entry ID: {entry_id}")
-    print("(This uses the Go script which calls BatchNewX509SVID API)")
-    print()
-    
-    # Run the Go script with entry ID
-    # Note: Must run from scripts directory where go.mod is located
-    scripts_dir = script_dir.parent / "scripts"
-    try:
-        result = subprocess.run(
-            ["go", "run", "generate-sovereign-svid.go",
-             "-entryID", entry_id,
-             "-spiffeID", "spiffe://example.org/python-app",
-             "-outputCert", "/tmp/svid.pem",
-             "-outputKey", "/tmp/svid.key"],
-            cwd=str(scripts_dir),
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        if result.returncode != 0:
-            print(f"Error running generate-sovereign-svid.go:")
-            print(result.stdout)
-            print(result.stderr)
-            return None, None
-        
-        # The script saves files - check for them
-        cert_file = Path("/tmp/svid.pem")
-        claims_file = Path("/tmp/svid_attested_claims.json")  # Go script uses this naming
-        
-        if not cert_file.exists():
-            # Try alternative location
-            cert_file = script_dir.parent / "scripts" / "svid.pem"
-            claims_file = script_dir.parent / "scripts" / "svid_attested_claims.json"
-        
-        if cert_file.exists():
-            cert_pem = cert_file.read_text()
-            claims_json = None
-            if claims_file.exists():
-                claims_json = json.loads(claims_file.read_text())
-            return cert_pem, claims_json
-        else:
-            print("Warning: Certificate file not found after generation")
-            print(f"Checked: /tmp/svid.pem and {script_dir.parent / 'scripts' / 'svid.pem'}")
-            return None, None
-            
-    except subprocess.TimeoutExpired:
-        print("Error: Script timed out")
-        return None, None
-    except Exception as e:
-        print(f"Error: {e}")
-        return None, None
+try:
+    from spiffe import X509Source
+except ImportError:
+    print("Error: spiffe library not installed")
+    print("Install it with: pip install -r requirements.txt")
+    sys.exit(1)
 
 def fetch_from_workload_api():
-    """Fetch SVID from Workload API."""
-    script_dir = Path(__file__).parent
-    spire_dir = script_dir.parent / "spire"
-    spire_agent = spire_dir / "bin" / "spire-agent"
+    """
+    Fetch SVID from SPIRE Agent Workload API using spiffe library.
+    
+    This properly attests the Python process itself (not a subprocess).
+    The agent automatically:
+    1. Attests the calling process (extracts UID, etc.)
+    2. Matches selectors to registration entries
+    3. Fetches SVID from server on behalf of the workload
+    4. Returns SVID to the workload
+    """
     socket_path = "/tmp/spire-agent/public/api.sock"
     
     if not os.path.exists(socket_path):
         print(f"Error: SPIRE Agent socket not found at {socket_path}")
+        print("Make sure SPIRE Agent is running")
         return None, None
     
-    if not spire_agent.exists():
-        print(f"Error: SPIRE Agent binary not found at {spire_agent}")
-        return None, None
-    
-    print("Fetching SVID from Workload API...")
-    print("(Note: AttestedClaims are in the protobuf but may not be populated by agent yet)")
+    print("Connecting to SPIRE Agent Workload API...")
+    print("  Socket: /tmp/spire-agent/public/api.sock")
+    print("  (This Python process will be attested by the agent)")
     print()
     
-    # Wait a moment for registration entry to propagate
-    import time
-    print("Waiting for registration entry to propagate...")
-    time.sleep(3)
-    
     try:
-        result = subprocess.run(
-            [str(spire_agent), "api", "fetch", "-socketPath", socket_path, "-write", "/tmp"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        
-        if result.returncode != 0:
-            print(f"Error: spire-agent api fetch failed")
-            print(f"stdout: {result.stdout}")
-            print(f"stderr: {result.stderr}")
+        # X509Source requires unix:// scheme for socket path
+        socket_path_with_scheme = f"unix://{socket_path}"
+        # Increase timeout to allow for registration entry propagation
+        # The agent needs time to fetch the SVID from the server after entry creation
+        with X509Source(socket_path=socket_path_with_scheme, timeout_in_seconds=30) as source:
+            svid = source.svid
+            if not svid:
+                print("Error: No SVID available from Workload API")
+                return None, None
+            
+            # X509Svid has a 'leaf' property which is a cryptography.x509.Certificate
+            # Convert it to PEM format
+            if not svid.leaf:
+                print("Error: No certificate in SVID")
+                return None, None
+            
+            cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM).decode('utf-8')
+            
+            print(f"✓ SVID fetched successfully")
+            print(f"  SPIFFE ID: {svid.spiffe_id}")
             print()
-            print("Note: This might happen if the process can't be attested.")
-            print("Trying to use existing certificate file if available...")
             
-            # Try to read from existing files (might be from a previous successful run)
-            cert_file = Path("/tmp/svid.0.pem")
-            if cert_file.exists():
-                file_age = time.time() - cert_file.stat().st_mtime
-                if file_age < 3600:  # Less than 1 hour old
-                    print(f"Using existing certificate file: {cert_file} (age: {int(file_age)}s)")
-                    cert_pem = cert_file.read_text()
-                    if cert_pem.strip() and "BEGIN CERTIFICATE" in cert_pem:
-                        mock_claims = {
-                            "geolocation": "US-CA-SanFrancisco",
-                            "host_integrity_status": "PASSED_ALL_CHECKS",
-                            "gpu_metrics_health": {
-                                "status": "healthy",
-                                "utilization_pct": 45.2,
-                                "memory_mb": 8192
-                            }
-                        }
-                        return cert_pem, mock_claims
+            # Unified-Identity - Phase 1: AttestedClaims are now passed through by the agent
+            # The agent receives AttestedClaims from the server and includes them in the Workload API response.
+            # However, the Python spiffe library may not yet expose AttestedClaims directly.
+            # Check if X509Source exposes AttestedClaims (may require library update)
+            claims_json = None
+            if hasattr(source, 'attested_claims') and source.attested_claims:
+                # If the library exposes AttestedClaims, use them
+                claims_json = source.attested_claims
+                print("✓ AttestedClaims received from Workload API")
+            elif hasattr(svid, 'attested_claims') and svid.attested_claims:
+                # Alternative: check if SVID object has AttestedClaims
+                claims_json = svid.attested_claims
+                print("✓ AttestedClaims received from Workload API (via SVID)")
+            else:
+                # Fallback: The agent now passes AttestedClaims through, but the Python library
+                # may need to be updated to expose them. For Phase 1 testing, use mock data.
+                print("⚠ AttestedClaims not exposed by Python spiffe library yet")
+                print("  (The agent passes them through, but library needs update)")
+                print("  Using mock data for Phase 1 demonstration")
+                claims_json = {
+                    "geolocation": "US-CA-SanFrancisco",
+                    "host_integrity_status": "PASSED_ALL_CHECKS",
+                    "gpu_metrics_health": {
+                        "status": "healthy",
+                        "utilization_pct": 45.2,
+                        "memory_mb": 8192
+                    }
+                }
             
-            return None, None
+            # Store results before exiting context manager
+            result = (cert_pem, claims_json)
         
-        # Check for certificate file (spire-agent creates svid.0.pem, svid.0.key, bundle.0.pem)
-        cert_file = Path("/tmp/svid.0.pem")
-        if not cert_file.exists():
-            print(f"Error: Certificate file not found at {cert_file}")
-            print(f"stdout: {result.stdout}")
-            print(f"stderr: {result.stderr}")
-            return None, None
-        
-        cert_pem = cert_file.read_text()
-        
-        # Validate it's a real certificate (not empty or placeholder)
-        if not cert_pem.strip() or "BEGIN CERTIFICATE" not in cert_pem:
-            print(f"Error: Certificate file appears to be empty or invalid")
-            return None, None
-        
-        # For Phase 1, AttestedClaims are not yet passed through by the agent
-        # Create a mock AttestedClaims based on Keylime stub response
-        # In production, these would come from the Workload API response
-        mock_claims = {
-            "geolocation": "US-CA-SanFrancisco",
-            "host_integrity_status": "PASSED_ALL_CHECKS",
-            "gpu_metrics_health": {
-                "status": "healthy",
-                "utilization_pct": 45.2,
-                "memory_mb": 8192
-            }
-        }
-        
-        return cert_pem, mock_claims
-    except subprocess.TimeoutExpired:
-        print(f"Error: spire-agent api fetch timed out")
-        return None, None
+        # Context manager exit may show harmless CANCELLED error - ignore it
+        return result
     except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error fetching SVID: {e}")
+        print()
+        print("Troubleshooting:")
+        print("  1. Ensure SPIRE Agent is running:")
+        print("     ps aux | grep spire-agent")
+        print("  2. Check agent socket exists:")
+        print("     ls -la /tmp/spire-agent/public/api.sock")
+        print("  3. Verify registration entry:")
+        print("     ../spire/bin/spire-server entry show -spiffeID spiffe://example.org/python-app -socketPath /tmp/spire-server/private/api.sock")
+        print("  4. Check agent logs:")
+        print("     tail -20 /tmp/spire-agent.log")
         return None, None
 
 def main():
@@ -212,16 +121,21 @@ def main():
     print("Unified-Identity - Phase 1: Fetching Sovereign SVID")
     print("=" * 70)
     print()
+    print("Note: Python app communicates only with SPIRE Agent via Workload API")
+    print("      (not directly with SPIRE Server)")
+    print()
+    print("Architecture:")
+    print("  Python App → SPIRE Agent (Workload API) → SPIRE Server")
+    print()
     
     output_dir = Path("/tmp/svid-dump")
     output_dir.mkdir(exist_ok=True)
     
-    # Try to get sovereign SVID with AttestedClaims
-    print("Method 1: Fetching Sovereign SVID with AttestedClaims...")
-    cert_pem, claims_json = call_spire_server_api()
+    # Fetch SVID from Workload API (standard way for workloads)
+    print("Fetching SVID from SPIRE Agent Workload API...")
+    cert_pem, claims_json = fetch_from_workload_api()
     
     if cert_pem:
-        # Save certificate
         cert_file = output_dir / "svid.pem"
         cert_file.write_text(cert_pem)
         print(f"✓ SVID certificate saved to: {cert_file}")
@@ -233,39 +147,6 @@ def main():
             print(f"✓ AttestedClaims saved to: {claims_file}")
             print()
             print("AttestedClaims:")
-            print(json.dumps(claims_json, indent=2))
-        else:
-            print("⚠ No AttestedClaims in response")
-        
-        print()
-        print("=" * 70)
-        print("SVID fetch complete!")
-        print("=" * 70)
-        print()
-        print("To view the SVID with AttestedClaims:")
-        if claims_json:
-            print(f"  ../scripts/dump-svid -cert {cert_file} -attested {output_dir / 'attested_claims.json'}")
-        else:
-            print(f"  ../scripts/dump-svid -cert {cert_file}")
-        return
-    
-    # Fallback to standard workload API
-    print()
-    print("Method 2: Fetching from Workload API (fallback)...")
-    cert_pem, claims_json = fetch_from_workload_api()
-    
-    if cert_pem:
-        cert_file = output_dir / "svid.pem"
-        cert_file.write_text(cert_pem)
-        print(f"✓ SVID certificate saved to: {cert_file}")
-        
-        # Save AttestedClaims if available (mock for Phase 1)
-        if claims_json:
-            claims_file = output_dir / "attested_claims.json"
-            claims_file.write_text(json.dumps(claims_json, indent=2))
-            print(f"✓ AttestedClaims saved to: {claims_file} (mock data for Phase 1)")
-            print()
-            print("AttestedClaims (mock - from Keylime stub):")
             print(json.dumps(claims_json, indent=2))
         else:
             print("(Note: AttestedClaims not available)")
@@ -287,4 +168,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
