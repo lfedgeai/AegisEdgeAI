@@ -7,6 +7,21 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Check if running interactively (stdin is a TTY)
+INTERACTIVE=false
+if [ -t 0 ]; then
+    INTERACTIVE=true
+fi
+
+# Function to prompt user to continue (only if interactive)
+prompt_continue() {
+    if [ "$INTERACTIVE" = true ]; then
+        echo ""
+        read -p "Press Enter to continue to the next step... " -r
+        echo ""
+    fi
+}
+
 echo "╔════════════════════════════════════════════════════════════════╗"
 echo "║  Unified-Identity - Phase 1: Python App Demo                   ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
@@ -16,6 +31,7 @@ echo ""
 echo "Step 0: Cleaning up any existing setup..."
 "${SCRIPT_DIR}/cleanup.sh"
 echo ""
+prompt_continue
 
 # Check and install Python dependencies
 echo "Checking Python dependencies..."
@@ -53,6 +69,7 @@ if [ -f "${SCRIPT_DIR}/fetch-sovereign-svid-grpc.py" ]; then
     fi
 fi
 echo ""
+prompt_continue
 
 # Step 1: Setup SPIRE
 echo "Step 1: Setting up SPIRE and Keylime Stub..."
@@ -74,6 +91,42 @@ echo ""
 echo "SPIRE Server (Unified-Identity logs):"
 if [ -f /tmp/spire-server.log ]; then
     grep -i "unified-identity\|sovereign\|attested" /tmp/spire-server.log | tail -10 | sed 's/^/  /' || echo "  (No Unified-Identity logs found)"
+    # Check for server bootstrap AttestedClaims log
+    BOOTSTRAP_CLAIMS=$(grep -i "AttestedClaims attached to agent bootstrap SVID\|host/python-demo-agent.*AttestedClaims" /tmp/spire-server.log | tail -1 || true)
+    if [ -n "$BOOTSTRAP_CLAIMS" ]; then
+        echo ""
+        echo "  ↪ Agent bootstrap AttestedClaims (server log):"
+        echo "    ${BOOTSTRAP_CLAIMS}"
+    else
+        # Check for various diagnostic messages
+        MISSING_SOVEREIGN=$(grep -i "SovereignAttestation.*nil\|params.Params is nil\|SovereignAttestation missing" /tmp/spire-server.log | tail -1 || true)
+        RECEIVED_SOVEREIGN=$(grep -i "Received SovereignAttestation in agent bootstrap" /tmp/spire-server.log | tail -1 || true)
+        NIL_CLAIMS=$(grep -i "processSovereignAttestation returned nil claims" /tmp/spire-server.log | tail -1 || true)
+        
+        if [ -n "$RECEIVED_SOVEREIGN" ]; then
+            echo ""
+            echo "  ✓ Server received SovereignAttestation:"
+            echo "    ${RECEIVED_SOVEREIGN}"
+            if [ -n "$NIL_CLAIMS" ]; then
+                echo "  ⚠ But processSovereignAttestation returned nil claims:"
+                echo "    ${NIL_CLAIMS}"
+            fi
+        elif [ -n "$MISSING_SOVEREIGN" ]; then
+            echo ""
+            echo "  ⚠ Server log indicates SovereignAttestation issue:"
+            echo "    ${MISSING_SOVEREIGN}"
+            echo "    This suggests the agent may not be sending SovereignAttestation during bootstrap."
+        else
+            echo ""
+            echo "  ↪ Agent bootstrap AttestedClaims (server log): (not found)"
+            echo "    Checking for agent attestation completion..."
+            ATTEST_COMPLETE=$(grep -i "Agent attestation request completed" /tmp/spire-server.log | grep -i "host/python-demo-agent\|spire/agent" | tail -1 || true)
+            if [ -n "$ATTEST_COMPLETE" ]; then
+                echo "    Agent attestation completed, but no AttestedClaims log found."
+                echo "    This may indicate SovereignAttestation processing failed silently."
+            fi
+        fi
+    fi
 else
     echo "  ⚠ Log file not found"
 fi
@@ -81,10 +134,35 @@ echo ""
 echo "SPIRE Agent (Unified-Identity logs):"
 if [ -f /tmp/spire-agent.log ]; then
     grep -i "unified-identity\|sovereign\|attested" /tmp/spire-agent.log | tail -10 | sed 's/^/  /' || echo "  (No Unified-Identity logs found)"
+    # Check for bootstrap AttestedClaims (during initial attestation)
+    AGENT_BOOTSTRAP=$(grep -i "Received AttestedClaims.*agent bootstrap\|Received AttestedClaims.*agent SVID" /tmp/spire-agent.log | tail -1 || true)
+    # Also check for any AttestedClaims log with geolocation/integrity fields (more flexible)
+    if [ -z "$AGENT_BOOTSTRAP" ]; then
+        AGENT_BOOTSTRAP=$(grep -i "Received AttestedClaims\|AttestedClaims.*geolocation\|AttestedClaims.*integrity" /tmp/spire-agent.log | grep -i "agent\|bootstrap" | tail -1 || true)
+    fi
+    echo ""
+    if [ -n "$AGENT_BOOTSTRAP" ]; then
+        echo "  ↪ Agent bootstrap AttestedClaims (agent log):"
+        echo "    ${AGENT_BOOTSTRAP}"
+    else
+        echo "  ↪ Agent bootstrap AttestedClaims (agent log): (not found)"
+        echo "    Note: This log appears when AttestedClaims are received during agent bootstrap."
+        echo "    Diagnostic: Checking for any AttestedClaims references in agent log..."
+        ATTESTED_CHECK=$(grep -i "attested" /tmp/spire-agent.log | head -3 || true)
+        if [ -n "$ATTESTED_CHECK" ]; then
+            echo "    Found AttestedClaims references:"
+            echo "$ATTESTED_CHECK" | sed 's/^/      /'
+        else
+            echo "    ⚠ No 'AttestedClaims' references found in agent log"
+            echo "    This suggests AttestedClaims may not be in the server response."
+            echo "    Check server logs for: 'AttestedClaims attached to agent bootstrap SVID'"
+        fi
+    fi
 else
     echo "  ⚠ Log file not found"
 fi
 echo ""
+prompt_continue
 
 # Step 2: Create registration entry
 echo "Step 2: Creating registration entry..."
@@ -101,6 +179,7 @@ else
     echo "  ⚠ Log file not found"
 fi
 echo ""
+prompt_continue
 
 # Step 3: Fetch sovereign SVID
 echo "Step 3: Fetching Sovereign SVID with AttestedClaims..."
@@ -134,6 +213,12 @@ echo ""
 echo "SPIRE Agent (Unified-Identity logs):"
 if [ -f /tmp/spire-agent.log ]; then
     grep -i "unified-identity\|sovereign\|attested\|python-app" /tmp/spire-agent.log | tail -5 | sed 's/^/  /' || echo "  (No Unified-Identity logs found)"
+    AGENT_WORKLOAD=$(grep -i "python-app" /tmp/spire-agent.log | grep -i "Fetched X.509 SVID" | tail -1 || true)
+    if [ -n "$AGENT_WORKLOAD" ]; then
+        echo "  ↪ Workload SVID (agent log): ${AGENT_WORKLOAD}"
+    else
+        echo "  ↪ Workload SVID (agent log): (not found – enable debug logging if needed)"
+    fi
 else
     echo "  ⚠ Log file not found"
 fi
@@ -141,10 +226,15 @@ echo ""
 echo "SPIRE Server (Unified-Identity logs):"
 if [ -f /tmp/spire-server.log ]; then
     grep -i "unified-identity\|sovereign\|attested\|python-app" /tmp/spire-server.log | tail -5 | sed 's/^/  /' || echo "  (No Unified-Identity logs found)"
+    SERVER_WORKLOAD=$(grep -i "python-app" /tmp/spire-server.log | grep -i "Added AttestedClaims" | tail -1 || true)
+    if [ -n "$SERVER_WORKLOAD" ]; then
+        echo "  ↪ Workload AttestedClaims (server log): ${SERVER_WORKLOAD}"
+    fi
 else
     echo "  ⚠ Log file not found"
 fi
 echo ""
+prompt_continue
 
 # Step 4: Dump SVID
 echo "Step 4: Dumping SVID with AttestedClaims..."
@@ -166,6 +256,7 @@ echo "Files saved to: /tmp/svid-dump/"
 echo "  - svid.pem (SVID certificate)"
 echo "  - attested_claims.json (AttestedClaims, if available)"
 echo ""
+prompt_continue
 
 # Step 5: Show summary logs
 echo "Step 5: Summary Logs..."

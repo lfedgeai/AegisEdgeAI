@@ -377,23 +377,30 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 
 	var attestedClaims []*types.AttestedClaims
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
-		if params.Params != nil && params.Params.SovereignAttestation != nil {
-			claims, err := s.processSovereignAttestation(ctx, log, params.Params.SovereignAttestation, agentID.String())
-			if err != nil {
-				return api.MakeErr(log, codes.Internal, "failed to process sovereign attestation", err)
-			}
-			if claims != nil {
-				attestedClaims = []*types.AttestedClaims{claims}
-				log.WithFields(logrus.Fields{
-					"geolocation":   claims.Geolocation,
-					"integrity":     claims.HostIntegrityStatus.String(),
-					"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
-					"gpu_util_pct":  claims.GpuMetricsHealth.GetUtilizationPct(),
-					"gpu_memory_mb": claims.GpuMetricsHealth.GetMemoryMb(),
-				}).Info("Unified-Identity - Phase 1: AttestedClaims attached to agent bootstrap SVID")
+		if params.Params != nil {
+			if params.Params.SovereignAttestation != nil {
+				log.Debug("Unified-Identity - Phase 1: Received SovereignAttestation in agent bootstrap request")
+				claims, err := s.processSovereignAttestation(ctx, log, params.Params.SovereignAttestation, agentID.String())
+				if err != nil {
+					return api.MakeErr(log, codes.Internal, "failed to process sovereign attestation", err)
+				}
+				if claims != nil {
+					attestedClaims = []*types.AttestedClaims{claims}
+					log.WithFields(logrus.Fields{
+						"geolocation":   claims.Geolocation,
+						"integrity":     claims.HostIntegrityStatus.String(),
+						"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
+						"gpu_util_pct":  claims.GpuMetricsHealth.GetUtilizationPct(),
+						"gpu_memory_mb": claims.GpuMetricsHealth.GetMemoryMb(),
+					}).Info("Unified-Identity - Phase 1: AttestedClaims attached to agent bootstrap SVID")
+				} else {
+					log.Warn("Unified-Identity - Phase 1: processSovereignAttestation returned nil claims")
+				}
+			} else {
+				log.Warn("Unified-Identity - Phase 1: SovereignAttestation is nil in agent attestation params")
 			}
 		} else {
-			log.Warn("Unified-Identity - Phase 1: SovereignAttestation missing from agent attestation params")
+			log.Warn("Unified-Identity - Phase 1: params.Params is nil in agent attestation request")
 		}
 	}
 

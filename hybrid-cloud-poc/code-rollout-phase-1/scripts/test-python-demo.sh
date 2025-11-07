@@ -56,10 +56,33 @@ QUIET=1 SERVER_CONFIG="$SERVER_CONFIG" AGENT_CONFIG="$AGENT_CONFIG" AGENT_SPIFFE
     "${PROJECT_ROOT}/scripts/start-unified-identity.sh"
 
 step "Verifying agent bootstrap AttestedClaims"
-wait_for_log /tmp/spire-server.log "Added AttestedClaims to response" "Server recorded AttestedClaims for host/python-demo-agent" 60
-grep -qi "host/python-demo-agent" /tmp/spire-server.log || fail "Server log missing host/python-demo-agent entry"
+# Check for SovereignAttestation being received during bootstrap
+wait_for_log /tmp/spire-server.log "Received SovereignAttestation in agent bootstrap request" "Server received SovereignAttestation during bootstrap" 60
+# Check for AttestedClaims being attached to agent bootstrap SVID
+wait_for_log /tmp/spire-server.log "AttestedClaims attached to agent bootstrap SVID" "Server attached AttestedClaims to agent bootstrap SVID" 60
+# Check for Keylime processing
 wait_for_log /tmp/keylime-stub.log "Returning stubbed AttestedClaims response" "Keylime stub returned claims during bootstrap" 60
-wait_for_log /tmp/spire-agent.log "Creating X509-SVID" "Agent created host/python-demo-agent SVID" 60
+# Check for agent receiving AttestedClaims
+wait_for_log /tmp/spire-agent.log "Received AttestedClaims during agent bootstrap" "Agent received AttestedClaims during bootstrap" 60
+
+echo "  ↪ Server bootstrap log (SovereignAttestation received):"
+grep -i "Received SovereignAttestation in agent bootstrap request" /tmp/spire-server.log | tail -1 | sed 's/^/    /' || echo "    (not found)"
+
+echo "  ↪ Server bootstrap log (AttestedClaims attached):"
+BOOTSTRAP_CLAIMS=$(grep -i "AttestedClaims attached to agent bootstrap SVID" /tmp/spire-server.log | tail -1 || true)
+if [ -n "$BOOTSTRAP_CLAIMS" ]; then
+    echo "    ${BOOTSTRAP_CLAIMS}" | sed 's/^/    /'
+else
+    fail "Server did not attach AttestedClaims to agent bootstrap SVID"
+fi
+
+echo "  ↪ Agent bootstrap log:"
+AGENT_BOOTSTRAP=$(grep -i "Received AttestedClaims during agent bootstrap" /tmp/spire-agent.log | tail -1 || true)
+if [ -n "$AGENT_BOOTSTRAP" ]; then
+    echo "    ${AGENT_BOOTSTRAP}" | sed 's/^/    /'
+else
+    fail "Agent did not receive AttestedClaims during bootstrap"
+fi
 
 step "Creating registration entry for Python app"
 "${PYTHON_DEMO_DIR}/create-registration-entry.sh" > /tmp/python-demo-registration.log
@@ -88,11 +111,37 @@ for key in ("status", "utilization_pct", "memory_mb"):
 print("AttestedClaims JSON looks valid")
 PY
 
-step "Verifying Unified-Identity logs after SVID fetch"
-wait_for_log /tmp/spire-agent.log "Fetched X.509 SVID" "Agent log contains workload SVID fetch"
-wait_for_log /tmp/spire-agent.log "python-app" "Agent log references python app"
+step "Verifying Unified-Identity logs after workload SVID fetch"
+# Verify server processed SovereignAttestation for workload
+wait_for_log /tmp/spire-server.log "Processing SovereignAttestation" "Server processed SovereignAttestation for workload" 60
+# Verify server added AttestedClaims to workload response
+wait_for_log /tmp/spire-server.log "Added AttestedClaims to response" "Server added AttestedClaims to workload SVID response" 60
+# Verify agent fetched workload SVID
+wait_for_log /tmp/spire-agent.log "Fetched X.509 SVID" "Agent fetched workload SVID" 60
+wait_for_log /tmp/spire-agent.log "python-app" "Agent log references python app" 60
+# Verify policy evaluation
 wait_for_log /tmp/spire-server.log "Policy evaluation passed" "Server log indicates policy success" 60
+# Verify Keylime stub was called
 wait_for_log /tmp/keylime-stub.log "Returning stubbed AttestedClaims response" "Keylime stub returned claims" 60
+
+echo "  ↪ Server workload log (SovereignAttestation processed):"
+grep -i "python-app" /tmp/spire-server.log | grep -i "Processing SovereignAttestation" | tail -1 | sed 's/^/    /' || echo "    (not found)"
+
+echo "  ↪ Server workload log (AttestedClaims added):"
+SERVER_WORKLOAD=$(grep -i "python-app" /tmp/spire-server.log | grep -i "Added AttestedClaims" | tail -1 || true)
+if [ -n "$SERVER_WORKLOAD" ]; then
+    echo "    ${SERVER_WORKLOAD}" | sed 's/^/    /'
+else
+    fail "Server did not add AttestedClaims to workload SVID response"
+fi
+
+echo "  ↪ Agent workload log:"
+AGENT_WORKLOAD=$(grep -i "python-app" /tmp/spire-agent.log | grep -i "Fetched X.509 SVID" | tail -1 || true)
+if [ -n "$AGENT_WORKLOAD" ]; then
+    echo "    ${AGENT_WORKLOAD}" | sed 's/^/    /'
+else
+    fail "Agent did not fetch workload SVID for python-app"
+fi
 
 step "Dumping SVID for inspection"
 "${PROJECT_ROOT}/scripts/dump-svid" -cert /tmp/svid-dump/svid.pem -attested /tmp/svid-dump/attested_claims.json > /tmp/python-demo-dump.log

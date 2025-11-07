@@ -6,7 +6,17 @@
 
 This directory contains the implementation of **Phase 1** of the Unified Identity for Sovereign AI architecture. This phase implements all necessary SPIRE API changes and policy logic without relying on a functional Keylime or TPM plugin.
 
-**Phase 1 has been successfully implemented and tested end-to-end.** The complete flow from workload → agent → server → Keylime stub → policy engine → AttestedClaims is working and verified.
+**Phase 1 has been successfully implemented and tested end-to-end.** The complete flow includes:
+- ✅ **Agent Bootstrap**: Agent receives AttestedClaims during initial attestation (verified with enhanced diagnostic logging)
+- ✅ **Agent SVID Renewal**: AttestedClaims attached to agent SVID renewals
+- ✅ **Workload SVID**: Complete flow from workload → agent → server → Keylime stub → policy engine → AttestedClaims
+- ✅ **Enhanced Diagnostic Logging**: Comprehensive logging with highlighted AttestedClaims in server and agent logs, including:
+  - Server logs when `SovereignAttestation` is received during bootstrap
+  - Server logs when `AttestedClaims` are attached to agent bootstrap SVID
+  - Agent logs when `AttestedClaims` are received during bootstrap
+  - Detailed diagnostic messages for troubleshooting
+- ✅ **Interactive Demo**: Step-by-step demo with user prompts to review logs at each stage
+- ✅ **Automated Tests**: Comprehensive end-to-end regression tests verifying all flows with log verification
 
 ## Table of Contents
 
@@ -87,41 +97,90 @@ Phase 1 focuses on:
 
 **Phase 1 is complete and fully functional.** All components have been implemented, tested, and verified:
 
-- ✅ **SPIRE Server**: Processes `SovereignAttestation`, calls Keylime stub, evaluates policy, returns `AttestedClaims`
-- ✅ **SPIRE Agent**: Sends `SovereignAttestation` to server, receives and passes `AttestedClaims` to workloads
+- ✅ **SPIRE Server**: Processes `SovereignAttestation` during agent bootstrap and workload SVID requests, calls Keylime stub, evaluates policy, returns `AttestedClaims`
+- ✅ **SPIRE Agent**: Sends `SovereignAttestation` to server during bootstrap and SVID renewals, receives and logs `AttestedClaims`, passes `AttestedClaims` to workloads via Workload API
 - ✅ **Keylime Stub**: Returns fixed `AttestedClaims` (geolocation, host integrity, GPU metrics)
 - ✅ **Policy Engine**: Evaluates `AttestedClaims` with configurable rules (geolocation, integrity, GPU)
-- ✅ **End-to-End Flow**: Complete path from Python app → Agent → Server → Keylime → Policy → AttestedClaims
+- ✅ **Agent Bootstrap Flow**: Agent receives AttestedClaims during initial attestation (AttestAgent)
+  - Server logs when `SovereignAttestation` is received (DEBUG level)
+  - Server logs when `AttestedClaims` are attached (INFO level with full details)
+  - Agent logs when `AttestedClaims` are received (INFO level with full details)
+- ✅ **Agent SVID Renewal Flow**: AttestedClaims attached to agent SVID renewals (RenewAgent)
+- ✅ **Workload SVID Flow**: Complete path from Python app → Agent → Server → Keylime → Policy → AttestedClaims
+- ✅ **Enhanced Diagnostic Logging**: Comprehensive logging with highlighted AttestedClaims in server and agent logs:
+  - Server diagnostic messages for troubleshooting (WARN level for missing/invalid data)
+  - Agent bootstrap and renewal log messages (INFO level)
+  - Workload SVID processing log messages (INFO/DEBUG level)
+  - All logs highlighted in demo scripts and automated tests
 
 ### Verified Working Demo
 
 The Python app demo (`python-app-demo/`) successfully demonstrates the complete flow:
-- Python app fetches SVID via SPIRE Agent Workload API (gRPC)
-- Agent sends `SovereignAttestation` to server
-- Server processes via Keylime stub and policy engine
-- `AttestedClaims` are returned and displayed:
-  ```json
-  {
-    "geolocation": "Spain: N40.4168, W3.7038",
-    "host_integrity_status": "PASSED_ALL_CHECKS",
-    "gpu_metrics_health": {
-      "status": "healthy",
-      "utilization_pct": 15.0,
-      "memory_mb": 10240
-    }
-  }
-  ```
+
+**Interactive Demo** (`python-app-demo/run-demo.sh`):
+- Step-by-step execution with **interactive prompts** to review logs at each stage
+- Highlights AttestedClaims in server and agent logs with diagnostic messages
+- Shows agent bootstrap AttestedClaims with detailed log snippets:
+  - Server receiving `SovereignAttestation` during bootstrap
+  - Server attaching `AttestedClaims` to agent bootstrap SVID
+  - Agent receiving `AttestedClaims` during bootstrap
+- Shows workload SVID AttestedClaims with server and agent log highlights
+- Displays complete SVID dump with Phase 1 additions
+- Automatically detects if running interactively and prompts for user input
+
+**Flow**:
+1. **Agent Bootstrap**: Agent sends `SovereignAttestation` during initial attestation
+   - Server receives and processes via Keylime stub
+   - Server attaches `AttestedClaims` to agent bootstrap SVID
+   - Agent receives and logs `AttestedClaims` during bootstrap
+2. **Workload SVID**: Python app fetches SVID via SPIRE Agent Workload API (gRPC)
+   - Agent sends `SovereignAttestation` to server
+   - Server processes via Keylime stub and policy engine
+   - `AttestedClaims` are returned and displayed:
+     ```json
+     {
+       "geolocation": "Spain: N40.4168, W3.7038",
+       "host_integrity_status": "PASSED_ALL_CHECKS",
+       "gpu_metrics_health": {
+         "status": "healthy",
+         "utilization_pct": 15.0,
+         "memory_mb": 10240
+       }
+     }
+     ```
+
+**Run the interactive demo:**
+```bash
+cd python-app-demo
+./run-demo.sh
+```
 
 ### Automated Test
 
-An automated regression test is available to verify the entire flow (including agent bootstrap SVID, Python workload SVID, and Unified-Identity logs):
+An automated regression test is available to verify the entire flow:
 
 ```bash
 cd scripts
 ./test-python-demo.sh
 ```
 
-The test starts the SPIRE stack, verifies agent bootstrap AttestedClaims, fetches the Python app SVID via gRPC, validates the generated SVID/AttestedClaims files, checks Keylime/SPIRE logs, and then tears everything down.
+**Test Coverage**:
+- ✅ **Agent Bootstrap AttestedClaims**: Comprehensive verification including:
+  - Server receives `SovereignAttestation` during bootstrap (with log snippet)
+  - Server processes via Keylime stub and policy engine
+  - Server attaches `AttestedClaims` to agent bootstrap SVID (with log snippet)
+  - Agent receives `AttestedClaims` during bootstrap (with log snippet)
+  - All log messages verified with highlighted snippets
+- ✅ **Workload SVID**: Complete verification including:
+  - Server processes `SovereignAttestation` for workload (with log snippet)
+  - Server adds `AttestedClaims` to workload SVID response (with log snippet)
+  - Agent fetches workload SVID (with log snippet)
+  - Python app receives `AttestedClaims` via gRPC
+- ✅ **Log Verification**: Checks for all Unified-Identity log messages in server, agent, and Keylime stub logs with highlighted snippets
+- ✅ **SVID Validation**: Validates SVID certificate and `AttestedClaims` JSON structure (geolocation, host_integrity_status, gpu_metrics_health)
+- ✅ **Cleanup**: Automatically tears down all components
+
+The test starts the SPIRE stack, verifies agent bootstrap AttestedClaims with detailed log verification and highlighted snippets, fetches the Python app SVID via gRPC, validates the generated SVID/AttestedClaims files, checks all Unified-Identity logs with highlighted snippets, and then tears everything down.
 
 See `python-app-demo/README.md` for details.
 
@@ -232,6 +291,15 @@ message AttestedClaims {
 **`BatchNewX509SVIDResponse.Result`** (in `svid.proto`):
 - Added optional `attested_claims` field (tag 30)
 
+**`AgentX509SVIDParams`** (in `agent.proto`):
+- Added optional `sovereign_attestation` field (tag 20)
+
+**`AttestAgentResponse.Result`** (in `agent.proto`):
+- Added optional `attested_claims` field (tag 30)
+
+**`RenewAgentResponse`** (in `agent.proto`):
+- Added optional `attested_claims` field (tag 30)
+
 ### Keylime Verifier API
 
 **Endpoint**: `POST /v2.4/verify/evidence`
@@ -316,12 +384,40 @@ message AttestedClaims {
    - Modified `newX509SVID()` to handle `SovereignAttestation` when feature flag enabled
    - Added feature flag check: `if fflag.IsSet(fflag.FlagUnifiedIdentity) && param.SovereignAttestation != nil`
 
-5. **`spire/pkg/server/api/svid/v1/service_test.go`**
+5. **`spire/pkg/server/api/agent/v1/service.go`**
+   - Added `SovereignAttestation` processing during agent bootstrap (AttestAgent)
+   - Added `SovereignAttestation` processing during agent SVID renewal (RenewAgent)
+   - Added **enhanced diagnostic logging** for `SovereignAttestation` reception and processing:
+     - `DEBUG`: Logs when `SovereignAttestation` is received during agent bootstrap
+     - `INFO`: Logs when `AttestedClaims` are attached to agent bootstrap SVID (with full details)
+     - `WARN`: Diagnostic messages if `SovereignAttestation` is missing, `params.Params` is nil, or processing returns nil claims
+   - Attaches `AttestedClaims` to agent bootstrap and renewal responses
+
+6. **`spire/pkg/agent/client/client.go`**
+   - Added `SovereignAttestation` to agent SVID renewal requests when feature flag enabled
+   - Extracts and stores `AttestedClaims` from server responses
+   - Logs `AttestedClaims` when received during agent SVID renewal
+
+7. **`spire/pkg/agent/attestor/node/node.go`**
+   - Added `SovereignAttestation` to agent bootstrap requests (AttestAgent) when feature flag enabled
+   - Extracts and logs `AttestedClaims` from agent bootstrap responses
+
+8. **`spire/pkg/agent/manager/cache/workload.go`**
+   - Added `AttestedClaims` field to `Identity` and `X509SVID` structs
+
+9. **`spire/pkg/agent/manager/sync.go`**
+   - Passes `AttestedClaims` from client to cache when fetching SVIDs
+
+10. **`spire/pkg/agent/endpoints/workload/handler.go`**
+    - Converts and includes `AttestedClaims` in Workload API responses
+    - Passes `AttestedClaims` to workloads via gRPC Workload API
+
+11. **`spire/pkg/server/api/svid/v1/service_test.go`**
    - Added integration tests for SovereignAttestation processing
    - Added feature flag disabled/enabled tests
    - Added policy failure tests
 
-6. **`spire-api-sdk/Makefile`**
+12. **`spire-api-sdk/Makefile`**
    - Added `sovereignattestation.proto` to protos list
 
 ### Key Implementation Details
@@ -415,10 +511,35 @@ cd ../spire && make generate
 All Phase 1 code includes logging with tag: **"Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)"**
 
 **Log Levels**:
-- **INFO**: Feature status, Keylime calls, policy evaluation results
-- **DEBUG**: Detailed request/response data
-- **WARN**: Policy violations, missing configuration
+- **INFO**: Feature status, Keylime calls, policy evaluation results, AttestedClaims attached to SVIDs
+- **DEBUG**: Detailed request/response data, SovereignAttestation received, AttestedClaims added to responses
+- **WARN**: Policy violations, missing configuration, SovereignAttestation processing issues
 - **ERROR**: Failures in Keylime communication, policy errors
+
+**Enhanced Diagnostic Logging**:
+- **Server Logs**: Comprehensive diagnostic logging including:
+  - `DEBUG`: "Received SovereignAttestation in agent bootstrap request" - Confirms server received SovereignAttestation during agent bootstrap
+  - `INFO`: "AttestedClaims attached to agent bootstrap SVID" - Confirms AttestedClaims were attached to agent bootstrap SVID
+  - `INFO`: "Processing SovereignAttestation" - Server processing SovereignAttestation for workload SVID
+  - `DEBUG`: "Added AttestedClaims to response" - Server added AttestedClaims to SVID response
+  - `WARN`: Diagnostic messages if `SovereignAttestation` is missing or `params.Params` is nil
+- **Agent Logs**: Highlight when `AttestedClaims` are received:
+  - `INFO`: "Received AttestedClaims during agent bootstrap" - Agent received AttestedClaims during bootstrap
+  - `INFO`: "Received AttestedClaims for agent SVID" - Agent received AttestedClaims during SVID renewal
+- **Log Highlighting**: Demo scripts and automated tests highlight AttestedClaims in logs with detailed snippets for easy verification
+
+**Key Log Messages**:
+- **Agent Bootstrap Flow**:
+  - `DEBUG`: "Received SovereignAttestation in agent bootstrap request" - Server received SovereignAttestation during agent bootstrap
+  - `INFO`: "AttestedClaims attached to agent bootstrap SVID" - Server attached AttestedClaims to agent bootstrap SVID (includes geolocation, integrity, GPU metrics)
+  - `INFO`: "Received AttestedClaims during agent bootstrap" - Agent received AttestedClaims during bootstrap (includes geolocation, integrity, GPU metrics)
+- **Workload SVID Flow**:
+  - `INFO`: "Processing SovereignAttestation" - Server processing SovereignAttestation for workload SVID
+  - `DEBUG`: "Added AttestedClaims to response" - Server added AttestedClaims to SVID response
+- **Diagnostic Messages** (for troubleshooting):
+  - `WARN`: "SovereignAttestation is nil in agent attestation params" - Indicates agent may not be sending SovereignAttestation
+  - `WARN`: "params.Params is nil in agent attestation request" - Indicates request structure issue
+  - `WARN`: "processSovereignAttestation returned nil claims" - Indicates Keylime or policy processing issue
 
 ## Limitations (Phase 1)
 
@@ -857,11 +978,49 @@ For detailed cleanup instructions, see [k8s-integration/README.md](k8s-integrati
 
 ## Next Steps
 
-1. **Regenerate Protobuf Files**: Run `./regenerate-protos.sh` (if modifying proto files)
-2. **Run Tests**: See [TESTING.md](TESTING.md) for detailed testing instructions
-3. **Python Demo Test**: `scripts/test-python-demo.sh`
-4. **Integration Testing**: Test SVID generation with SovereignAttestation using the steps above
-5. **Kubernetes Testing**: ⚠️ **PENDING** - Kubernetes integration is pending resolution of CSI driver image pull issues. See [k8s-integration/README.md](k8s-integration/README.md) for details. The Python app demo provides a working alternative.
+1. **Rebuild SPIRE** (if using modified SPIRE binaries):
+   ```bash
+   cd spire
+   go build -o bin/spire-server ./cmd/spire-server
+   go build -o bin/spire-agent ./cmd/spire-agent
+   ```
+   The rebuilt binaries include **enhanced diagnostic logging** for `SovereignAttestation` processing:
+   - Server logs when `SovereignAttestation` is received during agent bootstrap
+   - Server logs when `AttestedClaims` are attached to agent bootstrap SVID
+   - Diagnostic warnings if `SovereignAttestation` is missing or processing fails
+   - Agent logs when `AttestedClaims` are received during bootstrap
+
+2. **Run Interactive Demo**: Experience the complete flow with step-by-step prompts:
+   ```bash
+   cd python-app-demo
+   ./run-demo.sh
+   ```
+   This demo:
+   - Shows agent bootstrap AttestedClaims with highlighted log snippets
+   - Shows workload SVID with AttestedClaims
+   - Prompts for user input at each step to review logs
+   - Highlights all relevant Unified-Identity logs with diagnostic messages
+   - Displays complete SVID dump with Phase 1 additions
+
+3. **Run Automated Test**: Verify the entire flow with comprehensive automated regression test:
+   ```bash
+   cd scripts
+   ./test-python-demo.sh
+   ```
+   This test:
+   - Verifies agent bootstrap AttestedClaims with detailed log verification
+   - Verifies workload SVID with AttestedClaims
+   - Checks all Unified-Identity log messages with highlighted snippets
+   - Validates SVID certificate and AttestedClaims JSON structure
+   - Automatically tears down all components
+
+4. **Regenerate Protobuf Files**: Run `./regenerate-protos.sh` (if modifying proto files)
+
+5. **Run Unit/Integration Tests**: See [TESTING.md](TESTING.md) for detailed testing instructions
+
+6. **Integration Testing**: Test SVID generation with SovereignAttestation using the steps above
+
+7. **Kubernetes Testing**: ⚠️ **PENDING** - Kubernetes integration is pending resolution of CSI driver image pull issues. See [k8s-integration/README.md](k8s-integration/README.md) for details. The Python app demo provides a working alternative.
 
 ## References
 
