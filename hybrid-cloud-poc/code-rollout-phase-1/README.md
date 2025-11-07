@@ -2,11 +2,11 @@
 
 ## Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 
-**✅ STATUS: COMPLETE AND TESTED**
+**✅ STATUS: COMPLETE AND TESTED** (with **⚠️ Kubernetes Integration: INCOMPLETE**)
 
 This directory contains the implementation of **Phase 1** of the Unified Identity for Sovereign AI architecture. This phase implements all necessary SPIRE API changes and policy logic without relying on a functional Keylime or TPM plugin.
 
-**Phase 1 has been successfully implemented and tested end-to-end.** The complete flow includes:
+**Phase 1 has been successfully implemented and tested end-to-end** for Linux workloads (Python app demo). The complete flow includes:
 - ✅ **Agent Bootstrap**: Agent receives AttestedClaims during initial attestation (verified with enhanced diagnostic logging)
 - ✅ **Agent SVID Renewal**: AttestedClaims attached to agent SVID renewals
 - ✅ **Workload SVID**: Complete flow from workload → agent → server → Keylime stub → policy engine → AttestedClaims
@@ -854,13 +854,41 @@ The script highlights:
 
 ## Kubernetes Integration
 
-**⚠️ STATUS: PENDING**
+**⚠️ STATUS: INCOMPLETE - PENDING**
 
-Kubernetes integration with SPIRE CSI driver is documented in `k8s-integration/README.md` but is currently pending resolution of CSI driver image pull issues. The Python app demo (`python-app-demo/`) provides a working alternative for testing Phase 1 functionality.
+Kubernetes integration with SPIRE CSI driver is **incomplete** and currently pending resolution of several issues:
 
-Phase 1 is designed to support Kubernetes workloads using the SPIRE CSI driver, with SPIRE Server and Agent running **outside** the Kubernetes cluster for security.
+**Known Issues:**
+1. **CSI Driver Image Pull**: The SPIRE CSI driver image (`ghcr.io/spiffe/spire-csi-driver:0.4.0`) has pull issues (403 Forbidden), preventing the CSI driver from being deployed
+2. **Production Pattern Not Tested**: The full production pattern using the SPIRE CSI driver has not been end-to-end tested
+3. **Workaround Available**: A simpler hostPath-based workload option exists for Phase 1 testing, but this is not the production pattern
+
+**What Works:**
+- ✅ SPIRE Server and Agent setup outside Kubernetes
+- ✅ Kubernetes cluster creation (kind)
+- ✅ Registration entry creation for Kubernetes workloads
+- ✅ Simple hostPath-based workload deployment (non-production pattern)
+- ✅ SVID dumping from workloads using hostPath mounts
+
+**What Doesn't Work:**
+- ❌ SPIRE CSI driver deployment (image pull issues)
+- ❌ Production pattern with CSI driver volume mounts
+- ❌ End-to-end testing of CSI driver workflow
+
+**Alternative**: The Python app demo (`python-app-demo/`) provides a **fully working** alternative for testing Phase 1 functionality without Kubernetes complexity.
+
+**Architecture**: Phase 1 is designed to support Kubernetes workloads using the SPIRE CSI driver, with SPIRE Server and Agent running **outside** the Kubernetes cluster for security. However, this integration is not yet complete.
 
 ### Quick Start
+
+**⚠️ Note**: Kubernetes integration is **incomplete**. The steps below will set up a basic Kubernetes cluster and SPIRE, but the production pattern with CSI driver is not working. For a **fully working** Phase 1 demo, use the Python app demo instead:
+
+```bash
+cd python-app-demo
+./run-demo.sh
+```
+
+**For Kubernetes Testing (Incomplete)**:
 
 **Note:** If you have a previous setup, run `k8s-integration/teardown.sh` first.
 
@@ -885,13 +913,13 @@ Phase 1 is designed to support Kubernetes workloads using the SPIRE CSI driver, 
    ./setup-spire.sh
    ```
 
-3. **Run end-to-end test**:
+3. **Deploy simple workload** (hostPath-based, not production pattern):
    ```bash
    cd k8s-integration
-   ./test-sovereign-svid.sh
+   kubectl apply -f workloads/test-workload-simple.yaml
    ```
 
-See [k8s-integration/README.md](k8s-integration/README.md) for detailed Kubernetes integration documentation.
+4. **Note**: The CSI driver workflow is not functional. See [k8s-integration/README.md](k8s-integration/README.md) for detailed documentation and known issues.
 
 ### Dumping SVID from Kubernetes Workloads
 
@@ -1020,7 +1048,11 @@ For detailed cleanup instructions, see [k8s-integration/README.md](k8s-integrati
 
 6. **Integration Testing**: Test SVID generation with SovereignAttestation using the steps above
 
-7. **Kubernetes Testing**: ⚠️ **PENDING** - Kubernetes integration is pending resolution of CSI driver image pull issues. See [k8s-integration/README.md](k8s-integration/README.md) for details. The Python app demo provides a working alternative.
+7. **Kubernetes Testing**: ⚠️ **INCOMPLETE - PENDING** - Kubernetes integration is incomplete and pending resolution of:
+   - CSI driver image pull issues (403 Forbidden)
+   - Production pattern end-to-end testing
+   - See [k8s-integration/README.md](k8s-integration/README.md) for detailed status and known issues
+   - **Recommended**: Use the Python app demo (`python-app-demo/`) for a fully working Phase 1 demonstration
 
 ## References
 
