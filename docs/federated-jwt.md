@@ -234,6 +234,26 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
 }
 ```
 
+### TPM Attestation Verification
+
+#### 1. TPM Quote Verification (Integrity)
+
+This is a classic offline cryptographic check:
+
+- **Input**: The raw `tpm-quote` (the signed data) and the `ak-public` key.
+- **Process**: The verifier uses the `ak-public` key to check the digital signature on the quote.
+- **Output**: A simple pass/fail on the signature. If it passes, the verifier knows two things:
+  - The Quote is genuine and came from the TPM owning the AK.
+  - The PCR measurements inside the Quote are authentic and untampered.
+
+#### 2. TPM App Key Certificate Verification (Identity Binding)
+
+This is also an offline verification of a standard X.509 certificate chain:
+
+- **Input**: The `app-key-certificate` and the AK's Public Key (`ak-public`).
+- **Process**: The verifier checks the signature on the `app-key-certificate` using the AK's Public Key. The verifier must also ensure the AK's Public Key is itself trusted (typically via a separate, trusted AK Certificate issued by an offline CA).
+- **Output**: A pass/fail on the certificate chain. If it passes, the verifier is assured that the App Key Public Key contained within the certificate is genuinely bound to the trusted TPM/AK.
+
 > **Note:** This JSON Schema is converted from the CDDL definition in [draft-richardson-rats-geographic-results](https://datatracker.ietf.org/doc/draft-richardson-rats-geographic-results/). All properties are optional, with `minProperties: 1` ensuring at least one claim is present (matching CDDL's `non-empty<{...}>` constraint). The data center infrastructure fields (near-to, rack-U-number, cabinet-number, hallway-number, room-number, floor-number) have been nested under `grc.datacenter` for better organization, deviating from the flat structure in the original CDDL. Additional fields for workload identity (`grc.workload`) and TPM attestation (`grc.tpm-attestation`) have been added to support hardware-rooted attestation and workload identity verification.
 
 ### Workload Key Source Usage
