@@ -8,6 +8,7 @@ This demo includes:
 1. **SPIRE Server** - Issues SVIDs with AttestedClaims
 2. **SPIRE Agent** - Provides Workload API to applications
 3. **Keylime Stub** - Returns fixed AttestedClaims (geolocation, host integrity, GPU metrics)
+   - ⚠ **Note**: Multiple GPU support for GPU metrics is work in progress
 4. **Python App** - Fetches SVID and displays AttestedClaims
 
 ## Prerequisites
@@ -129,6 +130,7 @@ The AttestedClaims returned from Keylime stub include:
   - Status: `healthy`
   - Utilization: `15.0%`
   - Memory: `10240 MB`
+  - ⚠ **Note**: Multiple GPU support is work in progress
 
 These are successfully passed through the complete flow: Keylime Stub → SPIRE Server → SPIRE Agent → Python App.
 

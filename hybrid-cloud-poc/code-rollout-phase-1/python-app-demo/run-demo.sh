@@ -33,6 +33,8 @@ echo "╔═══════════════════════�
 echo "║  Unified-Identity - Phase 1: Python App Demo                   ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
+echo "ℹ Note: Multiple GPU support for GPU metrics is work in progress"
+echo ""
 
 # Step 0: Cleanup any existing setup (FIRST - ensures clean state)
 echo -e "${BOLD}${CYAN}Step 0: Cleaning up any existing setup...${RESET}"
@@ -491,6 +493,7 @@ prompt_continue
 
 # Step 3: Sovereign SVID from Python App Workload
 echo -e "${BOLD}${CYAN}Step 3: Sovereign SVID with AttestedClaims for Python App Workload ...${RESET}"
+echo "  ℹ Note: Multiple GPU support for GPU metrics is work in progress"
 # Wait a moment for registration entry to propagate to agent
 # The agent needs time to:
 # 1. Receive the entry from server (sync happens every few seconds)

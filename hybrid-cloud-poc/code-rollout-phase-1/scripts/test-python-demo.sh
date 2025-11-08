@@ -113,6 +113,7 @@ python3 "${PYTHON_DEMO_DIR}/fetch-sovereign-svid-grpc.py" > /tmp/python-demo-fet
 step "Validating SVID outputs"
 [ -f /tmp/svid-dump/svid.pem ] || fail "Missing SVID certificate output"
 [ -f /tmp/svid-dump/attested_claims.json ] || fail "Missing AttestedClaims output"
+echo "  ℹ Note: Multiple GPU support for GPU metrics is work in progress"
 
 python3 - <<'PY'
 import json

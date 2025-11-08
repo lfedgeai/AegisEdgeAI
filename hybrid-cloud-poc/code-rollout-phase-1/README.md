@@ -65,6 +65,7 @@ This directory contains the implementation of **Phase 1** of the Unified Identit
 - ✅ **SPIRE Server**: Processes `SovereignAttestation`, calls Keylime stub, evaluates policy, returns `AttestedClaims`
 - ✅ **SPIRE Agent**: Sends `SovereignAttestation` during bootstrap/renewal, receives and passes `AttestedClaims` to workloads
 - ✅ **Keylime Stub**: Returns fixed `AttestedClaims` (geolocation, host integrity, GPU metrics)
+  - ⚠ **Note**: Multiple GPU support for GPU metrics is work in progress
 - ✅ **Policy Engine**: Evaluates `AttestedClaims` with configurable rules
 - ✅ **Agent Bootstrap**: AttestedClaims flow verified with enhanced diagnostic logging
 - ✅ **Workload SVID**: Complete flow from Python app → Agent → Server → Keylime → Policy → AttestedClaims
@@ -140,6 +141,7 @@ Remove `"Unified-Identity"` from the `feature_flags` array in configuration file
 **Response Field:** `AttestedClaims` (output)
 - Returned after Keylime verification and policy evaluation
 - Contains geolocation, host integrity status, GPU metrics
+- ⚠ **Note**: Multiple GPU support for GPU metrics is work in progress
 
 For complete details, see **[SOVEREIGN_SVID_FORMAT.md](SOVEREIGN_SVID_FORMAT.md)**.
 
@@ -150,6 +152,7 @@ For complete details, see **[SOVEREIGN_SVID_FORMAT.md](SOVEREIGN_SVID_FORMAT.md)
 **New Messages**:
 - `SovereignAttestation`: Contains TPM quote, app key, challenge nonce, workload code hash
 - `AttestedClaims`: Contains geolocation, host integrity status, GPU metrics
+  - ⚠ **Note**: Multiple GPU support for GPU metrics is work in progress
 
 **Modified Messages** (added optional fields):
 - `X509SVIDRequest` / `X509SVIDResponse` (workload.proto): `sovereign_attestation`, `attested_claims`
@@ -187,10 +190,12 @@ All changes are tagged with `// Unified-Identity - Phase 1: SPIRE API & Policy S
 ## Components
 
 **Keylime Verifier Stub** (`keylime-stub/`): Mock Keylime Verifier API that returns fixed `AttestedClaims`. Configurable via environment variables (port, TLS certs, geolocation, integrity, GPU status).
+- ⚠ **Note**: Multiple GPU support for GPU metrics is work in progress
 
 **SPIRE Server Integration**:
 - **Keylime Client** (`spire/pkg/server/keylime/client.go`): Builds requests from `SovereignAttestation`, calls Keylime API, returns `AttestedClaims`
 - **Policy Engine** (`spire/pkg/server/policy/engine.go`): Evaluates geolocation, host integrity, GPU metrics against configurable rules
+  - ⚠ **Note**: Multiple GPU support for GPU metrics is work in progress
 - **SVID Service** (`spire/pkg/server/api/svid/v1/service.go`): Processes `SovereignAttestation`, calls Keylime, evaluates policy, returns `AttestedClaims`
 
 ## Regenerating Protobuf Files
