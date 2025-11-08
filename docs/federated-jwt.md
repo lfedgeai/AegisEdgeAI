@@ -33,7 +33,7 @@ This model separates stable identity claims from dynamic assurance claims, placi
 ### Flow and Trade-Offs
 1. **Flow:** The Enterprise client generates and signs the Nested JWT for the latest TPM/Geo data. The SP verifies **two signatures** – one for the Identity JWT (IDP key) and one for the HTTP header JWT (device key).  
 2. **PRO:** **Highest Flexibility.** Claims can be updated instantly by the device (per request) without refreshing the Identity JWT.  
-3. **CON:** **Maximum Complexity.** Requires sophisticated client logic and SP infrastructure to manage and verify many ephemeral device signing keys.  
+3. **CON:** **Maximum Complexity.** Requires sophisticated SP infrastructure to verify two signatures per request and manage the trust anchor for every Enterprise device's Attestation Key (AK), complicating cross-organizational PKI establishment.  
 
 ## Model 3: New Claims with a short-lived X.509 Certificate (e.g., SPIFFE/SPIRE SVID)
 
@@ -49,75 +49,278 @@ The optimal authorization model depends on the **ownership and trust relationshi
 | **Internal (no federation)** | Performance & Agility: Overcoming high-overhead, low-agility bottleneck of Model 1. | **Model 2 (Transitional)** | Delegates dynamic claims to device without full Workload Identity System. |
 | **Internal (no federation) or External (federation, e.g., SPIFFE/SPIRE)** | Highest Security & Scalability: Achieving HW-rooted identity, automated renewal, and mutual authentication. | **Model 3 (Gold Standard)** | Workload identity identity standard (e.g. SPIFFE/SPIRE) across organizations. |
 
-## JSON Schema for Geographic Result Claims
+## The Problem: Authentication Method Reference (AMR) "geo" Claim
 
-Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org/doc/draft-richardson-rats-geographic-results/), the following JSON Schema represents the CDDL definition for geographic attestation results:
+The current standard for indicating geolocation verification in OIDC/OAuth tokens is the **Authentication Method Reference (AMR) "geo" claim** as defined in [RFC 8176](https://datatracker.ietf.org/doc/html/rfc8176).
+
+### Critical Gaps in Current Implementation
+
+The existing AMR "geo" claim has significant limitations:
+
+1. **Unverifiable String**: It's just an unverifiable string value with no cryptographic proof.
+2. **No Defined Semantics**: There's no standard definition of what "geo" means—what level of verification? What location format? What assurance level?
+3. **No Verifiability**: A Relying Party cannot cryptographically verify that the location claim is authentic or that it hasn't been tampered with.
+4. **No Rich Data**: It provides no structured information about jurisdiction, physical location, or attestation method.
+
+### Our Proposal: A Standard for Verifiable Claims
+
+This document proposes a comprehensive solution that:
+
+- **Defines a standard, interoperable JSON format** for rich location data (jurisdiction, physical location in multiple formats, location sensor hardware).
+- **Provides cryptographically verified location results** via hardware attestation (TPM-based location verification).
+- **Enables drop-in use** in any JSON-based token (OIDC ID Token, OAuth Access Token) or SAML assertions.
+- **Supports fine-grained policy enforcement** through structured claims that can be validated and verified by Relying Parties.
+- **Compatible with emerging OIDC standards**: The unified claims JSON structure can be signed and included as a value in a custom verifiable claim (e.g., `verified_claims`) as defined by standards like OpenID Connect for Identity Assurance, providing a pathway for eventual OIDC standardization.
+
+The unified identity claims schema defined in this document addresses these gaps by providing:
+- Structured, verifiable geographic claims
+- Hardware-rooted attestation evidence
+- Standardized format for interoperability
+- Rich metadata for policy enforcement
+
+## JSON Schema for Unified Identity Claims
+
+Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org/doc/draft-richardson-rats-geographic-results/), the following JSON Schema represents unified identity claims including geographic location, workload identity, TPM attestation, and data center infrastructure:
 
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://example.com/schemas/geographic-result-claims.json",
-  "title": "Geographic Result Claims",
-  "description": "JSON Schema for geographic attestation results as defined in draft-richardson-rats-geographic-results",
+  "$id": "https://example.com/schemas/unified-identity-claims.json",
+  "title": "Unified Identity Claims",
+  "description": "JSON Schema for unified identity claims including geographic location, workload identity, TPM attestation, and data center infrastructure. Extends draft-richardson-rats-geographic-results with additional identity and attestation fields.",
   "type": "object",
   "minProperties": 1,
   "properties": {
-    "grc.jurisdiction-country": {
-      "type": "string",
-      "description": "ISO 3166-1 alpha-2 country code",
-      "pattern": "^[A-Z]{2}$",
-      "examples": ["US", "CA", "GB"]
-    },
-    "grc.jurisdiction-country-exclave": {
-      "type": "boolean",
-      "description": "Indicates if the jurisdiction country is an exclave"
-    },
-    "grc.jurisdiction-state": {
-      "type": "string",
-      "description": "Country-specific state or province identifier",
-      "minLength": 2,
-      "maxLength": 16,
-      "examples": ["California", "TX", "Ontario"]
-    },
-    "grc.jurisdiction-state-exclave": {
-      "type": "boolean",
-      "description": "Indicates if the jurisdiction state is an exclave"
-    },
-    "grc.jurisdiction-city": {
-      "type": "string",
-      "description": "State-specific city identifier",
-      "minLength": 2,
-      "maxLength": 16,
-      "examples": ["San Francisco", "Toronto", "London"]
-    },
-    "grc.jurisdiction-city-exclave": {
-      "type": "boolean",
-      "description": "Indicates if the jurisdiction city is an exclave"
-    },
-    "grc.physical-country": {
-      "type": "string",
-      "description": "ISO 3166-1 alpha-2 country code where the entity is physically located (as opposed to jurisdiction)",
-      "pattern": "^[A-Z]{2}$",
-      "examples": ["US", "CA", "GB"]
-    },
-    "grc.physical-state": {
-      "type": "string",
-      "description": "Physical state or province where the entity is actually located (as opposed to jurisdiction)",
-      "minLength": 2,
-      "maxLength": 16,
-      "examples": ["California", "TX", "Ontario"]
-    },
-    "grc.physical-city": {
-      "type": "string",
-      "description": "Physical city where the entity is actually located (as opposed to jurisdiction)",
-      "minLength": 2,
-      "maxLength": 16,
-      "examples": ["Los Angeles", "Toronto", "London"]
-    },
-    "grc.datacenter": {
+    "grc.geolocation": {
       "type": "object",
-      "description": "Data center physical infrastructure location details",
+      "description": "Geographic location information including legal jurisdiction and physical location",
       "properties": {
+        "jurisdiction": {
+          "type": "object",
+          "description": "Legal/sovereign territory information - determines which country's laws, regulations, and courts apply",
+          "properties": {
+            "country": {
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 country code",
+              "pattern": "^[A-Z]{2}$",
+              "examples": ["US", "CA", "GB"]
+            },
+            "country-exclave": {
+              "type": "boolean",
+              "description": "Indicates if the jurisdiction country is an exclave"
+            },
+            "state": {
+              "type": "string",
+              "description": "Country-specific state or province identifier",
+              "minLength": 2,
+              "maxLength": 16,
+              "examples": ["California", "TX", "Ontario"]
+            },
+            "state-exclave": {
+              "type": "boolean",
+              "description": "Indicates if the jurisdiction state is an exclave"
+            },
+            "city": {
+              "type": "string",
+              "description": "State-specific city identifier",
+              "minLength": 2,
+              "maxLength": 16,
+              "examples": ["San Francisco", "Toronto", "London"]
+            },
+            "city-exclave": {
+              "type": "boolean",
+              "description": "Indicates if the jurisdiction city is an exclave"
+            }
+          },
+          "additionalProperties": false
+        },
+        "physical-location": {
+          "type": "object",
+          "description": "Physical location where the entity is actually located (as opposed to jurisdiction). Supports three formats: precise coordinates, approximated region, or administrative boundaries.",
+          "properties": {
+            "format": {
+              "type": "string",
+              "enum": ["precise", "approximated", "administrative"],
+              "description": "Location format type: 'precise' for exact coordinates, 'approximated' for approximate region, 'administrative' for country/state/city boundaries"
+            },
+            "precise": {
+              "type": "object",
+              "description": "Precise location using WGS84 coordinates (format: precise)",
+              "properties": {
+                "latitude": {
+                  "type": "number",
+                  "description": "Latitude in decimal degrees (WGS84)",
+                  "minimum": -90,
+                  "maximum": 90,
+                  "examples": [37.7749, -122.4194]
+                },
+                "longitude": {
+                  "type": "number",
+                  "description": "Longitude in decimal degrees (WGS84)",
+                  "minimum": -180,
+                  "maximum": 180,
+                  "examples": [-122.4194, 2.3522]
+                },
+                "altitude": {
+                  "type": "number",
+                  "description": "Altitude in meters above sea level (optional)",
+                  "examples": [0, 100, -50]
+                },
+                "accuracy": {
+                  "type": "number",
+                  "description": "Accuracy radius in meters (optional)",
+                  "minimum": 0,
+                  "examples": [10, 100, 1000]
+                }
+              },
+              "required": ["latitude", "longitude"],
+              "additionalProperties": false
+            },
+            "approximated": {
+              "type": "object",
+              "description": "Approximated location using bounding box or region (format: approximated)",
+              "properties": {
+                "bounding-box": {
+                  "type": "object",
+                  "description": "Bounding box defining the approximate region",
+                  "properties": {
+                    "north": {
+                      "type": "number",
+                      "description": "Northern boundary latitude",
+                      "minimum": -90,
+                      "maximum": 90
+                    },
+                    "south": {
+                      "type": "number",
+                      "description": "Southern boundary latitude",
+                      "minimum": -90,
+                      "maximum": 90
+                    },
+                    "east": {
+                      "type": "number",
+                      "description": "Eastern boundary longitude",
+                      "minimum": -180,
+                      "maximum": 180
+                    },
+                    "west": {
+                      "type": "number",
+                      "description": "Western boundary longitude",
+                      "minimum": -180,
+                      "maximum": 180
+                    }
+                  },
+                  "required": ["north", "south", "east", "west"],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "administrative": {
+              "type": "object",
+              "description": "Administrative boundaries: country, state, city (format: administrative)",
+              "properties": {
+                "country": {
+                  "type": "string",
+                  "description": "ISO 3166-1 alpha-2 country code",
+                  "pattern": "^[A-Z]{2}$",
+                  "examples": ["US", "CA", "GB"]
+                },
+                "state": {
+                  "type": "string",
+                  "description": "State or province identifier",
+                  "minLength": 2,
+                  "maxLength": 16,
+                  "examples": ["California", "TX", "Ontario"]
+                },
+                "city": {
+                  "type": "string",
+                  "description": "City identifier",
+                  "minLength": 2,
+                  "maxLength": 16,
+                  "examples": ["Los Angeles", "Toronto", "London"]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": ["format"],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "format": {"const": "precise"},
+                "precise": {"type": "object"}
+              },
+              "required": ["precise"]
+            },
+            {
+              "properties": {
+                "format": {"const": "approximated"},
+                "approximated": {"type": "object"}
+              },
+              "required": ["approximated"]
+            },
+            {
+              "properties": {
+                "format": {"const": "administrative"},
+                "administrative": {"type": "object"}
+              },
+              "required": ["administrative"]
+            }
+          ]
+        }
+      },
+      "location-sensor-hardware": {
+        "type": "object",
+        "description": "Hardware sensor information used to determine location",
+        "properties": {
+          "sensor-type": {
+            "type": "string",
+            "enum": ["GNSS", "Mobile"],
+            "description": "Type of location sensor: GNSS (Global Navigation Satellite System) or Mobile (cellular network-based)"
+          },
+          "serial-number": {
+            "type": "string",
+            "description": "Serial number of the location sensor hardware",
+            "minLength": 1,
+            "maxLength": 64,
+            "examples": ["SN123456789", "GPS-2024-001"]
+          },
+          "imei": {
+            "type": "string",
+            "description": "International Mobile Equipment Identity (IMEI) - required when sensor-type is 'Mobile'",
+            "pattern": "^[0-9]{14,15}$",
+            "examples": ["123456789012345"]
+          },
+          "imsi": {
+            "type": "string",
+            "description": "International Mobile Subscriber Identity (IMSI) - required when sensor-type is 'Mobile'",
+            "pattern": "^[0-9]{14,15}$",
+            "examples": ["310150123456789"]
+          }
+        },
+        "required": ["sensor-type", "serial-number"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "sensor-type": {"const": "Mobile"}
+              }
+            },
+            "then": {
+              "required": ["imei", "imsi"]
+            }
+          }
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "grc.datacenter": {
+    "type": "object",
+    "description": "Data center physical infrastructure location details",
+    "properties": {
         "near-to": {
           "type": "string",
           "description": "UUID of another entity that this target environment is near to",
@@ -194,6 +397,19 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
           "maxLength": 65536,
           "examples": ["AQAAAAAAAADwAAAAAAA..."]
         },
+        "tpm-pcr-mask": {
+          "type": "string",
+          "description": "PCR Set Mask indicating which Platform Configuration Registers (PCRs) were measured. Represented as a hexadecimal bitmask where each bit corresponds to a PCR index (e.g., 0x80000003 indicates PCRs 0, 1, 2, 16, 17). This enables fine-grained verification of which components were measured (firmware, bootloader, secure boot, etc.).",
+          "pattern": "^0x[0-9a-fA-F]+$",
+          "examples": ["0x80000003", "0x00000007", "0xFFFFFFFF"]
+        },
+        "tpm-policy-id": {
+          "type": "string",
+          "description": "UUID or reference ID pointing to the specific baseline of 'known good' hashes against which the PCR values should be checked. This allows Service Providers to enforce fine-grained authorization logic based on specific boot policies (e.g., 'Only allow access if attested with Policy ID X for Linux boot with PCRs 0, 1, 7'). Can be a UUID or a string identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "examples": ["550e8400-e29b-41d4-a716-446655440000", "linux-boot-policy-v1", "secure-boot-baseline-2024"]
+        },
         "app-key-public": {
           "type": "string",
           "description": "The App Key public key in PEM format (preferred) or base64-encoded. Must parse as valid public key when present",
@@ -228,11 +444,60 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
         }
       },
       "additionalProperties": false
+    },
+    "rat-nonce": { // optional for peer verification
+      "type": "string",
+      "description": "Remote Attestation Nonce (RAT nonce) for freshness verification and anti-replay protection. This nonce ensures the attestation evidence is fresh and specific to the current transaction. For TPM attestation, it should be included in the EK-Signed Proof/Credential. The verifier checks that signed proofs contain the exact, expected nonce value to prevent replay attacks. If the nonce is derived from binary challenge data (e.g., from EK-Signed Proof/Credential), it should be Base64URL-encoded to align with JWT transport standards.",
+      "minLength": 16,
+      "maxLength": 256,
+      "examples": ["550e8400-e29b-41d4-a716-446655440000", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"]
     }
   },
   "additionalProperties": false
 }
 ```
+
+## Revocation Mechanisms for Identity Claims
+
+All high-assurance identity models must explicitly address failure scenarios. When a device's TPM is compromised, when the host is compromised, when workload keys are retired, or when any identity claim becomes invalid, revocation mechanisms are critical to prevent unauthorized access.
+
+**Revocation Handling by Authorization Model:**
+
+#### Model 1: Single Identity JWT
+
+- **Revocation Method**: The Enterprise IDP must revoke the entire JWT immediately when any component is compromised (TPM App Key, workload key, geographic attestation, etc.) or when identity/role claims become invalid.
+- **Rationale**: Since all claims (identity, role, TPM attestation, geographic) are in a single signed JWT, revocation requires invalidating the entire token.
+- **Implementation**: This justifies the short TTL (e.g., minutes) mentioned in Model 1, as compromised credentials can only be used until the token expires naturally or is explicitly revoked by the IDP.
+
+#### Model 2: Nested JWT in HTTP Header
+
+- **Revocation Method**: The Service Provider must query an Enterprise-operated Certificate Revocation List (CRL) or OCSP responder for the device's key certificate (App Key Certificate for TPM-based keys, or workload key certificate) before accepting the nested JWT.
+- **Rationale**: Even if the Identity JWT hasn't expired, compromised hardware keys or invalid attestation claims must be unusable. The SP verifies the key certificate status independently of the Identity JWT.
+- **Implementation**: The SP performs certificate status checking as part of the nested JWT verification process, ensuring the device key (whether TPM App Key or workload key) hasn't been revoked.
+
+#### Model 3: X.509 Certificate (SPIFFE/SPIRE SVID)
+
+- **Revocation Method**: The Service Provider must check the SVID's revocation status via CRL or OCSP before accepting the certificate.
+- **Rationale**: Standard X.509 certificate revocation mechanisms apply. The SP verifies both the certificate chain and revocation status.
+- **Implementation**: The SP checks revocation status as part of standard certificate validation, ensuring compromised keys (TPM App Keys or workload keys) bound to SVIDs are immediately unusable. For mTLS connections, **OCSP stapling** should be used to improve performance—the device delivers the fresh, CA-signed revocation proof during the TLS handshake, reducing the burden on the SP to query the CA directly.
+
+**TPM-Specific Revocation Considerations:**
+
+**TPM App Key Revocation:**
+- When a TPM App Key is compromised or retired, it must be revoked through the appropriate mechanism for the authorization model (JWT revocation for Model 1, CRL/OCSP for Models 2 and 3).
+
+**TPM Quote Status Checking:**
+- Service Providers should verify that the TPM Quote itself hasn't been invalidated due to:
+  - Platform integrity violations (PCR values indicating compromised boot state)
+  - Policy violations (measured values don't match the expected baseline for the Policy ID)
+  - Time-based revocation (quotes from compromised time periods)
+
+**Best Practices:**
+
+1. **Real-time Revocation Checking**: SPs should perform revocation checks on every request, not rely solely on token expiration.
+2. **Revocation List Distribution**: Enterprise operators must maintain and distribute CRLs or operate OCSP responders accessible to federated SPs.
+3. **Fail-Safe Default**: If revocation status cannot be determined, the SP should deny access by default (fail-secure).
+4. **Revocation Propagation**: Revocation should propagate quickly across all SPs in the federation to minimize the window of vulnerability.
 
 ### TPM Attestation Verification
 
@@ -246,6 +511,15 @@ This is a classic offline cryptographic check:
   - The Quote is genuine and came from the TPM owning the AK.
   - The PCR measurements inside the Quote are authentic and untampered.
 
+**When a device needs to prove its integrity to a remote verifier:**
+1. **The Policy is Chosen**: The system determines which software/boot components must be measured, selecting the appropriate TPM Policy ID (e.g., "Standard Linux Kernel Secure Boot").
+2. **The Quote is Generated**: The system uses the PCR Mask associated with that policy to ask the TPM to generate a TPM Quote. The TPM reads the specified PCRs, hashes the list, and signs the result with the AK's private key.
+3. **Verification**: The remote verifier receives the TPM Quote and the TPM Policy ID:
+   - The verifier first checks the Quote's signature (using the AK public key).
+   - The verifier then looks up the expected PCR values associated with the TPM Policy ID.
+   - Finally, the verifier compares the measured PCR values from the Quote against the expected values from the Policy ID.
+   - If the signature is valid and the measured values match the policy, the platform's integrity is verified.
+
 #### 2. TPM App Key Certificate Verification (Identity Binding)
 
 This is also an offline verification of a standard X.509 certificate chain:
@@ -254,7 +528,30 @@ This is also an offline verification of a standard X.509 certificate chain:
 - **Process**: The verifier checks the signature on the `app-key-certificate` using the AK's Public Key. The verifier must also ensure the AK's Public Key is itself trusted (typically via a separate, trusted AK Certificate issued by an offline CA).
 - **Output**: A pass/fail on the certificate chain. If it passes, the verifier is assured that the App Key Public Key contained within the certificate is genuinely bound to the trusted TPM/AK.
 
-> **Note:** This JSON Schema is converted from the CDDL definition in [draft-richardson-rats-geographic-results](https://datatracker.ietf.org/doc/draft-richardson-rats-geographic-results/). All properties are optional, with `minProperties: 1` ensuring at least one claim is present (matching CDDL's `non-empty<{...}>` constraint). The data center infrastructure fields (near-to, rack-U-number, cabinet-number, hallway-number, room-number, floor-number) have been nested under `grc.datacenter` for better organization, deviating from the flat structure in the original CDDL. Additional fields for workload identity (`grc.workload`) and TPM attestation (`grc.tpm-attestation`) have been added to support hardware-rooted attestation and workload identity verification.
+> **Note:** This JSON Schema is converted from the CDDL definition in [draft-richardson-rats-geographic-results](https://datatracker.ietf.org/doc/draft-richardson-rats-geographic-results/). All properties are optional, with `minProperties: 1` ensuring at least one claim is present (matching CDDL's `non-empty<{...}>` constraint). For better organization, fields have been grouped into nested objects: geographic location fields (jurisdiction and physical-location) under `grc.geolocation`, data center infrastructure fields (near-to, rack-U-number, cabinet-number, hallway-number, room-number, floor-number) under `grc.datacenter`, workload identity under `grc.workload`, and TPM attestation under `grc.tpm-attestation`, deviating from the flat structure in the original CDDL. Additional fields for workload identity and TPM attestation have been added to support hardware-rooted attestation and workload identity verification.
+
+### 3. TPM Endorsement Key (EK) Verification (Optional for Peer Verification)
+
+By receiving the complete evidence package from the Attestation Service, the peer verifier has all the cryptographic material needed to establish the hardware root of trust without a live connection to the device or the initial CA.
+
+**Package Components and Their Role in Offline Verification:**
+
+| Component Conveyed | Verification Purpose | Offline Check Performed |
+|-------------------|---------------------|------------------------|
+| **TPM EK Public Key** | Hardware Genuineness Anchor | Acts as the public key needed to verify the manufacturer's root of trust. |
+| **TPM AK Public Key** | Attestation Key Identity | Acts as the public key needed to verify the TPM Quote and the App Key Certificate. |
+| **EK-Signed Proof/Credential** | AK-to-EK Binding | The verifier uses the EK Public Key to verify the signature on this proof, confirming the AK was generated by the authentic TPM hardware. |
+| **Nonce** | Anti-Replay Protection | The verifier checks that the EK-Signed Proof contains the exact, expected nonce value, guaranteeing the evidence is fresh and specific to the current transaction. |
+
+**🛡️ Trust Gained Through Offline Verification**
+
+By successfully verifying all four components, the peer verifier gains a very high level of trust:
+
+- **Hardware Trust (via EK)**: They confirm that the AK Public Key is genuinely bound to a specific, certified piece of TPM hardware.
+- **Liveness/Freshness (via Nonce)**: They confirm the proof is current and not a replay of old data.
+- **Integrity Trust (via AK)**: Once the AK is trusted, they can then proceed to use it to verify the TPM Quote (integrity evidence) and the TPM App Key Certificate (workload identity).
+
+This is why conveying this complete package is the highest standard for federated, high-assurance identity verification.
 
 ### Workload Key Source Usage
 
@@ -300,11 +597,20 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
 #### 1. Embassy/Consulate Scenario
 ```json
 {
-  "grc.jurisdiction-country": "KR",
-  "grc.jurisdiction-country-exclave": true,
-  "grc.physical-country": "US",
-  "grc.physical-state": "California",
-  "grc.physical-city": "Los Angeles"
+  "grc.geolocation": {
+    "jurisdiction": {
+      "country": "KR",
+      "country-exclave": true
+    },
+    "physical-location": {
+      "format": "administrative",
+      "administrative": {
+        "country": "US",
+        "state": "California",
+        "city": "Los Angeles"
+      }
+    }
+  }
 }
 ```
 **Context**: Korean consulate in Los Angeles
@@ -315,10 +621,19 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
 #### 2. Data Center in Special Economic Zone
 ```json
 {
-  "grc.jurisdiction-country": "HK",
-  "grc.physical-country": "CN",
-  "grc.physical-state": "Guangdong",
-  "grc.physical-city": "Shenzhen"
+  "grc.geolocation": {
+    "jurisdiction": {
+      "country": "HK"
+    },
+    "physical-location": {
+      "format": "administrative",
+      "administrative": {
+        "country": "CN",
+        "state": "Guangdong",
+        "city": "Shenzhen"
+      }
+    }
+  }
 }
 ```
 **Context**: Hong Kong-registered data center physically located in mainland China
@@ -329,17 +644,66 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
 #### 3. Normal Case (No Exclave)
 ```json
 {
-  "grc.jurisdiction-country": "US",
-  "grc.jurisdiction-state": "California",
-  "grc.jurisdiction-city": "San Francisco",
-  "grc.physical-country": "US",
-  "grc.physical-state": "California",
-  "grc.physical-city": "San Francisco"
+  "grc.geolocation": {
+    "jurisdiction": {
+      "country": "US",
+      "state": "California",
+      "city": "San Francisco"
+    },
+    "physical-location": {
+      "format": "administrative",
+      "administrative": {
+        "country": "US",
+        "state": "California",
+        "city": "San Francisco"
+      }
+    }
+  }
 }
 ```
 **Context**: Standard deployment where jurisdiction matches physical location
 - **Both match**: No exclave situation
 - **Why it matters**: When they match, you may only need jurisdiction fields; physical fields are optional
+
+#### 4. Precise Location Example
+```json
+{
+  "grc.geolocation": {
+    "physical-location": {
+      "format": "precise",
+      "precise": {
+        "latitude": 37.7749,
+        "longitude": -122.4194,
+        "accuracy": 10
+      }
+    }
+  }
+}
+```
+**Context**: Exact GPS coordinates with accuracy radius
+- **Use case**: When precise location is required (e.g., compliance with specific building/room requirements)
+
+#### 5. Approximated Location Example
+```json
+{
+  "grc.geolocation": {
+    "physical-location": {
+      "format": "approximated",
+      "approximated": {
+        "bounding-box": {
+          "north": 37.8,
+          "south": 37.7,
+          "east": -122.3,
+          "west": -122.5
+        },
+        "region-name": "San Francisco Bay Area"
+      }
+    }
+  }
+}
+```
+**Context**: Approximate region without revealing exact location
+- **Use case**: Privacy-preserving location verification (e.g., confirming within a metropolitan area without exposing precise coordinates)
 
 ### Why This Distinction Matters
 
