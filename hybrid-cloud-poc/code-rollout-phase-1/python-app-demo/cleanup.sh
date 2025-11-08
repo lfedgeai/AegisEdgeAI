@@ -9,18 +9,15 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 echo "Unified-Identity - Phase 1: Cleaning up Python App Demo"
 echo ""
 
-QUIET=${QUIET:-0}
+# Force QUIET=0 to ensure cleanup output is visible
+export QUIET=0
 
 "${PROJECT_ROOT}/scripts/stop-unified-identity.sh"
 
-if [ "$QUIET" -eq 0 ]; then
-    echo "Removing SVID output files..."
-fi
+echo "Removing SVID output files..."
 rm -rf /tmp/svid-dump /tmp/svid.pem /tmp/svid.key /tmp/svid_attested_claims.json 2>/dev/null || true
 
-if [ "$QUIET" -eq 0 ]; then
-    echo ""
-    echo "✓ Cleanup complete"
-fi
+echo ""
+echo "✓ Cleanup complete"
 
 

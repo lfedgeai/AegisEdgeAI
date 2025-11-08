@@ -11,13 +11,18 @@ SERVER_CONFIG="${SERVER_CONFIG:-${PYTHON_DEMO_DIR}/spire-server.conf}"
 AGENT_CONFIG="${AGENT_CONFIG:-${PYTHON_DEMO_DIR}/spire-agent.conf}"
 AGENT_SPIFFE_ID="${AGENT_SPIFFE_ID:-spiffe://example.org/host/python-demo-agent}"
 
+# ANSI color codes
+BOLD='\033[1m'
+CYAN='\033[0;36m'
+RESET='\033[0m'
+
 fail() {
     echo "✗ $1" >&2
     exit 1
 }
 
 step() {
-    echo "\n=== $1 ==="
+    echo -e "\n${BOLD}${CYAN}=== $1 ===${RESET}"
 }
 
 wait_for_log() {
@@ -38,7 +43,22 @@ wait_for_log() {
 }
 
 step "Cleaning up any previous runs"
-QUIET=1 "${PYTHON_DEMO_DIR}/cleanup.sh" || true
+"${PYTHON_DEMO_DIR}/cleanup.sh" || true
+
+# Verify clean state (no entries, no processes)
+SPIRE_DIR="${PROJECT_ROOT}/spire"
+SERVER_SOCKET="/tmp/spire-server/private/api.sock"
+if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
+    ENTRY_LIST=$("${SPIRE_DIR}/bin/spire-server" entry list -socketPath "$SERVER_SOCKET" 2>/dev/null || echo "")
+    if [ -n "$ENTRY_LIST" ] && echo "$ENTRY_LIST" | grep -q "Entry ID"; then
+        echo "  ⚠ WARNING: Registration entries still exist after cleanup"
+        echo "  ⚠ This may cause test failures - entries should be cleaned up"
+    else
+        echo "  ✓ Verified: No registration entries (clean state)"
+    fi
+else
+    echo "  ✓ Verified: SPIRE server not running (clean state)"
+fi
 
 step "Ensuring Python dependencies"
 if ! python3 -c "import spiffe.workloadapi" 2>/dev/null || ! python3 -c "import grpc" 2>/dev/null; then
@@ -52,7 +72,7 @@ if [ -f "${PYTHON_DEMO_DIR}/fetch-sovereign-svid-grpc.py" ] && [ ! -f "${PYTHON_
 fi
 
 step "Starting SPIRE stack"
-QUIET=1 SERVER_CONFIG="$SERVER_CONFIG" AGENT_CONFIG="$AGENT_CONFIG" AGENT_SPIFFE_ID="$AGENT_SPIFFE_ID" \
+SERVER_CONFIG="$SERVER_CONFIG" AGENT_CONFIG="$AGENT_CONFIG" AGENT_SPIFFE_ID="$AGENT_SPIFFE_ID" \
     "${PROJECT_ROOT}/scripts/start-unified-identity.sh"
 
 step "Verifying agent bootstrap AttestedClaims"
@@ -149,7 +169,7 @@ step "Dumping SVID for inspection"
 echo "\nAll checks passed ✅"
 
 step "Cleaning up"
-QUIET=1 "${PYTHON_DEMO_DIR}/cleanup.sh"
+"${PYTHON_DEMO_DIR}/cleanup.sh"
 
 echo "Test completed successfully"
 
