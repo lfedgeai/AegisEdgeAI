@@ -332,10 +332,10 @@ def main():
         print()
         if claims_json:
             print("To view the SVID with AttestedClaims:")
-            print(f"  ../scripts/dump-svid -cert {cert_file} -attested {output_dir / 'attested_claims.json'}")
+            print(f"  ../../code-rollout-phase-2/dump-svid-attested-claims.sh {cert_file}")
         else:
             print("To view the SVID:")
-            print(f"  ../scripts/dump-svid -cert {cert_file}")
+            print(f"  ../../code-rollout-phase-2/dump-svid-attested-claims.sh {cert_file}")
     else:
         print("Error: Could not fetch SVID")
         sys.exit(1)

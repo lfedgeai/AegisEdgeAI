@@ -369,13 +369,10 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 		return api.MakeErr(log, codes.PermissionDenied, "failed to attest: agent is banned", nil)
 	}
 
-	// parse and sign CSR
-	svid, err := s.signSvid(ctx, agentID, params.Params.Csr, log)
-	if err != nil {
-		return err
-	}
-
+	// Unified-Identity - Phase 1 & Phase 2: Process AttestedClaims BEFORE signing SVID
+	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
+	var attestedClaimsForCert *types.AttestedClaims
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 		if params.Params != nil {
 			if params.Params.SovereignAttestation != nil {
@@ -386,13 +383,14 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 				}
 				if claims != nil {
 					attestedClaims = []*types.AttestedClaims{claims}
+					attestedClaimsForCert = claims
 					log.WithFields(logrus.Fields{
 						"geolocation":   claims.Geolocation,
 						"integrity":     claims.HostIntegrityStatus.String(),
 						"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
 						"gpu_util_pct":  claims.GpuMetricsHealth.GetUtilizationPct(),
 						"gpu_memory_mb": claims.GpuMetricsHealth.GetMemoryMb(),
-					}).Info("Unified-Identity - Phase 1: AttestedClaims attached to agent bootstrap SVID")
+					}).Info("Unified-Identity - Phase 1 & Phase 2: AttestedClaims will be embedded in agent SVID certificate")
 				} else {
 					log.Warn("Unified-Identity - Phase 1: processSovereignAttestation returned nil claims")
 				}
@@ -402,6 +400,12 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 		} else {
 			log.Warn("Unified-Identity - Phase 1: params.Params is nil in agent attestation request")
 		}
+	}
+
+	// parse and sign CSR with AttestedClaims embedded in certificate
+	svid, err := s.signSvid(ctx, agentID, params.Params.Csr, log, attestedClaimsForCert)
+	if err != nil {
+		return err
 	}
 
 	// dedupe and store node selectors
@@ -489,7 +493,10 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		return nil, api.MakeErr(log, codes.InvalidArgument, "missing CSR", nil)
 	}
 
+	// Unified-Identity - Phase 1 & Phase 2: Process AttestedClaims BEFORE signing SVID
+	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
+	var attestedClaimsForCert *types.AttestedClaims
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) && req.Params.SovereignAttestation != nil {
 		claims, err := s.processSovereignAttestation(ctx, log, req.Params.SovereignAttestation, callerID.String())
 		if err != nil {
@@ -497,10 +504,16 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		}
 		if claims != nil {
 			attestedClaims = []*types.AttestedClaims{claims}
+			attestedClaimsForCert = claims
+			log.WithFields(logrus.Fields{
+				"geolocation":   claims.Geolocation,
+				"integrity":     claims.HostIntegrityStatus.String(),
+				"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
+			}).Info("Unified-Identity - Phase 1 & Phase 2: AttestedClaims will be embedded in agent SVID certificate")
 		}
 	}
 
-	agentSVID, err := s.signSvid(ctx, callerID, req.Params.Csr, log)
+	agentSVID, err := s.signSvid(ctx, callerID, req.Params.Csr, log, attestedClaimsForCert)
 	if err != nil {
 		return nil, err
 	}
@@ -711,16 +724,18 @@ func (s *Service) updateAttestedNode(ctx context.Context, node *common.AttestedN
 	}
 }
 
-func (s *Service) signSvid(ctx context.Context, agentID spiffeid.ID, csr []byte, log logrus.FieldLogger) ([]*x509.Certificate, error) {
+func (s *Service) signSvid(ctx context.Context, agentID spiffeid.ID, csr []byte, log logrus.FieldLogger, attestedClaims *types.AttestedClaims) ([]*x509.Certificate, error) {
 	parsedCsr, err := x509.ParseCertificateRequest(csr)
 	if err != nil {
 		return nil, api.MakeErr(log, codes.InvalidArgument, "failed to parse CSR", err)
 	}
 
-	// Sign a new X509 SVID
+	// Unified-Identity - Phase 1 & Phase 2: Sign X509 SVID with AttestedClaims embedded in certificate extension
+	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
 	x509Svid, err := s.ca.SignAgentX509SVID(ctx, ca.AgentX509SVIDParams{
-		SPIFFEID:  agentID,
-		PublicKey: parsedCsr.PublicKey,
+		SPIFFEID:       agentID,
+		PublicKey:      parsedCsr.PublicKey,
+		AttestedClaims: attestedClaims, // Unified-Identity - Phase 1 & Phase 2: Embed AttestedClaims in certificate
 	})
 	if err != nil {
 		return nil, api.MakeErr(log, codes.Internal, "failed to sign X509 SVID", err)

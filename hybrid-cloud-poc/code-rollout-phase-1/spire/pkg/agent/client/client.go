@@ -723,10 +723,19 @@ func BuildSovereignAttestationStub() *types.SovereignAttestation {
 	// In future phases, this will be a real TPM quote
 	// Use base64-encoded stub data to pass Keylime stub validation
 	stubQuote := base64.StdEncoding.EncodeToString([]byte("stub-tpm-quote-phase1"))
+	
+	// Unified-Identity - Phase 2: Use valid PEM format for stub public key
+	// This is a valid PEM-format EC public key for testing (generated with cryptography library)
+	// In production, this will be a real TPM App Key public key
+	stubAppKeyPublic := `-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEmEfSIT6GJla8CK04AsF4bv9WyoFZ
+BKTlYihT6v7QGy4hUq/djGG4il7vHmRm8nuOUzrQy7ViZhwhjNIRJH0hDg==
+-----END PUBLIC KEY-----`
+	
 	return &types.SovereignAttestation{
 		TpmSignedAttestation: stubQuote,
-		AppKeyPublic:         "stub-app-key-public-phase1",
-		AppKeyCertificate:    []byte("stub-app-key-cert-phase1"),
+		AppKeyPublic:         stubAppKeyPublic,
+		AppKeyCertificate:    []byte("stub-app-key-cert-phase1"), // Optional for testing
 		ChallengeNonce:       "stub-nonce-phase-1",
 		WorkloadCodeHash:     "stub-workload-code-hash-phase1",
 	}

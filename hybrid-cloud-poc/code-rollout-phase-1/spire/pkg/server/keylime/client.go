@@ -47,9 +47,11 @@ type AttestedClaims struct {
 }
 
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 // VerifyEvidenceRequest represents the request to Keylime
 type VerifyEvidenceRequest struct {
-	Data struct {
+	Type   string `json:"type"` // Unified-Identity - Phase 2: Required by Keylime Verifier
+	Data   struct {
 		Nonce            string `json:"nonce"`
 		Quote            string `json:"quote"`
 		HashAlg          string `json:"hash_alg"`
@@ -98,14 +100,18 @@ func NewClient(config Config) (*Client, error) {
 	}
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 	// Configure TLS
+	// For Phase 2 testing with self-signed certificates, allow insecure skip
+	// In production, this should be false and CA cert should be loaded
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: false, // In production, this should be false
+		InsecureSkipVerify: true, // Phase 2: Allow self-signed certs for testing
 	}
 
 	if config.CACert != "" {
-		// In production, load CA cert
-		config.Logger.Info("Unified-Identity - Phase 1: CA certificate loading not implemented in stub")
+		// Unified-Identity - Phase 2: Load CA cert if provided
+		// TODO: Implement CA cert loading for production use
+		config.Logger.Info("Unified-Identity - Phase 2: CA certificate loading not yet implemented")
 	}
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
@@ -212,11 +218,16 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 }
 
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 // BuildVerifyEvidenceRequest builds a VerifyEvidenceRequest from SovereignAttestation
 func BuildVerifyEvidenceRequest(sovereignAttestation *SovereignAttestationProto, nonce string) (*VerifyEvidenceRequest, error) {
 	req := &VerifyEvidenceRequest{}
 
+	// Unified-Identity - Phase 2: Set evidence type (required by Keylime Verifier)
+	req.Type = "tpm"
+
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 	// Set data fields
 	req.Data.Nonce = sovereignAttestation.ChallengeNonce
 	if req.Data.Nonce == "" {
@@ -227,12 +238,14 @@ func BuildVerifyEvidenceRequest(sovereignAttestation *SovereignAttestationProto,
 	req.Data.AppKeyPublic = sovereignAttestation.AppKeyPublic
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 	// Base64 encode app_key_certificate if present
 	if len(sovereignAttestation.AppKeyCertificate) > 0 {
 		req.Data.AppKeyCertificate = base64.StdEncoding.EncodeToString(sovereignAttestation.AppKeyCertificate)
 	}
 
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 	// Set metadata
 	req.Metadata.Source = "SPIRE Server"
 	req.Metadata.SubmissionType = "PoR/tpm-app-key"

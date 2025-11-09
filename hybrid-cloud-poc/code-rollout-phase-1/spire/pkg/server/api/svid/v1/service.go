@@ -299,11 +299,20 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 		}
 	}
 
+	// Unified-Identity - Phase 1 & Phase 2: Sign X509 SVID with AttestedClaims embedded in certificate extension
+	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
+	var attestedClaimsForCert *types.AttestedClaims
+	if attestedClaims != nil && len(attestedClaims) > 0 {
+		attestedClaimsForCert = attestedClaims[0]
+		log.Debug("Unified-Identity - Phase 1 & Phase 2: Embedding AttestedClaims in workload SVID certificate")
+	}
+
 	x509Svid, err := s.ca.SignWorkloadX509SVID(ctx, ca.WorkloadX509SVIDParams{
-		SPIFFEID:  spiffeID,
-		PublicKey: csr.PublicKey,
-		DNSNames:  entry.GetDnsNames(),
-		TTL:       time.Duration(entry.GetX509SvidTtl()) * time.Second,
+		SPIFFEID:       spiffeID,
+		PublicKey:      csr.PublicKey,
+		DNSNames:       entry.GetDnsNames(),
+		TTL:            time.Duration(entry.GetX509SvidTtl()) * time.Second,
+		AttestedClaims: attestedClaimsForCert, // Unified-Identity - Phase 1 & Phase 2: Embed AttestedClaims in certificate
 	})
 	if err != nil {
 		return &svidv1.BatchNewX509SVIDResponse_Result{

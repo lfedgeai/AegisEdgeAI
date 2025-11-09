@@ -178,11 +178,11 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
             },
             "approximated": {
               "type": "object",
-              "description": "Approximated location using bounding box or region (format: approximated)",
+              "description": "Approximated location using bounding box, circle, or region (format: approximated)",
               "properties": {
                 "bounding-box": {
                   "type": "object",
-                  "description": "Bounding box defining the approximate region",
+                  "description": "Bounding box (rectangle) defining the approximate region",
                   "properties": {
                     "north": {
                       "type": "number",
@@ -211,9 +211,45 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
                   },
                   "required": ["north", "south", "east", "west"],
                   "additionalProperties": false
+                },
+                "circle": {
+                  "type": "object",
+                  "description": "Circle defining the approximate region (center point with radius)",
+                  "properties": {
+                    "latitude": {
+                      "type": "number",
+                      "description": "Center latitude in decimal degrees (WGS84)",
+                      "minimum": -90,
+                      "maximum": 90,
+                      "examples": [37.7749, -122.4194]
+                    },
+                    "longitude": {
+                      "type": "number",
+                      "description": "Center longitude in decimal degrees (WGS84)",
+                      "minimum": -180,
+                      "maximum": 180,
+                      "examples": [-122.4194, 2.3522]
+                    },
+                    "radius": {
+                      "type": "number",
+                      "description": "Radius in meters defining the circular area",
+                      "minimum": 0,
+                      "examples": [100, 1000, 5000]
+                    }
+                  },
+                  "required": ["latitude", "longitude", "radius"],
+                  "additionalProperties": false
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": ["bounding-box"]
+                },
+                {
+                  "required": ["circle"]
+                }
+              ]
             },
             "administrative": {
               "type": "object",
@@ -584,6 +620,10 @@ The `grc.workload.key-source` field indicates which key is used for both signing
 
 The validator should use `grc.tpm-attestation.app-key-public` for both signing and mTLS when `key-source` is `"tpm-app-key"`, eliminating the need for a separate workload public key.
 
+## References
+
+- [CAMARA Device Location Verification API](https://github.com/camaraproject/DeviceLocation)
+
 ## Appendix: Understanding Jurisdiction vs. Physical Location
 
 ### Key Concepts
@@ -683,7 +723,7 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
 **Context**: Exact GPS coordinates with accuracy radius
 - **Use case**: When precise location is required (e.g., compliance with specific building/room requirements)
 
-#### 5. Approximated Location Example
+#### 5. Approximated Location Example (Rectangle/Bounding Box)
 ```json
 {
   "grc.geolocation": {
@@ -695,15 +735,34 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
           "south": 37.7,
           "east": -122.3,
           "west": -122.5
-        },
-        "region-name": "San Francisco Bay Area"
+        }
       }
     }
   }
 }
 ```
-**Context**: Approximate region without revealing exact location
+**Context**: Approximate region using rectangular bounding box
 - **Use case**: Privacy-preserving location verification (e.g., confirming within a metropolitan area without exposing precise coordinates)
+
+#### 6. Approximated Location Example (Circle)
+```json
+{
+  "grc.geolocation": {
+    "physical-location": {
+      "format": "approximated",
+      "approximated": {
+        "circle": {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "radius": 5000
+        }
+      }
+    }
+  }
+}
+```
+**Context**: Approximate region using circular area (center point with radius in meters)
+- **Use case**: Location verification within a circular area, compatible with [CAMARA Device Location Verification API](https://github.com/camaraproject/DeviceLocation) circle format
 
 ### Why This Distinction Matters
 

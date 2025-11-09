@@ -23,6 +23,7 @@ import (
 	"github.com/spiffe/spire/pkg/common/x509util"
 	"github.com/spiffe/spire/pkg/server/credtemplate"
 	"github.com/spiffe/spire/pkg/server/credvalidator"
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 )
 
 const (
@@ -62,6 +63,10 @@ type AgentX509SVIDParams struct {
 
 	// SPIFFE ID of the agent
 	SPIFFEID spiffeid.ID
+
+	// Unified-Identity - Phase 1 & Phase 2: AttestedClaims to embed in certificate extension
+	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
+	AttestedClaims *types.AttestedClaims
 }
 
 // WorkloadX509SVIDParams are parameters relevant to workload X509-SVID creation
@@ -82,6 +87,10 @@ type WorkloadX509SVIDParams struct {
 
 	// Subject of the SVID. Default subject is used if it is empty.
 	Subject pkix.Name
+
+	// Unified-Identity - Phase 1 & Phase 2: AttestedClaims to embed in certificate extension
+	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
+	AttestedClaims *types.AttestedClaims
 }
 
 // WorkloadJWTSVIDParams are parameters relevant to workload JWT-SVID creation
@@ -266,9 +275,10 @@ func (ca *CA) SignAgentX509SVID(ctx context.Context, params AgentX509SVIDParams)
 	}
 
 	template, err := ca.c.CredBuilder.BuildAgentX509SVIDTemplate(ctx, credtemplate.AgentX509SVIDParams{
-		ParentChain: caChain,
-		PublicKey:   params.PublicKey,
-		SPIFFEID:    params.SPIFFEID,
+		ParentChain:    caChain,
+		PublicKey:      params.PublicKey,
+		SPIFFEID:       params.SPIFFEID,
+		AttestedClaims: params.AttestedClaims, // Unified-Identity - Phase 1 & Phase 2: Pass AttestedClaims to embed in certificate
 	})
 	if err != nil {
 		return nil, err
@@ -293,12 +303,13 @@ func (ca *CA) SignWorkloadX509SVID(ctx context.Context, params WorkloadX509SVIDP
 	}
 
 	template, err := ca.c.CredBuilder.BuildWorkloadX509SVIDTemplate(ctx, credtemplate.WorkloadX509SVIDParams{
-		ParentChain: caChain,
-		PublicKey:   params.PublicKey,
-		SPIFFEID:    params.SPIFFEID,
-		DNSNames:    params.DNSNames,
-		TTL:         params.TTL,
-		Subject:     params.Subject,
+		ParentChain:    caChain,
+		PublicKey:      params.PublicKey,
+		SPIFFEID:       params.SPIFFEID,
+		DNSNames:       params.DNSNames,
+		TTL:            params.TTL,
+		Subject:        params.Subject,
+		AttestedClaims: params.AttestedClaims, // Unified-Identity - Phase 1 & Phase 2: Pass AttestedClaims to embed in certificate
 	})
 	if err != nil {
 		return nil, err

@@ -78,7 +78,7 @@ This will:
 ### Step 4: Dump SVID with AttestedClaims
 
 ```bash
-../scripts/dump-svid -cert /tmp/svid-dump/svid.pem -attested /tmp/svid-dump/attested_claims.json
+../../code-rollout-phase-2/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
 ```
 
 ## Files

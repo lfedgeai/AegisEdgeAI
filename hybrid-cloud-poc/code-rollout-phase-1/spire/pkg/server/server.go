@@ -7,6 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof" //nolint: gosec // import registers routes on DefaultServeMux
 	"net/url"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -420,10 +421,20 @@ func (s *Server) newKeylimeClient() *keylime.Client {
 		return nil
 	}
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
-	// Initialize Keylime client pointing to stub (localhost:8888)
-	// In Phase 1, we use a stub without mTLS for testing
+	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+	// Initialize Keylime client - supports both stub (Phase 1) and real verifier (Phase 2)
+	// Default to stub for backward compatibility, but allow override via environment variable
+	keylimeURL := os.Getenv("KEYLIME_VERIFIER_URL")
+	s.config.Log.WithField("keylime_url", keylimeURL).Info("Unified-Identity - Phase 2: Reading KEYLIME_VERIFIER_URL from environment")
+	if keylimeURL == "" {
+		// Default to stub for Phase 1 compatibility
+		keylimeURL = "http://localhost:8888"
+		s.config.Log.Warn("Unified-Identity - Phase 2: KEYLIME_VERIFIER_URL not set, defaulting to stub port 8888")
+	} else {
+		s.config.Log.WithField("keylime_url", keylimeURL).Info("Unified-Identity - Phase 2: Using Keylime Verifier URL from environment")
+	}
 	client, err := keylime.NewClient(keylime.Config{
-		BaseURL: "http://localhost:8888",
+		BaseURL: keylimeURL,
 		Logger:  s.config.Log.WithField(telemetry.SubsystemName, "keylime"),
 	})
 	if err != nil {
