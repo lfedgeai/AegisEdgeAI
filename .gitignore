@@ -29,3 +29,28 @@ zero-trust/spire-tpm-plugin/*.hash
 
 # hybrid-cloud-poc/code-rollout-phase-1/spire/spire-agent
 # hybrid-cloud-poc/code-rollout-phase-1/spire/spire-server
+
+# Generated private keys and certificates (hybrid-cloud-poc)
+# Private keys (always ignore for security)
+hybrid-cloud-poc/**/*-private.pem
+hybrid-cloud-poc/**/private.yml
+hybrid-cloud-poc/**/*.key
+# Generated TLS/CA directories
+hybrid-cloud-poc/**/cv_ca/
+hybrid-cloud-poc/**/*_ca/
+hybrid-cloud-poc/**/tls/
+# Generated certificate files
+hybrid-cloud-poc/**/*-cert.crt
+hybrid-cloud-poc/**/cacert.crt
+hybrid-cloud-poc/**/ca-public.pem
+hybrid-cloud-poc/**/server-cert.crt
+hybrid-cloud-poc/**/client-cert.crt
+hybrid-cloud-poc/**/cacrl.der
+hybrid-cloud-poc/**/cacrl.pem
+# But allow test data certificates (test fixtures)
+!hybrid-cloud-poc/**/testdata/*.pem
+!hybrid-cloud-poc/**/testdata/*.crt
+!hybrid-cloud-poc/**/testdata/*.key
+!hybrid-cloud-poc/**/test/**/testdata/*.pem
+!hybrid-cloud-poc/**/test/**/testdata/*.crt
+!hybrid-cloud-poc/**/test/**/testdata/*.key
