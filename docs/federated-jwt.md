@@ -1,6 +1,6 @@
 # ✨ High-Assurance Federated Authorization Models
 
-The challenge is to securely convey new claims **HW-rooted TPM attestation** and **Attested Geographic location** from the Enterprise workload to the Service Provider's (SP) policy engine in a robust **Federated Identity** architecture.
+The challenge is to securely convey new claims **HW-rooted TPM attestation** and **Attested Geographic location** from the Enterprise workload to the Service Provider's (SP) policy engine in a robust **Federated Identity** architecture. 
 
 ## 🏛️ Model 1: Single Identity JWT with old and new claims 
 
@@ -77,6 +77,8 @@ The unified identity claims schema defined in this document addresses these gaps
 - Hardware-rooted attestation evidence
 - Standardized format for interoperability
 - Rich metadata for policy enforcement
+
+The goal is to standardize the claims and the format of the claims through IANA so that they can be used in any JSON-based token (OIDC ID Token, OAuth Access Token) or SAML assertions or other formats. If there are any similar Oauth AMR claims (e.g. "geo"), they should be deprecated and replaced with this standard.
 
 ## JSON Schema for Unified Identity Claims
 
@@ -178,40 +180,8 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
             },
             "approximated": {
               "type": "object",
-              "description": "Approximated location using bounding box, circle, or region (format: approximated)",
+              "description": "Approximated location using circle or polygon (format: approximated). Compatible with [CAMARA Device Location API](https://github.com/camaraproject/DeviceLocation) formats.",
               "properties": {
-                "bounding-box": {
-                  "type": "object",
-                  "description": "Bounding box (rectangle) defining the approximate region",
-                  "properties": {
-                    "north": {
-                      "type": "number",
-                      "description": "Northern boundary latitude",
-                      "minimum": -90,
-                      "maximum": 90
-                    },
-                    "south": {
-                      "type": "number",
-                      "description": "Southern boundary latitude",
-                      "minimum": -90,
-                      "maximum": 90
-                    },
-                    "east": {
-                      "type": "number",
-                      "description": "Eastern boundary longitude",
-                      "minimum": -180,
-                      "maximum": 180
-                    },
-                    "west": {
-                      "type": "number",
-                      "description": "Western boundary longitude",
-                      "minimum": -180,
-                      "maximum": 180
-                    }
-                  },
-                  "required": ["north", "south", "east", "west"],
-                  "additionalProperties": false
-                },
                 "circle": {
                   "type": "object",
                   "description": "Circle defining the approximate region (center point with radius)",
@@ -239,21 +209,57 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
                   },
                   "required": ["latitude", "longitude", "radius"],
                   "additionalProperties": false
+                },
+                "polygon": {
+                  "type": "object",
+                  "description": "Polygon defining the approximate region (closed shape bounded by straight sides)",
+                  "properties": {
+                    "boundary": {
+                      "type": "array",
+                      "description": "List of points defining the polygon boundary. The polygon is closed (last point connects to first point). Compatible with [CAMARA Device Location Retrieval API](https://github.com/camaraproject/DeviceLocation) polygon format.",
+                      "minItems": 3,
+                      "maxItems": 15,
+                      "items": {
+                        "type": "object",
+                        "description": "Point coordinates (latitude, longitude) defining a location",
+                        "properties": {
+                          "latitude": {
+                            "type": "number",
+                            "description": "Latitude in decimal degrees (WGS84)",
+                            "minimum": -90,
+                            "maximum": 90,
+                            "examples": [45.754114, 37.7749]
+                          },
+                          "longitude": {
+                            "type": "number",
+                            "description": "Longitude in decimal degrees (WGS84)",
+                            "minimum": -180,
+                            "maximum": 180,
+                            "examples": [4.860374, -122.4194]
+                          }
+                        },
+                        "required": ["latitude", "longitude"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["boundary"],
+                  "additionalProperties": false
                 }
               },
               "additionalProperties": false,
               "oneOf": [
                 {
-                  "required": ["bounding-box"]
+                  "required": ["circle"]
                 },
                 {
-                  "required": ["circle"]
+                  "required": ["polygon"]
                 }
               ]
             },
             "administrative": {
               "type": "object",
-              "description": "Administrative boundaries: country, state, city (format: administrative)",
+              "description": "Administrative boundaries: country, state, city (format: administrative). Note: Reverse geocoding libraries (e.g., GeoNames, Google Geocoding API, OpenStreetMap Nominatim) can be used to convert physical latitude/longitude coordinates to administrative boundaries.",
               "properties": {
                 "country": {
                   "type": "string",
@@ -623,6 +629,7 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
 ## References
 
 - [CAMARA Device Location Verification API](https://github.com/camaraproject/DeviceLocation)
+- [Reverse Geocode](https://pypi.org/project/reverse-geocode/)
 
 ## Appendix: Understanding Jurisdiction vs. Physical Location
 
@@ -723,28 +730,7 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
 **Context**: Exact GPS coordinates with accuracy radius
 - **Use case**: When precise location is required (e.g., compliance with specific building/room requirements)
 
-#### 5. Approximated Location Example (Rectangle/Bounding Box)
-```json
-{
-  "grc.geolocation": {
-    "physical-location": {
-      "format": "approximated",
-      "approximated": {
-        "bounding-box": {
-          "north": 37.8,
-          "south": 37.7,
-          "east": -122.3,
-          "west": -122.5
-        }
-      }
-    }
-  }
-}
-```
-**Context**: Approximate region using rectangular bounding box
-- **Use case**: Privacy-preserving location verification (e.g., confirming within a metropolitan area without exposing precise coordinates)
-
-#### 6. Approximated Location Example (Circle)
+#### 5. Approximated Location Example (Circle)
 ```json
 {
   "grc.geolocation": {
@@ -763,6 +749,80 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
 ```
 **Context**: Approximate region using circular area (center point with radius in meters)
 - **Use case**: Location verification within a circular area, compatible with [CAMARA Device Location Verification API](https://github.com/camaraproject/DeviceLocation) circle format
+
+#### 6. Approximated Location Example (Polygon - Irregular Shape)
+```json
+{
+  "grc.geolocation": {
+    "physical-location": {
+      "format": "approximated",
+      "approximated": {
+        "polygon": {
+          "boundary": [
+            {
+              "latitude": 45.754114,
+              "longitude": 4.860374
+            },
+            {
+              "latitude": 45.753845,
+              "longitude": 4.863185
+            },
+            {
+              "latitude": 45.752490,
+              "longitude": 4.861876
+            },
+            {
+              "latitude": 45.751224,
+              "longitude": 4.861125
+            },
+            {
+              "latitude": 45.751442,
+              "longitude": 4.859827
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+**Context**: Approximate region using polygonal area (closed shape with 3-15 boundary points). The polygon is automatically closed (last point connects to first point).
+- **Use case**: Location verification within an irregular polygonal area, compatible with [CAMARA Device Location Retrieval API](https://github.com/camaraproject/DeviceLocation) polygon format. Useful for defining complex geographic boundaries that cannot be accurately represented by circles.
+
+#### 7. Approximated Location Example (Polygon - Rectangle)
+```json
+{
+  "grc.geolocation": {
+    "physical-location": {
+      "format": "approximated",
+      "approximated": {
+        "polygon": {
+          "boundary": [
+            {
+              "latitude": 37.8,
+              "longitude": -122.5
+            },
+            {
+              "latitude": 37.8,
+              "longitude": -122.3
+            },
+            {
+              "latitude": 37.7,
+              "longitude": -122.3
+            },
+            {
+              "latitude": 37.7,
+              "longitude": -122.5
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+**Context**: Rectangular region represented as a 4-point polygon (northwest, northeast, southeast, southwest corners). Rectangles can be represented using polygon format instead of a separate bounding-box format.
+- **Use case**: Privacy-preserving location verification for rectangular areas (e.g., confirming within a metropolitan area without exposing precise coordinates)
 
 ### Why This Distinction Matters
 
@@ -874,3 +934,83 @@ In essence:
 - **The AK** signs statements (like Quotes and App Key Certs) while protecting the EK's privacy
 - **The App Key** is your application's actual credential, which is certified by the AK process
 - **The Quote** is the evidence of the platform's measured boot integrity
+
+## 🛡️ Appendix: Open Policy Agent (OPA) Geo-Hardware Binding Example
+
+This example demonstrates how OPA enforces a highly secure policy: Access is only granted if the device's **attested location** is within an approved **trusted zone** AND the device's unique **TPM Endorsement Key (EK)** is authorized to operate in that *exact same zone*.
+
+### 1\. 📂 Policy Data (`data.json`) - The Trusted Reference
+
+This data maps specific geographic boundaries (`bounding_box`) to the full **TPM EK Public Key strings** that are approved for operation within that region.
+
+```json
+{
+  "compliance_baselines": {
+    "trusted_ek_zones": [
+      {
+        "zone_name": "DC_NORTH_AMERICA_1",
+        "bounding_box": { "north": 40.0, "south": 30.0, "east": -70.0, "west": -100.0 },
+        "allowed_eks": [
+          "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyYt...",  /* Full EK Public Key 1 */
+          "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7p9D..."           /* Full EK Public Key 2 */
+        ]
+      },
+      {
+        "zone_name": "DC_EUROPE_2",
+        "bounding_box": { "north": 55.0, "south": 45.0, "east": 15.0, "west": -5.0 },
+        "allowed_eks": [
+          "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAaXv..."   /* Full EK Public Key 3 */
+        ]
+      }
+    ],
+    "trusted_tpm_policy": "secure-boot-baseline-2024"
+  }
+}
+```
+
+### 2\. 📜 OPA Rego Policy (`geofence_tpm_map.rego`) - The Logic
+
+This policy uses the `some` keyword to iterate over the `trusted_ek_zones`. The rule succeeds only if a **single zone** satisfies **all 4 binding conditions** (Location latitude/longitude Check, Hardware Check, and Nonce Check).
+
+```rego
+package authz.geofence_tpm_map
+
+default allow = false
+
+# Rule: is_trusted_location_and_hardware
+# This helper rule acts as a function, returning true if ANY trusted_zone satisfies ALL criteria.
+is_trusted_location_and_hardware if {
+    # 1. Extract Attested Claims from the input JWT (runtime request data)
+    client_lat := input.jwt_claims.grc_geolocation["physical-location"].precise.latitude
+    client_lon := input.jwt_claims.grc_geolocation["physical-location"].precise.longitude
+    # MODIFICATION: We extract the full EK Public Key string for direct string comparison
+    attested_ek_key := input.jwt_claims.grc_tpm_attestation["ek-public"]
+    
+    # 2. Outer Loop: Iterate over all trusted zones. The rule restarts for each zone until success.
+    some trusted_zone in data.compliance_baselines.trusted_ek_zones
+
+    # 3. Location Check (Implicit AND): Must be inside the CURRENT zone's bounding box
+    boundary := trusted_zone.bounding_box
+    
+    # Latitude containment
+    client_lat <= boundary.north
+    client_lat >= boundary.south
+    
+    # Longitude containment
+    client_lon <= boundary.east
+    client_lon >= boundary.west
+    
+    # 4. Hardware Check (Implicit AND): Must be on the CURRENT zone's allowed EKs list
+    # The 'some' here searches the CURRENT zone's list for a matching EK public key string.
+    some allowed_ek in trusted_zone.allowed_eks
+    attested_ek_key == allowed_ek
+    
+    # 5. Freshness Check (Implicit AND): The nonce must be present
+    input.jwt_claims["rat-nonce"]
+}
+
+# Final Access Rule
+allow if {
+    is_trusted_location_and_hardware
+}
+```
