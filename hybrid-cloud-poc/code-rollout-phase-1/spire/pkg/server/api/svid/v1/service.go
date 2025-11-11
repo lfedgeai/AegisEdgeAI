@@ -2,7 +2,9 @@ package svid
 
 import (
 	"context"
+	"crypto"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"strings"
 	"time"
@@ -22,6 +24,7 @@ import (
 	"github.com/spiffe/spire/pkg/server/datastore"
 	"github.com/spiffe/spire/pkg/server/keylime"
 	"github.com/spiffe/spire/pkg/server/policy"
+	"github.com/spiffe/spire/pkg/server/unifiedidentity"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -285,6 +288,7 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Handle SovereignAttestation if feature flag is enabled and attestation is provided
 	var attestedClaims []*types.AttestedClaims
+	var attestedClaimsJSON []byte
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) && param.SovereignAttestation != nil {
 		log.Info("Unified-Identity - Phase 1: Processing SovereignAttestation")
 		claims, err := s.processSovereignAttestation(ctx, log, param.SovereignAttestation, spiffeID.String())
@@ -296,6 +300,25 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 		}
 		if claims != nil {
 			attestedClaims = []*types.AttestedClaims{claims}
+
+			workloadKeyPEM, err := publicKeyToPEM(csr.PublicKey)
+			if err != nil {
+				log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to encode workload public key for claims JSON")
+			}
+
+			unifiedJSON, err := unifiedidentity.BuildClaimsJSON(
+				spiffeID.String(),
+				unifiedidentity.KeySourceWorkload,
+				workloadKeyPEM,
+				param.SovereignAttestation,
+				claims,
+			)
+			if err != nil {
+				log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to build unified identity claims JSON")
+			} else {
+				attestedClaimsJSON = unifiedJSON
+				log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Phase 3: Built workload unified identity claims")
+			}
 		}
 	}
 
@@ -313,6 +336,7 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 		DNSNames:       entry.GetDnsNames(),
 		TTL:            time.Duration(entry.GetX509SvidTtl()) * time.Second,
 		AttestedClaims: attestedClaimsForCert, // Unified-Identity - Phase 1 & Phase 2: Embed AttestedClaims in certificate
+		UnifiedIdentityJSON: attestedClaimsJSON,
 	})
 	if err != nil {
 		return &svidv1.BatchNewX509SVIDResponse_Result{
@@ -621,4 +645,13 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 			MemoryMb:      keylimeClaims.GPUMetricsHealth.MemoryMB,
 		},
 	}, nil
+}
+
+func publicKeyToPEM(pub crypto.PublicKey) (string, error) {
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return "", err
+	}
+	block := &pem.Block{Type: "PUBLIC KEY", Bytes: der}
+	return string(pem.EncodeToMemory(block)), nil
 }

@@ -14,14 +14,22 @@ import (
 // In production, this should use a registered OID from IANA
 var AttestedClaimsExtensionOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 1}
 
-// AttestedClaimsExtension embeds AttestedClaims as a certificate extension
-// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
-func AttestedClaimsExtension(claims *types.AttestedClaims) (pkix.Extension, error) {
+// AttestedClaimsExtension embeds Unified Identity claims as a certificate extension.
+// If unifiedJSON is provided it is embedded verbatim; otherwise the legacy
+// AttestedClaims proto is marshalled to JSON.
+func AttestedClaimsExtension(claims *types.AttestedClaims, unifiedJSON []byte) (pkix.Extension, error) {
+	if len(unifiedJSON) > 0 {
+		return pkix.Extension{
+			Id:       AttestedClaimsExtensionOID,
+			Value:    unifiedJSON,
+			Critical: false,
+		}, nil
+	}
+
 	if claims == nil {
 		return pkix.Extension{}, nil
 	}
 
-	// Marshal AttestedClaims to JSON
 	claimsJSON, err := json.Marshal(claims)
 	if err != nil {
 		return pkix.Extension{}, err
@@ -34,22 +42,98 @@ func AttestedClaimsExtension(claims *types.AttestedClaims) (pkix.Extension, erro
 	}, nil
 }
 
-// ExtractAttestedClaimsFromCertificate extracts AttestedClaims from a certificate extension
-func ExtractAttestedClaimsFromCertificate(cert *x509.Certificate) (*types.AttestedClaims, error) {
+// ExtractUnifiedIdentityJSONFromCertificate returns the raw unified identity
+// JSON payload stored in the certificate extension, if present.
+func ExtractUnifiedIdentityJSONFromCertificate(cert *x509.Certificate) ([]byte, error) {
 	if cert == nil {
 		return nil, nil
 	}
 
 	for _, ext := range cert.Extensions {
 		if ext.Id.Equal(AttestedClaimsExtensionOID) {
-			var claims types.AttestedClaims
-			if err := json.Unmarshal(ext.Value, &claims); err != nil {
-				return nil, err
-			}
-			return &claims, nil
+			return ext.Value, nil
 		}
 	}
-
 	return nil, nil
 }
 
+// ExtractAttestedClaimsFromCertificate parses the extension and returns a
+// legacy AttestedClaims proto for backwards compatibility. If the extension is
+// stored using the newer Unified Identity schema, it is converted into the
+// proto representation best effort.
+func ExtractAttestedClaimsFromCertificate(cert *x509.Certificate) (*types.AttestedClaims, error) {
+	raw, err := ExtractUnifiedIdentityJSONFromCertificate(cert)
+	if err != nil || raw == nil {
+		return nil, err
+	}
+
+	var claims types.AttestedClaims
+	if err := json.Unmarshal(raw, &claims); err == nil {
+		return &claims, nil
+	}
+
+	// Attempt to interpret Unified Identity claims schema.
+	var generic map[string]any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		return nil, err
+	}
+	converted := convertUnifiedJSONToAttestedClaims(generic)
+	if converted == nil {
+		return nil, nil
+	}
+	return converted, nil
+}
+
+func convertUnifiedJSONToAttestedClaims(data map[string]any) *types.AttestedClaims {
+	if data == nil {
+		return nil
+	}
+
+	claims := &types.AttestedClaims{}
+
+	if geoRaw, ok := data["grc.geolocation"]; ok {
+		if geoMap, ok := geoRaw.(map[string]any); ok {
+			if rawVal, ok := geoMap["raw"].(string); ok {
+				claims.Geolocation = rawVal
+			}
+		}
+	}
+
+	if tpmRaw, ok := data["grc.tpm-attestation"]; ok {
+		if tpmMap, ok := tpmRaw.(map[string]any); ok {
+			if verifiedRaw, ok := tpmMap["verified-claims"]; ok {
+				if verifiedMap, ok := verifiedRaw.(map[string]any); ok {
+					if geo, ok := verifiedMap["geolocation"].(string); ok && claims.Geolocation == "" {
+						claims.Geolocation = geo
+					}
+					if integrity, ok := verifiedMap["host_integrity_status"].(string); ok {
+						switch integrity {
+						case types.AttestedClaims_PASSED_ALL_CHECKS.String():
+							claims.HostIntegrityStatus = types.AttestedClaims_PASSED_ALL_CHECKS
+						case types.AttestedClaims_FAILED.String():
+							claims.HostIntegrityStatus = types.AttestedClaims_FAILED
+						case types.AttestedClaims_PARTIAL.String():
+							claims.HostIntegrityStatus = types.AttestedClaims_PARTIAL
+						}
+					}
+					if gpuRaw, ok := verifiedMap["gpu_metrics_health"]; ok {
+						if gpuMap, ok := gpuRaw.(map[string]any); ok {
+							claims.GpuMetricsHealth = &types.AttestedClaims_GpuMetrics{}
+							if status, ok := gpuMap["status"].(string); ok {
+								claims.GpuMetricsHealth.Status = status
+							}
+							if util, ok := gpuMap["utilization_pct"].(float64); ok {
+								claims.GpuMetricsHealth.UtilizationPct = util
+							}
+							if mem, ok := gpuMap["memory_mb"].(float64); ok {
+								claims.GpuMetricsHealth.MemoryMb = int64(mem)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return claims
+}

@@ -25,9 +25,10 @@ import (
 	"github.com/spiffe/spire/pkg/server/ca"
 	"github.com/spiffe/spire/pkg/server/catalog"
 	"github.com/spiffe/spire/pkg/server/datastore"
-	"github.com/spiffe/spire/pkg/server/keylime"
-	"github.com/spiffe/spire/pkg/server/policy"
 	"github.com/spiffe/spire/pkg/server/plugin/nodeattestor"
+	"github.com/spiffe/spire/pkg/server/policy"
+	"github.com/spiffe/spire/pkg/server/keylime"
+	"github.com/spiffe/spire/pkg/server/unifiedidentity"
 	"github.com/spiffe/spire/proto/spire/common"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -373,6 +374,7 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
 	var attestedClaimsForCert *types.AttestedClaims
+	var attestedClaimsJSON []byte
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 		if params.Params != nil {
 			if params.Params.SovereignAttestation != nil {
@@ -384,6 +386,19 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 				if claims != nil {
 					attestedClaims = []*types.AttestedClaims{claims}
 					attestedClaimsForCert = claims
+					unifiedJSON, err := unifiedidentity.BuildClaimsJSON(
+						agentID.String(),
+						unifiedidentity.KeySourceTPMApp,
+						"",
+						params.Params.SovereignAttestation,
+						claims,
+					)
+					if err != nil {
+						log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to build unified identity claims JSON for agent SVID")
+					} else {
+						attestedClaimsJSON = unifiedJSON
+						log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Phase 3: Built agent unified identity claims")
+					}
 					log.WithFields(logrus.Fields{
 						"geolocation":   claims.Geolocation,
 						"integrity":     claims.HostIntegrityStatus.String(),
@@ -403,7 +418,7 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 	}
 
 	// parse and sign CSR with AttestedClaims embedded in certificate
-	svid, err := s.signSvid(ctx, agentID, params.Params.Csr, log, attestedClaimsForCert)
+	svid, err := s.signSvid(ctx, agentID, params.Params.Csr, log, attestedClaimsForCert, attestedClaimsJSON)
 	if err != nil {
 		return err
 	}
@@ -497,6 +512,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
 	var attestedClaimsForCert *types.AttestedClaims
+	var attestedClaimsJSON []byte
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) && req.Params.SovereignAttestation != nil {
 		claims, err := s.processSovereignAttestation(ctx, log, req.Params.SovereignAttestation, callerID.String())
 		if err != nil {
@@ -505,6 +521,19 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		if claims != nil {
 			attestedClaims = []*types.AttestedClaims{claims}
 			attestedClaimsForCert = claims
+			unifiedJSON, err := unifiedidentity.BuildClaimsJSON(
+				callerID.String(),
+				unifiedidentity.KeySourceTPMApp,
+				"",
+				req.Params.SovereignAttestation,
+				claims,
+			)
+			if err != nil {
+				log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to build unified identity claims JSON for agent renew")
+			} else {
+				attestedClaimsJSON = unifiedJSON
+				log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Phase 3: Built agent unified identity claims (renew)")
+			}
 			log.WithFields(logrus.Fields{
 				"geolocation":   claims.Geolocation,
 				"integrity":     claims.HostIntegrityStatus.String(),
@@ -513,7 +542,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		}
 	}
 
-	agentSVID, err := s.signSvid(ctx, callerID, req.Params.Csr, log, attestedClaimsForCert)
+	agentSVID, err := s.signSvid(ctx, callerID, req.Params.Csr, log, attestedClaimsForCert, attestedClaimsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -724,7 +753,7 @@ func (s *Service) updateAttestedNode(ctx context.Context, node *common.AttestedN
 	}
 }
 
-func (s *Service) signSvid(ctx context.Context, agentID spiffeid.ID, csr []byte, log logrus.FieldLogger, attestedClaims *types.AttestedClaims) ([]*x509.Certificate, error) {
+func (s *Service) signSvid(ctx context.Context, agentID spiffeid.ID, csr []byte, log logrus.FieldLogger, attestedClaims *types.AttestedClaims, attestedClaimsJSON []byte) ([]*x509.Certificate, error) {
 	parsedCsr, err := x509.ParseCertificateRequest(csr)
 	if err != nil {
 		return nil, api.MakeErr(log, codes.InvalidArgument, "failed to parse CSR", err)
@@ -736,6 +765,7 @@ func (s *Service) signSvid(ctx context.Context, agentID spiffeid.ID, csr []byte,
 		SPIFFEID:       agentID,
 		PublicKey:      parsedCsr.PublicKey,
 		AttestedClaims: attestedClaims, // Unified-Identity - Phase 1 & Phase 2: Embed AttestedClaims in certificate
+		UnifiedIdentityJSON: attestedClaimsJSON,
 	})
 	if err != nil {
 		return nil, api.MakeErr(log, codes.Internal, "failed to sign X509 SVID", err)

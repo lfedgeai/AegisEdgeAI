@@ -242,6 +242,15 @@ def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
         
         # Unified-Identity - Phase 1: Extract AttestedClaims from response
         claims_json = None
+        extension_claims = None
+        try:
+            oid = x509.ObjectIdentifier("1.3.6.1.4.1.99999.1")
+            ext = cert.extensions.get_extension_for_oid(oid)
+            ext_value = ext.value.value if hasattr(ext.value, "value") else ext.value
+            extension_claims = json.loads(ext_value)
+        except Exception:
+            extension_claims = None
+
         if response.attested_claims:
             print(f"✓ Found {len(response.attested_claims)} AttestedClaims in response")
             print()
@@ -268,10 +277,16 @@ def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
                 claims_json = claims_list[0]
             else:
                 claims_json = {"claims": claims_list} if claims_list else None
+        elif extension_claims is not None:
+            claims_json = extension_claims
         else:
             print("⚠ No AttestedClaims in response")
             print("  (This may mean the feature flag is disabled or no claims were returned)")
         
+        if extension_claims is not None and claims_json is not extension_claims:
+            # Prefer the richer claims present in the certificate extension
+            claims_json = extension_claims
+
         channel.close()
         return cert_pem, claims_json
         

@@ -1,0 +1,10 @@
+dbus-python
+# modules required for pylint
+setuptools
+# packages required for mypy
+sqlalchemy-stubs
+types-python-dateutil
+types-PyYAML
+types-redis
+types-requests
+types-urllib3
