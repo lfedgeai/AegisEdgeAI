@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/asn1"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"time"
@@ -391,6 +393,50 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 
 	ss.Reattestable = resp.GetResult().Reattestable
 	ss.SVID = svid
+
+	// Unified-Identity - Phase 3: Dump agent SVID details to logs
+	if len(svid) > 0 {
+		cert := svid[0]
+		spiffeID := ""
+		if len(cert.URIs) > 0 {
+			spiffeID = cert.URIs[0].String()
+		}
+
+		// Extract Unified Identity extension if present
+		unifiedIdentityOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 2}
+		legacyOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 1}
+		var unifiedIdentityExt []byte
+		for _, ext := range cert.Extensions {
+			if ext.Id.Equal(unifiedIdentityOID) || ext.Id.Equal(legacyOID) {
+				unifiedIdentityExt = ext.Value
+				break
+			}
+		}
+
+		// Encode certificate to PEM
+		certPEM := pem.EncodeToMemory(&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert.Raw,
+		})
+
+		ss.Log.WithFields(logrus.Fields{
+			"spiffe_id":           spiffeID,
+			"serial_number":      cert.SerialNumber.String(),
+			"not_before":          cert.NotBefore.Format(time.RFC3339),
+			"not_after":           cert.NotAfter.Format(time.RFC3339),
+			"has_unified_identity_ext": len(unifiedIdentityExt) > 0,
+			"cert_pem_length":    len(certPEM),
+		}).Info("Unified-Identity - Phase 3: Agent SVID received")
+
+		// Log full PEM if Unified Identity extension is present
+		if len(unifiedIdentityExt) > 0 {
+			ss.Log.WithFields(logrus.Fields{
+				"spiffe_id": spiffeID,
+				"cert_pem":  string(certPEM),
+			}).Info("Unified-Identity - Phase 3: Agent SVID (Sovereign) with Unified Identity extension")
+		}
+	}
+
 	return nil, nil
 }
 

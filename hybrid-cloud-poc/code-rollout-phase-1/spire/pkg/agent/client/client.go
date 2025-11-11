@@ -5,7 +5,9 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"sort"
@@ -275,6 +277,51 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 			"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
 			"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
 		}).Info("Unified-Identity - Phase 1: Received AttestedClaims for agent SVID")
+	}
+
+	// Unified-Identity - Phase 3: Dump agent SVID details to logs
+	if len(resp.Svid.CertChain) > 0 {
+		cert, err := x509.ParseCertificate(resp.Svid.CertChain[0])
+		if err == nil {
+			spiffeID := ""
+			if len(cert.URIs) > 0 {
+				spiffeID = cert.URIs[0].String()
+			}
+
+			// Extract Unified Identity extension if present
+			unifiedIdentityOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 2}
+			legacyOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 1}
+			var unifiedIdentityExt []byte
+			for _, ext := range cert.Extensions {
+				if ext.Id.Equal(unifiedIdentityOID) || ext.Id.Equal(legacyOID) {
+					unifiedIdentityExt = ext.Value
+					break
+				}
+			}
+
+			// Encode certificate to PEM
+			certPEM := pem.EncodeToMemory(&pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: cert.Raw,
+			})
+
+			c.c.Log.WithFields(logrus.Fields{
+				"spiffe_id":                spiffeID,
+				"serial_number":            cert.SerialNumber.String(),
+				"not_before":               cert.NotBefore.Format(time.RFC3339),
+				"not_after":                cert.NotAfter.Format(time.RFC3339),
+				"has_unified_identity_ext": len(unifiedIdentityExt) > 0,
+				"cert_pem_length":         len(certPEM),
+			}).Info("Unified-Identity - Phase 3: Agent SVID renewed")
+
+			// Log full PEM if Unified Identity extension is present
+			if len(unifiedIdentityExt) > 0 {
+				c.c.Log.WithFields(logrus.Fields{
+					"spiffe_id": spiffeID,
+					"cert_pem":  string(certPEM),
+				}).Info("Unified-Identity - Phase 3: Agent SVID (Sovereign) renewed with Unified Identity extension")
+			}
+		}
 	}
 
 	return &X509SVID{
