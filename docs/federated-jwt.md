@@ -1,6 +1,6 @@
 # ✨ High-Assurance Federated Authorization Models
 
-The challenge is to securely convey new claims **HW-rooted TPM attestation** and **Attested Geographic location** from the Enterprise workload to the Service Provider's (SP) policy engine in a robust **Federated Identity** architecture. 
+The challenge is to securely convey new claims **HW-rooted TPM attestation** and **Attested Geographic location** from the Enterprise workload to the Service Provider's (SP) policy engine in a robust **Federated Identity** architecture.
 
 ## 🏛️ Model 1: Single Identity JWT with old and new claims 
 
@@ -310,198 +310,222 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
               "required": ["administrative"]
             }
           ]
+        },
+        "tpm-attested-location": {
+          "type": "boolean",
+          "description": "Indicates the physical location claims were bound into a TPM quote. MUST be true when location data was hashed, extended into a TPM PCR, and referenced by `grc.tpm-attestation.tpm-quote`."
+        },
+        "tpm-attested-pcr-index": {
+          "type": "integer",
+          "description": "PCR index (typically 17 or 18) whose value contains the TPM-extended hash of the location data for verification",
+          "minimum": 0,
+          "maximum": 23,
+          "examples": [17, 18]
+        },
+        "location-sensor-hardware": {
+          "type": "object",
+          "description": "Hardware sensor information used to determine location",
+          "properties": {
+            "sensor-type": {
+              "type": "string",
+              "enum": ["GNSS", "Mobile"],
+              "description": "Type of location sensor: GNSS (Global Navigation Satellite System) or Mobile (cellular network-based)"
+            },
+            "serial-number": {
+              "type": "string",
+              "description": "Serial number of the location sensor hardware",
+              "minLength": 1,
+              "maxLength": 64,
+              "examples": ["SN123456789", "GPS-2024-001"]
+            },
+            "imei": {
+              "type": "string",
+              "description": "International Mobile Equipment Identity (IMEI) - required when sensor-type is 'Mobile'",
+              "pattern": "^[0-9]{14,15}$",
+              "examples": ["123456789012345"]
+            },
+            "imsi": {
+              "type": "string",
+              "description": "International Mobile Subscriber Identity (IMSI) - required when sensor-type is 'Mobile'",
+              "pattern": "^[0-9]{14,15}$",
+              "examples": ["310150123456789"]
+            }
+          },
+          "required": ["sensor-type", "serial-number"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "sensor-type": {"const": "Mobile"}
+                }
+              },
+              "then": {
+                "required": ["imei", "imsi"]
+              }
+            }
+          ]
         }
       },
-      "location-sensor-hardware": {
-        "type": "object",
-        "description": "Hardware sensor information used to determine location",
-        "properties": {
-          "sensor-type": {
-            "type": "string",
-            "enum": ["GNSS", "Mobile"],
-            "description": "Type of location sensor: GNSS (Global Navigation Satellite System) or Mobile (cellular network-based)"
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "tpm-attested-location": {"const": true}
+            }
           },
-          "serial-number": {
+          "then": {
+            "required": ["tpm-attested-pcr-index"]
+          }
+        }
+      ]
+    },
+    "grc.datacenter": {
+      "type": "object",
+      "description": "Data center physical infrastructure location details",
+      "properties": {
+          "near-to": {
             "type": "string",
-            "description": "Serial number of the location sensor hardware",
-            "minLength": 1,
+            "description": "UUID of another entity that this target environment is near to",
+            "format": "uuid",
+            "examples": ["550e8400-e29b-41d4-a716-446655440000"]
+          },
+          "rack-U-number": {
+            "type": "integer",
+            "description": "Rack unit number, numbered from bottom RU as 1",
+            "minimum": 1,
+            "examples": [1, 42]
+          },
+          "cabinet-number": {
+            "type": "integer",
+            "description": "Data center specific cabinet ordering number",
+            "minimum": 1,
+            "examples": [1, 15]
+          },
+          "hallway-number": {
+            "type": "integer",
+            "description": "Hallway number identifier",
+            "minimum": 0,
+            "examples": [0, 5]
+          },
+          "room-number": {
+            "type": "string",
+            "description": "Room number or identifier",
+            "minLength": 2,
             "maxLength": 64,
-            "examples": ["SN123456789", "GPS-2024-001"]
+            "examples": ["101", "Server Room A", "DC-1-Room-42"]
           },
-          "imei": {
-            "type": "string",
-            "description": "International Mobile Equipment Identity (IMEI) - required when sensor-type is 'Mobile'",
-            "pattern": "^[0-9]{14,15}$",
-            "examples": ["123456789012345"]
-          },
-          "imsi": {
-            "type": "string",
-            "description": "International Mobile Subscriber Identity (IMSI) - required when sensor-type is 'Mobile'",
-            "pattern": "^[0-9]{14,15}$",
-            "examples": ["310150123456789"]
+          "floor-number": {
+            "type": "integer",
+            "description": "Floor number, usually representing an integer",
+            "examples": [1, 0, -1, 42]
           }
         },
-        "required": ["sensor-type", "serial-number"],
-        "additionalProperties": false,
-        "allOf": [
-          {
-            "if": {
-              "properties": {
-                "sensor-type": {"const": "Mobile"}
-              }
-            },
-            "then": {
-              "required": ["imei", "imsi"]
-            }
+        "additionalProperties": false
+      },
+      "grc.workload": {
+        "type": "object",
+        "description": "Workload identity and identification details",
+        "properties": {
+          "workload-id": {
+            "type": "string",
+            "description": "Workload identifier, typically a SPIFFE ID",
+            "examples": ["spiffe://example.org/python-app", "spiffe://example.org/frontend-service"]
+          },
+          "key-source": {
+            "type": "string",
+            "enum": ["workload-key", "tpm-app-key"],
+            "description": "Indicates which key is used for signing and mTLS. When set to 'tpm-app-key', the workload uses grc.tpm-attestation.app-key-public for both operations, and the public-key field should be omitted. When set to 'workload-key', the public-key field must be present.",
+            "examples": ["tpm-app-key", "workload-key"]
+          },
+          "public-key": {
+            "type": "string",
+            "description": "Workload public key in PEM format or base64-encoded key material. Required when key-source is 'workload-key', omitted when key-source is 'tpm-app-key' (in which case use grc.tpm-attestation.app-key-public). Used for both signing and mTLS operations.",
+            "examples": [
+              "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
+              "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
+            ]
           }
-        ]
+        },
+        "additionalProperties": false
+      },
+      "grc.tpm-attestation": {
+        "type": "object",
+        "description": "TPM (Trusted Platform Module) attestation evidence and keys",
+        "properties": {
+          "tpm-quote": {
+            "type": "string",
+            "description": "Base64-encoded TPM Quote (portable string). Must be non-empty, valid base64, and size <= 64kB",
+            "minLength": 1,
+            "maxLength": 65536,
+            "examples": ["AQAAAAAAAADwAAAAAAA..."]
+          },
+          "tpm-pcr-mask": {
+            "type": "string",
+            "description": "PCR Set Mask indicating which Platform Configuration Registers (PCRs) were measured. Represented as a hexadecimal bitmask where each bit corresponds to a PCR index (e.g., 0x80000003 indicates PCRs 0, 1, 2, 16, 17). This enables fine-grained verification of which components were measured (firmware, bootloader, secure boot, etc.).",
+            "pattern": "^0x[0-9a-fA-F]+$",
+            "examples": ["0x80000003", "0x00000007", "0xFFFFFFFF"]
+          },
+          "tpm-policy-id": {
+            "type": "string",
+            "description": "UUID or reference ID pointing to the specific baseline of 'known good' hashes against which the PCR values should be checked. This allows Service Providers to enforce fine-grained authorization logic based on specific boot policies (e.g., 'Only allow access if attested with Policy ID X for Linux boot with PCRs 0, 1, 7'). Can be a UUID or a string identifier.",
+            "minLength": 1,
+            "maxLength": 128,
+            "examples": ["550e8400-e29b-41d4-a716-446655440000", "linux-boot-policy-v1", "secure-boot-baseline-2024"]
+          },
+          "app-key-public": {
+            "type": "string",
+            "description": "The App Key public key in PEM format (preferred) or base64-encoded. Must parse as valid public key when present",
+            "examples": [
+              "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
+              "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
+            ]
+          },
+          "app-key-certificate": {
+            "type": "string",
+            "description": "Base64-encoded DER or PEM certificate proving the App Key was issued/signed by the host Attestation Key (AK). MUST be Base64-encoded when transmitted over JSON/REST. Must parse to valid X.509 certificate when present",
+            "examples": [
+              "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...",
+              "MIIBkTCB+wIJAK..."
+            ]
+          },
+          "ak-public": {
+            "type": "string",
+            "description": "Attestation Key (AK) public key in PEM format (preferred) or base64-encoded",
+            "examples": [
+              "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
+              "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
+            ]
+          },
+          "ek-public": { // optional for peer verification
+            "type": "string",
+            "description": "Endorsement Key (EK) public key in PEM format (preferred) or base64-encoded",
+            "examples": [
+              "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
+              "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "rat-nonce": { // optional for peer verification
+        "type": "string",
+        "description": "Remote Attestation Nonce (RAT nonce) for freshness verification and anti-replay protection. This nonce ensures the attestation evidence is fresh and specific to the current transaction. For TPM attestation, it should be included in the EK-Signed Proof/Credential. The verifier checks that signed proofs contain the exact, expected nonce value to prevent replay attacks. If the nonce is derived from binary challenge data (e.g., from EK-Signed Proof/Credential), it should be Base64URL-encoded to align with JWT transport standards.",
+        "minLength": 16,
+        "maxLength": 256,
+        "examples": ["550e8400-e29b-41d4-a716-446655440000", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"]
       }
     },
     "additionalProperties": false
-  },
-  "grc.datacenter": {
-    "type": "object",
-    "description": "Data center physical infrastructure location details",
-    "properties": {
-        "near-to": {
-          "type": "string",
-          "description": "UUID of another entity that this target environment is near to",
-          "format": "uuid",
-          "examples": ["550e8400-e29b-41d4-a716-446655440000"]
-        },
-        "rack-U-number": {
-          "type": "integer",
-          "description": "Rack unit number, numbered from bottom RU as 1",
-          "minimum": 1,
-          "examples": [1, 42]
-        },
-        "cabinet-number": {
-          "type": "integer",
-          "description": "Data center specific cabinet ordering number",
-          "minimum": 1,
-          "examples": [1, 15]
-        },
-        "hallway-number": {
-          "type": "integer",
-          "description": "Hallway number identifier",
-          "minimum": 0,
-          "examples": [0, 5]
-        },
-        "room-number": {
-          "type": "string",
-          "description": "Room number or identifier",
-          "minLength": 2,
-          "maxLength": 64,
-          "examples": ["101", "Server Room A", "DC-1-Room-42"]
-        },
-        "floor-number": {
-          "type": "integer",
-          "description": "Floor number, usually representing an integer",
-          "examples": [1, 0, -1, 42]
-        }
-      },
-      "additionalProperties": false
-    },
-    "grc.workload": {
-      "type": "object",
-      "description": "Workload identity and identification details",
-      "properties": {
-        "workload-id": {
-          "type": "string",
-          "description": "Workload identifier, typically a SPIFFE ID",
-          "examples": ["spiffe://example.org/python-app", "spiffe://example.org/frontend-service"]
-        },
-        "key-source": {
-          "type": "string",
-          "enum": ["workload-key", "tpm-app-key"],
-          "description": "Indicates which key is used for signing and mTLS. When set to 'tpm-app-key', the workload uses grc.tpm-attestation.app-key-public for both operations, and the public-key field should be omitted. When set to 'workload-key', the public-key field must be present.",
-          "examples": ["tpm-app-key", "workload-key"]
-        },
-        "public-key": {
-          "type": "string",
-          "description": "Workload public key in PEM format or base64-encoded key material. Required when key-source is 'workload-key', omitted when key-source is 'tpm-app-key' (in which case use grc.tpm-attestation.app-key-public). Used for both signing and mTLS operations.",
-          "examples": [
-            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
-    "grc.tpm-attestation": {
-      "type": "object",
-      "description": "TPM (Trusted Platform Module) attestation evidence and keys",
-      "properties": {
-        "tpm-quote": {
-          "type": "string",
-          "description": "Base64-encoded TPM Quote (portable string). Must be non-empty, valid base64, and size <= 64kB",
-          "minLength": 1,
-          "maxLength": 65536,
-          "examples": ["AQAAAAAAAADwAAAAAAA..."]
-        },
-        "tpm-pcr-mask": {
-          "type": "string",
-          "description": "PCR Set Mask indicating which Platform Configuration Registers (PCRs) were measured. Represented as a hexadecimal bitmask where each bit corresponds to a PCR index (e.g., 0x80000003 indicates PCRs 0, 1, 2, 16, 17). This enables fine-grained verification of which components were measured (firmware, bootloader, secure boot, etc.).",
-          "pattern": "^0x[0-9a-fA-F]+$",
-          "examples": ["0x80000003", "0x00000007", "0xFFFFFFFF"]
-        },
-        "tpm-policy-id": {
-          "type": "string",
-          "description": "UUID or reference ID pointing to the specific baseline of 'known good' hashes against which the PCR values should be checked. This allows Service Providers to enforce fine-grained authorization logic based on specific boot policies (e.g., 'Only allow access if attested with Policy ID X for Linux boot with PCRs 0, 1, 7'). Can be a UUID or a string identifier.",
-          "minLength": 1,
-          "maxLength": 128,
-          "examples": ["550e8400-e29b-41d4-a716-446655440000", "linux-boot-policy-v1", "secure-boot-baseline-2024"]
-        },
-        "app-key-public": {
-          "type": "string",
-          "description": "The App Key public key in PEM format (preferred) or base64-encoded. Must parse as valid public key when present",
-          "examples": [
-            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
-          ]
-        },
-        "app-key-certificate": {
-          "type": "string",
-          "description": "Base64-encoded DER or PEM certificate proving the App Key was issued/signed by the host Attestation Key (AK). MUST be Base64-encoded when transmitted over JSON/REST. Must parse to valid X.509 certificate when present",
-          "examples": [
-            "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...",
-            "MIIBkTCB+wIJAK..."
-          ]
-        },
-        "ak-public": {
-          "type": "string",
-          "description": "Attestation Key (AK) public key in PEM format (preferred) or base64-encoded",
-          "examples": [
-            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
-          ]
-        },
-        "ek-public": { // optional for peer verification
-          "type": "string",
-          "description": "Endorsement Key (EK) public key in PEM format (preferred) or base64-encoded",
-          "examples": [
-            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
-    "rat-nonce": { // optional for peer verification
-      "type": "string",
-      "description": "Remote Attestation Nonce (RAT nonce) for freshness verification and anti-replay protection. This nonce ensures the attestation evidence is fresh and specific to the current transaction. For TPM attestation, it should be included in the EK-Signed Proof/Credential. The verifier checks that signed proofs contain the exact, expected nonce value to prevent replay attacks. If the nonce is derived from binary challenge data (e.g., from EK-Signed Proof/Credential), it should be Base64URL-encoded to align with JWT transport standards.",
-      "minLength": 16,
-      "maxLength": 256,
-      "examples": ["550e8400-e29b-41d4-a716-446655440000", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"]
-    }
-  },
-  "additionalProperties": false
-}
+  }
 ```
 
 ## TPM-Bound Geolocation
 
 To provide the **highest possible assurance** for location claims, the system should adopt a binding mechanism where the **TPM Attestation Key (AK) cryptographically signs the geolocation evidence**, rather than relying solely on the Identity Provider's (IDP) signature. This approach, often called **TPM-Bound Geolocation**, involves the client's TPM hashing the raw location data (coordinates, Nonce, and time) and sealing the hash into a **Platform Configuration Register (PCR)**. The resulting **TPM Quote** is then verifiable by the Service Provider (SP), who can compare the attested PCR value against a hash of the expected location data. This process ensures **non-repudiation** and **tamper-evidence**, proving that the location data was present and attested by a genuine, uncompromised hardware root-of-trust **at the time of the integrity check**.
+
+When a workload follows this pattern it MUST set `grc.geolocation.tpm-attested-location` to `true` and populate `grc.geolocation.tpm-attested-pcr-index` with the PCR that holds the location hash (commonly 17 or 18). Verifiers can then cross-check that the declared PCR index is included in `grc.tpm-attestation.tpm-pcr-mask` and verify the quote digest against the expected location hash before trusting the claim.
 
 ## Revocation Mechanisms for Identity Claims
 
@@ -727,12 +751,14 @@ The validator should use `grc.tpm-attestation.app-key-public` for both signing a
         "longitude": -122.4194,
         "accuracy": 10
       }
-    }
+    },
+    "tpm-attested-location": true,
+    "tpm-attested-pcr-index": 17
   }
 }
 ```
-**Context**: Exact GPS coordinates with accuracy radius
-- **Use case**: When precise location is required (e.g., compliance with specific building/room requirements)
+**Context**: Exact GPS coordinates with accuracy radius and TPM-bound assurance flag
+- **Use case**: When precise location is required and the workload extends the location hash into PCR 17 (verifiable via TPM quote)
 
 #### 5. Approximated Location Example (Circle)
 ```json
@@ -836,6 +862,7 @@ For **federated JWT authorization**, this distinction enables:
 - **Regulatory Requirements**: Determine which country's regulations apply to the workload
 - **Policy Enforcement**: Service Provider can verify both legal jurisdiction and physical location independently
 - **Exclave Handling**: Properly handle embassies, consulates, and special territories where legal and physical locations differ
+- **TPM-Bound Assurance**: `tpm-attested-location` provides an instant signal that the location hash is sealed into a TPM PCR (with the specific PCR index in `tpm-attested-pcr-index`), so verifiers can short-circuit policy decisions before heavy cryptographic checks
 
 The exclave boolean flags (`grc.jurisdiction-*-exclave`) indicate when jurisdiction ≠ physical location due to exclave situations.
 
