@@ -499,6 +499,10 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
 }
 ```
 
+## TPM-Bound Geolocation
+
+To provide the **highest possible assurance** for location claims, the system should adopt a binding mechanism where the **TPM Attestation Key (AK) cryptographically signs the geolocation evidence**, rather than relying solely on the Identity Provider's (IDP) signature. This approach, often called **TPM-Bound Geolocation**, involves the client's TPM hashing the raw location data (coordinates, Nonce, and time) and sealing the hash into a **Platform Configuration Register (PCR)**. The resulting **TPM Quote** is then verifiable by the Service Provider (SP), who can compare the attested PCR value against a hash of the expected location data. This process ensures **non-repudiation** and **tamper-evidence**, proving that the location data was present and attested by a genuine, uncompromised hardware root-of-trust **at the time of the integrity check**.
+
 ## Revocation Mechanisms for Identity Claims
 
 All high-assurance identity models must explicitly address failure scenarios. When a device's TPM is compromised, when the host is compromised, when workload keys are retired, or when any identity claim becomes invalid, revocation mechanisms are critical to prevent unauthorized access.
@@ -1009,8 +1013,55 @@ is_trusted_location_and_hardware if {
     input.jwt_claims["rat-nonce"]
 }
 
+# --- MOCK FUNCTION DEFINITION ---
+# NOTE: This function represents an external Go/Wasm plugin or custom OPA built-in.
+# It takes all relevant inputs and performs the cryptographic comparison.
+# This logic CANNOT be done purely in native Rego.
+# Signature: verify_pcr_binding(raw_location_claim, rat_nonce, quote, expected_pcr_index)
+verify_pcr_binding(raw_claims, nonce, quote, pcr_index) if {
+    # In a real system, this calls out to a dedicated service:
+    # 1. Service parses 'quote' and extracts PCR[pcr_index].
+    # 2. Service calculates Hash(raw_claims + nonce).
+    # 3. Service returns TRUE if the calculated hash matches the PCR value.
+    
+    # MOCK implementation: Always returns true if all inputs are present.
+    raw_claims
+    nonce
+    quote
+    pcr_index
+    true
+}
+
+# --- New Helper Rule: Check if Location is Cryptographically Bound ---
+is_geolocation_attested if {
+    # 1. Identify which PCR index holds the location evidence from Policy Data
+    location_pcr := data.compliance_baselines.geolocation_pcr_index
+    
+    # 2. Gather all inputs needed for the cryptographic binding check
+    raw_location_data := input.jwt_claims.grc_geolocation["physical-location"]
+    attestation_nonce := input.jwt_claims["rat-nonce"]
+    tpm_quote_evidence := input.jwt_claims.grc_tpm_attestation["tpm-quote"]
+    
+    # 3. Call the external service/mock to perform the cryptographic verification
+    verify_pcr_binding(raw_location_data, attestation_nonce, tpm_quote_evidence, location_pcr)
+}
+
 # Final Access Rule
 allow if {
     is_trusted_location_and_hardware
+    is_geolocation_attested
 }
 ```
+## Appendix: Attested Geolocation with TPM-Bound Geolocation
+- **Keylime supports dynamic quotes at runtime.**
+  - Keylime is fundamentally designed for continuous attestation and runtime integrity monitoring, meaning it must frequently request fresh TPM Quotes from the agent node.
+  - **Runtime Attestation:** Keylime does not stop after the initial boot check (measured boot). It relies on the Linux Integrity Measurement Architecture (IMA) to continuously monitor file integrity at runtime. When the Keylime Verifier requests a quote from the agent, the agent interacts with the TPM to generate a new quote over the PCRs, which includes the aggregated measurement of the kernel and running processes.
+  - **Agent API:** The Keylime Agent exposes a REST API endpoint (e.g., `GET /v2.1/quotes/integrity`) specifically designed to fulfill requests from the Verifier. Each time this API is called, the agent instructs the local TPM to execute the `TPM_Quote` command, producing a fresh, cryptographically signed snapshot of the current PCR values. This process is inherently dynamic.
+- **How to add dynamic geolocation.**
+  - **Reserve a dynamic PCR:** Select a Platform Configuration Register (PCR) not used by the boot process (typically PCR 17 or 18).
+  - **Extend the agent workload:** Deploy a custom extension or script (delivered via Keylime's Secure Payload mechanism) on the agent node that:
+    - Retrieves current GPS/geolocation data along with a nonce and timestamp.
+    - Hashes this composite data.
+    - Executes the TPM command `tpm2_pcrextend` to extend the reserved PCR with the new measurement.
+  - **Generate a quote:** When the Keylime Verifier requests a quote, the attestation includes the extended value of the reserved PCR, proving the geolocation data (and nonce) were measured into the secure hardware at the time of attestation.
+  - **OPA policy validation:** Downstream OPA policy evaluation can now verify both the current software state and the attested location before allowing access.
