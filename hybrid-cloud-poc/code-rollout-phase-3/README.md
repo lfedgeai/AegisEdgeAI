@@ -84,19 +84,26 @@ export UNIFIED_IDENTITY_ENABLED=true
 ### 4. Full Workflow (Cleanup → Start → Test → Sovereign SVID)
 
 ```bash
-./run_phase3_full.sh
+./test_phase3_complete.sh
 ```
 
-This wrapper script:
-- Cleans up any existing SPIRE/Keylime/rust-keylime state
+This script:
+- Cleans up any existing SPIRE/Keylime/rust-keylime state (unless `--skip-cleanup` is used)
 - Starts the Phase 2 verifier, registrar, and Phase 3 rust-keylime agent
 - Boots the SPIRE server and agent, handling join-token generation automatically
 - Generates a Sovereign SVID (with AttestedClaims) and runs all unit/E2E/integration checks
+- Enables Unified-Identity feature flag by default
 
 After completion, inspect the generated SVID:
 ```bash
 ./dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
 ```
+
+**Options:**
+- `--help` - Show usage information
+- `--cleanup-only` - Stop services and reset state, then exit
+- `--skip-cleanup` - Reuse existing environment (skip initial cleanup)
+- `--no-exit-cleanup` - Leave background services running for inspection
 
 ## Components
 
@@ -119,6 +126,54 @@ High-privilege HTTP endpoint that:
 - Accesses AK context to sign App Key certificates using TPM2_Certify
 - Returns signed certificates to SPIRE Agent
 - Endpoint: `POST /v2.2/delegated_certification/certify_app_key`
+
+**API Specification:**
+
+Request:
+```json
+{
+  "api_version": "v1",
+  "command": "certify_app_key",
+  "app_key_public": "PEM-encoded public key",
+  "app_key_context_path": "/path/to/app_key.ctx"
+}
+```
+
+Response (Success):
+```json
+{
+  "result": "SUCCESS",
+  "app_key_certificate": "base64-encoded certificate"
+}
+```
+
+Response (Error):
+```json
+{
+  "result": "ERROR",
+  "error": "Error message"
+}
+```
+
+**Implementation Details:**
+- Loads App Key from context file or persistent handle (0x8101000B)
+- Uses `tpm_context.certify_credential()` to perform TPM2_Certify with AK
+- Formats attestation and signature into Phase 2-compatible certificate structure
+- Requires `UNIFIED_IDENTITY_ENABLED=true` environment variable
+
+### Geolocation PCR Extension (`rust-keylime/keylime-agent/src/geolocation.rs`)
+
+TPM-bound geolocation attestation per `federated-jwt.md` Appendix:
+
+- **PCR 17 Extension:** Hashes geolocation data (with nonce and timestamp) and extends into PCR 17
+- **Quote Inclusion:** Automatically includes PCR 17 in quote mask when Unified-Identity is enabled
+- **Geolocation Source:** Hardcoded (configurable via `KEYLIME_AGENT_GEOLOCATION` env var)
+- **Format:** `"country:state:city:latitude:longitude"` (e.g., `"US:California:San Francisco:37.7749:-122.4194"`)
+
+The geolocation is structured in the SVID as `grc.geolocation` with:
+- `tpm-attested-location: true`
+- `tpm-attested-pcr-index: 17`
+- Structured `physical-location` and `jurisdiction` fields
 
 ### Configuration
 
@@ -147,10 +202,10 @@ unified_identity_enabled = true
 ### Recommended Full Run
 
 ```bash
-./run_phase3_full.sh
+./test_phase3_complete.sh
 ```
 
-This executes the entire Cleanup → Start → Test → Sovereign SVID workflow. Use `--help`, `--cleanup-only`, or `--skip-cleanup` with this wrapper to forward the same options to `test_phase3_complete.sh`.
+This executes the entire Cleanup → Start → Test → Sovereign SVID workflow. Use `--help`, `--cleanup-only`, `--skip-cleanup`, or `--no-exit-cleanup` to customize behavior.
 
 ### Manual Unit Tests
 
@@ -158,14 +213,6 @@ This executes the entire Cleanup → Start → Test → Sovereign SVID workflow.
 cd tpm-plugin
 python3 -m pytest test/ -v
 ```
-
-### Standalone Integration Harness
-
-```bash
-./test_phase3_complete.sh
-```
-
-This is the underlying script invoked by `run_phase3_full.sh` and can be used directly when you only need the integration checks. Pass `--cleanup-only` to perform a state reset without starting services, `--skip-cleanup` to reuse an existing environment, or `--no-exit-cleanup` to leave background daemons running for inspection.
 
 ### Rebuilding Binaries
 
@@ -182,14 +229,12 @@ The repository keeps a slimmed SPIRE tree, so rebuilds must be done from source 
    cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/rust-keylime/keylime-agent
    cargo build --release
    ```
-   Ensure the Rust toolchain, `pkg-config`, `libssl-dev`, `clang`, and `libclang-dev` are installed (see `RUST_KEYLIME_INTEGRATION.md`).
+   Ensure the Rust toolchain, `pkg-config`, `libssl-dev`, `clang`, and `libclang-dev` are installed.
 3. Run the orchestrator to clean state, start services, and verify the flow:
    ```bash
    cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3
-   ./run_phase3_full.sh
+   ./test_phase3_complete.sh
    ```
-
-`run_phase3_full.sh` invokes `test_phase3_complete.sh`, which can also be driven with the CLI options described above for targeted cleanup or reuse of running services.
 
 ## Integration with Previous Phases
 
@@ -201,12 +246,36 @@ Phase 3 replaces the stub `BuildSovereignAttestationStub()` function in Phase 1 
 
 Phase 3 is **fully integrated** with Phase 2's Keylime Verifier:
 
-- **Quote Format:** `r<message>:<signature>:<pcrs>` (Phase 2 compatible)
-- **Certificate Format:** Base64-encoded structure compatible with Phase 2
-- **Request Format:** Compatible via Phase 1 SPIRE Server conversion
-- **Verification Flow:** Phase 2 verifies Phase 3-generated quotes and certificates
+**Quote Format Compatibility:**
+- Phase 2 expects: `r<TPM_QUOTE>:<TPM_SIG>:<TPM_PCRS>`
+- Phase 3 generates: `r{base64(message)}:{base64(signature)}:{base64(pcrs)}`
+- All components are base64-encoded and separated by `:`
+- Verified by Phase 2's `verify_quote_with_app_key()` function
 
-See `PHASE2_INTEGRATION.md` for detailed integration documentation.
+**Certificate Format Compatibility:**
+- Phase 3 generates base64-encoded JSON structure:
+  ```json
+  {
+    "app_key_public": "PEM public key",
+    "certify_data": "base64-encoded attestation",
+    "signature": "base64-encoded signature",
+    "hash_alg": "sha256",
+    "format": "phase2_compatible"
+  }
+  ```
+- Phase 2 validates using `validate_app_key_certificate()`
+
+**Request Flow:**
+```
+Phase 3 TPM Plugin → SPIRE Agent → SPIRE Server → Phase 2 Keylime Verifier
+```
+- SPIRE Server converts `SovereignAttestation` to Keylime request format
+- Phase 2 verifies and returns `AttestedClaims`
+
+**Feature Flag Consistency:**
+- Both phases default to disabled
+- Phase 2: `unified_identity_enabled = true` in config
+- Phase 3: `UNIFIED_IDENTITY_ENABLED=true` environment variable
 
 ## Feature Flag
 
@@ -221,23 +290,23 @@ All Phase 3 code is wrapped under the `Unified-Identity` feature flag (disabled 
 
 ### Root Level
 - `README.md` - This file
-- `run_phase3_full.sh` - Single-entry script for cleanup/start/test/SVID
-- `test_phase3_complete.sh` - Full integration harness (invoked by the wrapper)
+- `test_phase3_complete.sh` - Full integration harness (cleanup/start/test/SVID)
 - `setup.sh` - Optional environment preparation helper
 - `dump-svid-attested-claims.sh` - Inspect AttestedClaims embedded in an SVID
 
 ### TPM Plugin
 - `tpm-plugin/tpm_plugin.py` - Main TPM plugin
-- `tpm-plugin/delegated_certification.py` - Delegated cert client
+- `tpm-plugin/delegated_certification.py` - Delegated cert client (rust-keylime agent)
 - `tpm-plugin/tpm_plugin_cli.py` - CLI wrapper
 - `tpm-plugin/test/` - Unit tests
 
-### Keylime
-- `keylime/keylime/delegated_certification_server.py` - Certification server
+### rust-keylime Agent
+- `rust-keylime/keylime-agent/src/delegated_certification_handler.rs` - Certification endpoint
+- `rust-keylime/keylime-agent/src/geolocation.rs` - Geolocation PCR extension
 
 ## References
 
 - [Architecture Document](../README-arch.md)
 - [Phase 1 Implementation](../code-rollout-phase-1/README.md)
 - [Phase 2 Implementation](../code-rollout-phase-2/README.md)
-- [Phase 2 Integration](PHASE2_INTEGRATION.md)
+- [Federated JWT Schema](../../docs/federated-jwt.md)

@@ -2,6 +2,7 @@
 // Copyright 2021 Keylime Authors
 
 use crate::crypto;
+use crate::geolocation;
 use crate::serialization::serialize_maybe_base64;
 use crate::{tpm, Error as KeylimeError, QuoteData};
 use actix_web::{http, web, HttpRequest, HttpResponse, Responder};
@@ -64,9 +65,25 @@ async fn identity(
     // https://github.com/rust-lang-nursery/failure/issues/192
     let mut context = data.tpmcontext.lock().unwrap(); //#[allow_ci]
 
+    // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+    // Extend geolocation into PCR 17 for TPM-bound attestation
+    let mut quote_mask = 0u32;
+    if geolocation::is_unified_identity_enabled() {
+        match geolocation::extend_geolocation_into_pcr(&mut *context, param.nonce.as_bytes(), data.hash_alg) {
+            Ok(_) => {
+                // Include PCR 17 in the quote mask (bit 17 = 0x20000)
+                quote_mask |= 0x20000;
+                info!("Unified-Identity - Phase 3: Geolocation extended into PCR 17, included in quote mask");
+            }
+            Err(e) => {
+                warn!("Unified-Identity - Phase 3: Failed to extend geolocation into PCR 17: {:?}, continuing without geolocation attestation", e);
+            }
+        }
+    }
+
     let tpm_quote = match context.quote(
         param.nonce.as_bytes(),
-        0,
+        quote_mask,
         &data.payload_pub_key,
         data.ak_handle,
         data.hash_alg,
@@ -211,10 +228,26 @@ async fn integrity(
     // https://github.com/rust-lang-nursery/failure/issues/192
     let mut context = data.tpmcontext.lock().unwrap(); //#[allow_ci]
 
+    // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+    // Extend geolocation into PCR 17 for TPM-bound attestation
+    let mut quote_mask = mask;
+    if geolocation::is_unified_identity_enabled() {
+        match geolocation::extend_geolocation_into_pcr(&mut *context, param.nonce.as_bytes(), data.hash_alg) {
+            Ok(_) => {
+                // Include PCR 17 in the quote mask (bit 17 = 0x20000)
+                quote_mask |= 0x20000;
+                info!("Unified-Identity - Phase 3: Geolocation extended into PCR 17, included in integrity quote mask");
+            }
+            Err(e) => {
+                warn!("Unified-Identity - Phase 3: Failed to extend geolocation into PCR 17: {:?}, continuing without geolocation attestation", e);
+            }
+        }
+    }
+
     // Generate the ID quote.
     let tpm_quote = match context.quote(
         param.nonce.as_bytes(),
-        mask,
+        quote_mask,
         &data.payload_pub_key,
         data.ak_handle,
         data.hash_alg,

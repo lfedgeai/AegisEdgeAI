@@ -286,7 +286,7 @@ def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
         if extension_claims is not None and claims_json is not extension_claims:
             # Prefer the richer claims present in the certificate extension
             claims_json = extension_claims
-
+        
         channel.close()
         return cert_pem, claims_json
         

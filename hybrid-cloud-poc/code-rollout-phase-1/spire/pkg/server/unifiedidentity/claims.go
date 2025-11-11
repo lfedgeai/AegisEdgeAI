@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 )
@@ -51,34 +53,13 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 		}
 	}
 
-	if attestedClaims != nil {
-		verified := map[string]any{}
-		if attestedClaims.Geolocation != "" {
-			verified["geolocation"] = attestedClaims.Geolocation
-		}
-		if attestedClaims.HostIntegrityStatus != types.AttestedClaims_HOST_INTEGRITY_UNSPECIFIED {
-			verified["host_integrity_status"] = attestedClaims.HostIntegrityStatus.String()
-		}
-		if gpu := attestedClaims.GpuMetricsHealth; gpu != nil {
-			gpuMap := map[string]any{
-				"status": gpu.Status,
-			}
-			if gpu.UtilizationPct != 0 {
-				gpuMap["utilization_pct"] = gpu.UtilizationPct
-			}
-			if gpu.MemoryMb != 0 {
-				gpuMap["memory_mb"] = gpu.MemoryMb
-			}
-			verified["gpu_metrics_health"] = gpuMap
-		}
-		if len(verified) > 0 {
-			tpm["verified-claims"] = verified
-		}
-
-		if attestedClaims.Geolocation != "" {
-			claims["grc.geolocation"] = map[string]any{
-				"raw": attestedClaims.Geolocation,
-			}
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Structure geolocation according to federated-jwt.md schema
+	// Geolocation is NOT part of grc.tpm-attestation - it's a separate top-level claim
+	if attestedClaims != nil && attestedClaims.Geolocation != "" {
+		geo := buildGeolocationClaim(attestedClaims.Geolocation, sovereignAttestation != nil)
+		if geo != nil {
+			claims["grc.geolocation"] = geo
 		}
 	}
 
@@ -87,4 +68,113 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 	}
 
 	return json.Marshal(claims)
+}
+
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// buildGeolocationClaim structures geolocation data according to federated-jwt.md schema
+// Input format: "country:state:city:latitude:longitude" or "country: description"
+// If TPM-attested (hasSovereignAttestation=true), sets tpm-attested-location and tpm-attested-pcr-index
+func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[string]any {
+	geo := make(map[string]any)
+
+	// Parse geolocation string
+	// Format 1: "country:state:city:latitude:longitude" (precise coordinates)
+	// Format 2: "country: description" (administrative only)
+	parts := strings.Split(geoStr, ":")
+	
+	if len(parts) >= 5 {
+		// Format 1: Has coordinates - use precise format
+		country := strings.TrimSpace(parts[0])
+		state := strings.TrimSpace(parts[1])
+		city := strings.TrimSpace(parts[2])
+		latStr := strings.TrimSpace(parts[3])
+		lonStr := strings.TrimSpace(parts[4])
+		
+		lat, errLat := strconv.ParseFloat(latStr, 64)
+		lon, errLon := strconv.ParseFloat(lonStr, 64)
+		
+		if errLat == nil && errLon == nil {
+			// Use precise format with coordinates
+			geo["physical-location"] = map[string]any{
+				"format": "precise",
+				"precise": map[string]any{
+					"latitude":  lat,
+					"longitude": lon,
+				},
+			}
+			
+			// Add administrative boundaries if available
+			if country != "" {
+				jurisdiction := map[string]any{
+					"country": country,
+				}
+				if state != "" {
+					jurisdiction["state"] = state
+				}
+				if city != "" {
+					jurisdiction["city"] = city
+				}
+				geo["jurisdiction"] = jurisdiction
+			}
+		} else {
+			// Fall back to administrative format
+			geo["physical-location"] = map[string]any{
+				"format": "administrative",
+				"administrative": map[string]any{
+					"country": country,
+					"state":   state,
+					"city":    city,
+				},
+			}
+		}
+	} else if len(parts) >= 1 {
+		// Format 2: Administrative only
+		country := strings.TrimSpace(parts[0])
+		state := ""
+		city := ""
+		if len(parts) >= 2 {
+			state = strings.TrimSpace(parts[1])
+		}
+		if len(parts) >= 3 {
+			city = strings.TrimSpace(parts[2])
+		}
+		
+		admin := map[string]any{
+			"country": country,
+		}
+		if state != "" {
+			admin["state"] = state
+		}
+		if city != "" {
+			admin["city"] = city
+		}
+		
+		geo["physical-location"] = map[string]any{
+			"format":        "administrative",
+			"administrative": admin,
+		}
+		
+		jurisdiction := map[string]any{
+			"country": country,
+		}
+		if state != "" {
+			jurisdiction["state"] = state
+		}
+		if city != "" {
+			jurisdiction["city"] = city
+		}
+		geo["jurisdiction"] = jurisdiction
+	} else {
+		// Invalid format, return nil
+		return nil
+	}
+	
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// If TPM attestation is present, mark geolocation as TPM-attested
+	if hasSovereignAttestation {
+		geo["tpm-attested-location"] = true
+		geo["tpm-attested-pcr-index"] = 17 // PCR 17 is used for geolocation per rust-keylime agent
+	}
+	
+	return geo
 }

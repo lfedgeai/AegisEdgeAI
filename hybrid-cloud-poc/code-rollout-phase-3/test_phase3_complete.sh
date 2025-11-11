@@ -6,6 +6,10 @@
 set -uo pipefail
 # Don't exit on error (-e) - we want to continue even if some steps fail
 
+# Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+# Ensure feature flag is enabled by default (can be overridden by caller)
+export UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PHASE1_DIR="${SCRIPT_DIR}/../code-rollout-phase-1"
 PHASE2_DIR="${SCRIPT_DIR}/../code-rollout-phase-2"

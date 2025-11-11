@@ -1565,6 +1565,22 @@ impl Context<'_> {
         encode_quote_string(attestation, sig, pcrs_read, pcr_data)
     }
 
+    /// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+    /// Reset and extend a PCR with provided digest values.
+    pub fn reset_and_extend_pcr(
+        &mut self,
+        pcr_handle: PcrHandle,
+        digest_values: DigestValues,
+    ) -> Result<()> {
+        let mut ctx = self.inner.lock().unwrap(); //#[allow_ci]
+        ctx.execute_with_nullauth_session(|ctx| {
+            ctx.pcr_reset(pcr_handle)?;
+            ctx.pcr_extend(pcr_handle, digest_values.clone())
+        })
+        .map_err(|e| TpmError::Other(format!("Failed to extend PCR {pcr_handle:?}: {e}")))?;
+        Ok(())
+    }
+
     /// Get the name of the object
     pub fn get_name(&mut self, handle: ObjectHandle) -> Result<Name> {
         self.inner
