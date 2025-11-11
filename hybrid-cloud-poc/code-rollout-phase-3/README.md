@@ -150,7 +150,7 @@ unified_identity_enabled = true
 ./run_phase3_full.sh
 ```
 
-This executes the entire Cleanup → Start → Test → Sovereign SVID workflow.
+This executes the entire Cleanup → Start → Test → Sovereign SVID workflow. Use `--help`, `--cleanup-only`, or `--skip-cleanup` with this wrapper to forward the same options to `test_phase3_complete.sh`.
 
 ### Manual Unit Tests
 
@@ -165,7 +165,31 @@ python3 -m pytest test/ -v
 ./test_phase3_complete.sh
 ```
 
-This is the underlying script invoked by `run_phase3_full.sh` and can be used directly when you only need the integration checks.
+This is the underlying script invoked by `run_phase3_full.sh` and can be used directly when you only need the integration checks. Pass `--cleanup-only` to perform a state reset without starting services, `--skip-cleanup` to reuse an existing environment, or `--no-exit-cleanup` to leave background daemons running for inspection.
+
+### Rebuilding Binaries
+
+The repository keeps a slimmed SPIRE tree, so rebuilds must be done from source before running Phase 3 end-to-end.
+
+1. Rebuild SPIRE server and agent (Phase 1):
+   ```bash
+   cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/spire
+   go build -o bin/spire-server ./cmd/spire-server
+   go build -o bin/spire-agent ./cmd/spire-agent
+   ```
+2. Rebuild the rust-keylime agent (Phase 3):
+   ```bash
+   cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/rust-keylime/keylime-agent
+   cargo build --release
+   ```
+   Ensure the Rust toolchain, `pkg-config`, `libssl-dev`, `clang`, and `libclang-dev` are installed (see `RUST_KEYLIME_INTEGRATION.md`).
+3. Run the orchestrator to clean state, start services, and verify the flow:
+   ```bash
+   cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3
+   ./run_phase3_full.sh
+   ```
+
+`run_phase3_full.sh` invokes `test_phase3_complete.sh`, which can also be driven with the CLI options described above for targeted cleanup or reuse of running services.
 
 ## Integration with Previous Phases
 

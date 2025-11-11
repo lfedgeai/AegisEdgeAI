@@ -177,6 +177,19 @@ stop_all_instances_and_cleanup() {
     fi
 }
 
+# Usage helper
+show_usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  --cleanup-only       Stop services, remove data, and exit.
+  --skip-cleanup       Skip the initial cleanup phase.
+  --no-exit-cleanup    Do not run best-effort cleanup on exit.
+  -h, --help           Show this help message.
+EOF
+}
+
 # Cleanup function (called on exit)
 cleanup() {
     echo ""
@@ -190,13 +203,47 @@ cleanup() {
     pkill -f "tpm2-abrmd" >/dev/null 2>&1 || true
 }
 
-trap cleanup EXIT
+RUN_INITIAL_CLEANUP=true
+EXIT_CLEANUP_ON_EXIT=true
 
-# Step 0: Stop all existing instances and clean up all data
-echo -e "${CYAN}Step 0: Stopping all existing instances and cleaning up all data...${NC}"
-echo ""
-stop_all_instances_and_cleanup
-echo ""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --cleanup-only)
+            stop_all_instances_and_cleanup
+            exit 0
+            ;;
+        --skip-cleanup)
+            RUN_INITIAL_CLEANUP=false
+            shift
+            ;;
+        --no-exit-cleanup)
+            EXIT_CLEANUP_ON_EXIT=false
+            shift
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
+
+if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
+    trap cleanup EXIT
+fi
+
+if [ "${RUN_INITIAL_CLEANUP}" = true ]; then
+    echo ""
+    stop_all_instances_and_cleanup
+    echo ""
+else
+    echo -e "${CYAN}Step 0: Skipping initial cleanup (--skip-cleanup)${NC}"
+    echo ""
+fi
 
 # Step 1: Setup Keylime environment with TLS certificates
 echo -e "${CYAN}Step 1: Setting up Keylime environment with TLS certificates...${NC}"
@@ -917,11 +964,16 @@ echo -e "${GREEN}  ✓ All Phase 3 tests passed${NC}"
 echo ""
 echo -e "${GREEN}Phase 1 + Phase 2 + Phase 3 integration test completed successfully!${NC}"
 echo ""
-echo "Services are running in background:"
-echo "  Keylime Verifier (Phase 2): PID $KEYLIME_PID (port 8881)"
-echo "  rust-keylime Agent (Phase 3): PID $RUST_AGENT_PID (port 9002)"
-echo "  SPIRE Server: PID $(cat /tmp/spire-server.pid 2>/dev/null || echo 'N/A')"
-echo "  SPIRE Agent: PID $(cat /tmp/spire-agent.pid 2>/dev/null || echo 'N/A')"
+if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
+    echo "Background services will be terminated automatically (default behaviour)."
+    echo "Re-run with --no-exit-cleanup if you need them to remain active for debugging."
+else
+    echo "Services are running in background:"
+    echo "  Keylime Verifier (Phase 2): PID $KEYLIME_PID (port 8881)"
+    echo "  rust-keylime Agent (Phase 3): PID $RUST_AGENT_PID (port 9002)"
+    echo "  SPIRE Server: PID $(cat /tmp/spire-server.pid 2>/dev/null || echo 'N/A')"
+    echo "  SPIRE Agent: PID $(cat /tmp/spire-agent.pid 2>/dev/null || echo 'N/A')"
+fi
 echo ""
 echo "To view logs:"
 echo "  Keylime Verifier:     tail -f /tmp/keylime-verifier.log"
@@ -938,11 +990,13 @@ if [ -f "/tmp/svid-dump/svid.pem" ]; then
     fi
     echo ""
 fi
-echo "To stop all services:"
+echo "If services are still running (e.g., launched with --no-exit-cleanup), you can stop them manually:" 
 echo "  pkill -f keylime_verifier"
 echo "  pkill -f keylime_agent"
 echo "  pkill -f spire-server"
 echo "  pkill -f spire-agent"
 echo ""
-echo "Or run cleanup:"
-echo "  $0 --cleanup-only"
+echo "Convenience options:"
+echo "  $0 --cleanup-only            # stop everything and reset state"
+echo "  $0 --skip-cleanup            # reuse existing state (advanced)"
+echo "  $0 --no-exit-cleanup         # leave background services running"
