@@ -100,29 +100,33 @@ func NewClient(config Config) (*Client, error) {
 	}
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
-	// Configure TLS
-	// For Phase 2 testing with self-signed certificates, allow insecure skip
-	// In production, this should be false and CA cert should be loaded
+	// Interface: SPIRE Server → Keylime Verifier
+	// Transport: mTLS over HTTPS (JSON REST API)
+	// Configure TLS for mTLS connection to Keylime Verifier
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true, // Phase 2: Allow self-signed certs for testing
+		// For testing with self-signed certificates, allow insecure skip
+		// In production, this should be false and CA cert should be loaded
+		InsecureSkipVerify: true, // TODO: Phase 3: Make configurable for production
 	}
 
+	// Unified-Identity - Phase 3: Load CA certificate for server verification (production)
 	if config.CACert != "" {
-		// Unified-Identity - Phase 2: Load CA cert if provided
 		// TODO: Implement CA cert loading for production use
-		config.Logger.Info("Unified-Identity - Phase 2: CA certificate loading not yet implemented")
+		// This would set tlsConfig.RootCAs to verify the Keylime Verifier's server certificate
+		config.Logger.Info("Unified-Identity - Phase 3: CA certificate loading not yet implemented (using InsecureSkipVerify for testing)")
 	}
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Configure client certificate if provided
+	// Unified-Identity - Phase 3: Configure client certificate for mTLS
+	// If TLSCert and TLSKey are provided, enable mTLS (client authenticates to Keylime Verifier)
 	if config.TLSCert != "" && config.TLSKey != "" {
 		cert, err := tls.LoadX509KeyPair(config.TLSCert, config.TLSKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load client certificate: %w", err)
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
-		config.Logger.Info("Unified-Identity - Phase 3: Loaded client certificate for mTLS")
+		config.Logger.Info("Unified-Identity - Phase 3: Loaded client certificate for mTLS (SPIRE Server authenticates to Keylime Verifier)")
+	} else {
+		config.Logger.Debug("Unified-Identity - Phase 3: No client certificate provided, mTLS not enabled (server-only TLS)")
 	}
 
 	transport := &http.Transport{

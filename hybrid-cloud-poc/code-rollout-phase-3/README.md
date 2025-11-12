@@ -15,6 +15,18 @@ Phase 3 completes the hardware integration by implementing:
 
 ## Architecture
 
+For the complete end-to-end architecture flow covering all phases, see:
+**[ARCHITECTURE_SOVEREIGN_SVID.md](../../ARCHITECTURE_SOVEREIGN_SVID.md)**
+
+This document details:
+- All component interfaces (SPIRE Agent, TPM Plugin, rust-keylime Agent, SPIRE Server, Keylime Verifier)
+- Request/response formats (JSON, gRPC Protobuf)
+- Transport mechanisms (UDS, HTTPS, gRPC over TLS)
+- Data flow and transformations
+- Nonce flow and security considerations
+
+### Phase 3 Component Flow
+
 ```
 ┌─────────────────┐
 │  SPIRE Agent    │
@@ -306,7 +318,8 @@ All Phase 3 code is wrapped under the `Unified-Identity` feature flag (disabled 
 
 ## References
 
-- [Architecture Document](../README-arch.md)
+- **[End-to-End Architecture Flow](../../ARCHITECTURE_SOVEREIGN_SVID.md)** - Complete architecture document covering all phases, interfaces, and data flows
+- [Architecture Document](../README-arch.md) - High-level architecture overview
 - [Phase 1 Implementation](../code-rollout-phase-1/README.md)
 - [Phase 2 Implementation](../code-rollout-phase-2/README.md)
 - [Federated JWT Schema](../../docs/federated-jwt.md)

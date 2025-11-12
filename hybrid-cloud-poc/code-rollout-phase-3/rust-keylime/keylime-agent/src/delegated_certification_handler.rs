@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Interface: SPIRE TPM Plugin → Keylime Agent
+// Transport: HTTP over UDS (or localhost HTTP)
+// Protocol: JSON REST API
+// Port/Path: UDS socket or localhost:9002
+// 
 // Delegated certification handler for rust-keylime agent
 // This implements the high-privilege side of delegated certification where
 // the SPIRE Agent requests App Key certificates signed by the AK

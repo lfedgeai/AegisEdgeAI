@@ -32,6 +32,10 @@ def is_unified_identity_enabled() -> bool:
 
 
 # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+# Interface: SPIRE TPM Plugin → Keylime Agent
+# Transport: HTTP over UDS (or localhost HTTP)
+# Protocol: JSON REST API
+# Port/Path: UDS socket or localhost:9002
 class DelegatedCertificationClient:
     """
     Client for requesting App Key certificates from rust-keylime Agent.
@@ -39,6 +43,11 @@ class DelegatedCertificationClient:
     This implements the low-privilege side of the delegated certification flow,
     where the SPIRE Agent requests a certificate for its App Key from the
     high-privilege rust-keylime Agent.
+    
+    Interface Specification:
+    - Transport: HTTP over UDS (or localhost HTTP)
+    - Protocol: JSON REST API
+    - Endpoint: POST /v2.2/delegated_certification/certify_app_key
     """
     
     def __init__(self, endpoint: str = None):

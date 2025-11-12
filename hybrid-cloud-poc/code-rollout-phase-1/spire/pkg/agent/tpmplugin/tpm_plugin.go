@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // TPM Plugin integration for SPIRE Agent
-// This package provides Go bindings to call the Python TPM plugin CLI
+// 
+// Interface: SPIRE Agent → SPIRE TPM Plugin
+// Transport: HTTP over UDS (or localhost HTTP) - currently implemented as subprocess execution
+// Protocol: JSON REST API
+// 
+// Note: Current implementation uses subprocess execution (CLI) for simplicity.
+// The interface is designed to support HTTP/UDS for future flexibility and better isolation.
 
 package tpmplugin
 
