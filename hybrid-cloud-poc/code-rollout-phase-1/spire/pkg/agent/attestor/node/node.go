@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -323,7 +324,7 @@ func (ss *ServerStream) SendAttestationData(ctx context.Context, attestationData
 	}
 
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
-		x509Params.SovereignAttestation = client.BuildSovereignAttestationStub()
+		x509Params.SovereignAttestation = client.BuildSovereignAttestationWithPlugin(nil, ss.Log)
 	}
 
 	return ss.sendRequest(ctx, &agentv1.AttestAgentRequest{
@@ -383,7 +384,7 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 				"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
 				"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
 				"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
-			}).Info("Unified-Identity - Phase 1: Received AttestedClaims during agent bootstrap")
+			}).Info("Unified-Identity - Phase 3: Received AttestedClaims during agent bootstrap")
 		}
 	}
 
@@ -419,21 +420,37 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 			Bytes: cert.Raw,
 		})
 
+		// Unified-Identity - Phase 3: Log unified agent SVID with formatted, readable output
 		ss.Log.WithFields(logrus.Fields{
-			"spiffe_id":           spiffeID,
-			"serial_number":      cert.SerialNumber.String(),
-			"not_before":          cert.NotBefore.Format(time.RFC3339),
-			"not_after":           cert.NotAfter.Format(time.RFC3339),
-			"has_unified_identity_ext": len(unifiedIdentityExt) > 0,
-			"cert_pem_length":    len(certPEM),
-		}).Info("Unified-Identity - Phase 3: Agent SVID received")
+			"spiffe_id":     spiffeID,
+			"serial_number": cert.SerialNumber.String(),
+			"not_before":    cert.NotBefore.Format(time.RFC3339),
+			"not_after":     cert.NotAfter.Format(time.RFC3339),
+		}).Info("Unified-Identity - Phase 3: Agent Unified SVID received")
 
-		// Log full PEM if Unified Identity extension is present
+		// Log certificate PEM separately for readability
+		ss.Log.WithFields(logrus.Fields{
+			"spiffe_id": spiffeID,
+			"cert_pem":  string(certPEM),
+		}).Info("Unified-Identity - Phase 3: Agent SVID Certificate (PEM)")
+
+		// Log Unified Identity claims in formatted JSON if present
 		if len(unifiedIdentityExt) > 0 {
-			ss.Log.WithFields(logrus.Fields{
-				"spiffe_id": spiffeID,
-				"cert_pem":  string(certPEM),
-			}).Info("Unified-Identity - Phase 3: Agent SVID (Sovereign) with Unified Identity extension")
+			var claimsJSON map[string]interface{}
+			if err := json.Unmarshal(unifiedIdentityExt, &claimsJSON); err == nil {
+				// Format JSON for readable output
+				claimsFormatted, _ := json.MarshalIndent(claimsJSON, "", "  ")
+				// Log claims as a multi-line formatted message
+				ss.Log.WithFields(logrus.Fields{
+					"spiffe_id": spiffeID,
+				}).Infof("Unified-Identity - Phase 3: Agent SVID Unified Identity Claims:\n%s", string(claimsFormatted))
+			} else {
+				// Fallback if JSON parsing fails
+				ss.Log.WithFields(logrus.Fields{
+					"spiffe_id":        spiffeID,
+					"claims_raw":       string(unifiedIdentityExt),
+				}).Warn("Unified-Identity - Phase 3: Agent SVID claims (raw, JSON parse failed)")
+			}
 		}
 	}
 

@@ -64,7 +64,7 @@ type AgentX509SVIDParams struct {
 	// SPIFFE ID of the agent
 	SPIFFEID spiffeid.ID
 
-	// Unified-Identity - Phase 1 & Phase 2: AttestedClaims to embed in certificate extension
+	// Unified-Identity - Phase 3: AttestedClaims to embed in certificate extension
 	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
 	AttestedClaims *types.AttestedClaims
 
@@ -91,7 +91,7 @@ type WorkloadX509SVIDParams struct {
 	// Subject of the SVID. Default subject is used if it is empty.
 	Subject pkix.Name
 
-	// Unified-Identity - Phase 1 & Phase 2: AttestedClaims to embed in certificate extension
+	// Unified-Identity - Phase 3: AttestedClaims to embed in certificate extension
 	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
 	AttestedClaims *types.AttestedClaims
 
@@ -284,7 +284,7 @@ func (ca *CA) SignAgentX509SVID(ctx context.Context, params AgentX509SVIDParams)
 		ParentChain:         caChain,
 		PublicKey:           params.PublicKey,
 		SPIFFEID:            params.SPIFFEID,
-		AttestedClaims:      params.AttestedClaims, // Unified-Identity - Phase 1 & Phase 2: Pass AttestedClaims to embed in certificate
+		AttestedClaims:      params.AttestedClaims, // Unified-Identity - Phase 3: Pass AttestedClaims to embed in certificate
 		UnifiedIdentityJSON: params.UnifiedIdentityJSON,
 	})
 	if err != nil {
@@ -316,7 +316,7 @@ func (ca *CA) SignWorkloadX509SVID(ctx context.Context, params WorkloadX509SVIDP
 		DNSNames:            params.DNSNames,
 		TTL:                 params.TTL,
 		Subject:             params.Subject,
-		AttestedClaims:      params.AttestedClaims, // Unified-Identity - Phase 1 & Phase 2: Pass AttestedClaims to embed in certificate
+		AttestedClaims:      params.AttestedClaims, // Unified-Identity - Phase 3: Pass AttestedClaims to embed in certificate
 		UnifiedIdentityJSON: params.UnifiedIdentityJSON,
 	})
 	if err != nil {

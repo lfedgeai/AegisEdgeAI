@@ -3,13 +3,18 @@ package client
 import (
 	"context"
 	"crypto"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -21,6 +26,7 @@ import (
 	entryv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/entry/v1"
 	svidv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
+	"github.com/spiffe/spire/pkg/agent/tpmplugin"
 	"github.com/spiffe/spire/pkg/common/bundleutil"
 	"github.com/spiffe/spire/pkg/common/fflag"
 	"github.com/spiffe/spire/pkg/common/telemetry"
@@ -49,7 +55,7 @@ var (
 
 const rpcTimeout = 30 * time.Second
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 type X509SVID struct {
 	CertChain     []byte
 	ExpiresAt     int64
@@ -112,6 +118,9 @@ type client struct {
 
 	// dialOpts optionally sets gRPC dial options
 	dialOpts []grpc.DialOption
+
+	// Unified-Identity - Phase 3: TPM plugin client for real TPM operations
+	tpmPlugin *tpmplugin.TPMPluginClient
 }
 
 // New creates a new client struct with the configuration provided
@@ -120,9 +129,37 @@ func New(c *Config) Client {
 }
 
 func newClient(c *Config) *client {
-	return &client{
+	cl := &client{
 		c: c,
 	}
+	
+	// Unified-Identity - Phase 3: Initialize TPM plugin client if feature flag is enabled
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
+		// Try to find TPM plugin CLI in common locations
+		pluginPath := os.Getenv("TPM_PLUGIN_CLI_PATH")
+		if pluginPath == "" {
+			// Try common locations
+			possiblePaths := []string{
+				"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
+				filepath.Join(os.Getenv("HOME"), "AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_cli.py"),
+			}
+			for _, path := range possiblePaths {
+				if _, err := os.Stat(path); err == nil {
+					pluginPath = path
+					break
+				}
+			}
+		}
+		
+		if pluginPath != "" {
+			cl.tpmPlugin = tpmplugin.NewTPMPluginClient(pluginPath, "", c.Log)
+			c.Log.Info("Unified-Identity - Phase 3: TPM plugin client initialized")
+		} else {
+			c.Log.Warn("Unified-Identity - Phase 3: TPM plugin CLI not found, will use stub data")
+		}
+	}
+	
+	return cl
 }
 
 func (c *client) FetchUpdates(ctx context.Context) (*Update, error) {
@@ -250,9 +287,9 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 		Csr: csr,
 	}
 
-	// Unified-Identity - Phase 1: Include SovereignAttestation when feature flag is enabled
+	// Unified-Identity - Phase 3: Include SovereignAttestation when feature flag is enabled
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
-		params.SovereignAttestation = BuildSovereignAttestationStub()
+		params.SovereignAttestation = c.BuildSovereignAttestation()
 	}
 
 	resp, err := agentClient.RenewAgent(ctx, &agentv1.RenewAgentRequest{
@@ -276,7 +313,7 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 			"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
 			"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
 			"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
-		}).Info("Unified-Identity - Phase 1: Received AttestedClaims for agent SVID")
+		}).Info("Unified-Identity - Phase 3: Received AttestedClaims for agent SVID")
 	}
 
 	// Unified-Identity - Phase 3: Dump agent SVID details to logs
@@ -305,21 +342,37 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 				Bytes: cert.Raw,
 			})
 
+			// Unified-Identity - Phase 3: Log unified agent SVID with formatted, readable output
 			c.c.Log.WithFields(logrus.Fields{
-				"spiffe_id":                spiffeID,
-				"serial_number":            cert.SerialNumber.String(),
-				"not_before":               cert.NotBefore.Format(time.RFC3339),
-				"not_after":                cert.NotAfter.Format(time.RFC3339),
-				"has_unified_identity_ext": len(unifiedIdentityExt) > 0,
-				"cert_pem_length":         len(certPEM),
-			}).Info("Unified-Identity - Phase 3: Agent SVID renewed")
+				"spiffe_id":     spiffeID,
+				"serial_number": cert.SerialNumber.String(),
+				"not_before":    cert.NotBefore.Format(time.RFC3339),
+				"not_after":     cert.NotAfter.Format(time.RFC3339),
+			}).Info("Unified-Identity - Phase 3: Agent Unified SVID renewed")
 
-			// Log full PEM if Unified Identity extension is present
+			// Log certificate PEM separately for readability
+			c.c.Log.WithFields(logrus.Fields{
+				"spiffe_id": spiffeID,
+				"cert_pem":  string(certPEM),
+			}).Info("Unified-Identity - Phase 3: Agent SVID Certificate (PEM)")
+
+			// Log Unified Identity claims in formatted JSON if present
 			if len(unifiedIdentityExt) > 0 {
-				c.c.Log.WithFields(logrus.Fields{
-					"spiffe_id": spiffeID,
-					"cert_pem":  string(certPEM),
-				}).Info("Unified-Identity - Phase 3: Agent SVID (Sovereign) renewed with Unified Identity extension")
+				var claimsJSON map[string]interface{}
+				if err := json.Unmarshal(unifiedIdentityExt, &claimsJSON); err == nil {
+					// Format JSON for readable output
+					claimsFormatted, _ := json.MarshalIndent(claimsJSON, "", "  ")
+					// Log claims as a multi-line formatted message
+					c.c.Log.WithFields(logrus.Fields{
+						"spiffe_id": spiffeID,
+					}).Infof("Unified-Identity - Phase 3: Agent SVID Unified Identity Claims:\n%s", string(claimsFormatted))
+				} else {
+					// Fallback if JSON parsing fails
+					c.c.Log.WithFields(logrus.Fields{
+						"spiffe_id":        spiffeID,
+						"claims_raw":       string(unifiedIdentityExt),
+					}).Warn("Unified-Identity - Phase 3: Agent SVID claims (raw, JSON parse failed)")
+				}
 			}
 		}
 	}
@@ -346,8 +399,7 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 			Csr:     csr,
 		}
 		
-		// Unified-Identity - Phase 1: Add SovereignAttestation if feature flag is enabled
-		// In Phase 1, we stub the TPM quote with fixed data
+		// Unified-Identity - Phase 3: Add SovereignAttestation if feature flag is enabled
 		if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 			param.SovereignAttestation = BuildSovereignAttestationStub()
 		}
@@ -371,7 +423,7 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 			certChain = append(certChain, cert...)
 		}
 
-		// Unified-Identity - Phase 1: Include AttestedClaims from server response
+		// Unified-Identity - Phase 3: Include AttestedClaims from server response
 		svids[entryID] = &X509SVID{
 			CertChain:     certChain,
 			ExpiresAt:     result.Svid.ExpiresAt,
@@ -719,7 +771,7 @@ func (c *client) fetchBundles(ctx context.Context, federatedBundles []string) ([
 	return bundles, nil
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // fetchSVIDsResult holds both the SVID and AttestedClaims from the server response
 type fetchSVIDsResult struct {
 	Svid           *types.X509SVID
@@ -753,7 +805,7 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 			}).Warn("Failed to mint X509 SVID")
 		}
 
-		// Unified-Identity - Phase 1: Extract AttestedClaims from server response
+		// Unified-Identity - Phase 3: Extract AttestedClaims from server response
 		results = append(results, &fetchSVIDsResult{
 			Svid:           r.Svid,
 			AttestedClaims: r.AttestedClaims,
@@ -763,17 +815,85 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 	return results, nil
 }
 
-// Unified-Identity - Phase 1: Build stub SovereignAttestation
-// In Phase 1, we use fixed stub data since TPM is not implemented
-func BuildSovereignAttestationStub() *types.SovereignAttestation {
-	// Phase 1: Stub TPM quote with fixed data (base64-encoded for Keylime stub validation)
-	// In future phases, this will be a real TPM quote
-	// Use base64-encoded stub data to pass Keylime stub validation
-	stubQuote := base64.StdEncoding.EncodeToString([]byte("stub-tpm-quote-phase1"))
+// Unified-Identity - Phase 3: Build real SovereignAttestation using TPM plugin
+// This function uses the real TPM plugin to generate App Keys, Quotes, and Certificates
+// Falls back to stub data if TPM plugin is not available
+func (c *client) BuildSovereignAttestation() *types.SovereignAttestation {
+	return BuildSovereignAttestationWithPlugin(c.tpmPlugin, c.c.Log)
+}
+
+// Unified-Identity - Phase 3: Build real SovereignAttestation using TPM plugin
+// This is a standalone function that can be called from anywhere (e.g., node attestor)
+// It creates a TPM plugin client if one is not provided
+func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginClient, log logrus.FieldLogger) *types.SovereignAttestation {
+	// Unified-Identity - Phase 3: Try to use real TPM plugin if available
+	if tpmPlugin == nil {
+		// Try to create a TPM plugin client
+		pluginPath := os.Getenv("TPM_PLUGIN_CLI_PATH")
+		if pluginPath == "" {
+			// Try common locations
+			possiblePaths := []string{
+				"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
+				filepath.Join(os.Getenv("HOME"), "AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_cli.py"),
+			}
+			for _, path := range possiblePaths {
+				if _, err := os.Stat(path); err == nil {
+					pluginPath = path
+					break
+				}
+			}
+		}
+		
+		if pluginPath != "" {
+			tpmPlugin = tpmplugin.NewTPMPluginClient(pluginPath, "", log)
+			if log != nil {
+				log.Info("Unified-Identity - Phase 3: TPM plugin client created")
+			}
+		}
+	}
 	
-	// Unified-Identity - Phase 2: Use valid PEM format for stub public key
+	if tpmPlugin != nil {
+		// Generate a nonce for quote generation
+		// In production, this nonce should come from the SPIRE Server challenge
+		// For now, we generate a random nonce
+		nonceBytes := make([]byte, 32)
+		if _, err := rand.Read(nonceBytes); err != nil {
+			if log != nil {
+				log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to generate nonce, using stub data")
+			}
+			return BuildSovereignAttestationStub()
+		}
+		nonce := hex.EncodeToString(nonceBytes)
+		
+		sovereignAttestation, err := tpmPlugin.BuildSovereignAttestation(nonce)
+		if err != nil {
+			if log != nil {
+				log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to build real SovereignAttestation, using stub data")
+			}
+			return BuildSovereignAttestationStub()
+		}
+		
+		if log != nil {
+			log.Info("Unified-Identity - Phase 3: Built real SovereignAttestation using TPM plugin")
+		}
+		return sovereignAttestation
+	}
+	
+	// Fallback to stub data if TPM plugin is not available
+	if log != nil {
+		log.Warn("Unified-Identity - Phase 3: TPM plugin not available, using stub data")
+	}
+	return BuildSovereignAttestationStub()
+}
+
+// Unified-Identity - Phase 3: Build stub SovereignAttestation
+// This is used as a fallback when TPM is not available or TPM plugin fails
+func BuildSovereignAttestationStub() *types.SovereignAttestation {
+	// Stub TPM quote with fixed data (base64-encoded for testing)
+	stubQuote := base64.StdEncoding.EncodeToString([]byte("stub-tpm-quote-phase3"))
+	
+	// Unified-Identity - Phase 3: Use valid PEM format for stub public key
 	// This is a valid PEM-format EC public key for testing (generated with cryptography library)
-	// In production, this will be a real TPM App Key public key
 	stubAppKeyPublic := `-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEmEfSIT6GJla8CK04AsF4bv9WyoFZ
 BKTlYihT6v7QGy4hUq/djGG4il7vHmRm8nuOUzrQy7ViZhwhjNIRJH0hDg==
@@ -782,9 +902,9 @@ BKTlYihT6v7QGy4hUq/djGG4il7vHmRm8nuOUzrQy7ViZhwhjNIRJH0hDg==
 	return &types.SovereignAttestation{
 		TpmSignedAttestation: stubQuote,
 		AppKeyPublic:         stubAppKeyPublic,
-		AppKeyCertificate:    []byte("stub-app-key-cert-phase1"), // Optional for testing
-		ChallengeNonce:       "stub-nonce-phase-1",
-		WorkloadCodeHash:     "stub-workload-code-hash-phase1",
+		AppKeyCertificate:    []byte("stub-app-key-cert-phase3"), // Optional for testing
+		ChallengeNonce:       "stub-nonce-phase-3",
+		WorkloadCodeHash:     "stub-workload-code-hash-phase3",
 	}
 }
 

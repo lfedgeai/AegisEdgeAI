@@ -45,7 +45,7 @@ type Config struct {
 	ServerCA    ca.ServerCA
 	TrustDomain spiffeid.TrustDomain
 
-	// Unified-Identity - Phase 1: Optional Keylime client and policy engine
+	// Unified-Identity - Phase 3: Keylime client and policy engine
 	KeylimeClient *keylime.Client
 	PolicyEngine  *policy.Engine
 }
@@ -60,7 +60,7 @@ type Service struct {
 	ca  ca.ServerCA
 	td  spiffeid.TrustDomain
 
-	// Unified-Identity - Phase 1
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	keylimeClient *keylime.Client
 	policyEngine  *policy.Engine
 }
@@ -370,7 +370,7 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 		return api.MakeErr(log, codes.PermissionDenied, "failed to attest: agent is banned", nil)
 	}
 
-	// Unified-Identity - Phase 1 & Phase 2: Process AttestedClaims BEFORE signing SVID
+	// Unified-Identity - Phase 3: Process AttestedClaims BEFORE signing SVID
 	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
 	var attestedClaimsForCert *types.AttestedClaims
@@ -378,7 +378,7 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 		if params.Params != nil {
 			if params.Params.SovereignAttestation != nil {
-				log.Debug("Unified-Identity - Phase 1: Received SovereignAttestation in agent bootstrap request")
+				log.Debug("Unified-Identity - Phase 3: Received SovereignAttestation in agent bootstrap request")
 				claims, err := s.processSovereignAttestation(ctx, log, params.Params.SovereignAttestation, agentID.String())
 				if err != nil {
 					return api.MakeErr(log, codes.Internal, "failed to process sovereign attestation", err)
@@ -405,15 +405,15 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 						"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
 						"gpu_util_pct":  claims.GpuMetricsHealth.GetUtilizationPct(),
 						"gpu_memory_mb": claims.GpuMetricsHealth.GetMemoryMb(),
-					}).Info("Unified-Identity - Phase 1 & Phase 2: AttestedClaims will be embedded in agent SVID certificate")
+					}).Info("Unified-Identity - Phase 3: AttestedClaims will be embedded in agent SVID certificate")
 				} else {
-					log.Warn("Unified-Identity - Phase 1: processSovereignAttestation returned nil claims")
+					log.Warn("Unified-Identity - Phase 3: processSovereignAttestation returned nil claims")
 				}
 			} else {
-				log.Warn("Unified-Identity - Phase 1: SovereignAttestation is nil in agent attestation params")
+				log.Warn("Unified-Identity - Phase 3: SovereignAttestation is nil in agent attestation params")
 			}
 		} else {
-			log.Warn("Unified-Identity - Phase 1: params.Params is nil in agent attestation request")
+			log.Warn("Unified-Identity - Phase 3: params.Params is nil in agent attestation request")
 		}
 	}
 
@@ -508,7 +508,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		return nil, api.MakeErr(log, codes.InvalidArgument, "missing CSR", nil)
 	}
 
-	// Unified-Identity - Phase 1 & Phase 2: Process AttestedClaims BEFORE signing SVID
+	// Unified-Identity - Phase 3: Process AttestedClaims BEFORE signing SVID
 	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
 	var attestedClaimsForCert *types.AttestedClaims
@@ -538,7 +538,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 				"geolocation":   claims.Geolocation,
 				"integrity":     claims.HostIntegrityStatus.String(),
 				"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
-			}).Info("Unified-Identity - Phase 1 & Phase 2: AttestedClaims will be embedded in agent SVID certificate")
+			}).Info("Unified-Identity - Phase 3: AttestedClaims will be embedded in agent SVID certificate")
 		}
 	}
 
@@ -570,7 +570,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 			"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
 			"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
 			"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
-		}).Info("Unified-Identity - Phase 1: AttestedClaims attached to agent SVID")
+		}).Info("Unified-Identity - Phase 3: AttestedClaims attached to agent SVID")
 	}
 
 	return &agentv1.RenewAgentResponse{
@@ -583,10 +583,10 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 	}, nil
 }
 
-// Unified-Identity - Phase 1: Process SovereignAttestation for agent renewals
+// Unified-Identity - Phase 3: Process SovereignAttestation for agent renewals
 func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.FieldLogger, sovereignAttestation *types.SovereignAttestation, spiffeID string) (*types.AttestedClaims, error) {
 	if s.keylimeClient == nil {
-		log.Warn("Unified-Identity - Phase 1: Keylime client not configured, skipping attestation verification")
+		log.Warn("Unified-Identity - Phase 3: Keylime client not configured, skipping attestation verification")
 		return nil, nil
 	}
 
@@ -610,7 +610,7 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 		"geolocation": keylimeClaims.Geolocation,
 		"integrity":   keylimeClaims.HostIntegrityStatus,
 		"gpu_status":  keylimeClaims.GPUMetricsHealth.Status,
-	}).Info("Unified-Identity - Phase 1: Received AttestedClaims from Keylime (agent)")
+	}).Info("Unified-Identity - Phase 3: Received AttestedClaims from Keylime (agent)")
 
 	if s.policyEngine != nil {
 		policyClaims := policy.ConvertKeylimeAttestedClaims(&policy.KeylimeAttestedClaims{
@@ -633,11 +633,11 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 		}
 
 		if !policyResult.Allowed {
-			log.WithField("reason", policyResult.Reason).Warn("Unified-Identity - Phase 1: Policy evaluation failed for agent")
+			log.WithField("reason", policyResult.Reason).Warn("Unified-Identity - Phase 3: Policy evaluation failed for agent")
 			return nil, fmt.Errorf("policy evaluation failed: %s", policyResult.Reason)
 		}
 
-		log.Info("Unified-Identity - Phase 1: Policy evaluation passed for agent")
+		log.Info("Unified-Identity - Phase 3: Policy evaluation passed for agent")
 	}
 
 	hostIntegrityStatus := types.AttestedClaims_HOST_INTEGRITY_UNSPECIFIED
@@ -759,12 +759,12 @@ func (s *Service) signSvid(ctx context.Context, agentID spiffeid.ID, csr []byte,
 		return nil, api.MakeErr(log, codes.InvalidArgument, "failed to parse CSR", err)
 	}
 
-	// Unified-Identity - Phase 1 & Phase 2: Sign X509 SVID with AttestedClaims embedded in certificate extension
+	// Unified-Identity - Phase 3: Sign X509 SVID with AttestedClaims embedded in certificate extension
 	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
 	x509Svid, err := s.ca.SignAgentX509SVID(ctx, ca.AgentX509SVIDParams{
 		SPIFFEID:       agentID,
 		PublicKey:      parsedCsr.PublicKey,
-		AttestedClaims: attestedClaims, // Unified-Identity - Phase 1 & Phase 2: Embed AttestedClaims in certificate
+		AttestedClaims: attestedClaims, // Unified-Identity - Phase 3: Embed AttestedClaims in certificate
 		UnifiedIdentityJSON: attestedClaimsJSON,
 	})
 	if err != nil {

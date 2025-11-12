@@ -9,7 +9,7 @@ import (
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 )
 
-// Unified-Identity - Phase 1 & Phase 2: Embed AttestedClaims in X.509 Certificate Extension
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // OID for AttestedClaims extension: 1.3.6.1.4.1.99999.1 (Private Enterprise Number - placeholder)
 // In production, this should use a registered OID from IANA
 var AttestedClaimsExtensionOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 1}

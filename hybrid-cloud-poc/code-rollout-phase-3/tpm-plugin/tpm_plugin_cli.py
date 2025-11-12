@@ -17,9 +17,11 @@ from tpm_plugin import TPMPlugin, is_unified_identity_enabled
 from delegated_certification import DelegatedCertificationClient
 
 # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+# Configure logging to stderr so JSON output on stdout is clean
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr  # Send logs to stderr, not stdout
 )
 logger = logging.getLogger(__name__)
 
@@ -85,7 +87,13 @@ def cmd_request_certificate(args):
         logger.error("Unified-Identity - Phase 3: App key public and context are required")
         sys.exit(1)
     
-    client = DelegatedCertificationClient(socket_path=args.socket_path)
+    # Unified-Identity - Phase 3: Support both --endpoint and --socket-path (for backward compatibility)
+    endpoint = args.endpoint
+    if endpoint is None and args.socket_path:
+        # Legacy: convert socket path to endpoint format
+        endpoint = f"unix://{args.socket_path}"
+    
+    client = DelegatedCertificationClient(endpoint=endpoint)
     success, cert_b64, error = client.request_certificate(
         app_key_public=args.app_key_public,
         app_key_context_path=args.app_key_context
@@ -126,9 +134,12 @@ def main():
     parser_cert = subparsers.add_parser("request-certificate", help="Request App Key certificate")
     parser_cert.add_argument("--app-key-public", type=str, required=True, help="App Key public key (PEM)")
     parser_cert.add_argument("--app-key-context", type=str, required=True, help="App Key context path")
+    parser_cert.add_argument("--endpoint", type=str, 
+                            default=None,
+                            help="rust-keylime Agent endpoint (HTTP or UNIX socket). Defaults to http://localhost:9002/v2.2/delegated_certification/certify_app_key")
     parser_cert.add_argument("--socket-path", type=str, 
-                            default="/var/run/keylime/keylime-agent-certify.sock",
-                            help="Keylime Agent socket path")
+                            default=None,
+                            help="[Deprecated] Use --endpoint instead. Keylime Agent socket path")
     parser_cert.set_defaults(func=cmd_request_certificate)
     
     args = parser.parse_args()

@@ -1,4 +1,4 @@
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // Package keylime provides a client for interacting with the Keylime Verifier API.
 package keylime
 
@@ -15,7 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // Client is a client for the Keylime Verifier API
 type Client struct {
 	baseURL    string
@@ -23,7 +23,7 @@ type Client struct {
 	logger     logrus.FieldLogger
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // Config holds configuration for the Keylime client
 type Config struct {
 	BaseURL    string
@@ -34,7 +34,7 @@ type Config struct {
 	Logger     logrus.FieldLogger
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // AttestedClaims represents verified facts from Keylime
 type AttestedClaims struct {
 	Geolocation         string `json:"geolocation"`
@@ -46,7 +46,7 @@ type AttestedClaims struct {
 	} `json:"gpu_metrics_health"`
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 // VerifyEvidenceRequest represents the request to Keylime
 type VerifyEvidenceRequest struct {
@@ -67,7 +67,7 @@ type VerifyEvidenceRequest struct {
 	} `json:"metadata"`
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // VerifyEvidenceResponse represents the response from Keylime
 type VerifyEvidenceResponse struct {
 	Results struct {
@@ -84,7 +84,7 @@ type VerifyEvidenceResponse struct {
 	} `json:"results"`
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // NewClient creates a new Keylime client
 func NewClient(config Config) (*Client, error) {
 	if config.Logger == nil {
@@ -99,7 +99,7 @@ func NewClient(config Config) (*Client, error) {
 		config.Timeout = 30 * time.Second
 	}
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 	// Configure TLS
 	// For Phase 2 testing with self-signed certificates, allow insecure skip
@@ -114,7 +114,7 @@ func NewClient(config Config) (*Client, error) {
 		config.Logger.Info("Unified-Identity - Phase 2: CA certificate loading not yet implemented")
 	}
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Configure client certificate if provided
 	if config.TLSCert != "" && config.TLSKey != "" {
 		cert, err := tls.LoadX509KeyPair(config.TLSCert, config.TLSKey)
@@ -122,7 +122,7 @@ func NewClient(config Config) (*Client, error) {
 			return nil, fmt.Errorf("failed to load client certificate: %w", err)
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
-		config.Logger.Info("Unified-Identity - Phase 1: Loaded client certificate for mTLS")
+		config.Logger.Info("Unified-Identity - Phase 3: Loaded client certificate for mTLS")
 	}
 
 	transport := &http.Transport{
@@ -139,23 +139,23 @@ func NewClient(config Config) (*Client, error) {
 	}, nil
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // VerifyEvidence calls the Keylime Verifier to verify evidence and get AttestedClaims
 func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, error) {
 	c.logger.WithFields(logrus.Fields{
 		"nonce":           req.Data.Nonce,
 		"submission_type": req.Metadata.SubmissionType,
 		"source":          req.Metadata.Source,
-	}).Info("Unified-Identity - Phase 1: Calling Keylime Verifier to verify evidence")
+	}).Info("Unified-Identity - Phase 3: Calling Keylime Verifier to verify evidence")
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Encode request body
 	reqBody, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Create HTTP request
 	url := fmt.Sprintf("%s/v2.4/verify/evidence", c.baseURL)
 	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
@@ -165,45 +165,45 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Execute request
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		c.logger.WithError(err).Error("Unified-Identity - Phase 1: Failed to call Keylime Verifier")
+		c.logger.WithError(err).Error("Unified-Identity - Phase 3: Failed to call Keylime Verifier")
 		return nil, fmt.Errorf("failed to call Keylime Verifier: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Check HTTP status
 	if resp.StatusCode != http.StatusOK {
 		c.logger.WithFields(logrus.Fields{
 			"status_code": resp.StatusCode,
 			"body":        string(respBody),
-		}).Error("Unified-Identity - Phase 1: Keylime Verifier returned error")
+		}).Error("Unified-Identity - Phase 3: Keylime Verifier returned error")
 		return nil, fmt.Errorf("keylime verifier returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Parse response
 	var verifyResp VerifyEvidenceResponse
 	if err := json.Unmarshal(respBody, &verifyResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Validate verification result
 	if !verifyResp.Results.Verified {
 		c.logger.WithFields(logrus.Fields{
 			"audit_id": verifyResp.Results.AuditID,
-		}).Warn("Unified-Identity - Phase 1: Keylime verification failed")
+		}).Warn("Unified-Identity - Phase 3: Keylime verification failed")
 		return nil, fmt.Errorf("verification failed (audit_id: %s)", verifyResp.Results.AuditID)
 	}
 
@@ -212,12 +212,12 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 		"geolocation":   verifyResp.Results.AttestedClaims.Geolocation,
 		"integrity":     verifyResp.Results.AttestedClaims.HostIntegrityStatus,
 		"gpu_status":    verifyResp.Results.AttestedClaims.GPUMetricsHealth.Status,
-	}).Info("Unified-Identity - Phase 1: Successfully received AttestedClaims from Keylime")
+	}).Info("Unified-Identity - Phase 3: Successfully received AttestedClaims from Keylime")
 
 	return &verifyResp.Results.AttestedClaims, nil
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 // BuildVerifyEvidenceRequest builds a VerifyEvidenceRequest from SovereignAttestation
 func BuildVerifyEvidenceRequest(sovereignAttestation *SovereignAttestationProto, nonce string) (*VerifyEvidenceRequest, error) {
@@ -226,7 +226,7 @@ func BuildVerifyEvidenceRequest(sovereignAttestation *SovereignAttestationProto,
 	// Unified-Identity - Phase 2: Set evidence type (required by Keylime Verifier)
 	req.Type = "tpm"
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 	// Set data fields
 	req.Data.Nonce = sovereignAttestation.ChallengeNonce
@@ -237,14 +237,14 @@ func BuildVerifyEvidenceRequest(sovereignAttestation *SovereignAttestationProto,
 	req.Data.HashAlg = "sha256"
 	req.Data.AppKeyPublic = sovereignAttestation.AppKeyPublic
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 	// Base64 encode app_key_certificate if present
 	if len(sovereignAttestation.AppKeyCertificate) > 0 {
 		req.Data.AppKeyCertificate = base64.StdEncoding.EncodeToString(sovereignAttestation.AppKeyCertificate)
 	}
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 	// Set metadata
 	req.Metadata.Source = "SPIRE Server"
@@ -253,7 +253,7 @@ func BuildVerifyEvidenceRequest(sovereignAttestation *SovereignAttestationProto,
 	return req, nil
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // SovereignAttestationProto represents the protobuf SovereignAttestation type
 // This is a placeholder - in the actual implementation, this would be the generated protobuf type
 type SovereignAttestationProto struct {

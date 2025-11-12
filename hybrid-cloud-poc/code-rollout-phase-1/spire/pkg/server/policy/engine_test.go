@@ -1,4 +1,4 @@
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 package policy
 
 import (
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 func TestEngine_Evaluate(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -167,7 +167,7 @@ func TestEngine_Evaluate(t *testing.T) {
 	}
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 func TestEngine_matchesGeolocation(t *testing.T) {
 	engine := &Engine{
 		config: PolicyConfig{
@@ -215,7 +215,7 @@ func TestEngine_matchesGeolocation(t *testing.T) {
 	}
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 func TestConvertKeylimeAttestedClaims(t *testing.T) {
 	keylimeClaims := &KeylimeAttestedClaims{
 		Geolocation:         "Spain: N40.4168, W3.7038",

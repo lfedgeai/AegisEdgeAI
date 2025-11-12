@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+Unified-Identity - Phase 3: SPIRE API & Policy Staging (Stubbed Keylime)
 Python script to fetch Sovereign SVID with AttestedClaims from SPIRE Agent Workload API using gRPC directly.
 
 This script uses gRPC to call the Workload API directly, allowing access to AttestedClaims
@@ -71,7 +71,7 @@ def generate_proto_stubs():
 
 def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
     """
-    Unified-Identity - Phase 1: Fetch SVID from SPIRE Agent Workload API using gRPC directly.
+    Unified-Identity - Phase 3: Fetch SVID from SPIRE Agent Workload API using gRPC directly.
     
     This function uses gRPC to call the Workload API, allowing access to AttestedClaims
     from the protobuf response.
@@ -127,7 +127,7 @@ def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
         # Create request (empty for FetchX509SVID)
         request = workload_pb2.X509SVIDRequest()
         
-        # Unified-Identity - Phase 1: Add required security header for Workload API
+        # Unified-Identity - Phase 3: Add required security header for Workload API
         # The SPIRE Agent requires the "workload.spiffe.io" metadata header
         # This is a security measure to ensure the client is aware it's calling the Workload API
         # For streaming RPCs in Python gRPC, metadata is passed as a list of (key, value) tuples
@@ -240,21 +240,32 @@ def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
         print(f"  SPIFFE ID: {svid.spiffe_id}")
         print()
         
-        # Unified-Identity - Phase 1: Extract AttestedClaims from response
+        # Unified-Identity - Phase 3: Extract Unified Identity claims from certificate extension
+        # Try new Unified Identity extension (OID 1.3.6.1.4.1.99999.2) first, then legacy (1.3.6.1.4.1.99999.1)
         claims_json = None
         extension_claims = None
         try:
-            oid = x509.ObjectIdentifier("1.3.6.1.4.1.99999.1")
+            # Try new Unified Identity extension (Phase 3)
+            oid = x509.ObjectIdentifier("1.3.6.1.4.1.99999.2")
             ext = cert.extensions.get_extension_for_oid(oid)
             ext_value = ext.value.value if hasattr(ext.value, "value") else ext.value
             extension_claims = json.loads(ext_value)
         except Exception:
-            extension_claims = None
+            try:
+                # Fall back to legacy AttestedClaims extension (if present)
+                oid = x509.ObjectIdentifier("1.3.6.1.4.1.99999.1")
+                ext = cert.extensions.get_extension_for_oid(oid)
+                ext_value = ext.value.value if hasattr(ext.value, "value") else ext.value
+                extension_claims = json.loads(ext_value)
+            except Exception:
+                extension_claims = None
 
-        if response.attested_claims:
-            print(f"✓ Found {len(response.attested_claims)} AttestedClaims in response")
-            print()
-            
+        # Unified-Identity - Phase 3: Prioritize Unified Identity extension claims
+        if extension_claims is not None:
+            # Phase 3: Use Unified Identity claims from certificate extension
+            claims_json = extension_claims
+        elif response.attested_claims:
+            # Fall back to protobuf AttestedClaims (if Unified Identity extension not present)
             # Convert protobuf AttestedClaims to JSON
             claims_list = []
             for claim in response.attested_claims:
@@ -277,15 +288,8 @@ def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
                 claims_json = claims_list[0]
             else:
                 claims_json = {"claims": claims_list} if claims_list else None
-        elif extension_claims is not None:
-            claims_json = extension_claims
         else:
-            print("⚠ No AttestedClaims in response")
-            print("  (This may mean the feature flag is disabled or no claims were returned)")
-        
-        if extension_claims is not None and claims_json is not extension_claims:
-            # Prefer the richer claims present in the certificate extension
-            claims_json = extension_claims
+            claims_json = None
         
         channel.close()
         return cert_pem, claims_json
@@ -310,7 +314,7 @@ def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
 
 def main():
     print("=" * 70)
-    print("Unified-Identity - Phase 1: Fetching Sovereign SVID (gRPC)")
+    print("Unified-Identity - Phase 3: Fetching Sovereign SVID (gRPC)")
     print("=" * 70)
     print()
     print("Note: Using gRPC directly to access AttestedClaims from Workload API")
@@ -327,30 +331,16 @@ def main():
     if cert_pem:
         cert_file = output_dir / "svid.pem"
         cert_file.write_text(cert_pem)
-        print(f"✓ SVID certificate saved to: {cert_file}")
         
-        # Save AttestedClaims if available
+        # Save AttestedClaims if available (for reference, but claims are in certificate extension)
         if claims_json:
             claims_file = output_dir / "attested_claims.json"
             claims_file.write_text(json.dumps(claims_json, indent=2))
+            print(f"✓ SVID certificate saved to: {cert_file}")
             print(f"✓ AttestedClaims saved to: {claims_file}")
-            print()
-            print("AttestedClaims (from SPIRE Agent):")
-            print(json.dumps(claims_json, indent=2))
         else:
+            print(f"✓ SVID certificate saved to: {cert_file}")
             print("(Note: AttestedClaims not available in response)")
-        
-        print()
-        print("=" * 70)
-        print("SVID fetch complete!")
-        print("=" * 70)
-        print()
-        if claims_json:
-            print("To view the SVID with AttestedClaims:")
-            print(f"  ../../code-rollout-phase-2/dump-svid-attested-claims.sh {cert_file}")
-        else:
-            print("To view the SVID:")
-            print(f"  ../../code-rollout-phase-2/dump-svid-attested-claims.sh {cert_file}")
     else:
         print("Error: Could not fetch SVID")
         sys.exit(1)
