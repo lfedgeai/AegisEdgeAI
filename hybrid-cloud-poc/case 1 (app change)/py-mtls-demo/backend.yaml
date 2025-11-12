@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        # Make sure this image tag is correct
+        image: py-backend:gunicorn-v2
+        imagePullPolicy: IfNotPresent 
+        ports:
+        - containerPort: 8443
+        volumeMounts:
+        - name: mtls-certs
+          # This path MUST match the paths in your Gunicorn CMD
+          mountPath: "/var/run/secrets/mtls"
+          readOnly: true
+      volumes:
+      - name: mtls-certs
+        csi:
+          driver: csi.cert-manager.io
+          readOnly: true
+          volumeAttributes:
+            csi.cert-manager.io/issuer-name: "demo-ca"
+            
+            # This is the original name
+            csi.cert-manager.io/common-name: "backend-svc.default.svc.cluster.local"
+            
+            # --- ADD THIS LINE ---
+            # This tells cert-manager to add the short DNS name to the certificate
+            csi.cert-manager.io/dns-names: "backend-svc"
+            
+---
+# Add this three-hyphen separator
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc # The name your frontend is trying to find
+spec:
+  selector:
+    app: backend   # This connects the Service to your backend pods
+  ports:
+  - name: https
+    protocol: TCP
+    port: 8443        # The port the Service listens on
+    targetPort: 8443  # The port on your Gunicorn pod

@@ -1,0 +1,33 @@
+# frontend.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: py-mtls-frontend:phase3-final-fix  # <--- HERE
+        imagePullPolicy: Never
+        volumeMounts:
+        - name: certs
+          mountPath: "/etc/tls"
+          readOnly: true
+      volumes:
+      - name: certs
+        csi:
+          driver: csi.cert-manager.io
+          readOnly: true
+          volumeAttributes:
+            csi.cert-manager.io/issuer-name: demo-ca
+            csi.cert-manager.io/issuer-kind: Issuer
+            csi.cert-manager.io/common-name: frontend-app
+            csi.cert-manager.io/duration: 1m # <--- HERE
