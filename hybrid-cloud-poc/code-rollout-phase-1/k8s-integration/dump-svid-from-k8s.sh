@@ -207,19 +207,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Write certificate
-	certPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: svid.Certificates[0].Raw,
-	})
+	// Write full certificate chain (workload + agent + CA)
+	var pemChain []byte
+	for _, certificate := range svid.Certificates {
+		pemChain = append(pemChain, pem.EncodeToMemory(&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: certificate.Raw,
+		})...)
+	}
 
-	if err := ioutil.WriteFile("/tmp/svid.crt", certPEM, 0644); err != nil {
+	if err := ioutil.WriteFile("/tmp/svid.crt", pemChain, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing certificate: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("SPIFFE ID: %s\n", svid.ID)
-	fmt.Printf("Certificate written to /tmp/svid.crt\n")
+	fmt.Printf("Certificate chain (%d certs) written to /tmp/svid.crt\n", len(svid.Certificates))
 }
 EOF
 

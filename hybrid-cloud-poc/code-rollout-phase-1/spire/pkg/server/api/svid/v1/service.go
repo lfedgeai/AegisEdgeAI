@@ -349,10 +349,33 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 		WithField(telemetry.RevisionNumber, entry.GetRevisionNumber()).
 		Debug("Signed X509 SVID")
 
+	// Policy Enforcement: Include agent's SVID in workload SVID certificate chain
+	// This allows workloads to verify which agent issued their SVID for policy enforcement
+	certChain := x509Svid
+	agentSVID, ok := rpccontext.CallerX509SVID(ctx)
+	if ok && agentSVID != nil {
+		// Construct chain: [Workload SVID, Agent SVID, CA chain]
+		// The agent's SVID is inserted after the workload SVID but before the CA chain
+		// This allows policy engines to identify which agent issued the workload SVID
+		workloadSVID := x509Svid[0]
+		caChain := x509Svid[1:] // CA chain (intermediate + root)
+		
+		// Build new chain: Workload SVID, Agent SVID, CA chain
+		certChain = make([]*x509.Certificate, 0, len(x509Svid)+1)
+		certChain = append(certChain, workloadSVID)
+		certChain = append(certChain, agentSVID)
+		certChain = append(certChain, caChain...)
+		
+		agentID, _ := rpccontext.CallerID(ctx)
+		log.WithField("agent_spiffe_id", agentID.String()).
+			WithField("workload_spiffe_id", spiffeID.String()).
+			Debug("Including agent SVID in workload SVID certificate chain for policy enforcement")
+	}
+
 	result := &svidv1.BatchNewX509SVIDResponse_Result{
 		Svid: &types.X509SVID{
 			Id:        entry.GetSpiffeId(),
-			CertChain: x509util.RawCertsFromCertificates(x509Svid),
+			CertChain: x509util.RawCertsFromCertificates(certChain),
 			ExpiresAt: x509Svid[0].NotAfter.Unix(),
 		},
 		Status: api.OK(),

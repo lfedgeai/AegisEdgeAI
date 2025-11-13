@@ -812,7 +812,16 @@ Workloads request SVIDs from the SPIRE Agent via the Workload API. This flow is 
          │
          │ Step 2: Attest Workload
          │ Step 3: Match Registration Entry
-         │ Step 4: Return Cached or Fetch New SVID
+         │ Step 4: Fetch SVID from SPIRE Server
+         │        (Agent authenticates with Sovereign SVID)
+         ▼
+┌─────────────────┐
+│  SPIRE Server   │
+│  (Verifies &    │
+│   Issues SVID)  │
+└────────┬────────┘
+         │
+         │ Step 5: Return SVID to Workload
          ▼
 ┌─────────────────┐
 │   Workload       │
@@ -891,7 +900,96 @@ message X509SVIDRequest {
 
 ---
 
-#### Step 4: SPIRE Agent Returns SVID
+#### Step 4: SPIRE Agent Fetches SVID from SPIRE Server (if needed)
+
+**Component:** SPIRE Agent → SPIRE Server
+
+**Status:** ✅ Existing (Standard SPIRE)
+
+**Transport:** mTLS over TCP
+
+**Protocol:** gRPC (Protobuf)
+
+**Port:** SPIRE Server port (typically 8081)
+
+**RPC Method:** `BatchNewX509SVID(BatchNewX509SVIDRequest) returns (BatchNewX509SVIDResponse)`
+
+**Action:**
+- SPIRE Agent checks cache for existing SVID
+- If cached SVID is valid and not expiring soon, skips this step and goes to Step 5
+- If SVID needs refresh, SPIRE Agent:
+  - **Authenticates to SPIRE Server using its own Sovereign SVID** (mTLS client certificate)
+  - Sends `BatchNewX509SVIDRequest` with workload CSR and entry ID
+  - SPIRE Server:
+    1. **Verifies agent's identity** using the agent's Sovereign SVID (from mTLS)
+    2. **Checks authorization** - verifies the agent is authorized to request SVIDs for the workload entry
+    3. **Validates workload entry** - checks registration entry matches the workload selectors
+    4. **Signs workload SVID** using SPIRE Server's CA
+    5. Returns `BatchNewX509SVIDResponse` with signed workload SVID
+
+**Request Format (Protobuf):**
+```protobuf
+message BatchNewX509SVIDRequest {
+  repeated NewX509SVIDParams params = 1;
+}
+
+message NewX509SVIDParams {
+  string entry_id = 1;           // Registration entry ID
+  bytes csr = 2;                 // Certificate Signing Request (DER-encoded)
+  SovereignAttestation sovereign_attestation = 3;  // Optional (for workloads with TPM attestation)
+}
+```
+
+**Response Format (Protobuf):**
+```protobuf
+message BatchNewX509SVIDResponse {
+  repeated BatchNewX509SVIDResponse_Result results = 1;
+}
+
+message BatchNewX509SVIDResponse_Result {
+  types.X509SVID svid = 1;        // Signed workload SVID
+  types.Status status = 2;        // Success or error status
+}
+
+message X509SVID {
+  types.SPIFFEID id = 1;          // Workload SPIFFE ID
+  repeated bytes cert_chain = 2;    // Certificate chain: [Workload SVID, Intermediate CA (if any), Root CA]
+  int64 expires_at = 3;            // Expiration timestamp
+}
+```
+
+**Authentication:**
+- SPIRE Agent authenticates using its **Sovereign SVID** as the mTLS client certificate
+- SPIRE Server extracts the agent's SPIFFE ID from the client certificate (`CallerID`)
+- SPIRE Server verifies the agent's SVID is valid and not expired
+
+**Authorization:**
+- SPIRE Server checks if the agent (identified by `CallerID`) is authorized to request SVIDs for the workload entry
+- The workload entry's `parent_id` must match the agent's SPIFFE ID
+- SPIRE Server uses `LookupAuthorizedEntries()` to verify authorization
+
+**Certificate Chain:**
+- The workload SVID certificate chain includes: **[Workload SVID, Agent SVID, Intermediate CA (if any), Root CA]**
+- **The agent's Sovereign SVID IS included in the certificate chain** (for policy enforcement)
+- The agent's SVID is inserted after the workload SVID but before the CA chain
+- This allows policy engines to identify which agent issued the workload SVID
+- Both the agent's Sovereign SVID and workload SVID are signed by the same SPIRE Server CA
+
+**Policy Enforcement:**
+- The agent's SVID is included in the workload SVID certificate chain to enable policy enforcement
+- Workloads can extract the agent's SPIFFE ID from the certificate chain to verify which agent issued their SVID
+- Policy engines can use this information to enforce agent-specific policies (e.g., only allow workloads from specific agents)
+- The agent's SVID is retrieved from the mTLS connection context via `rpccontext.CallerX509SVID(ctx)`
+
+**Code Location:**
+- Client: `pkg/agent/client/client.go::FetchWorkloadUpdate()`
+- Client: `pkg/agent/manager/manager.go::FetchWorkloadUpdate()`
+- Server: `pkg/server/api/svid/v1/service.go::BatchNewX509SVID()`
+- Server: `pkg/server/endpoints/auth.go` (agent authentication middleware)
+
+---
+
+#### Step 5: SPIRE Agent Returns SVID to Workload
 
 **Component:** SPIRE Agent → Workload
 
@@ -902,12 +1000,8 @@ message X509SVIDRequest {
 **Protocol:** Streaming gRPC
 
 **Action:**
-- SPIRE Agent checks cache for existing SVID
-- If cached SVID is valid and not expiring soon, returns cached SVID
-- If SVID needs refresh, SPIRE Agent:
-  - Fetches new SVID from SPIRE Server via `BatchNewX509SVID` gRPC call
-  - Caches the SVID
-  - Returns SVID to workload
+- SPIRE Agent caches the SVID received from SPIRE Server (or uses cached SVID if still valid)
+- Returns SVID to workload via Workload API
 
 **Response Format (Protobuf):**
 ```protobuf
@@ -942,15 +1036,33 @@ X509SVIDResponse {
 }
 ```
 
-**Note:** The workload SVID does NOT include:
-- TPM attestation data
-- Host integrity claims
-- Geolocation claims
-- Custom X.509 certificate extensions (unified identity claims)
+**Note:** The workload SVID certificate chain includes:
+- **Workload SVID:** The leaf certificate for the workload
+- **Agent SVID:** The agent's Sovereign SVID (included for policy enforcement)
+- **CA Chain:** Intermediate CA (if any) and Root CA
 
-The workload SVID only contains:
+The workload SVID certificate chain does NOT include:
+- TPM attestation data (unless workload provides its own SovereignAttestation)
+- Host integrity claims (unless workload provides its own SovereignAttestation)
+- Geolocation claims (unless workload provides its own SovereignAttestation)
+
+**Certificate Chain Structure:**
+- **Workload SVID:** Signed by SPIRE Server CA, contains workload SPIFFE ID (leaf certificate)
+- **Agent SVID:** The agent's Sovereign SVID, inserted for policy enforcement
+- **Intermediate CA (if any):** Intermediate certificate authority
+- **Root CA:** SPIRE Server's root certificate authority
+
+**Agent's Sovereign SVID Role:**
+- Used for **authentication** when SPIRE Agent connects to SPIRE Server (mTLS client certificate)
+- Used for **authorization** - SPIRE Server verifies agent is authorized to request workload SVIDs
+- **INCLUDED** in the workload SVID certificate chain (for policy enforcement)
+- Both agent and workload SVIDs are signed by the same SPIRE Server CA, creating a trust relationship
+- Policy engines can extract the agent's SPIFFE ID from the certificate chain to enforce agent-specific policies
+
+The workload SVID contains:
 - Workload SPIFFE ID
 - Standard X.509 certificate fields (subject, issuer, validity, etc.)
+- Certificate chain (Workload SVID → CA chain)
 - Trust bundle for validation
 - Private key for mTLS authentication
 
@@ -971,8 +1083,8 @@ The workload SVID only contains:
 | **Claims** | Unified Identity (TPM, geolocation, GPU) | Standard SPIFFE ID only |
 | **Certificate Extension** | Custom OID with unified claims | Standard X.509 only |
 | **Dependencies** | TPM Plugin, Keylime Agent, Keylime Verifier | SPIRE Agent only |
-| **Transport** | gRPC (Agent → Server) | gRPC (Workload → Agent) |
-| **Use Case** | Agent identity, mTLS to server | Workload identity, service-to-service |
+| **Used for Workload SVID** | Authentication & Authorization (mTLS) | N/A (this is the workload SVID) |
+| **In Workload SVID Chain** | No (not in certificate chain) | Yes (workload SVID is the leaf cert) |
 
 ---
 

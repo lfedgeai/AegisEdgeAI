@@ -9,7 +9,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -19,10 +18,10 @@ import (
 )
 
 var (
-	certPath        = flag.String("cert", "svid.crt", "Path to SVID certificate file")
-	attestedPath    = flag.String("attested", "", "Path to AttestedClaims JSON file (optional)")
-	format          = flag.String("format", "pretty", "Output format: pretty, json, or detailed")
-	highlightColor  = flag.Bool("color", true, "Enable color highlighting for Phase 1 additions")
+	certPath       = flag.String("cert", "svid.crt", "Path to SVID certificate file")
+	attestedPath   = flag.String("attested", "", "Path to AttestedClaims JSON file (optional)")
+	format         = flag.String("format", "pretty", "Output format: pretty, json, or detailed")
+	highlightColor = flag.Bool("color", true, "Enable color highlighting for Phase 1 additions")
 )
 
 const (
@@ -42,10 +41,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Read and parse certificate
-	cert, err := readCertificate(*certPath)
+	// Read and parse certificate chain
+	certs, err := readCertificates(*certPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading certificate: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(certs) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: no certificates found in %s\n", *certPath)
 		os.Exit(1)
 	}
 
@@ -61,35 +65,46 @@ func main() {
 	// Output based on format
 	switch *format {
 	case "json":
-		outputJSON(cert, attestedClaims)
+		outputJSON(certs, attestedClaims)
 	case "detailed":
-		outputDetailed(cert, attestedClaims)
+		outputDetailed(certs, attestedClaims)
 	default:
-		outputPretty(cert, attestedClaims)
+		outputPretty(certs, attestedClaims)
 	}
 }
 
-func readCertificate(path string) (*x509.Certificate, error) {
-	data, err := ioutil.ReadFile(path)
+func readCertificates(path string) ([]*x509.Certificate, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM block")
+	var certs []*x509.Certificate
+	for len(data) > 0 {
+		block, rest := pem.Decode(data)
+		if block == nil {
+			break
+		}
+		data = rest
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		certs = append(certs, cert)
 	}
 
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, err
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("failed to decode any certificates")
 	}
 
-	return cert, nil
+	return certs, nil
 }
 
 func readAttestedClaims(path string) (*types.AttestedClaims, error) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +118,9 @@ func readAttestedClaims(path string) (*types.AttestedClaims, error) {
 	return &claims, nil
 }
 
-func outputPretty(cert *x509.Certificate, claims *types.AttestedClaims) {
+func outputPretty(certs []*x509.Certificate, claims *types.AttestedClaims) {
+	cert := certs[0]
+
 	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
 	fmt.Println("║              SPIFFE Verifiable Identity Document (SVID)        ║")
 	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
@@ -184,10 +201,14 @@ func outputPretty(cert *x509.Certificate, claims *types.AttestedClaims) {
 	}
 
 	fmt.Println()
+
+	printCertificateChain(certs)
 }
 
-func outputDetailed(cert *x509.Certificate, claims *types.AttestedClaims) {
-	outputPretty(cert, claims)
+func outputDetailed(certs []*x509.Certificate, claims *types.AttestedClaims) {
+	outputPretty(certs, claims)
+
+	cert := certs[0]
 
 	// Additional certificate details
 	fmt.Println()
@@ -209,19 +230,38 @@ func outputDetailed(cert *x509.Certificate, claims *types.AttestedClaims) {
 	}
 }
 
-func outputJSON(cert *x509.Certificate, claims *types.AttestedClaims) {
+func outputJSON(certs []*x509.Certificate, claims *types.AttestedClaims) {
+	cert := certs[0]
+
 	output := map[string]interface{}{
 		"svid": map[string]interface{}{
 			"subject":       cert.Subject.String(),
-			"issuer":         cert.Issuer.String(),
+			"issuer":        cert.Issuer.String(),
 			"serial_number": cert.SerialNumber.String(),
 			"valid_from":    cert.NotBefore.Format(time.RFC3339),
 			"valid_until":   cert.NotAfter.Format(time.RFC3339),
-			"spiffe_id":      extractSPIFFEID(cert),
-			"dns_names":      cert.DNSNames,
-			"uris":           certURIsToStrings(cert),
+			"spiffe_id":     extractSPIFFEID(cert),
+			"dns_names":     cert.DNSNames,
+			"uris":          certURIsToStrings(cert),
 		},
 	}
+
+	var chainDetails []map[string]interface{}
+	for idx, chainCert := range certs {
+		spiffeID := extractSPIFFEID(chainCert)
+		role, _ := describeCertificate(idx, chainCert, spiffeID)
+		chainDetails = append(chainDetails, map[string]interface{}{
+			"index":      idx,
+			"role":       role,
+			"subject":    chainCert.Subject.String(),
+			"issuer":     chainCert.Issuer.String(),
+			"spiffe_id":  spiffeID,
+			"not_after":  chainCert.NotAfter.Format(time.RFC3339),
+			"is_ca":      chainCert.IsCA,
+			"chain_size": len(certs),
+		})
+	}
+	output["certificate_chain"] = chainDetails
 
 	if claims != nil {
 		claimsJSON, _ := protojson.Marshal(claims)
@@ -272,3 +312,41 @@ func colorize(text string, bold bool, color string) string {
 	return color + text + colorReset
 }
 
+func describeCertificate(index int, cert *x509.Certificate, spiffeID string) (string, string) {
+	if index == 0 {
+		return "Workload SVID (leaf)", colorCyan
+	}
+	if spiffeID != "" && strings.Contains(spiffeID, "/spire/agent/") {
+		return "Agent SVID (policy enforcement)", colorGreen
+	}
+	if spiffeID != "" {
+		return "SPIFFE identity", colorBlue
+	}
+	if cert.IsCA {
+		return "CA certificate", ""
+	}
+	return "Certificate", ""
+}
+
+func printCertificateChain(certs []*x509.Certificate) {
+	fmt.Println("Certificate Chain Summary:")
+	fmt.Println(strings.Repeat("─", 70))
+	for idx, chainCert := range certs {
+		spiffeID := extractSPIFFEID(chainCert)
+		role, color := describeCertificate(idx, chainCert, spiffeID)
+		label := fmt.Sprintf("[%d] %s", idx, role)
+		if color != "" {
+			label = colorize(label, true, color)
+		}
+		fmt.Println(label)
+		fmt.Printf("    Subject: %s\n", chainCert.Subject.String())
+		if spiffeID != "" {
+			fmt.Printf("    SPIFFE ID: %s\n", spiffeID)
+		} else {
+			fmt.Println("    SPIFFE ID: (none)")
+		}
+		fmt.Printf("    Issuer: %s\n", chainCert.Issuer.String())
+		fmt.Printf("    Expires: %s\n", chainCert.NotAfter.Format(time.RFC3339))
+		fmt.Println()
+	}
+}
