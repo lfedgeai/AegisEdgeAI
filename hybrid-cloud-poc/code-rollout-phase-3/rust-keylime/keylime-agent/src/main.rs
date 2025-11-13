@@ -71,10 +71,10 @@ use openssl::{
 };
 use std::{
     convert::TryFrom,
-    fs,
+    fs::{self, Permissions},
     io::{BufReader, Read, Write},
-    net::{IpAddr, TcpListener},
-    os::unix::net::{UnixListener, UnixStream},
+    net::IpAddr,
+    os::unix::{fs::PermissionsExt, net::UnixListener},
     path::{Path, PathBuf},
     str::FromStr,
     sync::Mutex,
@@ -134,9 +134,7 @@ async fn main() -> Result<()> {
     // Print --help information
     let matches = ClapApp::new("keylime_agent")
         .about("A Rust implementation of the Keylime agent")
-        .override_usage(
-            "sudo RUST_LOG=keylime_agent=trace ./target/debug/keylime_agent",
-        )
+        .override_usage("sudo RUST_LOG=keylime_agent=trace ./target/debug/keylime_agent")
         .get_matches();
 
     pretty_env_logger::init();
@@ -198,9 +196,7 @@ async fn main() -> Result<()> {
     }
 
     // check whether anyone has overridden the default MBA logfile
-    if measuredboot_ml_path.as_os_str()
-        != config::DEFAULT_MEASUREDBOOT_ML_PATH
-    {
+    if measuredboot_ml_path.as_os_str() != config::DEFAULT_MEASUREDBOOT_ML_PATH {
         warn!(
             "Measured boot measurement list location override: {}",
             measuredboot_ml_path.display()
@@ -236,9 +232,9 @@ async fn main() -> Result<()> {
         let message = "The agent mTLS is disabled and 'payload_script' is not empty. To allow the agent to run, 'enable_insecure_payload' has to be set to 'True'".to_string();
 
         error!("Configuration error: {}", &message);
-        return Err(Error::Configuration(
-            config::KeylimeConfigError::Generic(message),
-        ));
+        return Err(Error::Configuration(config::KeylimeConfigError::Generic(
+            message,
+        )));
     }
 
     let secure_size = config.secure_size.clone();
@@ -266,9 +262,9 @@ async fn main() -> Result<()> {
             let message = "The user running the Keylime agent should be set in keylime-agent.conf, using the parameter `run_as`, with the format `user:group`".to_string();
 
             error!("Configuration error: {}", &message);
-            return Err(Error::Configuration(
-                config::KeylimeConfigError::Generic(message),
-            ));
+            return Err(Error::Configuration(config::KeylimeConfigError::Generic(
+                message,
+            )));
         }
         info!("Running the service as {user_group}...");
     }
@@ -309,11 +305,8 @@ async fn main() -> Result<()> {
     // ownership of TPM access, which will not be implemented here.
     let tpm_ownerpassword = &config.tpm_ownerpassword;
     if !tpm_ownerpassword.is_empty() {
-        let auth = if let Some(hex_ownerpassword) =
-            tpm_ownerpassword.strip_prefix("hex:")
-        {
-            let decoded_ownerpassword =
-                hex::decode(hex_ownerpassword).map_err(Error::from)?;
+        let auth = if let Some(hex_ownerpassword) = tpm_ownerpassword.strip_prefix("hex:") {
+            let decoded_ownerpassword = hex::decode(hex_ownerpassword).map_err(Error::from)?;
             Auth::try_from(decoded_ownerpassword)?
         } else {
             Auth::try_from(tpm_ownerpassword.as_bytes())?
@@ -327,15 +320,10 @@ async fn main() -> Result<()> {
     };
 
     let tpm_encryption_alg =
-        keylime::algorithms::EncryptionAlgorithm::try_from(
-            config.tpm_encryption_alg.as_ref(),
-        )?;
-    let tpm_hash_alg = keylime::algorithms::HashAlgorithm::try_from(
-        config.tpm_hash_alg.as_ref(),
-    )?;
-    let tpm_signing_alg = keylime::algorithms::SignAlgorithm::try_from(
-        config.tpm_signing_alg.as_ref(),
-    )?;
+        keylime::algorithms::EncryptionAlgorithm::try_from(config.tpm_encryption_alg.as_ref())?;
+    let tpm_hash_alg = keylime::algorithms::HashAlgorithm::try_from(config.tpm_hash_alg.as_ref())?;
+    let tpm_signing_alg =
+        keylime::algorithms::SignAlgorithm::try_from(config.tpm_signing_alg.as_ref())?;
 
     // Gather EK values and certs
     let ek_result = match config.ek_handle.as_ref() {
@@ -367,21 +355,12 @@ async fn main() -> Result<()> {
             if path.exists() {
                 match AgentData::load(path) {
                     Ok(data) => {
-                        match data.valid(
-                            tpm_hash_alg,
-                            tpm_signing_alg,
-                            ek_hash.as_bytes(),
-                        ) {
+                        match data.valid(tpm_hash_alg, tpm_signing_alg, ek_hash.as_bytes()) {
                             true => {
                                 let ak_result = data.get_ak()?;
-                                match ctx
-                                    .load_ak(ek_result.key_handle, &ak_result)
-                                {
+                                match ctx.load_ak(ek_result.key_handle, &ak_result) {
                                     Ok(ak_handle) => {
-                                        info!(
-                                            "Loaded old AK key from {}",
-                                            path.display()
-                                        );
+                                        info!("Loaded old AK key from {}", path.display());
                                         Some((ak_handle, ak_result))
                                     }
                                     Err(e) => {
@@ -431,12 +410,7 @@ async fn main() -> Result<()> {
     };
 
     // Store new AgentData
-    let agent_data_new = AgentData::create(
-        tpm_hash_alg,
-        tpm_signing_alg,
-        &ak,
-        ek_hash.as_bytes(),
-    )?;
+    let agent_data_new = AgentData::create(tpm_hash_alg, tpm_signing_alg, &ak, ek_hash.as_bytes())?;
 
     match config.agent_data_path.as_ref() {
         "" => info!("Agent Data not stored"),
@@ -477,8 +451,7 @@ async fn main() -> Result<()> {
 
     let (attest, signature) = if let Some(dev_id) = &mut device_id {
         let qualifying_data = Data::try_from(agent_uuid.as_bytes())?;
-        let (attest, signature) =
-            dev_id.certify(qualifying_data, ak_handle, &mut ctx)?;
+        let (attest, signature) = dev_id.certify(qualifying_data, ak_handle, &mut ctx)?;
 
         info!("AK certified with IAK.");
 
@@ -528,7 +501,7 @@ async fn main() -> Result<()> {
 
     let cert: X509;
     let mtls_cert;
-    let ssl_context;
+    let mut ssl_context;
     if config.enable_agent_mtls {
         let contact_ips = vec![config.contact_ip.as_str()];
         cert = match config.server_cert.as_ref() {
@@ -566,7 +539,10 @@ async fn main() -> Result<()> {
         let trusted_client_ca = match config.trusted_client_ca.as_ref() {
             "" => {
                 error!("Agent mTLS is enabled, but trusted_client_ca option was not provided");
-                return Err(Error::Configuration(config::KeylimeConfigError::Generic("Agent mTLS is enabled, but trusted_client_ca option was not provided".to_string())));
+                return Err(Error::Configuration(config::KeylimeConfigError::Generic(
+                    "Agent mTLS is enabled, but trusted_client_ca option was not provided"
+                        .to_string(),
+                )));
             }
             l => l,
         };
@@ -574,23 +550,21 @@ async fn main() -> Result<()> {
         // The trusted_client_ca config option is a list, parse to obtain a vector
         let certs_list = parse_list(trusted_client_ca)?;
         if certs_list.is_empty() {
-            error!(
-                "Trusted client CA certificate list is empty: could not load any certificate"
-            );
+            error!("Trusted client CA certificate list is empty: could not load any certificate");
             return Err(Error::Configuration(config::KeylimeConfigError::Generic(
-                "Trusted client CA certificate list is empty: could not load any certificate".to_string()
+                "Trusted client CA certificate list is empty: could not load any certificate"
+                    .to_string(),
             )));
         }
 
-        let keylime_ca_certs = match crypto::load_x509_cert_list(
-            certs_list.iter().map(Path::new).collect(),
-        ) {
-            Ok(t) => Ok(t),
-            Err(e) => {
-                error!("Failed to load trusted CA certificates: {e:?}");
-                Err(e)
-            }
-        }?;
+        let keylime_ca_certs =
+            match crypto::load_x509_cert_list(certs_list.iter().map(Path::new).collect()) {
+                Ok(t) => Ok(t),
+                Err(e) => {
+                    error!("Failed to load trusted CA certificates: {e:?}");
+                    Err(e)
+                }
+            }?;
 
         mtls_cert = Some(cert.clone());
         ssl_context = Some(crypto::generate_tls_context(
@@ -633,26 +607,21 @@ async fn main() -> Result<()> {
         }
     }
 
-    let (mut payload_tx, mut payload_rx) =
-        mpsc::channel::<payloads::PayloadMessage>(1);
+    let (mut payload_tx, mut payload_rx) = mpsc::channel::<payloads::PayloadMessage>(1);
     let (mut keys_tx, mut keys_rx) = mpsc::channel::<(
         keys_handler::KeyMessage,
         Option<oneshot::Sender<keys_handler::SymmKeyMessage>>,
     )>(1);
-    let (mut revocation_tx, mut revocation_rx) =
-        mpsc::channel::<revocation::RevocationMessage>(1);
+    let (mut revocation_tx, mut revocation_rx) = mpsc::channel::<revocation::RevocationMessage>(1);
 
     #[cfg(feature = "with-zmq")]
     let (mut zmq_tx, mut zmq_rx) = mpsc::channel::<revocation::ZmqMessage>(1);
 
     let revocation_cert = match config.revocation_cert.as_ref() {
         "" => {
-            error!(
-                "No revocation certificate set in 'revocation_cert' option"
-            );
+            error!("No revocation certificate set in 'revocation_cert' option");
             return Err(Error::Configuration(config::KeylimeConfigError::Generic(
-                "No revocation certificate set in 'revocation_cert' option"
-                    .to_string(),
+                "No revocation certificate set in 'revocation_cert' option".to_string(),
             )));
         }
         s => PathBuf::from(s),
@@ -665,8 +634,7 @@ async fn main() -> Result<()> {
         s => Some(s.to_string()),
     };
 
-    let allow_payload_revocation_actions =
-        config.allow_payload_revocation_actions;
+    let allow_payload_revocation_actions = config.allow_payload_revocation_actions;
 
     let revocation_task = rt::spawn(revocation::worker(
         revocation_rx,
@@ -703,37 +671,31 @@ async fn main() -> Result<()> {
         work_dir,
     });
 
-    let actix_server = HttpServer::new(move || {
+    let mut server_builder = HttpServer::new(move || {
         let mut app = App::new()
-            .wrap(middleware::ErrorHandlers::new().handler(
-                http::StatusCode::NOT_FOUND,
-                errors_handler::wrap_404,
-            ))
-            .wrap(middleware::Logger::new(
-                "%r from %a result %s (took %D ms)",
-            ))
+            .wrap(
+                middleware::ErrorHandlers::new()
+                    .handler(http::StatusCode::NOT_FOUND, errors_handler::wrap_404),
+            )
+            .wrap(middleware::Logger::new("%r from %a result %s (took %D ms)"))
             .wrap_fn(|req, srv| {
+                let peer_addr = req
+                    .connection_info()
+                    .peer_addr()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "unix://local".to_string());
                 info!(
-                    "{} invoked from {:?} with uri {}",
+                    "{} invoked from {} with uri {}",
                     req.head().method,
-                    req.connection_info().peer_addr().unwrap(), //#[allow_ci]
+                    peer_addr,
                     req.uri()
                 );
                 srv.call(req)
             })
             .app_data(quotedata.clone())
-            .app_data(
-                web::JsonConfig::default()
-                    .error_handler(errors_handler::json_parser_error),
-            )
-            .app_data(
-                web::QueryConfig::default()
-                    .error_handler(errors_handler::query_parser_error),
-            )
-            .app_data(
-                web::PathConfig::default()
-                    .error_handler(errors_handler::path_parser_error),
-            );
+            .app_data(web::JsonConfig::default().error_handler(errors_handler::json_parser_error))
+            .app_data(web::QueryConfig::default().error_handler(errors_handler::query_parser_error))
+            .app_data(web::PathConfig::default().error_handler(errors_handler::path_parser_error));
 
         for version in &api_versions {
             // This should never fail, thus unwrap should never panic
@@ -741,58 +703,72 @@ async fn main() -> Result<()> {
             app = app.service(scope);
         }
 
-        app.service(
-            web::resource("/version").route(web::get().to(api::version)),
-        )
-        .service(
-            web::resource(r"/v{major:\d+}.{minor:\d+}{tail}*")
-                .to(errors_handler::version_not_supported),
-        )
-        .default_service(web::to(errors_handler::app_default))
+        app.service(web::resource("/version").route(web::get().to(api::version)))
+            .service(
+                web::resource(r"/v{major:\d+}.{minor:\d+}{tail}*")
+                    .to(errors_handler::version_not_supported),
+            )
+            .default_service(web::to(errors_handler::app_default))
     })
     // Disable default signal handlers.  See:
     // https://github.com/actix/actix-web/issues/2739
     // for details.
     .disable_signals();
 
-    let server;
+    let uds_socket_path = Path::new(&config.uds_socket);
 
     // Try to parse as an IP address
     let ip = match config.ip.parse::<IpAddr>() {
         Ok(ip_addr) => {
-            // Add bracket if IPv6, otherwise use as it is
             if ip_addr.is_ipv6() {
                 format!("[{ip_addr}]")
             } else {
                 ip_addr.to_string()
             }
         }
-        Err(_) => {
-            // If the address was not an IP address, treat as a hostname
-            config.ip.to_string()
-        }
+        Err(_) => config.ip.to_string(),
     };
 
     let port = config.port;
-    if config.enable_agent_mtls && ssl_context.is_some() {
-        server = actix_server
-            .bind_openssl(
-                format!("{ip}:{port}"),
-                ssl_context.unwrap(), //#[allow_ci]
-            )?
-            .run();
-        info!("Listening on https://{ip}:{port}");
+
+    if config.enable_network_listener {
+        if config.enable_agent_mtls {
+            if let Some(ssl_ctx) = ssl_context.take() {
+                server_builder = server_builder.bind_openssl(format!("{ip}:{port}"), ssl_ctx)?;
+                info!("Listening on https://{ip}:{port}");
+            } else {
+                warn!(
+                    "Agent mTLS enabled but TLS context unavailable; falling back to HTTP listener"
+                );
+                server_builder = server_builder.bind(format!("{ip}:{port}"))?;
+                info!("Listening on http://{ip}:{port}");
+            }
+        } else {
+            server_builder = server_builder.bind(format!("{ip}:{port}"))?;
+            info!("Listening on http://{ip}:{port}");
+        }
     } else {
-        server = actix_server.bind(format!("{ip}:{port}"))?.run();
-        info!("Listening on http://{ip}:{port}");
-    };
+        info!(
+            "Network listener disabled; serving only on UNIX socket {}",
+            config.uds_socket
+        );
+    }
+
+    if uds_socket_path.exists() {
+        fs::remove_file(uds_socket_path)?;
+    }
+    let uds_listener = UnixListener::bind(uds_socket_path)?;
+    server_builder = server_builder.listen_uds(uds_listener)?;
+    fs::set_permissions(uds_socket_path, Permissions::from_mode(0o660))?;
+    info!("Listening on unix://{}", uds_socket_path.display());
+
+    let server = server_builder.run();
 
     let server_handle = server.handle();
     let server_task = rt::spawn(server).map_err(Error::from);
 
     // Only run payload scripts if mTLS is enabled or 'enable_insecure_payload' option is set
-    let run_payload =
-        config.enable_agent_mtls || config.enable_insecure_payload;
+    let run_payload = config.enable_agent_mtls || config.enable_insecure_payload;
 
     let payload_task = rt::spawn(payloads::worker(
         config.clone(),
@@ -947,30 +923,23 @@ mod testing {
     }
 
     impl QuoteData<'_> {
-        pub(crate) async fn fixture() -> std::result::Result<
-            (Self, AsyncMutexGuard<'static, ()>),
-            MainTestError,
-        > {
+        pub(crate) async fn fixture(
+        ) -> std::result::Result<(Self, AsyncMutexGuard<'static, ()>), MainTestError> {
             let mutex = lock_tests().await;
-            let work_dir =
-                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+            let work_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
 
             let test_config = get_testing_config(&work_dir, None);
             let mut ctx = tpm::Context::new()?;
 
-            let tpm_encryption_alg =
-                keylime::algorithms::EncryptionAlgorithm::try_from(
-                    test_config.tpm_encryption_alg.as_str(),
-                )?;
-
-            let tpm_hash_alg = keylime::algorithms::HashAlgorithm::try_from(
-                test_config.tpm_hash_alg.as_str(),
+            let tpm_encryption_alg = keylime::algorithms::EncryptionAlgorithm::try_from(
+                test_config.tpm_encryption_alg.as_str(),
             )?;
 
+            let tpm_hash_alg =
+                keylime::algorithms::HashAlgorithm::try_from(test_config.tpm_hash_alg.as_str())?;
+
             let tpm_signing_alg =
-                keylime::algorithms::SignAlgorithm::try_from(
-                    test_config.tpm_signing_alg.as_str(),
-                )?;
+                keylime::algorithms::SignAlgorithm::try_from(test_config.tpm_signing_alg.as_str())?;
 
             // Gather EK and AK key values and certs
             let ek_result = ctx.create_ek(tpm_encryption_alg, None).unwrap(); //#[allow_ci]
@@ -982,8 +951,7 @@ mod testing {
                     tpm_signing_alg,
                 )
                 .unwrap(); //#[allow_ci]
-            let ak_handle =
-                ctx.load_ak(ek_result.key_handle, &ak_result).unwrap(); //#[allow_ci]
+            let ak_handle = ctx.load_ak(ek_result.key_handle, &ak_result).unwrap(); //#[allow_ci]
 
             ctx.flush_context(ek_result.key_handle.into()).unwrap(); //#[allow_ci]
 
@@ -991,16 +959,13 @@ mod testing {
                 .join("test-data")
                 .join("test-rsa.pem");
 
-            let (mtls_pub, mtls_priv) =
-                crypto::testing::rsa_import_pair(rsa_key_path.clone())?;
+            let (mtls_pub, mtls_priv) = crypto::testing::rsa_import_pair(rsa_key_path.clone())?;
 
             // Generate ephemeral payload keys for testing
             debug!("Generating ephemeral RSA key pair for payload mechanism");
-            let (payload_pub_key, payload_priv_key) =
-                crypto::rsa_generate_pair(2048)?;
+            let (payload_pub_key, payload_priv_key) = crypto::rsa_generate_pair(2048)?;
 
-            let (mut payload_tx, mut payload_rx) =
-                mpsc::channel::<payloads::PayloadMessage>(1);
+            let (mut payload_tx, mut payload_rx) = mpsc::channel::<payloads::PayloadMessage>(1);
 
             let (mut keys_tx, mut keys_rx) = mpsc::channel::<(
                 keys_handler::KeyMessage,
@@ -1012,9 +977,7 @@ mod testing {
 
             let revocation_cert = PathBuf::from(test_config.revocation_cert);
 
-            let actions_dir = Some(
-                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions/"),
-            );
+            let actions_dir = Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions/"));
 
             let secure_mount = work_dir.join("tmpfs-dev");
 
@@ -1026,8 +989,7 @@ mod testing {
             };
 
             // Allow setting the binary bios measurements log path when testing
-            let mut measuredboot_ml_path =
-                Path::new(&test_config.measuredboot_ml_path);
+            let mut measuredboot_ml_path = Path::new(&test_config.measuredboot_ml_path);
             let env_mb_path: String;
             #[cfg(feature = "testing")]
             if let Ok(v) = std::env::var("TPM_BINARY_MEASUREMENTS") {
@@ -1035,11 +997,10 @@ mod testing {
                 measuredboot_ml_path = Path::new(&env_mb_path);
             }
 
-            let measuredboot_ml_file =
-                match fs::File::open(measuredboot_ml_path) {
-                    Ok(file) => Some(Mutex::new(file)),
-                    Err(err) => None,
-                };
+            let measuredboot_ml_file = match fs::File::open(measuredboot_ml_path) {
+                Ok(file) => Some(Mutex::new(file)),
+                Err(err) => None,
+            };
 
             let api_versions = config::SUPPORTED_API_VERSIONS
                 .iter()
@@ -1059,12 +1020,10 @@ mod testing {
                     payload_tx,
                     revocation_tx,
                     hash_alg: keylime::algorithms::HashAlgorithm::Sha256,
-                    enc_alg:
-                        keylime::algorithms::EncryptionAlgorithm::Rsa2048,
+                    enc_alg: keylime::algorithms::EncryptionAlgorithm::Rsa2048,
                     sign_alg: keylime::algorithms::SignAlgorithm::RsaSsa,
                     agent_uuid: test_config.uuid,
-                    allow_payload_revocation_actions: test_config
-                        .allow_payload_revocation_actions,
+                    allow_payload_revocation_actions: test_config.allow_payload_revocation_actions,
                     secure_size: test_config.secure_size,
                     work_dir,
                     ima_ml_file,
@@ -1091,8 +1050,7 @@ mod tests {
     #[test]
     fn test_read_in_file() {
         assert_eq!(
-            read_in_file("test-data/test_input.txt".to_string())
-                .expect("File doesn't exist"),
+            read_in_file("test-data/test_input.txt".to_string()).expect("File doesn't exist"),
             String::from("Hello World!\n")
         );
     }

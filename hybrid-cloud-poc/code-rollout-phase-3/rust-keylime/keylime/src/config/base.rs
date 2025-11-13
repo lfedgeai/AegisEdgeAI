@@ -8,10 +8,7 @@ use crate::{
     permissions,
     version::{self, GetErrorInput},
 };
-use config::{
-    builder::DefaultState, Config, ConfigBuilder, ConfigError, Map, Source,
-    Value,
-};
+use config::{builder::DefaultState, Config, ConfigBuilder, ConfigError, Map, Source, Value};
 use log::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -25,14 +22,15 @@ pub static DEFAULT_REGISTRAR_API_VERSIONS: &[&str] = &["2.3"];
 pub static DEFAULT_CONFIG: &str = "/etc/keylime/agent.conf";
 pub static DEFAULT_CONFIG_SNIPPETS_DIR: &str = "/etc/keylime/agent.conf.d";
 pub static DEFAULT_SYS_CONFIG: &str = "/usr/etc/keylime/agent.conf";
-pub static DEFAULT_SYS_CONFIG_SNIPPETS_DIR: &str =
-    "/usr/etc/keylime/agent.conf.d";
+pub static DEFAULT_SYS_CONFIG_SNIPPETS_DIR: &str = "/usr/etc/keylime/agent.conf.d";
 
 pub static DEFAULT_AGENT_DATA_PATH: &str = "agent_data.json";
 pub static DEFAULT_API_VERSIONS: &str = "default";
 pub static DEFAULT_UUID: &str = "d432fbb3-d2f1-4a97-9ef7-75bd81c00000";
 pub static DEFAULT_IP: &str = "127.0.0.1";
 pub static DEFAULT_PORT: u32 = 9002;
+pub static DEFAULT_UDS_SOCKET: &str = "/tmp/keylime-agent.sock";
+pub static DEFAULT_ENABLE_NETWORK_LISTENER: bool = false;
 pub static DEFAULT_REGISTRAR_IP: &str = "127.0.0.1";
 pub static DEFAULT_REGISTRAR_PORT: u32 = 8890;
 pub static DEFAULT_KEYLIME_DIR: &str = "/var/lib/keylime";
@@ -53,8 +51,7 @@ pub static DEFAULT_IAK_PASSWORD: &str = "";
 pub static DEFAULT_IDEVID_HANDLE: &str = "";
 pub static DEFAULT_IAK_HANDLE: &str = "";
 pub static DEFAULT_RUN_AS: &str = "keylime:tss";
-pub static DEFAULT_IMA_ML_PATH: &str =
-    "/sys/kernel/security/ima/ascii_runtime_measurements";
+pub static DEFAULT_IMA_ML_PATH: &str = "/sys/kernel/security/ima/ascii_runtime_measurements";
 pub static DEFAULT_TPM_ENCRYPTION_ALG: &str = "rsa";
 pub static DEFAULT_TPM_HASH_ALG: &str = "sha256";
 pub static DEFAULT_TPM_SIGNING_ALG: &str = "rsassa";
@@ -87,8 +84,7 @@ pub static DEFAULT_TRUSTED_CLIENT_CA: &str = "cv_ca/cacert.crt";
 
 // Push attestation agent option defaults
 pub const DEFAULT_IMA_ML_DIRECTORY_PATH: &str = "/sys/kernel/security/ima";
-pub const DEFAULT_IMA_ML_COUNT_FILE: &str =
-    "/sys/kernel/security/ima/measurements";
+pub const DEFAULT_IMA_ML_COUNT_FILE: &str = "/sys/kernel/security/ima/measurements";
 pub const DEFAULT_UEFI_LOGS_EVIDENCE_VERSION: &str = "2.1";
 pub const DEFAULT_UEFI_LOGS_BINARY_FILE_PATH: &str =
     "/sys/kernel/security/tpm0/binary_bios_measurements";
@@ -130,6 +126,8 @@ pub struct AgentConfig {
     pub ip: String,
     pub keylime_dir: String,
     pub port: u32,
+    pub uds_socket: String,
+    pub enable_network_listener: bool,
     pub registrar_ip: String,
     pub registrar_port: u32,
     pub run_as: String,
@@ -179,9 +177,7 @@ impl AgentConfig {
         // Check for testing configuration override first
         #[cfg(feature = "testing")]
         {
-            if let Some(testing_config) =
-                crate::config::testing::get_testing_config_override()
-            {
+            if let Some(testing_config) = crate::config::testing::get_testing_config_override() {
                 return Ok(testing_config);
             }
         }
@@ -191,8 +187,7 @@ impl AgentConfig {
             agent: AgentConfig,
         }
         // Get the base configuration file from the environment variable or the default locations
-        let config: Wrapper =
-            config_get_setting()?.build()?.try_deserialize()?;
+        let config: Wrapper = config_get_setting()?.build()?.try_deserialize()?;
 
         // Replace keywords with actual values
         config_translate_keywords(&config.agent)
@@ -237,8 +232,7 @@ fn json_to_config_value(json_value: JsonValue) -> Result<Value, ConfigError> {
 
 impl Source for AgentConfig {
     fn collect(&self) -> Result<Map<String, Value>, ConfigError> {
-        let json = serde_json::to_value(self)
-            .map_err(|e| ConfigError::Foreign(Box::new(e)))?;
+        let json = serde_json::to_value(self).map_err(|e| ConfigError::Foreign(Box::new(e)))?;
 
         let config_map = json_to_config_value(json)?.into_table()?;
 
@@ -261,8 +255,7 @@ impl Default for AgentConfig {
 
         AgentConfig {
             agent_data_path: "default".to_string(),
-            allow_payload_revocation_actions:
-                DEFAULT_ALLOW_PAYLOAD_REVOCATION_ACTIONS,
+            allow_payload_revocation_actions: DEFAULT_ALLOW_PAYLOAD_REVOCATION_ACTIONS,
             api_versions: DEFAULT_API_VERSIONS.to_string(),
             contact_ip: DEFAULT_CONTACT_IP.to_string(),
             contact_port: DEFAULT_CONTACT_PORT,
@@ -271,23 +264,15 @@ impl Default for AgentConfig {
             enable_agent_mtls: DEFAULT_ENABLE_AGENT_MTLS,
             enable_iak_idevid: DEFAULT_ENABLE_IAK_IDEVID,
             enable_insecure_payload: DEFAULT_ENABLE_INSECURE_PAYLOAD,
-            enable_revocation_notifications:
-                DEFAULT_ENABLE_REVOCATION_NOTIFICATIONS,
+            enable_revocation_notifications: DEFAULT_ENABLE_REVOCATION_NOTIFICATIONS,
             enc_keyname: DEFAULT_ENC_KEYNAME.to_string(),
-            exponential_backoff_max_delay: Some(
-                DEFAULT_EXP_BACKOFF_MAX_DELAY as u64,
-            ),
-            exponential_backoff_max_retries: Some(
-                DEFAULT_EXP_BACKOFF_MAX_RETRIES,
-            ),
-            exponential_backoff_initial_delay: Some(
-                DEFAULT_EXP_BACKOFF_INITIAL_DELAY as u64,
-            ),
+            exponential_backoff_max_delay: Some(DEFAULT_EXP_BACKOFF_MAX_DELAY as u64),
+            exponential_backoff_max_retries: Some(DEFAULT_EXP_BACKOFF_MAX_RETRIES),
+            exponential_backoff_initial_delay: Some(DEFAULT_EXP_BACKOFF_INITIAL_DELAY as u64),
             extract_payload_zip: DEFAULT_EXTRACT_PAYLOAD_ZIP,
             iak_cert: "default".to_string(),
             iak_handle: DEFAULT_IAK_HANDLE.to_string(),
-            iak_idevid_asymmetric_alg: DEFAULT_IAK_IDEVID_ASYMMETRIC_ALG
-                .to_string(),
+            iak_idevid_asymmetric_alg: DEFAULT_IAK_IDEVID_ASYMMETRIC_ALG.to_string(),
             iak_idevid_name_alg: DEFAULT_IAK_IDEVID_NAME_ALG.to_string(),
             iak_idevid_template: DEFAULT_IAK_IDEVID_TEMPLATE.to_string(),
             iak_password: DEFAULT_IAK_PASSWORD.to_string(),
@@ -297,19 +282,18 @@ impl Default for AgentConfig {
             ima_ml_path: "default".to_string(),
             ip: DEFAULT_IP.to_string(),
             keylime_dir: DEFAULT_KEYLIME_DIR.to_string(),
+            uds_socket: DEFAULT_UDS_SOCKET.to_string(),
+            enable_network_listener: DEFAULT_ENABLE_NETWORK_LISTENER,
             measuredboot_ml_path: "default".to_string(),
             payload_script: DEFAULT_PAYLOAD_SCRIPT.to_string(),
             port: DEFAULT_PORT,
             registrar_ip: DEFAULT_REGISTRAR_IP.to_string(),
             registrar_port: DEFAULT_REGISTRAR_PORT,
             revocation_actions: DEFAULT_REVOCATION_ACTIONS.to_string(),
-            revocation_actions_dir: DEFAULT_REVOCATION_ACTIONS_DIR
-                .to_string(),
+            revocation_actions_dir: DEFAULT_REVOCATION_ACTIONS_DIR.to_string(),
             revocation_cert: "default".to_string(),
-            revocation_notification_ip: DEFAULT_REVOCATION_NOTIFICATION_IP
-                .to_string(),
-            revocation_notification_port:
-                DEFAULT_REVOCATION_NOTIFICATION_PORT,
+            revocation_notification_ip: DEFAULT_REVOCATION_NOTIFICATION_IP.to_string(),
+            revocation_notification_port: DEFAULT_REVOCATION_NOTIFICATION_PORT,
             run_as,
             secure_size: DEFAULT_SECURE_SIZE.to_string(),
             server_cert: "default".to_string(),
@@ -324,21 +308,18 @@ impl Default for AgentConfig {
             trusted_client_ca: "default".to_string(),
             uuid: DEFAULT_UUID.to_string(),
             version: CONFIG_VERSION.to_string(),
-            attestation_interval_seconds:
-                DEFAULT_ATTESTATION_INTERVAL_SECONDS,
-            certification_keys_server_identifier:
-                DEFAULT_CERTIFICATION_KEYS_SERVER_IDENTIFIER.to_string(),
+            attestation_interval_seconds: DEFAULT_ATTESTATION_INTERVAL_SECONDS,
+            certification_keys_server_identifier: DEFAULT_CERTIFICATION_KEYS_SERVER_IDENTIFIER
+                .to_string(),
             ima_ml_count_file: DEFAULT_IMA_ML_COUNT_FILE.to_string(),
             registrar_api_versions: DEFAULT_REGISTRAR_API_VERSIONS.join(", "),
-            uefi_logs_evidence_version: DEFAULT_UEFI_LOGS_EVIDENCE_VERSION
-                .to_string(),
+            uefi_logs_evidence_version: DEFAULT_UEFI_LOGS_EVIDENCE_VERSION.to_string(),
             verifier_url: DEFAULT_VERIFIER_URL.to_string(),
         }
     }
 }
 
-fn config_get_setting(
-) -> Result<ConfigBuilder<DefaultState>, KeylimeConfigError> {
+fn config_get_setting() -> Result<ConfigBuilder<DefaultState>, KeylimeConfigError> {
     // Load the configuration from the default file locations
     let default_config = file_config::load_default_files()?;
 
@@ -378,12 +359,13 @@ pub(crate) fn config_translate_keywords(
 
     // Validate that keylime_dir exists
     #[cfg(not(test))]
-    let keylime_dir = &keylime_dir.canonicalize().map_err(|e| {
-        KeylimeConfigError::MissingKeylimeDir {
-            path: keylime_dir.display().to_string(),
-            source: e,
-        }
-    })?;
+    let keylime_dir =
+        &keylime_dir
+            .canonicalize()
+            .map_err(|e| KeylimeConfigError::MissingKeylimeDir {
+                path: keylime_dir.display().to_string(),
+                source: e,
+            })?;
 
     let root_path = Path::new("/");
 
@@ -432,6 +414,14 @@ pub(crate) fn config_translate_keywords(
         &config.payload_key,
         keylime_dir,
         DEFAULT_PAYLOAD_KEY,
+        false,
+    );
+
+    let uds_socket = config_get_file_path(
+        "uds_socket",
+        &config.uds_socket,
+        Path::new("/"),
+        DEFAULT_UDS_SOCKET,
         false,
     );
 
@@ -601,12 +591,12 @@ pub(crate) fn config_translate_keywords(
 
         // Validate that the revocation actions directory exists
         let _revocation_actions_dir =
-            &actions_dir.canonicalize().map_err(|e| {
-                KeylimeConfigError::MissingActionsDir {
+            &actions_dir
+                .canonicalize()
+                .map_err(|e| KeylimeConfigError::MissingActionsDir {
                     path: keylime_dir.display().to_string(),
                     source: e,
-                }
-            })?;
+                })?;
     }
 
     let revocation_cert = config_get_file_path(
@@ -635,6 +625,8 @@ pub(crate) fn config_translate_keywords(
         payload_key,
         trusted_client_ca,
         uuid,
+        uds_socket,
+        enable_network_listener: config.enable_network_listener,
         ..config.clone()
     })
 }
@@ -659,7 +651,9 @@ fn config_get_file_path(
                 return "".to_string();
             }
 
-            warn!("Empty string provided in configuration option {option}, using default {default}");
+            warn!(
+                "Empty string provided in configuration option {option}, using default {default}"
+            );
             work_dir.join(default).display().to_string()
         }
         v => {
@@ -707,8 +701,7 @@ mod tests {
     fn test_get_testing_config() {
         use crate::config::get_testing_config;
 
-        let dir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let dir = tempfile::tempdir().expect("failed to create temporary directory");
 
         // Get the config and check that the value is correct
         let config = get_testing_config(dir.path(), None);
@@ -720,8 +713,7 @@ mod tests {
     fn test_default() {
         use crate::config::get_testing_config;
 
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let default = get_testing_config(tempdir.path(), None);
 
         // Modify the keylime directory to refer to the created temporary directory
@@ -738,8 +730,7 @@ mod tests {
 
     #[test]
     fn test_hostname_support() {
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let default = AgentConfig::default();
 
         let modified = AgentConfig {
@@ -766,8 +757,7 @@ mod tests {
     fn get_revocation_cert_path_default() {
         use crate::config::get_testing_config;
 
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let test_config = get_testing_config(tempdir.path(), None);
         let revocation_cert_path = test_config.revocation_cert.clone();
         let expected = Path::new(&test_config.keylime_dir)
@@ -780,8 +770,7 @@ mod tests {
 
     #[test]
     fn get_revocation_cert_path_absolute() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let test_config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
@@ -798,8 +787,7 @@ mod tests {
 
     #[test]
     fn get_revocation_cert_path_relative() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let test_config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
@@ -819,8 +807,7 @@ mod tests {
 
     #[test]
     fn get_revocation_notification_ip_empty() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let test_config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
@@ -847,8 +834,7 @@ mod tests {
 
     #[test]
     fn get_revocation_cert_empty() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let test_config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
@@ -873,8 +859,7 @@ mod tests {
 
     #[test]
     fn get_revocation_actions_dir_empty() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let test_config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
@@ -899,8 +884,7 @@ mod tests {
 
     #[test]
     fn test_invalid_revocation_actions_dir() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let test_config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
@@ -925,8 +909,7 @@ mod tests {
 
     #[test]
     fn test_keylime_dir_option() {
-        let dir = tempfile::tempdir()
-            .expect("Failed to create temporary directory");
+        let dir = tempfile::tempdir().expect("Failed to create temporary directory");
         let test_config = AgentConfig {
             keylime_dir: dir.path().display().to_string(),
             ..Default::default()
@@ -938,8 +921,7 @@ mod tests {
 
     #[test]
     fn test_invalid_api_versions() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         // Check that invalid API versions are ignored
         let test_config = AgentConfig {
@@ -971,8 +953,7 @@ mod tests {
 
     #[test]
     fn test_translate_api_versions_latest_keyword() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let test_config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
@@ -993,8 +974,7 @@ mod tests {
 
     #[test]
     fn test_translate_api_versions_default_keyword() {
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let test_config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
             ..Default::default()
@@ -1013,8 +993,7 @@ mod tests {
 
     #[test]
     fn test_translate_api_versions_old_supported() {
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let old = SUPPORTED_API_VERSIONS[0];
 
         let test_config = AgentConfig {
@@ -1031,8 +1010,7 @@ mod tests {
 
     #[test]
     fn test_translate_invalid_api_versions_filtered() {
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let old = SUPPORTED_API_VERSIONS[0];
 
         let test_config = AgentConfig {
@@ -1049,8 +1027,7 @@ mod tests {
 
     #[test]
     fn test_translate_invalid_api_versions_fallback_default() {
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let old = SUPPORTED_API_VERSIONS;
 
         let test_config = AgentConfig {
@@ -1067,8 +1044,7 @@ mod tests {
 
     #[test]
     fn test_translate_api_versions_sort() {
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let old = SUPPORTED_API_VERSIONS;
         let reversed = SUPPORTED_API_VERSIONS
             .iter()
@@ -1101,10 +1077,8 @@ mod tests {
             get_uuid("D432FBB3-D2F1-4A97-9EF7-75BD81C0000X"),
             "d432fbb3-d2f1-4a97-9ef7-75bd81c0000X"
         );
-        let _ = Uuid::parse_str(&get_uuid(
-            "D432FBB3-D2F1-4A97-9EF7-75BD81C0000X",
-        ))
-        .unwrap(); //#[allow_ci]
+        let _ = Uuid::parse_str(&get_uuid("D432FBB3-D2F1-4A97-9EF7-75BD81C0000X")).unwrap();
+        //#[allow_ci]
     }
 
     #[test]
@@ -1127,8 +1101,7 @@ mod tests {
 
     #[test]
     fn test_config_get_setting() {
-        let _env_config =
-            config_get_setting().expect("failed to get settings");
+        let _env_config = config_get_setting().expect("failed to get settings");
     }
 
     #[test]
@@ -1170,12 +1143,10 @@ mod tests {
             translated
         );
 
-        let translated =
-            config_get_file_path("test", "", workdir, "default", true);
+        let translated = config_get_file_path("test", "", workdir, "default", true);
         assert_eq!("", translated);
 
-        let translated =
-            config_get_file_path("test", "", workdir, "default", false);
+        let translated = config_get_file_path("test", "", workdir, "default", false);
         assert_eq!("/workdir/default", translated);
     }
 
@@ -1191,8 +1162,7 @@ mod tests {
 
     #[test]
     fn test_attestation_interval_seconds_custom() {
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let config = AgentConfig {
             keylime_dir: tempdir.path().display().to_string(),
@@ -1220,13 +1190,11 @@ mod tests {
         use std::fs;
         use std::io::Write;
 
-        let tempdir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary directory");
 
         // Create a temporary config file with custom attestation_interval_seconds
         let config_path = tempdir.path().join("agent.toml");
-        let mut file = fs::File::create(&config_path)
-            .expect("failed to create config file");
+        let mut file = fs::File::create(&config_path).expect("failed to create config file");
 
         writeln!(file, "[agent]").expect("failed to write to config file");
         writeln!(file, "attestation_interval_seconds = 10")
