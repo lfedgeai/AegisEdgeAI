@@ -430,6 +430,8 @@ cd "${KEYLIME_DIR}"
 # Use explicit path to avoid configuration issues
 REGISTRAR_DB_PATH="/tmp/keylime/reg_data.sqlite"
 mkdir -p "$(dirname "$REGISTRAR_DB_PATH")" 2>/dev/null || true
+# Remove old database to ensure fresh schema initialization
+rm -f "$REGISTRAR_DB_PATH" 2>/dev/null || true
 export KEYLIME_REGISTRAR_DATABASE_URL="sqlite:///${REGISTRAR_DB_PATH}"
 # Also set KEYLIME_DIR to ensure proper paths
 export KEYLIME_DIR="${KEYLIME_DIR:-/tmp/keylime}"
@@ -554,51 +556,58 @@ echo $RUST_AGENT_PID > /tmp/rust-keylime-agent.pid
 # Wait for rust-keylime agent to start
 echo "  Waiting for rust-keylime agent to start..."
 RUST_AGENT_STARTED=false
+UDS_SOCKET_PATH="/tmp/keylime-agent.sock"
 for i in {1..60}; do
     # Check if process is still running first
     if ! kill -0 $RUST_AGENT_PID 2>/dev/null; then
         echo -e "${YELLOW}  ⚠ rust-keylime Agent process died, checking logs...${NC}"
         echo "  Recent logs:"
-        tail -50 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002)" || tail -30 /tmp/rust-keylime-agent.log
-        # Check if HTTP/HTTPS server started before process died (unlikely but possible)
-        if curl -s -k "https://localhost:9002/v2.2/agent/version" >/dev/null 2>&1 || \
-           curl -s "http://localhost:9002/v2.2/agent/version" >/dev/null 2>&1 || \
-           netstat -tlnp 2>/dev/null | grep -q ":9002" || \
-           ss -tlnp 2>/dev/null | grep -q ":9002"; then
-            echo -e "${GREEN}  ✓ rust-keylime Agent HTTP/HTTPS server is running${NC}"
+        tail -50 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|unix)" || tail -30 /tmp/rust-keylime-agent.log
+        # Check if UDS socket exists (agent might have started before dying)
+        if [ -S "$UDS_SOCKET_PATH" ]; then
+            echo -e "${GREEN}  ✓ rust-keylime Agent UDS socket exists${NC}"
             RUST_AGENT_STARTED=true
             break
         fi
         echo -e "${YELLOW}  ⚠ Continuing without rust-keylime agent (delegated certification may not be available)${NC}"
         break
     fi
-    # Check if HTTP/HTTPS endpoint is available
-    # Agent uses HTTPS with mTLS, but we can check if the port is listening
+    # Check if UDS socket exists (primary check for Phase 3)
+    if [ -S "$UDS_SOCKET_PATH" ]; then
+        echo -e "${GREEN}  ✓ rust-keylime Agent UDS socket is ready (PID: $RUST_AGENT_PID)${NC}"
+        RUST_AGENT_STARTED=true
+        break
+    fi
+    # Also check if HTTP/HTTPS endpoint is available (if network listener is enabled)
     if curl -s -k "https://localhost:9002/v2.2/agent/version" >/dev/null 2>&1 || \
        curl -s "http://localhost:9002/v2.2/agent/version" >/dev/null 2>&1 || \
        netstat -tlnp 2>/dev/null | grep -q ":9002" || \
        ss -tlnp 2>/dev/null | grep -q ":9002"; then
-        echo -e "${GREEN}  ✓ rust-keylime Agent started (PID: $RUST_AGENT_PID)${NC}"
+        echo -e "${GREEN}  ✓ rust-keylime Agent HTTP/HTTPS server is running (PID: $RUST_AGENT_PID)${NC}"
         RUST_AGENT_STARTED=true
         break
     fi
     # Show progress every 10 seconds
     if [ $((i % 10)) -eq 0 ]; then
-        echo "    Still waiting for HTTP server... (${i}/60 seconds)"
+        echo "    Still waiting for agent to start... (${i}/60 seconds)"
         # Check logs for any errors
         if tail -20 /tmp/rust-keylime-agent.log | grep -q "ERROR"; then
             echo "    Recent errors in logs:"
             tail -20 /tmp/rust-keylime-agent.log | grep "ERROR" | tail -3
+        fi
+        # Check if UDS socket is mentioned in logs
+        if tail -20 /tmp/rust-keylime-agent.log | grep -q "unix://"; then
+            echo "    UDS socket mentioned in logs (may be starting...)"
         fi
     fi
     sleep 1
 done
 
 if [ "$RUST_AGENT_STARTED" = false ]; then
-    echo -e "${YELLOW}  ⚠ rust-keylime Agent HTTP endpoint not available, but continuing...${NC}"
+    echo -e "${YELLOW}  ⚠ rust-keylime Agent not ready, but continuing...${NC}"
     echo "  Note: Delegated certification will not be available"
     echo "  Recent logs:"
-    tail -30 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register)" || tail -20 /tmp/rust-keylime-agent.log
+    tail -30 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register|unix)" || tail -20 /tmp/rust-keylime-agent.log
 fi
 
 # Step 5: Start TPM Plugin Server (HTTP/UDS)
