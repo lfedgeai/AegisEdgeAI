@@ -7,177 +7,483 @@ This document describes the complete end-to-end architecture flow for generating
 - `keylime-agent → keylime-verifier`: JSON over HTTPS with mTLS (standard Keylime)
 
 **New Interfaces (Unified Identity Extensions):**
-- `spire-server → keylime-verifier`: JSON over HTTPS with mTLS (Phase 2/3 addition)
-- `spire-agent → spire-tpm-plugin`: JSON over HTTP/UDS (Phase 3)
-- `spire-tpm-plugin → keylime-agent`: JSON over HTTP/UDS (Phase 3)
 
-## Architecture Diagram
+- `spire-server → keylime-verifier`: JSON over HTTPS with mTLS (Phase 2/3 addition)
+- `spire-agent → spire-tpm-plugin`: JSON over UDS (Phase 3)
+- `spire-tpm-plugin → keylime-agent`: JSON over UDS (Phase 3)
+
+
+## Component Flow: SPIRE Agent Sovereign SVID (Periodic Refresh)
+
+The SPIRE Agent periodically refreshes its own Sovereign SVID (approximately every 30 seconds or when the SVID is about to expire). This flow incorporates TPM attestation, host integrity checks, and geolocation to create a unified identity that binds workload identity to host hardware attestation.
+
+### Flow Overview
 
 ```
 ┌─────────────────┐
 │  SPIRE Agent    │
-│  (Go)           │
+│  (Periodic)     │
 └────────┬────────┘
          │
-         │ 1. Subprocess (CLI)
-         │    Transport: Process exec
-         │    Format: JSON (stdout/stderr)
-         ▼
-┌─────────────────┐
-│  TPM Plugin     │
-│  (Python)       │
-└────────┬────────┘
-         │
-         │ 2. HTTP/JSON
-         │    Transport: HTTP (localhost:9002)
-         │    Format: JSON request/response
-         ▼
-┌─────────────────┐
-│ rust-keylime    │
-│ Agent (Rust)    │
-└─────────────────┘
-         │
-         │ 3. gRPC Stream
-         │    Transport: TLS over TCP
-         │    Format: Protobuf
+         │ Step 1: Initiate SVID Renewal
+         │ Step 2: Request Nonce
          ▼
 ┌─────────────────┐
 │  SPIRE Server   │
-│  (Go)           │
 └────────┬────────┘
          │
-         │ 4. HTTPS/JSON
-         │    Transport: TLS (localhost:8881)
-         │    Format: JSON request/response
+         │ Step 3-4: TPM Operations (with nonce)
+         ▼
+┌─────────────────┐     ┌─────────────────┐
+│  TPM Plugin     │────▶│ Keylime Agent   │
+│  (Python)       │     │  (Rust)         │
+└─────────────────┘     └─────────────────┘
+         │
+         │ Step 5-6: Host Attestation
          ▼
 ┌─────────────────┐
-│ Keylime Verifier│
-│ (Python)        │
+│ Keylime Agent   │
+│  Plugins        │
+└────────┬────────┘
+         │
+         │ Step 7-9: Verification
+         ▼
+┌─────────────────┐     ┌─────────────────┐
+│  SPIRE Server   │────▶│ Keylime Verifier│
+└────────┬────────┘     └────────┬────────┘
+         │                        │
+         │                        │ Step 10a: Get Geolocation
+         │                        │ (PCR 17 from Quote)
+         │                        ▼
+         │                ┌─────────────────┐
+         │                │ Keylime Agent   │
+         │                │  (Geolocation)  │
+         │                └────────┬────────┘
+         │                        │
+         │                        │ (Quote with PCR 17)
+         │                        ▼
+         │                ┌─────────────────┐
+         │                │ Keylime Verifier│
+         │                │  (Fact Provider)│
+         │                └─────────────────┘
+         │
+         │ Step 10: Return Unified SVID
+         ▼
+┌─────────────────┐
+│  SPIRE Agent    │
+│  (SVID Cached)  │
 └─────────────────┘
 ```
 
-## Sequence Diagram
+### Detailed Step-by-Step Flow
 
-```
-SPIRE Agent          TPM Plugin          rust-keylime      SPIRE Server        Keylime Verifier
-     │                   │                    │                  │                    │
-     │──1. generate-app-key───────────────────>│                  │                    │
-     │                   │                    │                  │                    │
-     │<──JSON: {app_key_public, context}───────│                  │                    │
-     │                   │                    │                  │                    │
-     │──2. generate-quote(nonce)───────────────>│                  │                    │
-     │                   │                    │                  │                    │
-     │<──Base64 Quote──────────────────────────│                  │                    │
-     │                   │                    │                  │                    │
-     │                   │──3. POST /certify_app_key────────────>│                    │
-     │                   │    JSON: {app_key_public, context}    │                    │
-     │                   │                    │                  │                    │
-     │                   │<──JSON: {certificate}─────────────────│                    │
-     │                   │                    │                  │                    │
-     │──4. AttestAgent(gRPC)────────────────────────────────────────────────────────>│
-     │    Protobuf: {SovereignAttestation}    │                  │                    │
-     │                   │                    │                  │                    │
-     │                   │                    │                  │──5. POST /verify/evidence──>│
-     │                   │                    │                  │    JSON: {quote, app_key...}  │
-     │                   │                    │                  │                    │
-     │                   │                    │                  │<──JSON: {attested_claims}─────│
-     │                   │                    │                  │                    │
-     │<──AttestAgentResponse(gRPC)────────────────────────────────────────────────────│
-     │    Protobuf: {X509SVID, AttestedClaims}│                  │                    │
-     │                   │                    │                  │                    │
-```
+#### Step 1: SPIRE Agent Initiates SVID Renewal
 
-**Timing:**
-- Step 1-2: ~100-500ms (TPM operations)
-- Step 3: ~50-200ms (HTTP request to rust-keylime)
-- Step 4: ~10-50ms (gRPC to SPIRE Server)
-- Step 5: ~200-1000ms (Keylime verification)
-- Step 6: ~10-50ms (gRPC response)
-- **Total:** ~370-1800ms
+**Component:** SPIRE Agent (SVID Rotator)
 
-## Component Flow Details
+**Trigger:**
+- Periodic rotation (default: ~30 seconds before expiration)
+- SVID expiration detected
+- Manual rotation request
 
-### Interface 1: SPIRE Agent → SPIRE Server (Attestation)
+**Action:**
+- SPIRE Agent's `svid/rotator.go` detects that rotation is needed
+- Calls `RenewSVID()` or `reattest()` depending on whether reattestation is required
+- Generates a new key pair and CSR for the agent SVID
+
+**Code Location:**
+- `pkg/agent/svid/rotator.go::rotateSVIDIfNeeded()`
+- `pkg/agent/svid/rotator.go::rotateSVID()`
+- `pkg/agent/svid/rotator.go::reattest()`
+
+---
+
+#### Step 2: SPIRE Agent Requests Nonce from SPIRE Server
+
+**Component:** SPIRE Agent → SPIRE Server
 
 **Status:** ✅ Existing (Standard SPIRE)
 
 **Transport:** mTLS over TCP
 
-**Protocol:** gRPC (Protobuf)
+**Protocol:** gRPC Streaming API (Protobuf)
 
 **Port:** SPIRE Server port (typically 8081)
 
+**RPC Method:** `AttestAgent(stream AttestAgentRequest) returns (stream AttestAgentResponse)`
+
+**Action:**
+- SPIRE Agent initiates attestation request to SPIRE Server
+- SPIRE Server generates a cryptographically secure random nonce (32 bytes, hex-encoded)
+- SPIRE Server returns the nonce as part of the challenge in the `AttestAgentResponse`
+- The nonce is used to ensure freshness of the TPM Quote
+
 **Request Format (Protobuf):**
 ```protobuf
+// AttestAgentRequest (streaming gRPC)
 message AttestAgentRequest {
   message Params {
-    spire.api.types.AttestationData data = 1;
-    AgentX509SVIDParams params = 2;  // Contains SovereignAttestation
+    spire.api.types.AttestationData data = 1;  // Join token or existing agent identity
   }
   oneof step {
-    Params params = 1;
-    bytes challenge_response = 2;
+    Params params = 1;              // Initial attestation request
+    bytes challenge_response = 2;    // Challenge response (if needed)
   }
+}
+
+// AttestationData (nested in Params)
+message AttestationData {
+  string type = 1;      // "join_token" for initial attestation
+  bytes payload = 2;     // Join token string (UTF-8 encoded)
 }
 ```
 
 **Response Format (Protobuf):**
 ```protobuf
+// AttestAgentResponse (streaming gRPC)
 message AttestAgentResponse {
-  message Result {
-    spire.api.types.X509SVID svid = 1;
-    bool reattestable = 2;
-    repeated spire.api.types.AttestedClaims attested_claims = 3;
-  }
   oneof step {
     Result result = 1;
-    bytes challenge = 2;
+    bytes challenge = 2;  // Contains nonce (hex-encoded, 64 characters)
   }
 }
 ```
 
+**Nonce Format:**
+- **Length:** 32 bytes (64 hex characters)
+- **Encoding:** Hex string (e.g., `a010d512540d60c18ec1d3942978ff4453f465ce64eddfdd232facfe670a0d2b`)
+- **Purpose:** Ensures TPM Quote freshness and prevents replay attacks
+
+**Authentication:** TLS client certificate authentication, SPIRE trust domain validation
+
 **Code Location:**
-- Client: `pkg/agent/attestor/node/node.go::SendAttestationData()`
+- Client: `pkg/agent/client/client.go::RenewSVID()`
 - Server: `pkg/server/api/agent/v1/service.go::AttestAgent()`
+- `pkg/server/attestation/attestation.go` (nonce generation)
+
+**Note:** In the current implementation, the nonce may be generated locally by the agent as a fallback, but the proper flow requires the nonce to come from the SPIRE Server challenge to ensure freshness and prevent replay attacks.
 
 ---
 
-### Interface 2: Keylime Agent → Keylime Verifier (Quote Requests)
+#### Step 3: Generate TPM App Key (if not exists)
 
-**Status:** ✅ Existing (Standard Keylime)
+**Component:** SPIRE Agent → SPIRE TPM Plugin
 
-**Transport:** mTLS over HTTPS
+**Status:** 🆕 New (Phase 3)
+
+**Transport:** JSON over UDS (Phase 3)
 
 **Protocol:** JSON REST API
 
-**Port:** localhost:8881
+**Port/Path:** UDS socket (default: `/tmp/spire-data/tpm-plugin/tpm-plugin.sock`)
 
-**Request Format (JSON):**
+**Implementation:** JSON over UDS (Phase 3) is the transport mechanism. The client requires `TPM_PLUGIN_ENDPOINT` to be set (defaults to `unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock` if not specified). HTTP over localhost is not supported for security reasons.
+
+**Action:**
+- SPIRE Agent calls `BuildSovereignAttestation()` which triggers TPM operations
+- If App Key doesn't exist, TPM Plugin generates a new App Key using TPM
+- App Key is stored in a context file for future use
+
+**Request Format (JSON over UDS):**
 ```json
-POST /v2.4/agents/{agent_id}/quote
+POST /generate-app-key
+Content-Type: application/json
+
 {
-  "nonce": "<hex-nonce>",
-  "mask": "<pcr-mask>",
-  ...
+  "work_dir": "/tmp/spire-data/tpm-plugin",
+  "force": false
 }
 ```
 
 **Response Format (JSON):**
 ```json
 {
-  "quote": "<base64-encoded-quote>",
-  "hash_alg": "sha256",
-  ...
+  "status": "success",
+  "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
+  "app_key_context": "/tmp/spire-data/tpm-plugin/app.ctx"
 }
 ```
 
 **Code Location:**
-- Client: `rust-keylime/keylime-agent/src/quotes_handler.rs`
-- Server: `keylime/cloud_verifier_tornado.py`
+- Client: `pkg/agent/tpmplugin/tpm_plugin.go::GenerateAppKey()` → `generateAppKeyHTTP()`
+- Server: `tpm-plugin/tpm_plugin_server.py::handle_generate_app_key()`
 
 ---
 
-### Interface 3: SPIRE Server → Keylime Verifier (Evidence Verification)
+#### Step 4: Generate TPM Quote with Nonce
+
+**Component:** SPIRE Agent → SPIRE TPM Plugin
+
+**Status:** 🆕 New (Phase 3)
+
+**Transport:** JSON over UDS (Phase 3)
+
+**Protocol:** JSON REST API
+
+**Port/Path:** UDS socket (default: `/tmp/spire-data/tpm-plugin/tpm-plugin.sock`)
+
+**Action:**
+- TPM Plugin generates a TPM Quote using the App Key
+- **Nonce from Step 2 (SPIRE Server) is embedded in the quote's `extraData` field**
+- The nonce is converted from hex string to bytes and placed in `TPMS_ATTEST.extraData`
+- Quote format: `r<base64-message>:<base64-signature>:<base64-pcrs>`
+
+**Request Format (JSON over UDS):**
+```json
+POST /generate-quote
+Content-Type: application/json
+
+{
+  "nonce": "<hex-nonce-from-spire-server>",
+  "pcr_list": "sha256:0,1,2,3,4,5,6,7",
+  "work_dir": "/tmp/spire-data/tpm-plugin",
+  "app_key_context": "/tmp/spire-data/tpm-plugin/app.ctx"
+}
+```
+
+**Response Format (JSON):**
+```json
+{
+  "status": "success",
+  "quote": "r<base64-message>:<base64-signature>:<base64-pcrs>"
+}
+```
+
+**Nonce Embedding:**
+- The hex-encoded nonce from SPIRE Server is converted to bytes
+- Embedded in `TPMS_ATTEST.extraData` field of the TPM Quote
+- Used by Keylime Verifier to verify quote freshness
+
+**Code Location:**
+- Client: `pkg/agent/tpmplugin/tpm_plugin.go::GenerateQuote()` → `generateQuoteHTTP()`
+- Server: `tpm-plugin/tpm_plugin_server.py::handle_generate_quote()`
+
+---
+
+#### Step 5: Request App Key Certificate (Delegated Certification)
+
+**Component:** SPIRE Agent → SPIRE TPM Plugin → Keylime Agent
+
+**Status:** 🆕 New (Phase 3)
+
+**Transport:** 
+- SPIRE Agent → SPIRE TPM Plugin: JSON over UDS (Phase 3)
+- SPIRE TPM Plugin → Keylime Agent: JSON over UDS (Phase 3)
+
+**Protocol:** JSON REST API
+
+**Port/Path:** 
+- SPIRE Agent → SPIRE TPM Plugin: UDS socket (default: `/tmp/spire-data/tpm-plugin/tpm-plugin.sock`)
+- SPIRE TPM Plugin → Keylime Agent: UDS socket (default: `/tmp/keylime-agent.sock` or as configured)
+
+**Endpoints:**
+- SPIRE Agent → SPIRE TPM Plugin: `POST /request-certificate`
+- SPIRE TPM Plugin → Keylime Agent: `POST /v2.2/delegated_certification/certify_app_key`
+
+**Authentication:** None (localhost-only communication)
+
+**Action:**
+- SPIRE Agent requests App Key certificate via TPM Plugin server
+- TPM Plugin server forwards the request to Keylime Agent
+- Keylime Agent uses the host's TPM AK (Attestation Key) to certify the App Key
+- Returns a base64-encoded certificate containing TPM2_Certify output
+
+**Request Format (SPIRE Agent → SPIRE TPM Plugin, JSON over UDS):**
+```json
+POST /request-certificate
+Content-Type: application/json
+
+{
+  "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
+  "app_key_context_path": "/tmp/spire-data/tpm-plugin/app.ctx",
+  "endpoint": "unix:///tmp/keylime-agent.sock"
+}
+```
+
+**Response Format (SPIRE TPM Plugin → SPIRE Agent, JSON):**
+```json
+{
+  "status": "success",
+  "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l..."
+}
+```
+
+**Request Format (SPIRE TPM Plugin → Keylime Agent, JSON over UDS):**
+```json
+POST /v2.2/delegated_certification/certify_app_key
+Content-Type: application/json
+
+{
+  "api_version": "v1",
+  "command": "certify_app_key",
+  "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
+  "app_key_context_path": "/tmp/spire-data/tpm-plugin/app.ctx"
+}
+```
+
+**Response Format (Keylime Agent → SPIRE TPM Plugin, JSON):**
+```json
+{
+  "result": "SUCCESS",
+  "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l..."
+}
+```
+
+**Certificate Format:**
+The certificate is a base64-encoded JSON structure containing TPM2_Certify output:
+```json
+{
+  "app_key_public": "-----BEGIN PUBLIC KEY-----\n...",
+  "certify_data": "<base64-encoded-attestation>",
+  "signature": "<base64-encoded-signature>",
+  "hash_alg": "sha256",
+  "format": "phase3_compatible"
+}
+```
+
+**UDS Communication:**
+The protocol uses HTTP/1.1 over UDS (JSON REST API):
+- Content-Type: application/json
+- Request/Response format: Standard HTTP/1.1 over UDS
+
+**Error Responses:**
+- `400 Bad Request`: Invalid command or missing fields
+- `403 Forbidden`: Feature flag disabled (`UNIFIED_IDENTITY_ENABLED` not set)
+- `500 Internal Server Error`: TPM operation failed
+
+**Code Location:**
+- SPIRE Agent Client: `pkg/agent/tpmplugin/tpm_plugin.go::RequestCertificate()` → `requestCertificateHTTP()`
+- SPIRE TPM Plugin Server: `tpm-plugin/tpm_plugin_server.py::handle_request_certificate()`
+- SPIRE TPM Plugin Client: `tpm-plugin/delegated_certification.py::DelegatedCertificationClient::request_certificate()`
+- Keylime Agent Server: `rust-keylime/keylime-agent/src/delegated_certification_handler.rs::certify_app_key()`
+
+---
+
+#### Step 6: Keylime Agent Collects Host Attestation Data
+
+**Component:** Keylime Agent (Internal)
+
+**Action:**
+- Keylime Agent collects current host state:
+  - **Geolocation:** Via geolocation plugin (GNSS, mobile sensor, etc.)
+  - **GPU Status:** Via GPU integrity plugin (utilization, memory, health)
+  - **Host Integrity:** PCR measurements, IMA policy checks
+
+**Note:** This step happens asynchronously within Keylime Agent. The data is prepared for the verification request in Step 8.
+
+**Code Location:**
+- `rust-keylime/keylime-agent/src/` (various plugins)
+
+---
+
+#### Step 7: Assemble SovereignAttestation
+
+**Component:** SPIRE Agent (Internal)
+
+**Action:**
+- SPIRE Agent assembles the `SovereignAttestation` Protobuf message:
+  - `tpm_signed_attestation`: TPM Quote from Step 4
+  - `app_key_public`: App Key public key (PEM) from Step 3
+  - `app_key_certificate`: Certificate from Step 5 (base64-encoded)
+  - `challenge_nonce`: **Nonce from Step 2 (SPIRE Server)**
+  - `workload_code_hash`: Optional workload hash
+
+**SovereignAttestation Protobuf Format:**
+```protobuf
+// SovereignAttestation (from spire.api.types)
+message SovereignAttestation {
+  string tpm_signed_attestation = 1;  // Base64-encoded TPM Quote (format: r<msg>:<sig>:<pcrs>)
+  string app_key_public = 2;          // PEM-encoded App Key public key
+  bytes app_key_certificate = 3;      // Base64-encoded certificate (optional, TPM2_Certify output)
+  string challenge_nonce = 4;         // Hex-encoded nonce from SPIRE Server
+  string workload_code_hash = 5;      // Optional workload code hash (e.g., "sha256:...")
+}
+```
+
+**Code Location:**
+- `pkg/agent/tpmplugin/tpm_plugin.go::BuildSovereignAttestation()`
+- `pkg/agent/client/client.go::BuildSovereignAttestation()`
+
+---
+
+#### Step 8: Send Attestation Request to SPIRE Server
+
+**Component:** SPIRE Agent → SPIRE Server
+
+**Status:** ✅ Existing (Standard SPIRE) - Extended with SovereignAttestation
+
+**Transport:** mTLS over TCP
+
+**Protocol:** gRPC Streaming API (Protobuf)
+
+**Port:** SPIRE Server port (typically 8081)
+
+**RPC Method:** `AttestAgent(stream AttestAgentRequest) returns (stream AttestAgentResponse)`
+
+**Action:**
+- SPIRE Agent sends `AttestAgentRequest` with:
+  - `AttestationData`: Join token or existing agent identity
+  - `AgentX509SVIDParams`: CSR + `SovereignAttestation`
+
+**Request Format (Protobuf):**
+```protobuf
+// AttestAgentRequest (streaming gRPC)
+message AttestAgentRequest {
+  message Params {
+    spire.api.types.AttestationData data = 1;
+    AgentX509SVIDParams params = 2;  // Contains SovereignAttestation
+  }
+  oneof step {
+    Params params = 1;              // Initial attestation request
+    bytes challenge_response = 2;    // Challenge response (if needed)
+  }
+}
+
+// AttestationData (nested in Params)
+message AttestationData {
+  string type = 1;      // "join_token" for initial attestation
+  bytes payload = 2;     // Join token string (UTF-8 encoded)
+}
+
+// AgentX509SVIDParams (nested in Params)
+message AgentX509SVIDParams {
+  bytes csr = 1;  // Certificate Signing Request (DER-encoded X.509 CSR)
+  spire.api.types.SovereignAttestation sovereign_attestation = 2;  // Optional
+}
+```
+
+**Authentication:** TLS client certificate authentication, SPIRE trust domain validation
+
+**Code Location:**
+- Client: `pkg/agent/client/client.go::RenewSVID()`
+- Server: `pkg/server/api/agent/v1/service.go::AttestAgent()`
+
+**Note:** This is the standard SPIRE attestation interface. The Sovereign SVID flow extends this by including `SovereignAttestation` in the `AgentX509SVIDParams` field.
+
+---
+
+#### Step 9: SPIRE Server Verifies Workload Attestation
+
+**Component:** SPIRE Server (Internal)
+
+**Action:**
+- SPIRE Server validates the agent's workload attestation:
+  - Verifies join token or existing agent identity
+  - Validates CSR signature
+  - Checks agent registration entry
+  - **Validates that the nonce in SovereignAttestation matches the nonce issued in Step 2**
+
+**Code Location:**
+- `pkg/server/api/agent/v1/service.go::AttestAgent()`
+- `pkg/server/attestation/attestation.go`
+
+---
+
+#### Step 10: SPIRE Server Verifies Host Attestation via Keylime Verifier
+
+**Note:** This step includes Step 10a (geolocation retrieval) as part of the verification process.
+
+**Component:** SPIRE Server → Keylime Verifier
 
 **Status:** 🆕 New (Phase 2/3 Addition)
 
@@ -189,6 +495,23 @@ POST /v2.4/agents/{agent_id}/quote
 
 **Endpoint:** `POST /v2.4/verify/evidence`
 
+**TLS Configuration:**
+- Self-signed certificates for testing (`InsecureSkipVerify: true`)
+- Production: CA certificate validation required
+- Client certificate authentication (mTLS)
+
+**Action:**
+- SPIRE Server extracts `SovereignAttestation` from the request
+- Sends verification request to Keylime Verifier
+- Keylime Verifier:
+  - Validates App Key certificate (TPM2_Certify signature)
+  - Verifies TPM Quote signature using App Key
+  - **Extracts nonce from quote's `extraData` field and validates it matches the nonce from Step 2**
+  - **Verifies PCR 17 contains geolocation hash (TPM-attested geolocation)**
+  - Retrieves attested claims (geolocation, host integrity, GPU metrics) via fact provider
+
+**Note:** The geolocation is TPM-attested via PCR 17 extension, but the actual geolocation string is retrieved separately (see Step 10a below).
+
 **Request Format (JSON):**
 ```json
 {
@@ -197,7 +520,7 @@ POST /v2.4/agents/{agent_id}/quote
     "nonce": "a010d512540d60c18ec1d3942978ff4453f465ce64eddfdd232facfe670a0d2b",
     "quote": "r<base64-message>:<base64-signature>:<base64-pcrs>",
     "hash_alg": "sha256",
-    "app_key_public": "-----BEGIN PUBLIC KEY-----\n...",
+    "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
     "app_key_certificate": "<base64-encoded-certificate>",
     "tpm_ak": "",
     "tpm_ek": ""
@@ -236,196 +559,121 @@ POST /v2.4/agents/{agent_id}/quote
 }
 ```
 
-**Code Location:**
-- Client: `pkg/server/keylime/client.go::VerifyEvidence()`
-- Server: `keylime/cloud_verifier_tornado.py::_tpm_app_key_verify()`
-
----
-
-### Interface 4: SPIRE Agent → SPIRE TPM Plugin (TPM Operations)
-
-**Status:** 🆕 New (Phase 3)
-
-**Transport:** HTTP over UDS (or localhost HTTP)
-
-**Protocol:** JSON REST API
-
-**Port/Path:** UDS socket or localhost HTTP endpoint
-
-**Note:** Current implementation uses subprocess execution, but interface is designed for HTTP/UDS.
-
-**Request Format (JSON via HTTP POST or CLI):**
-```json
-POST /generate-app-key
-{
-  "work_dir": "/tmp/spire-data/tpm-plugin"
-}
-```
-
-Or via CLI (current implementation):
-```bash
-python3 tpm_plugin_cli.py generate-app-key --work-dir /tmp/spire-data/tpm-plugin
-```
-
-**Response Format (JSON):**
-```json
-{
-  "status": "success",
-  "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-  "app_key_context": "/tmp/spire-data/tpm-plugin/app.ctx"
-}
-```
-
-**Code Location:**
-- Client: `pkg/agent/tpmplugin/tpm_plugin.go::GenerateAppKey()`
-- Plugin: `tpm-plugin/tpm_plugin_cli.py::generate_app_key()`
-
----
-
-### Interface 5: SPIRE TPM Plugin → Keylime Agent (Certificate Request)
-
-**Status:** 🆕 New (Phase 3)
-
-**Transport:** HTTP over UDS (or localhost HTTP)
-
-**Protocol:** JSON REST API
-
-**Port/Path:** UDS socket or localhost:9002
-
-**Endpoint:** `POST /v2.2/delegated_certification/certify_app_key`
-
-**Request Format (JSON):**
-```json
-{
-  "api_version": "v1",
-  "command": "certify_app_key",
-  "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-  "app_key_context_path": "/tmp/spire-data/tpm-plugin/app.ctx"
-}
-```
-
-**Response Format (JSON):**
-```json
-{
-  "result": "SUCCESS",
-  "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l..."
-}
-```
-
-**Certificate Format:**
-- Base64-encoded JSON structure containing TPM2_Certify output:
-```json
-{
-  "app_key_public": "...",
-  "certify_data": "<base64-encoded-attestation>",
-  "signature": "<base64-encoded-signature>",
-  "hash_alg": "sha256",
-  "format": "phase2_compatible"
-}
-```
-
 **HTTP Headers:**
 ```
 Content-Type: application/json
 ```
 
 **Error Responses:**
-- `400 Bad Request`: Invalid command or missing fields
-- `403 Forbidden`: Feature flag disabled
-- `500 Internal Server Error`: TPM operation failed
+- `400 Bad Request`: Missing required fields
+- `422 Unprocessable Entity`: Quote verification failed
+- `500 Internal Server Error`: Server error
 
 **Code Location:**
-- Client: `tpm-plugin/delegated_certification.py::request_certificate()`
-- Server: `rust-keylime/keylime-agent/src/delegated_certification_handler.rs::certify_app_key()`
+- Client: `pkg/server/keylime/client.go::VerifyEvidence()`
+- Server: `keylime/cloud_verifier_tornado.py::_tpm_app_key_verify()`
 
 ---
 
----
+#### Step 10a: Keylime Verifier Retrieves TPM-Attested Geolocation from Keylime Agent
 
-### Interface Summary
+**Parent Step:** Step 10 (SPIRE Server Verifies Host Attestation via Keylime Verifier)
 
-The following interfaces are used in the Sovereign SVID flow:
+**Component:** Keylime Verifier → Keylime Agent
 
-1. **SPIRE Agent → SPIRE Server** (Existing): gRPC Protobuf over mTLS
-2. **Keylime Agent → Keylime Verifier** (Existing): JSON over HTTPS with mTLS  
-3. **SPIRE Server → Keylime Verifier** (New): JSON over HTTPS with mTLS
-4. **SPIRE Agent → SPIRE TPM Plugin** (New): JSON over HTTP/UDS
-5. **SPIRE TPM Plugin → Keylime Agent** (New): JSON over HTTP/UDS
+**Status:** 🆕 New (Phase 3 Addition)
 
----
+**Transport:** HTTP over localhost (or HTTPS with mTLS if enabled)
 
-### Detailed Interface Specifications
+**Protocol:** JSON REST API
 
-#### Interface 1: SPIRE Agent → SPIRE Server (Attestation Request)
+**Port:** localhost:9002 (rust-keylime Agent)
 
-**Status:** ✅ Existing (Standard SPIRE)
+**Endpoint:** `GET /v2.2/quotes/integrity` (with PCR 17 in mask)
 
-**Transport:** mTLS over TCP
+**Timing:** This step occurs as part of Step 10 when the Keylime Verifier needs to retrieve and verify geolocation claims. It happens during the standard Keylime attestation flow when the Verifier requests a quote from the Agent. The geolocation is embedded in PCR 17 of the quote response.
 
-**Protocol:** gRPC Streaming API
+**Action:**
+- Keylime Verifier requests a TPM Quote from Keylime Agent
+- Keylime Agent:
+  1. Gets current geolocation (from environment variable `KEYLIME_AGENT_GEOLOCATION` or default)
+  2. Hashes geolocation with nonce and timestamp
+  3. Extends the hash into PCR 17
+  4. Generates TPM Quote including PCR 17
+  5. Returns quote with PCR 17 containing geolocation attestation
 
-**RPC Method:** `AttestAgent(stream AttestAgentRequest) returns (stream AttestAgentResponse)`
-
-**Request Format (Protobuf):**
-```protobuf
-// AttestAgentRequest (streaming gRPC)
-message AttestAgentRequest {
-  message Params {
-    spire.api.types.AttestationData data = 1;
-    AgentX509SVIDParams params = 2;
-  }
-  
-  oneof step {
-    Params params = 1;              // Initial attestation request
-    bytes challenge_response = 2;    // Challenge response (if needed)
-  }
-}
-
-// AttestationData (nested in Params)
-message AttestationData {
-  string type = 1;      // "join_token" for initial attestation
-  bytes payload = 2;     // Join token string (UTF-8 encoded)
-}
-
-// AgentX509SVIDParams (nested in Params)
-message AgentX509SVIDParams {
-  bytes csr = 1;  // Certificate Signing Request (DER-encoded X.509 CSR)
-  spire.api.types.SovereignAttestation sovereign_attestation = 2;  // Optional
-}
-
-// SovereignAttestation (from spire.api.types)
-message SovereignAttestation {
-  string tpm_signed_attestation = 1;  // Base64-encoded TPM Quote (format: r<msg>:<sig>:<pcrs>)
-  string app_key_public = 2;          // PEM-encoded App Key public key
-  bytes app_key_certificate = 3;      // Base64-encoded certificate (optional, TPM2_Certify output)
-  string challenge_nonce = 4;         // Hex-encoded nonce from SPIRE Server
-  string workload_code_hash = 5;      // Optional workload code hash (e.g., "sha256:...")
-}
+**Request Format (HTTP GET):**
+```
+GET /v2.2/quotes/integrity?nonce=<nonce>&mask=<mask>&partial=1&ima_ml_entry=0
 ```
 
-**Example Request (JSON representation for debugging):**
+**Query Parameters:**
+- `nonce`: Cryptographic nonce for quote freshness
+- `mask`: PCR mask (must include bit 17 = 0x20000 for PCR 17)
+- `partial`: Whether to include public key (0 = include, 1 = exclude)
+- `ima_ml_entry`: IMA measurement list entry number
+
+**Response Format (JSON):**
 ```json
 {
-  "step": {
-    "params": {
-      "data": {
-        "type": "join_token",
-        "payload": "d6d68eaa-c78b-44c5-9..."
-      },
-      "params": {
-        "csr": "<base64-encoded-DER-CSR>",
-        "sovereign_attestation": {
-          "tpm_signed_attestation": "r<base64>:<base64>:<base64>",
-          "app_key_public": "-----BEGIN PUBLIC KEY-----\n...",
-          "app_key_certificate": "<base64-encoded-certificate>",
-          "challenge_nonce": "a010d512540d60c18ec1d3942978ff4453f465ce64eddfdd232facfe670a0d2b",
-          "workload_code_hash": ""
-        }
-      }
+  "results": {
+    "quote": "<base64-encoded-tpm-quote>",
+    "hash_alg": "sha256",
+    "enc_alg": "ecc",
+    "sign_alg": "ecdsa",
+    "pubkey": "<pem-encoded-public-key>",
+    "pcrs": {
+      "17": "<pcr-17-digest-hex>"
     }
   }
 }
 ```
+
+**Geolocation Extraction:**
+- The geolocation string itself is **not directly extractable** from PCR 17 (it's hashed)
+- The Keylime Verifier retrieves the actual geolocation string via:
+  1. **Agent metadata** in Verifier database (if agent is registered)
+  2. **Fact provider** (`fact_provider.py::get_attested_claims()`) which:
+     - Checks verifier database for agent metadata with geolocation
+     - Falls back to fact store (if host identified by EK/AK)
+     - Uses default geolocation from configuration if not found
+  3. **Verification:** The Verifier validates that PCR 17 contains the expected geolocation hash by:
+     - Re-hashing the retrieved geolocation string with the nonce and timestamp
+     - Comparing the hash with PCR 17 value from the quote
+
+**Geolocation PCR Extension Process (Agent Side):**
+1. Agent gets geolocation: `get_current_geolocation()` → returns string like `"US:California:San Francisco:37.7749:-122.4194"`
+2. Agent hashes: `hash_geolocation_data(geolocation, nonce, timestamp)` → SHA256 hash
+3. Agent extends: `tpm_context.reset_and_extend_pcr(PcrHandle::Pcr17, digest_values)`
+4. Agent generates quote: Includes PCR 17 in quote mask (bit 17 = 0x20000)
+
+**Code Location:**
+- Agent: `rust-keylime/keylime-agent/src/quotes_handler.rs::integrity()`
+- Agent: `rust-keylime/keylime-agent/src/geolocation.rs::extend_geolocation_into_pcr()`
+- Verifier: `keylime/cloud_verifier_tornado.py::invoke_get_quote()`
+- Verifier: `keylime/fact_provider.py::get_attested_claims()`
+
+**Note:** In the current implementation, the geolocation string is retrieved from the Verifier's fact provider (database/metadata/defaults), not directly from the Agent API. The PCR 17 attestation proves that the geolocation was measured into the TPM at quote time, but the actual geolocation value must be retrieved separately and then verified against PCR 17.
+
+**Flow Continuation:** After Step 10a completes, the Keylime Verifier returns the attested claims (including geolocation) to the SPIRE Server as part of Step 10's response. The SPIRE Server then continues with Step 11 to issue the Unified SVID.
+
+---
+
+#### Step 11: SPIRE Server Issues Unified SVID
+
+**Component:** SPIRE Server → SPIRE Agent
+
+**Status:** ✅ Existing (Standard SPIRE) - Extended with Unified Identity claims
+
+**Transport:** mTLS over TCP (same connection as Step 8)
+
+**Protocol:** gRPC Streaming API (Protobuf)
+
+**Action:**
+- SPIRE Server signs the agent's X.509 SVID with:
+  - SPIFFE ID: `spiffe://example.org/spire/agent/join_token/<token-id>`
+  - Unified Identity claims embedded in X.509 certificate extension (OID: `1.3.6.1.4.1.99999.1`)
+  - AttestedClaims in Protobuf response
 
 **Response Format (Protobuf):**
 ```protobuf
@@ -436,7 +684,6 @@ message AttestAgentResponse {
     bool reattestable = 2;
     repeated spire.api.types.AttestedClaims attested_claims = 3;
   }
-  
   oneof step {
     Result result = 1;        // Attestation complete
     bytes challenge = 2;      // Challenge issued (if needed)
@@ -456,191 +703,15 @@ message AttestedClaims {
   string geolocation = 1;                   // "Spain: N40.4168, W3.7038"
   HostIntegrityStatus host_integrity_status = 2;  // Enum: PASSED_ALL_CHECKS, FAILED, PARTIAL
   GpuMetricsHealth gpu_metrics_health = 3;  // GPU health metrics
-  
-  message GpuMetrics {
-    string status = 1;        // "healthy", "degraded", "failed"
-    double utilization_pct = 2; // 0.0 to 100.0
-    int64 memory_mb = 3;      // Memory in MB
-  }
-  
-  enum HostIntegrity {
-    HOST_INTEGRITY_UNSPECIFIED = 0;
-    PASSED_ALL_CHECKS = 1;
-    FAILED = 2;
-    PARTIAL = 3;
-  }
-}
-```
-
-**Example Response (JSON representation for debugging):**
-```json
-{
-  "step": {
-    "result": {
-      "svid": {
-        "spiffe_id": "spiffe://example.org/spire/agent/join_token/711fb417-c7dd-4534-b213-e46b209a6bc4",
-        "cert_chain": [
-          "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKZ7Z3Z...\n-----END CERTIFICATE-----",
-          "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKZ7Z3Z...\n-----END CERTIFICATE-----"
-        ],
-        "private_key": "<base64-encoded-PKCS8-DER>",
-        "expires_at": "2025-11-13T05:20:56Z"
-      },
-      "reattestable": true,
-      "attested_claims": [
-        {
-          "geolocation": "Spain: N40.4168, W3.7038",
-          "host_integrity_status": "PASSED_ALL_CHECKS",
-          "gpu_metrics_health": {
-            "status": "healthy",
-            "utilization_pct": 45.2,
-            "memory_mb": 8192
-          }
-        }
-      ]
-    }
-  }
-}
-```
-
-**gRPC Metadata:**
-- TLS client certificate authentication
-- SPIRE trust domain validation
-
-**Code Location:**
-- Client: `pkg/agent/attestor/node/node.go::SendAttestationData()`
-- Server: `pkg/server/api/agent/v1/service.go::AttestAgent()`
-
----
-
-#### Interface 3: SPIRE Server → Keylime Verifier (Evidence Verification)
-
-**Status:** 🆕 New (Phase 2/3 Addition)
-
-**Transport:** mTLS over HTTPS
-
-**Protocol:** JSON REST API
-
-**Endpoint:** `POST /v2.4/verify/evidence`
-
-**Request Format (JSON):**
-```json
-{
-  "type": "tpm-app-key",
-  "data": {
-    "nonce": "a010d512540d60c18ec1d3942978ff4453f465ce64eddfdd232facfe670a0d2b",
-    "quote": "r<base64-message>:<base64-signature>:<base64-pcrs>",
-    "hash_alg": "sha256",
-    "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-    "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l...",
-    "tpm_ak": "",
-    "tpm_ek": ""
-  },
-  "metadata": {
-    "source": "SPIRE Server",
-    "submission_type": "PoR/tpm-app-key",
-    "audit_id": ""
-  }
-}
-```
-
-**Response Format (JSON):**
-```json
-{
-  "results": {
-    "verified": true,
-    "verification_details": {
-      "app_key_certificate_valid": true,
-      "app_key_public_matches_cert": true,
-      "quote_signature_valid": true,
-      "nonce_valid": true,
-      "timestamp": 1701234567
-    },
-    "attested_claims": {
-      "geolocation": "Spain: N40.4168, W3.7038",
-      "host_integrity_status": "passed_all_checks",
-      "gpu_metrics_health": {
-        "status": "healthy",
-        "utilization_pct": 45.2,
-        "memory_mb": 8192
-      }
-    },
-    "audit_id": "0eebf40b-c9b8-497a-80d6-c09976eb5091"
-  }
-}
-```
-
-**HTTP Headers:**
-```
-Content-Type: application/json
-```
-
-**TLS Configuration:**
-- Self-signed certificates for testing (InsecureSkipVerify: true)
-- Production: CA certificate validation required
-
-**Error Responses:**
-- `400 Bad Request`: Missing required fields
-- `422 Unprocessable Entity`: Quote verification failed
-- `500 Internal Server Error`: Server error
-
-**Code Location:**
-- Client: `pkg/server/keylime/client.go::VerifyEvidence()`
-- Server: `keylime/cloud_verifier_tornado.py::_tpm_app_key_verify()`
-
----
-
-#### Interface 1 (continued): SPIRE Server → SPIRE Agent (SVID Response)
-
-**Status:** ✅ Existing (Standard SPIRE)
-
-**Transport:** mTLS over TCP (same connection as request)
-
-**Protocol:** gRPC Streaming API (continuation of AttestAgent stream)
-
-**Response Format (Protobuf):**
-```protobuf
-message AttestAgentResponse {
-  message Result {
-    spire.api.types.X509SVID svid = 1;
-    bool reattestable = 2;
-    repeated spire.api.types.AttestedClaims attested_claims = 3;
-  }
-  
-  Result result = 1;  // Attestation complete
-}
-
-message X509SVID {
-  string spiffe_id = "spiffe://example.org/spire/agent/join_token/<token-id>";
-  repeated bytes cert_chain = [
-    "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKZ7Z3Z...\n-----END CERTIFICATE-----",
-    "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKZ7Z3Z...\n-----END CERTIFICATE-----"
-  ];
-  bytes private_key = "...";  // PKCS#8 DER-encoded
-  google.protobuf.Timestamp expires_at = {...};
-}
-
-message AttestedClaims {
-  string geolocation = "Spain: N40.4168, W3.7038";
-  HostIntegrityStatus host_integrity_status = PASSED_ALL_CHECKS;
-  GpuMetricsHealth gpu_metrics_health = {
-    status: "healthy",
-    utilization_pct: 45.2,
-    memory_mb: 8192
-  };
 }
 ```
 
 **X.509 Certificate Extension:**
-The SVID certificate includes a custom extension (OID: `1.3.6.1.4.1.99999.1`) containing the unified identity claims JSON:
-
-**Extension Details:**
+The SVID certificate includes unified identity claims in a custom extension:
 - **OID:** `1.3.6.1.4.1.99999.1` (AttestedClaims Extension - used for both legacy and unified identity claims)
 - **Critical:** `false` (non-critical extension)
 - **Value:** Raw JSON bytes (UTF-8 encoded)
-- **Note:** The extension uses the same OID for both legacy AttestedClaims format and new unified identity format. The Python client checks for OID `1.3.6.1.4.1.99999.2` first (for future compatibility), then falls back to `1.3.6.1.4.1.99999.1`.
-
-**Claims JSON Structure:**
+- **Claims JSON Structure:**
 ```json
 {
   "grc.workload": {
@@ -648,10 +719,10 @@ The SVID certificate includes a custom extension (OID: `1.3.6.1.4.1.99999.1`) co
     "key-source": "tpm-app-key"
   },
   "grc.tpm-attestation": {
-    "app-key-public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-    "app-key-certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l...",
+    "app-key-public": "-----BEGIN PUBLIC KEY-----\n...",
+    "app-key-certificate": "<base64-encoded-certificate>",
     "quote": "r<base64-message>:<base64-signature>:<base64-pcrs>",
-    "challenge-nonce": "a010d512540d60c18ec1d3942978ff4453f465ce64eddfdd232facfe670a0d2b"
+    "challenge-nonce": "<hex-nonce>"
   },
   "grc.geolocation": {
     "physical-location": {
@@ -683,17 +754,240 @@ The SVID certificate includes a custom extension (OID: `1.3.6.1.4.1.99999.1`) co
 
 ---
 
+#### Step 12: SPIRE Agent Caches Unified SVID
+
+**Component:** SPIRE Agent (Internal)
+
+**Action:**
+- SPIRE Agent receives and caches the unified SVID
+- SVID is stored in agent's SVID store
+- SVID is used for:
+  - Agent-to-Server communication (mTLS)
+  - Workload API authentication
+  - Future SVID renewals
+
+**Code Location:**
+- `pkg/agent/svid/rotator.go::rotateSVID()`
+- `pkg/agent/svid/store/service.go`
+
+---
+
+### Timing and Performance
+
+- **Step 1 (Initiate Renewal):** ~1-5ms
+- **Step 2 (Get Nonce from Server):** ~10-50ms
+- **Step 3-4 (TPM Operations):** ~100-500ms
+- **Step 5 (Delegated Certification):** ~50-200ms
+- **Step 6 (Host Data Collection):** ~10-50ms (asynchronous)
+- **Step 7 (Assembly):** ~1-5ms
+- **Step 8 (gRPC Request):** ~10-50ms
+- **Step 9 (Workload Verification):** ~5-20ms
+- **Step 10 (Host Verification):** ~200-1000ms
+- **Step 11-12 (SVID Issuance & Caching):** ~10-50ms
+
+**Total:** ~397-1930ms per refresh cycle
+
+**Refresh Frequency:** Approximately every 30 seconds (or when SVID is about to expire)
+
+---
+
+## Component Flow: Workload SVID (Standard SPIRE Flow)
+
+Workloads request SVIDs from the SPIRE Agent via the Workload API. This flow is independent of the Sovereign SVID flow and follows standard SPIRE behavior. The workload SVID does not include TPM attestation or host integrity claims—it only includes workload identity based on the workload's selectors.
+
+### Flow Overview
+
+```
+┌─────────────────┐
+│   Workload      │
+│  (Application)  │
+└────────┬────────┘
+         │
+         │ Step 1: Request SVID via Workload API
+         ▼
+┌─────────────────┐
+│  SPIRE Agent    │
+│  Workload API   │
+└────────┬────────┘
+         │
+         │ Step 2: Attest Workload
+         │ Step 3: Match Registration Entry
+         │ Step 4: Return Cached or Fetch New SVID
+         ▼
+┌─────────────────┐
+│   Workload       │
+│  (SVID Received) │
+└─────────────────┘
+```
+
+### Detailed Step-by-Step Flow
+
+#### Step 1: Workload Requests SVID
+
+**Component:** Workload → SPIRE Agent
+
+**Status:** ✅ Existing (Standard SPIRE)
+
+**Transport:** UNIX Domain Socket (UDS) or TCP
+
+**Protocol:** gRPC (SPIFFE Workload API)
+
+**Port/Path:** 
+- UDS: `/tmp/spire-agent/public/api.sock` (default)
+- TCP: `localhost:8080` (if configured)
+
+**Endpoint:** `SpiffeWorkloadAPI.FetchX509SVID`
+
+**Action:**
+- Workload connects to SPIRE Agent's Workload API
+- Sends `FetchX509SVIDRequest` (empty request for all available SVIDs)
+- Workload is authenticated via process attestation (PID, cgroup, etc.)
+
+**Request Format (Protobuf):**
+```protobuf
+message X509SVIDRequest {
+  // Empty - requests all available SVIDs for the workload
+}
+```
+
+**Authentication:** Process attestation (PID, cgroup, k8s pod, container ID, etc.)
+
+**Code Location:**
+- `pkg/agent/endpoints/workload/handler.go::FetchX509SVID()`
+- `go-spiffe/proto/spiffe/workload/workload.proto`
+
+---
+
+#### Step 2: SPIRE Agent Attests Workload
+
+**Component:** SPIRE Agent (Internal)
+
+**Action:**
+- SPIRE Agent performs workload attestation:
+  - Extracts selectors from the workload's process context
+  - Selectors include: PID, cgroup, k8s pod, container ID, etc.
+  - Validates workload is running in expected environment
+
+**Code Location:**
+- `pkg/agent/endpoints/workload/handler.go::FetchX509SVID()`
+- `pkg/agent/workloadattestor/` (various attestors)
+
+---
+
+#### Step 3: SPIRE Agent Matches Registration Entry
+
+**Component:** SPIRE Agent (Internal)
+
+**Action:**
+- SPIRE Agent matches workload selectors against registration entries
+- Finds matching registration entry with:
+  - SPIFFE ID for the workload
+  - Selector set matching the workload
+  - Parent SPIFFE ID (typically the agent's SPIFFE ID)
+
+**Code Location:**
+- `pkg/agent/manager/manager.go::MatchingRegistrationEntries()`
+- `pkg/agent/cache/cache.go`
+
+---
+
+#### Step 4: SPIRE Agent Returns SVID
+
+**Component:** SPIRE Agent → Workload
+
+**Status:** ✅ Existing (Standard SPIRE)
+
+**Transport:** gRPC (SPIFFE Workload API)
+
+**Protocol:** Streaming gRPC
+
+**Action:**
+- SPIRE Agent checks cache for existing SVID
+- If cached SVID is valid and not expiring soon, returns cached SVID
+- If SVID needs refresh, SPIRE Agent:
+  - Fetches new SVID from SPIRE Server via `BatchNewX509SVID` gRPC call
+  - Caches the SVID
+  - Returns SVID to workload
+
+**Response Format (Protobuf):**
+```protobuf
+message X509SVIDResponse {
+  repeated X509SVID svids = 1;
+}
+
+message X509SVID {
+  string spiffe_id = 1;                    // Workload SPIFFE ID (e.g., "spiffe://example.org/python-app")
+  repeated bytes x509_svid_key = 2;        // Private key (PKCS#8 DER-encoded)
+  repeated bytes x509_svid = 3;           // Certificate chain (PEM-encoded)
+  repeated bytes bundle = 4;              // Trust bundle (PEM-encoded)
+}
+```
+
+**Example Response:**
+```protobuf
+X509SVIDResponse {
+  svids: [
+    {
+      spiffe_id: "spiffe://example.org/python-app"
+      x509_svid_key: [<PKCS#8 DER private key>]
+      x509_svid: [
+        "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKZ7Z3Z...\n-----END CERTIFICATE-----",
+        "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKZ7Z3Z...\n-----END CERTIFICATE-----"
+      ]
+      bundle: [
+        "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKZ7Z3Z...\n-----END CERTIFICATE-----"
+      ]
+    }
+  ]
+}
+```
+
+**Note:** The workload SVID does NOT include:
+- TPM attestation data
+- Host integrity claims
+- Geolocation claims
+- Custom X.509 certificate extensions (unified identity claims)
+
+The workload SVID only contains:
+- Workload SPIFFE ID
+- Standard X.509 certificate fields (subject, issuer, validity, etc.)
+- Trust bundle for validation
+- Private key for mTLS authentication
+
+**Code Location:**
+- `pkg/agent/endpoints/workload/handler.go::FetchX509SVID()`
+- `pkg/agent/manager/manager.go::FetchWorkloadUpdate()`
+- `pkg/agent/cache/cache.go`
+
+---
+
+### Key Differences: Sovereign SVID vs. Workload SVID
+
+| Aspect | Sovereign SVID (Agent) | Workload SVID |
+|--------|------------------------|---------------|
+| **Requestor** | SPIRE Agent (itself) | Workload (application) |
+| **Frequency** | Periodic (~30s) | On-demand (when workload requests) |
+| **Attestation** | TPM + Host Integrity + Geolocation | Process selectors only |
+| **Claims** | Unified Identity (TPM, geolocation, GPU) | Standard SPIFFE ID only |
+| **Certificate Extension** | Custom OID with unified claims | Standard X.509 only |
+| **Dependencies** | TPM Plugin, Keylime Agent, Keylime Verifier | SPIRE Agent only |
+| **Transport** | gRPC (Agent → Server) | gRPC (Workload → Agent) |
+| **Use Case** | Agent identity, mTLS to server | Workload identity, service-to-service |
+
+---
+
 ## Quick Reference: Interface Summary Table
 
 | Interface | Status | Transport | Protocol | Port/Path | Request Format | Response Format |
 |-----------|--------|-----------|----------|-----------|----------------|-----------------|
 | **spire-agent → spire-server** | ✅ Existing (Standard SPIRE) | mTLS over TCP | gRPC (Protobuf) | Server port (8081) | AttestAgentRequest | AttestAgentResponse |
 | **keylime-agent → keylime-verifier** | ✅ Existing (Standard Keylime) | mTLS over HTTPS | JSON REST | localhost:8881 | JSON POST (quote requests) | JSON response |
+| **keylime-verifier → keylime-agent** | ✅ Existing (Standard Keylime) | HTTP over localhost (or HTTPS with mTLS if enabled) | JSON REST | localhost:9002 | HTTP GET (quote requests with PCR 17) | JSON response (quote with PCR 17) |
 | **spire-server → keylime-verifier** | 🆕 New (Phase 2/3) | mTLS over HTTPS | JSON REST | localhost:8881 | JSON POST (verify evidence) | JSON response |
-| **spire-agent → spire-tpm-plugin** | 🆕 New (Phase 3) | HTTP/UDS | JSON | UDS or localhost | JSON POST | JSON response |
-| **spire-tpm-plugin → keylime-agent** | 🆕 New (Phase 3) | HTTP/UDS | JSON | UDS or localhost:9002 | JSON POST | JSON response |
+| **spire-agent → spire-tpm-plugin** | 🆕 New (Phase 3) | JSON over UDS (Phase 3) | JSON | UDS: `/tmp/spire-data/tpm-plugin/tpm-plugin.sock` | JSON POST | JSON response |
+| **spire-tpm-plugin → keylime-agent** | 🆕 New (Phase 3) | JSON over UDS (Phase 3) | JSON | UDS: `/tmp/keylime-agent.sock` or as configured | JSON POST | JSON response |
 
-**Note:** Current implementation uses subprocess execution for `spire-agent → spire-tpm-plugin`, but the interface is designed to support HTTP/UDS for future flexibility.
+**Note:** The `spire-agent → spire-tpm-plugin` interface uses JSON over UDS (Phase 3) as the transport mechanism. The client requires `TPM_PLUGIN_ENDPOINT` to be set (defaults to `unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock` if not specified). HTTP over localhost is not supported for security reasons.
 
 ## Nonce Flow
 
@@ -747,7 +1041,7 @@ The nonce is generated by the SPIRE Server and flows through the system as follo
 ### 4. App Key Certificate Request
 - **From:** TPM Plugin (Python)
 - **To:** rust-keylime Agent (Rust)
-- **Transport:** HTTP/1.1 (localhost:9002)
+- **Transport:** UDS (JSON over UDS)
 - **Format:** JSON request/response
 - **Data:** App Key public key, context path → Base64 certificate
 
@@ -788,10 +1082,11 @@ The nonce is generated by the SPIRE Server and flows through the system as follo
 
 | Interface | Transport | Protocol | Port/Path | Authentication |
 |-----------|-----------|----------|-----------|----------------|
-| SPIRE Agent → TPM Plugin | Process exec | CLI + JSON | N/A (subprocess) | Process isolation |
-| TPM Plugin → rust-keylime Agent | HTTP/1.1 | JSON REST | localhost:9002 | None (local only) |
+| SPIRE Agent → TPM Plugin | UDS | JSON REST | UDS socket | None (local only) |
+| TPM Plugin → rust-keylime Agent | UDS | JSON REST | UDS socket | None (local only) |
 | SPIRE Agent → SPIRE Server | TLS over TCP | gRPC (Protobuf) | Server port (8081) | TLS client cert |
 | SPIRE Server → Keylime Verifier | HTTPS | JSON REST | localhost:8881 | TLS (self-signed for testing) |
+| Keylime Verifier → Keylime Agent | HTTP/HTTPS | JSON REST | localhost:9002 | HTTP (or mTLS if enabled) |
 
 ---
 
@@ -803,6 +1098,7 @@ The nonce is generated by the SPIRE Server and flows through the system as follo
 | TPM Plugin → rust-keylime Agent | JSON | JSON | UTF-8 |
 | SPIRE Agent → SPIRE Server | Protobuf | Protobuf | Binary (gRPC) |
 | SPIRE Server → Keylime Verifier | JSON | JSON | UTF-8 |
+| Keylime Verifier → Keylime Agent | HTTP GET (query params) | JSON (quote with PCR 17) | UTF-8 |
 
 ---
 
@@ -867,4 +1163,5 @@ Each interface includes error handling:
 - rust-keylime Agent: `code-rollout-phase-3/rust-keylime/keylime-agent/`
 - Keylime Verifier: `code-rollout-phase-2/keylime/keylime/`
 - Unified Identity Claims: `federated-jwt.md`
+
 

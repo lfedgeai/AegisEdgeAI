@@ -610,6 +610,11 @@ type RenewAgentResponse struct {
 	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional AttestedClaims returned from Keylime and policy evaluation.
 	AttestedClaims []*types.AttestedClaims `protobuf:"bytes,2,rep,name=attested_claims,json=attestedClaims,proto3" json:"attested_claims,omitempty"`
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Optional challenge nonce for TPM Quote generation. If present, the agent
+	// should use this nonce to build SovereignAttestation and call RenewAgent again.
+	// This enables the server to ensure freshness of TPM attestation.
+	ChallengeNonce []byte `protobuf:"bytes,3,opt,name=challenge_nonce,json=challengeNonce,proto3" json:"challenge_nonce,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -654,6 +659,13 @@ func (x *RenewAgentResponse) GetSvid() *types.X509SVID {
 func (x *RenewAgentResponse) GetAttestedClaims() []*types.AttestedClaims {
 	if x != nil {
 		return x.AttestedClaims
+	}
+	return nil
+}
+
+func (x *RenewAgentResponse) GetChallengeNonce() []byte {
+	if x != nil {
+		return x.ChallengeNonce
 	}
 	return nil
 }
@@ -1196,10 +1208,11 @@ const file_spire_api_server_agent_v1_agent_proto_rawDesc = "" +
 	"\x0fattested_claims\x18\x03 \x03(\v2\x1f.spire.api.types.AttestedClaimsR\x0eattestedClaimsB\x06\n" +
 	"\x04step\"[\n" +
 	"\x11RenewAgentRequest\x12F\n" +
-	"\x06params\x18\x01 \x01(\v2..spire.api.server.agent.v1.AgentX509SVIDParamsR\x06params\"\x8d\x01\n" +
+	"\x06params\x18\x01 \x01(\v2..spire.api.server.agent.v1.AgentX509SVIDParamsR\x06params\"\xb6\x01\n" +
 	"\x12RenewAgentResponse\x12-\n" +
 	"\x04svid\x18\x01 \x01(\v2\x19.spire.api.types.X509SVIDR\x04svid\x12H\n" +
-	"\x0fattested_claims\x18\x02 \x03(\v2\x1f.spire.api.types.AttestedClaimsR\x0eattestedClaims\"v\n" +
+	"\x0fattested_claims\x18\x02 \x03(\v2\x1f.spire.api.types.AttestedClaimsR\x0eattestedClaims\x12'\n" +
+	"\x0fchallenge_nonce\x18\x03 \x01(\fR\x0echallengeNonce\"v\n" +
 	"\x16CreateJoinTokenRequest\x12\x10\n" +
 	"\x03ttl\x18\x01 \x01(\x05R\x03ttl\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x124\n" +

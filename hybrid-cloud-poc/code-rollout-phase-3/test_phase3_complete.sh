@@ -601,32 +601,82 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
     tail -30 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register)" || tail -20 /tmp/rust-keylime-agent.log
 fi
 
-# Step 5: Ensure TPM Plugin CLI is accessible
+# Step 5: Start TPM Plugin Server (HTTP/UDS)
 echo ""
-echo -e "${CYAN}Step 5: Ensuring TPM Plugin CLI is accessible...${NC}"
+echo -e "${CYAN}Step 5: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
 
-TPM_PLUGIN_CLI="${SCRIPT_DIR}/tpm-plugin/tpm_plugin_cli.py"
-if [ ! -f "$TPM_PLUGIN_CLI" ]; then
-    echo -e "${YELLOW}  ⚠ TPM Plugin CLI not found at $TPM_PLUGIN_CLI${NC}"
+TPM_PLUGIN_SERVER="${SCRIPT_DIR}/tpm-plugin/tpm_plugin_server.py"
+if [ ! -f "$TPM_PLUGIN_SERVER" ]; then
+    echo -e "${YELLOW}  ⚠ TPM Plugin Server not found at $TPM_PLUGIN_SERVER${NC}"
     echo "  Trying alternative locations..."
     # Try to find it
-    if [ -f "${SCRIPT_DIR}/../code-rollout-phase-3/tpm-plugin/tpm_plugin_cli.py" ]; then
-        TPM_PLUGIN_CLI="${SCRIPT_DIR}/../code-rollout-phase-3/tpm-plugin/tpm_plugin_cli.py"
-    elif [ -f "${HOME}/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_cli.py" ]; then
-        TPM_PLUGIN_CLI="${HOME}/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_cli.py"
+    if [ -f "${SCRIPT_DIR}/../code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py" ]; then
+        TPM_PLUGIN_SERVER="${SCRIPT_DIR}/../code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py"
+    elif [ -f "${HOME}/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py" ]; then
+        TPM_PLUGIN_SERVER="${HOME}/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py"
     fi
 fi
 
-if [ -f "$TPM_PLUGIN_CLI" ]; then
-    echo -e "${GREEN}  ✓ TPM Plugin CLI found: $TPM_PLUGIN_CLI${NC}"
-    export TPM_PLUGIN_CLI_PATH="$TPM_PLUGIN_CLI"
-    # Also create a symlink in the expected location for SPIRE Agent
-    mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
-    if [ ! -f "/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py" ]; then
-        ln -sf "$TPM_PLUGIN_CLI" /tmp/spire-data/tpm-plugin/tpm_plugin_cli.py 2>/dev/null || true
+if [ ! -f "$TPM_PLUGIN_SERVER" ]; then
+    echo -e "${RED}  ✗ TPM Plugin Server not found, cannot continue${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}  ✓ TPM Plugin Server found: $TPM_PLUGIN_SERVER${NC}"
+
+# Create work directory
+mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
+
+# Set TPM plugin endpoint (UDS socket)
+TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+export TPM_PLUGIN_ENDPOINT="unix://${TPM_PLUGIN_SOCKET}"
+echo "  Setting TPM_PLUGIN_ENDPOINT=${TPM_PLUGIN_ENDPOINT}"
+
+# Start TPM Plugin Server
+echo "  Starting TPM Plugin Server on UDS: ${TPM_PLUGIN_SOCKET}..."
+export UNIFIED_IDENTITY_ENABLED=true
+python3 "$TPM_PLUGIN_SERVER" \
+    --socket-path "${TPM_PLUGIN_SOCKET}" \
+    --work-dir /tmp/spire-data/tpm-plugin \
+    > /tmp/tpm-plugin-server.log 2>&1 &
+TPM_PLUGIN_SERVER_PID=$!
+echo $TPM_PLUGIN_SERVER_PID > /tmp/tpm-plugin-server.pid
+
+# Wait for server to start (check if socket exists or process is running)
+echo "  Waiting for TPM Plugin Server to start..."
+TPM_SERVER_STARTED=false
+for i in {1..15}; do
+    # Check if socket exists
+    if [ -S "${TPM_PLUGIN_SOCKET}" ]; then
+        echo -e "${GREEN}  ✓ TPM Plugin Server started (PID: $TPM_PLUGIN_SERVER_PID, socket: ${TPM_PLUGIN_SOCKET})${NC}"
+        TPM_SERVER_STARTED=true
+        break
     fi
-else
-    echo -e "${YELLOW}  ⚠ TPM Plugin CLI not found, SPIRE Agent will use stub data${NC}"
+    # Check if process is still running
+    if ! kill -0 $TPM_PLUGIN_SERVER_PID 2>/dev/null; then
+        echo -e "${RED}  ✗ TPM Plugin Server process died${NC}"
+        tail -20 /tmp/tpm-plugin-server.log
+        exit 1
+    fi
+    # Give it a moment - socket creation might be slightly delayed
+    sleep 0.5
+done
+
+if [ "$TPM_SERVER_STARTED" = false ]; then
+    # Check if process is running even if socket check failed
+    if kill -0 $TPM_PLUGIN_SERVER_PID 2>/dev/null; then
+        echo -e "${YELLOW}  ⚠ TPM Plugin Server process is running but socket not detected${NC}"
+        echo "  Process PID: $TPM_PLUGIN_SERVER_PID"
+        echo "  Socket path: ${TPM_PLUGIN_SOCKET}"
+        echo "  Recent logs:"
+        tail -20 /tmp/tpm-plugin-server.log
+        echo "  Continuing anyway - server may be ready..."
+        TPM_SERVER_STARTED=true
+    else
+        echo -e "${RED}  ✗ TPM Plugin Server failed to start${NC}"
+        tail -20 /tmp/tpm-plugin-server.log
+        exit 1
+    fi
 fi
 
 # Step 6: Start SPIRE Server and Agent
@@ -908,9 +958,10 @@ cd "${PHASE3_DIR}"
 
 # Unit tests
 echo "  Running unit tests..."
-cd tpm-plugin
+cd "${PHASE3_DIR}/tpm-plugin"
+export PYTHONPATH="${PHASE3_DIR}/tpm-plugin:${PYTHONPATH:-}"
 python3 -m pytest test/ -v --tb=short 2>&1 | tail -15
-cd ..
+cd "${PHASE3_DIR}"
 
 # Integration summary
 # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification

@@ -208,6 +208,12 @@ message RenewAgentResponse {
     // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
     // Optional AttestedClaims returned from Keylime and policy evaluation.
     repeated spire.api.types.AttestedClaims attested_claims = 2;
+
+    // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+    // Optional challenge nonce for TPM Quote generation. If present, the agent
+    // should use this nonce to build SovereignAttestation and call RenewAgent again.
+    // This enables the server to ensure freshness of TPM attestation.
+    bytes challenge_nonce = 3;
 }
 
 message CreateJoinTokenRequest {

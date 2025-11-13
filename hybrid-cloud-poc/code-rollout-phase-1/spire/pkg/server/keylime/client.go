@@ -99,10 +99,15 @@ func NewClient(config Config) (*Client, error) {
 		config.Timeout = 30 * time.Second
 	}
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Interface: SPIRE Server → Keylime Verifier
-	// Transport: mTLS over HTTPS (JSON REST API)
-	// Configure TLS for mTLS connection to Keylime Verifier
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Interface: SPIRE Server → Keylime Verifier
+// Status: 🆕 New (Phase 2/3 Addition)
+// Transport: mTLS over HTTPS
+// Protocol: JSON REST API
+// Port: localhost:8881
+// Endpoint: POST /v2.4/verify/evidence
+// Authentication: TLS client certificate authentication (mTLS)
+// Configure TLS for mTLS connection to Keylime Verifier
 	tlsConfig := &tls.Config{
 		// For testing with self-signed certificates, allow insecure skip
 		// In production, this should be false and CA cert should be loaded

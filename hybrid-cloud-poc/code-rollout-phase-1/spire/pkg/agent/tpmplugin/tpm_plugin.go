@@ -3,33 +3,41 @@
 // TPM Plugin integration for SPIRE Agent
 // 
 // Interface: SPIRE Agent → SPIRE TPM Plugin
-// Transport: HTTP over UDS (or localhost HTTP) - currently implemented as subprocess execution
+// Status: 🆕 New (Phase 3)
+// Transport: JSON over UDS (Phase 3)
 // Protocol: JSON REST API
 // 
-// Note: Current implementation uses subprocess execution (CLI) for simplicity.
-// The interface is designed to support HTTP/UDS for future flexibility and better isolation.
+// Implementation: JSON over UDS (Phase 3) is the transport mechanism.
+// The client requires TPM_PLUGIN_ENDPOINT to be set (e.g., "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock").
+// HTTP over localhost is not supported for security reasons.
 
 package tpmplugin
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 )
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-// TPMPluginClient provides an interface to the Python TPM plugin CLI
+// TPMPluginClient provides an interface to the Python TPM plugin via HTTP/UDS
 type TPMPluginClient struct {
 	pluginPath string
 	workDir    string
+	endpoint   string // UDS endpoint (e.g., "unix:///path/to/sock")
+	useHTTP    bool   // Always true - UDS is the only transport mechanism
+	httpClient *http.Client
 	log        logrus.FieldLogger
 }
 
@@ -51,9 +59,12 @@ type QuoteResult struct {
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // NewTPMPluginClient creates a new TPM plugin client
-// pluginPath: Path to the TPM plugin CLI script (tpm_plugin_cli.py)
+// pluginPath: Path to the TPM plugin CLI script (tpm_plugin_cli.py) - kept for compatibility, not used
 // workDir: Working directory for TPM operations (defaults to /tmp/spire-data/tpm-plugin)
-func NewTPMPluginClient(pluginPath, workDir string, log logrus.FieldLogger) *TPMPluginClient {
+// endpoint: UDS endpoint (e.g., "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock")
+//           If empty, defaults to UDS socket: "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+//           HTTP over localhost is not supported for security reasons.
+func NewTPMPluginClient(pluginPath, workDir, endpoint string, log logrus.FieldLogger) *TPMPluginClient {
 	if workDir == "" {
 		workDir = "/tmp/spire-data/tpm-plugin"
 	}
@@ -64,9 +75,37 @@ func NewTPMPluginClient(pluginPath, workDir string, log logrus.FieldLogger) *TPM
 		workDir = "/tmp/spire-data/tpm-plugin"
 	}
 	
+	if endpoint == "" {
+		log.Warn("Unified-Identity - Phase 3: TPM_PLUGIN_ENDPOINT not set, defaulting to UDS socket")
+		endpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+	}
+	
+	// Validate endpoint is UDS (security requirement)
+	if !strings.HasPrefix(endpoint, "unix://") {
+		log.WithField("endpoint", endpoint).Error("Unified-Identity - Phase 3: TPM_PLUGIN_ENDPOINT must be a UDS socket (unix://). HTTP over localhost is not supported for security reasons")
+		return nil
+	}
+	
+	// Create HTTP client with UDS transport only
+	socketPath := strings.TrimPrefix(endpoint, "unix://")
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Only support UNIX domain sockets
+			return net.Dial("unix", socketPath)
+		},
+	}
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
+	log.Infof("Unified-Identity - Phase 3: TPM Plugin client using UDS endpoint: %s", endpoint)
+	
 	return &TPMPluginClient{
 		pluginPath: pluginPath,
 		workDir:    workDir,
+		endpoint:   endpoint,
+		useHTTP:    true, // Always use HTTP/UDS
+		httpClient: httpClient,
 		log:        log,
 	}
 }
@@ -76,20 +115,19 @@ func NewTPMPluginClient(pluginPath, workDir string, log logrus.FieldLogger) *TPM
 // Returns the public key (PEM) and context file path
 func (c *TPMPluginClient) GenerateAppKey(force bool) (*AppKeyResult, error) {
 	c.log.Info("Unified-Identity - Phase 3: Generating TPM App Key via plugin")
-	
-	args := []string{"generate-app-key", "--work-dir", c.workDir}
-	if force {
-		args = append(args, "--force")
-	}
-	
-	output, err := c.runPluginCommand(args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate App Key: %w", err)
+	return c.generateAppKeyHTTP(force)
+}
+
+// generateAppKeyHTTP generates App Key via HTTP/UDS
+func (c *TPMPluginClient) generateAppKeyHTTP(force bool) (*AppKeyResult, error) {
+	request := map[string]interface{}{
+		"work_dir": c.workDir,
+		"force":    force,
 	}
 	
 	var result AppKeyResult
-	if err := json.Unmarshal([]byte(output), &result); err != nil {
-		return nil, fmt.Errorf("failed to parse App Key result: %w", err)
+	if err := c.httpRequest("POST", "/generate-app-key", request, &result); err != nil {
+		return nil, fmt.Errorf("failed to generate App Key via HTTP: %w", err)
 	}
 	
 	if result.Status != "success" {
@@ -99,10 +137,11 @@ func (c *TPMPluginClient) GenerateAppKey(force bool) (*AppKeyResult, error) {
 	c.log.WithFields(logrus.Fields{
 		"app_key_context": result.AppKeyContext,
 		"public_key_len":  len(result.AppKeyPublic),
-	}).Info("Unified-Identity - Phase 3: TPM App Key generated successfully")
+	}).Info("Unified-Identity - Phase 3: TPM App Key generated successfully via HTTP/UDS")
 	
 	return &result, nil
 }
+
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // GenerateQuote generates a TPM Quote using the App Key
@@ -119,26 +158,38 @@ func (c *TPMPluginClient) GenerateQuote(nonce, pcrList, appKeyContext string) (s
 		return "", fmt.Errorf("nonce is required for quote generation")
 	}
 	
-	args := []string{"generate-quote", "--work-dir", c.workDir, "--nonce", nonce}
-	if pcrList != "" {
-		args = append(args, "--pcr-list", pcrList)
+	return c.generateQuoteHTTP(nonce, pcrList, appKeyContext)
+}
+
+// generateQuoteHTTP generates TPM Quote via HTTP/UDS
+func (c *TPMPluginClient) generateQuoteHTTP(nonce, pcrList, appKeyContext string) (string, error) {
+	request := map[string]interface{}{
+		"nonce":    nonce,
+		"pcr_list": pcrList,
+		"work_dir": c.workDir,
 	}
 	if appKeyContext != "" {
-		args = append(args, "--app-key-context", appKeyContext)
+		request["app_key_context"] = appKeyContext
 	}
 	
-	output, err := c.runPluginCommand(args)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate TPM Quote: %w", err)
+	var result struct {
+		Status string `json:"status"`
+		Quote  string `json:"quote"`
 	}
 	
-	// Output is base64-encoded quote
-	quote := strings.TrimSpace(output)
+	if err := c.httpRequest("POST", "/generate-quote", request, &result); err != nil {
+		return "", fmt.Errorf("failed to generate TPM Quote via HTTP: %w", err)
+	}
 	
-	c.log.WithField("quote_len", len(quote)).Info("Unified-Identity - Phase 3: TPM Quote generated successfully")
+	if result.Status != "success" {
+		return "", fmt.Errorf("Quote generation failed: status=%s", result.Status)
+	}
 	
-	return quote, nil
+	c.log.WithField("quote_len", len(result.Quote)).Info("Unified-Identity - Phase 3: TPM Quote generated successfully via HTTP/UDS")
+	
+	return result.Quote, nil
 }
+
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // RequestCertificate requests an App Key certificate from rust-keylime agent
@@ -152,32 +203,46 @@ func (c *TPMPluginClient) RequestCertificate(appKeyPublic, appKeyContext, endpoi
 		return nil, fmt.Errorf("app key public and context are required")
 	}
 	
-	args := []string{"request-certificate", "--app-key-public", appKeyPublic, "--app-key-context", appKeyContext}
-	
-	// Use HTTP endpoint by default (rust-keylime agent)
+	return c.requestCertificateHTTP(appKeyPublic, appKeyContext, endpoint)
+}
+
+// requestCertificateHTTP requests certificate via HTTP/UDS
+func (c *TPMPluginClient) requestCertificateHTTP(appKeyPublic, appKeyContext, endpoint string) ([]byte, error) {
+	// Use UDS endpoint (rust-keylime agent)
 	if endpoint == "" {
-		endpoint = "http://localhost:9002/v2.2/delegated_certification/certify_app_key"
-	}
-	args = append(args, "--endpoint", endpoint)
-	
-	output, err := c.runPluginCommand(args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to request certificate: %w", err)
+		endpoint = "unix:///tmp/keylime-agent.sock"
 	}
 	
-	// Output is base64-encoded certificate
-	certB64 := strings.TrimSpace(output)
+	request := map[string]interface{}{
+		"app_key_public":       appKeyPublic,
+		"app_key_context_path": appKeyContext,
+		"endpoint":              endpoint,
+	}
 	
-	// Decode to verify it's valid base64
-	certBytes, err := base64.StdEncoding.DecodeString(certB64)
+	var result struct {
+		Status           string `json:"status"`
+		AppKeyCertificate string `json:"app_key_certificate"`
+	}
+	
+	if err := c.httpRequest("POST", "/request-certificate", request, &result); err != nil {
+		return nil, fmt.Errorf("failed to request certificate via HTTP: %w", err)
+	}
+	
+	if result.Status != "success" {
+		return nil, fmt.Errorf("Certificate request failed: status=%s", result.Status)
+	}
+	
+	// Decode base64 certificate
+	certBytes, err := base64.StdEncoding.DecodeString(result.AppKeyCertificate)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base64 certificate: %w", err)
 	}
 	
-	c.log.WithField("cert_len", len(certBytes)).Info("Unified-Identity - Phase 3: App Key certificate received successfully")
+	c.log.WithField("cert_len", len(certBytes)).Info("Unified-Identity - Phase 3: App Key certificate received successfully via HTTP/UDS")
 	
 	return certBytes, nil
 }
+
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // BuildSovereignAttestation builds a real SovereignAttestation using the TPM plugin
@@ -239,83 +304,49 @@ func (c *TPMPluginClient) BuildSovereignAttestation(nonce string) (*types.Sovere
 }
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-// runPluginCommand executes the TPM plugin CLI with the given arguments
-func (c *TPMPluginClient) runPluginCommand(args []string) (string, error) {
-	// Find Python 3
-	python3, err := exec.LookPath("python3")
+// httpRequest makes an HTTP request to the TPM plugin server
+func (c *TPMPluginClient) httpRequest(method, path string, requestBody interface{}, responseBody interface{}) error {
+	// Build URL for UDS (use http://localhost as the host, will be replaced by DialContext)
+	url := "http://localhost" + path
+	
+	// Marshal request body
+	reqBodyBytes, err := json.Marshal(requestBody)
 	if err != nil {
-		return "", fmt.Errorf("python3 not found: %w", err)
+		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 	
-	// Check if plugin path exists
-	if c.pluginPath == "" {
-		// Try to find the plugin in common locations
-		possiblePaths := []string{
-			"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
-			filepath.Join(os.Getenv("HOME"), "AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_cli.py"),
-			"./tpm-plugin/tpm_plugin_cli.py",
-		}
-		
-		for _, path := range possiblePaths {
-			if _, err := os.Stat(path); err == nil {
-				c.pluginPath = path
-				break
-			}
-		}
-		
-		if c.pluginPath == "" {
-			return "", fmt.Errorf("TPM plugin CLI not found, please set plugin path")
-		}
-	}
-	
-	if _, err := os.Stat(c.pluginPath); err != nil {
-		return "", fmt.Errorf("TPM plugin CLI not found at %s: %w", c.pluginPath, err)
-	}
-	
-	// Ensure UNIFIED_IDENTITY_ENABLED is set
-	env := os.Environ()
-	unifiedIdentitySet := false
-	for _, e := range env {
-		if strings.HasPrefix(e, "UNIFIED_IDENTITY_ENABLED=") {
-			unifiedIdentitySet = true
-			break
-		}
-	}
-	if !unifiedIdentitySet {
-		env = append(env, "UNIFIED_IDENTITY_ENABLED=true")
-	}
-	
-	// Build command
-	cmd := exec.Command(python3, c.pluginPath)
-	cmd.Args = append(cmd.Args, args...)
-	cmd.Env = env
-	cmd.Dir = filepath.Dir(c.pluginPath)
-	
-	c.log.WithFields(logrus.Fields{
-		"command": strings.Join(cmd.Args, " "),
-		"work_dir": c.workDir,
-	}).Debug("Unified-Identity - Phase 3: Executing TPM plugin command")
-	
-	// Unified-Identity - Phase 3: Capture stdout and stderr separately
-	// Logs go to stderr, JSON output goes to stdout
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	
-	output, err := cmd.Output()
+	// Create HTTP request
+	req, err := http.NewRequest(method, url, bytes.NewReader(reqBodyBytes))
 	if err != nil {
-		// Include stderr in error message for debugging
-		stderrStr := stderr.String()
-		if stderrStr != "" {
-			c.log.WithField("stderr", stderrStr).Debug("Unified-Identity - Phase 3: TPM plugin stderr output")
-		}
-		return "", fmt.Errorf("TPM plugin command failed: %w, stdout: %s, stderr: %s", err, string(output), stderrStr)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 	
-	// Log stderr output for debugging (but don't include it in the return value)
-	if stderrStr := stderr.String(); stderrStr != "" {
-		c.log.WithField("stderr", stderrStr).Debug("Unified-Identity - Phase 3: TPM plugin stderr output")
+	req.Header.Set("Content-Type", "application/json")
+	
+	// Execute request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Read response body
+	respBodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
 	}
 	
-	return string(output), nil
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(respBodyBytes))
+	}
+	
+	// Unmarshal response
+	if err := json.Unmarshal(respBodyBytes, responseBody); err != nil {
+		return fmt.Errorf("failed to unmarshal response: %w, body: %s", err, string(respBodyBytes))
+	}
+	
+	return nil
 }
+
 

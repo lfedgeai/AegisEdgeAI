@@ -136,7 +136,7 @@ def main():
     parser_cert.add_argument("--app-key-context", type=str, required=True, help="App Key context path")
     parser_cert.add_argument("--endpoint", type=str, 
                             default=None,
-                            help="rust-keylime Agent endpoint (HTTP or UNIX socket). Defaults to http://localhost:9002/v2.2/delegated_certification/certify_app_key")
+                            help="rust-keylime Agent endpoint (UDS socket only). Defaults to unix:///tmp/keylime-agent.sock. HTTP over localhost is not supported for security reasons.")
     parser_cert.add_argument("--socket-path", type=str, 
                             default=None,
                             help="[Deprecated] Use --endpoint instead. Keylime Agent socket path")

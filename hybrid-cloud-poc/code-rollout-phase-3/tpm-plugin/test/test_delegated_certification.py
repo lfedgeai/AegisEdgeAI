@@ -9,7 +9,6 @@ import base64
 import json
 import os
 import socket
-import struct
 import tempfile
 import unittest
 from unittest.mock import Mock, patch, MagicMock
@@ -52,17 +51,27 @@ class TestDelegatedCertificationClient(unittest.TestCase):
         mock_sock = MagicMock()
         mock_socket_class.return_value = mock_sock
         
-        # Mock successful response
+        # Mock successful HTTP/1.1 response over UDS
         response = {
             "result": "SUCCESS",
             "app_key_certificate": base64.b64encode(b"test-certificate").decode('utf-8')
         }
         response_json = json.dumps(response)
         response_bytes = response_json.encode('utf-8')
-        response_length = struct.pack('>I', len(response_bytes))
         
-        # Setup mock recv to return length then response
-        mock_sock.recv.side_effect = [response_length, response_bytes]
+        # HTTP/1.1 response format
+        http_response = (
+            f"HTTP/1.1 200 OK\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(response_bytes)}\r\n"
+            f"\r\n"
+        ).encode('utf-8') + response_bytes
+        
+        # Setup mock recv to return HTTP response in chunks
+        mock_sock.recv.side_effect = [
+            http_response,  # Return full response in first call
+            b''  # Empty on subsequent calls
+        ]
         
         client = DelegatedCertificationClient(endpoint=f"unix://{self.socket_path}")
         
@@ -82,12 +91,30 @@ class TestDelegatedCertificationClient(unittest.TestCase):
             self.assertTrue(mock_sock.sendall.called)
             self.assertTrue(mock_sock.recv.called)
             self.assertTrue(mock_sock.close.called)
-
+            
+            # Verify success
+            self.assertTrue(success)
+            self.assertIsNotNone(cert_b64)
+            self.assertIsNone(error)
+            
             # Validate JSON payload uses correct field name
-            payload_bytes = mock_sock.sendall.call_args_list[1][0][0]
-            payload = json.loads(payload_bytes.decode('utf-8'))
-            self.assertIn("app_key_context_path", payload)
-            self.assertNotIn("app_ctx", payload)
+            # The sendall is called with HTTP request, extract JSON body
+            sendall_calls = [call[0][0] for call in mock_sock.sendall.call_args_list]
+            # Find the call that contains JSON (should be the HTTP request body)
+            for call_data in sendall_calls:
+                if isinstance(call_data, bytes):
+                    # Look for JSON in the HTTP request body
+                    try:
+                        # HTTP request format: "POST ... HTTP/1.1\r\n...\r\n\r\n{json}"
+                        if b'\r\n\r\n' in call_data:
+                            body_start = call_data.find(b'\r\n\r\n') + 4
+                            body = call_data[body_start:]
+                            payload = json.loads(body.decode('utf-8'))
+                            self.assertIn("app_key_context_path", payload)
+                            self.assertNotIn("app_ctx", payload)
+                            break
+                    except (ValueError, json.JSONDecodeError):
+                        continue
         finally:
             if os.path.exists(ctx_path):
                 os.remove(ctx_path)
@@ -99,16 +126,27 @@ class TestDelegatedCertificationClient(unittest.TestCase):
         mock_sock = MagicMock()
         mock_socket_class.return_value = mock_sock
         
-        # Mock error response
+        # Mock error HTTP/1.1 response over UDS
         response = {
             "result": "ERROR",
             "error": "Test error message"
         }
         response_json = json.dumps(response)
         response_bytes = response_json.encode('utf-8')
-        response_length = struct.pack('>I', len(response_bytes))
         
-        mock_sock.recv.side_effect = [response_length, response_bytes]
+        # HTTP/1.1 response format
+        http_response = (
+            f"HTTP/1.1 200 OK\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(response_bytes)}\r\n"
+            f"\r\n"
+        ).encode('utf-8') + response_bytes
+        
+        # Setup mock recv to return HTTP response
+        mock_sock.recv.side_effect = [
+            http_response,  # Return full response in first call
+            b''  # Empty on subsequent calls
+        ]
         
         client = DelegatedCertificationClient(endpoint=f"unix://{self.socket_path}")
         

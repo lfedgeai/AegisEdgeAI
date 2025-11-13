@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -508,6 +509,20 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		return nil, api.MakeErr(log, codes.InvalidArgument, "missing CSR", nil)
 	}
 
+	// Unified-Identity - Phase 3: Generate and return nonce if Unified Identity is enabled and no SovereignAttestation provided
+	// Step 2: SPIRE Server generates nonce for TPM Quote freshness (per architecture doc)
+	var challengeNonce []byte
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) && req.Params.SovereignAttestation == nil {
+		// Generate cryptographically secure random nonce (32 bytes)
+		nonceBytes := make([]byte, 32)
+		if _, err := rand.Read(nonceBytes); err != nil {
+			log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to generate nonce")
+		} else {
+			challengeNonce = nonceBytes
+			log.WithField("nonce_length", len(challengeNonce)).Info("Unified-Identity - Phase 3: Generated nonce for agent TPM Quote")
+		}
+	}
+
 	// Unified-Identity - Phase 3: Process AttestedClaims BEFORE signing SVID
 	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
@@ -573,14 +588,23 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		}).Info("Unified-Identity - Phase 3: AttestedClaims attached to agent SVID")
 	}
 
-	return &agentv1.RenewAgentResponse{
+	resp := &agentv1.RenewAgentResponse{
 		Svid: &types.X509SVID{
 			Id:        api.ProtoFromID(callerID),
 			ExpiresAt: agentSVID[0].NotAfter.Unix(),
 			CertChain: x509util.RawCertsFromCertificates(agentSVID),
 		},
 		AttestedClaims: attestedClaims,
-	}, nil
+	}
+
+	// Unified-Identity - Phase 3: Include challenge nonce in response if generated
+	// This allows the agent to use the server-provided nonce for TPM Quote generation
+	if len(challengeNonce) > 0 {
+		resp.ChallengeNonce = challengeNonce
+		log.WithField("nonce_length", len(challengeNonce)).Info("Unified-Identity - Phase 3: Returning nonce to agent for TPM Quote")
+	}
+
+	return resp, nil
 }
 
 // Unified-Identity - Phase 3: Process SovereignAttestation for agent renewals
