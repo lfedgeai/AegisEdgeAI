@@ -78,6 +78,10 @@ class TPMPlugin:
         # TPM device detection
         self.tpm_device = self._detect_tpm_device()
         
+        # Store app key information (generated on startup)
+        self._app_key_public = None
+        self._app_key_context = None
+        
         logger.info("Unified-Identity - Phase 3: TPM Plugin initialized")
         logger.info("Unified-Identity - Phase 3: Work directory: %s", self.work_dir)
         logger.info("Unified-Identity - Phase 3: TPM device: %s", self.tpm_device)
@@ -191,6 +195,9 @@ class TPMPlugin:
                 if success and app_pub_path.exists():
                     with open(app_pub_path, 'r') as f:
                         app_key_public = f.read()
+                    # Store for later retrieval
+                    self._app_key_public = app_key_public
+                    self._app_key_context = str(app_ctx_path)
                     logger.info("Unified-Identity - Phase 3: App Key public key exported successfully")
                     return (True, app_key_public, str(app_ctx_path))
                 else:
@@ -255,8 +262,52 @@ class TPMPlugin:
         with open(app_pub_path, 'r') as f:
             app_key_public = f.read()
         
+        # Store for later retrieval
+        self._app_key_public = app_key_public
+        self._app_key_context = str(app_ctx_path)
+        
         logger.info("Unified-Identity - Phase 3: App Key generated and persisted successfully")
         return (True, app_key_public, str(app_ctx_path))
+    
+    def get_app_key_public(self) -> Optional[str]:
+        """
+        Get the stored App Key public key.
+        
+        Returns:
+            PEM-encoded public key or None if not generated
+        """
+        if self._app_key_public:
+            return self._app_key_public
+        
+        # Try to read from file if not in memory
+        app_pub_path = self.work_dir / "app_pub.pem"
+        if app_pub_path.exists():
+            try:
+                with open(app_pub_path, 'r') as f:
+                    self._app_key_public = f.read()
+                return self._app_key_public
+            except Exception as e:
+                logger.warning("Unified-Identity - Phase 3: Failed to read app key public: %s", e)
+        
+        return None
+    
+    def get_app_key_context(self) -> Optional[str]:
+        """
+        Get the stored App Key context path.
+        
+        Returns:
+            Path to app key context file or None if not generated
+        """
+        if self._app_key_context:
+            return self._app_key_context
+        
+        # Check if context file exists
+        app_ctx_path = self.work_dir / "app.ctx"
+        if app_ctx_path.exists():
+            self._app_key_context = str(app_ctx_path)
+            return self._app_key_context
+        
+        return None
     
     def generate_quote(self, nonce: str, pcr_list: Union[str, list] = "sha256:0,1") -> Tuple[bool, Optional[str], Optional[Dict]]:
         """

@@ -9,9 +9,86 @@ This document describes the complete end-to-end architecture flow for generating
 **New Interfaces (Unified Identity Extensions):**
 
 - `spire-server → keylime-verifier`: JSON over HTTPS with mTLS (Phase 2/3 addition)
-- `spire-agent → spire-tpm-plugin`: JSON over UDS (Phase 3)
-- `spire-tpm-plugin → keylime-agent`: JSON over UDS (Phase 3)
+- `spire-agent → tpm-plugin-server`: JSON over UDS (Phase 3)
+- `tpm-plugin-server → keylime-agent`: JSON over UDS (Phase 3)
 
+---
+
+## Architecture Overview
+
+### Component Architecture Diagram
+
+The following diagram shows the component relationships and clarifies the distinction between the TPM Plugin Gateway (Go) and TPM Plugin Server (Python):
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SPIRE Agent (Go Process)                     │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  TPM Plugin Gateway (Go)                                 │  │
+│  │  - Bridge between SPIRE Agent and TPM Plugin Server       │  │
+│  │  - Communicates via HTTP/UDS                              │  │
+│  │  - Location: pkg/agent/tpmplugin/tpm_plugin_gateway.go   │  │
+│  └───────────────┬───────────────────────────────────────────┘  │
+└───────────────────┼───────────────────────────────────────────────┘
+                    │
+                    │ JSON over UDS
+                    │ (unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock)
+                    │
+┌───────────────────▼───────────────────────────────────────────────┐
+│              TPM Plugin Server (Python Process)                   │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  - Generates App Key on startup (Step 3)                  │  │
+│  │  - Generates TPM Quotes (Step 4)                          │  │
+│  │  - Automatically triggers delegated certification (Step 5) │  │
+│  │  - Uses tpm2-tools for TPM operations                     │  │
+│  │  - Location: tpm-plugin/tpm_plugin_server.py              │  │
+│  └───────────────┬───────────────────────────────────────────┘  │
+└───────────────────┼───────────────────────────────────────────────┘
+                    │
+                    │ JSON over UDS
+                    │ (unix:///tmp/keylime-agent.sock)
+                    │
+┌───────────────────▼───────────────────────────────────────────────┐
+│            rust-keylime Agent (Rust Process)                     │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  - Provides delegated certification API                   │  │
+│  │  - Uses host TPM AK to certify App Key                    │  │
+│  │  - UDS-only communication (network listener disabled)     │  │
+│  │  - Location: rust-keylime/keylime-agent/                 │  │
+│  └───────────────┬───────────────────────────────────────────┘  │
+└───────────────────┼───────────────────────────────────────────────┘
+                    │
+                    │ TPM Operations
+                    │
+┌───────────────────▼───────────────────────────────────────────────┐
+│                        TPM Hardware                              │
+│  - App Key (persisted at handle 0x8101000B)                      │
+│  - Attestation Key (AK)                                          │
+│  - Endorsement Key (EK)                                          │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### Component Naming Clarification
+
+To avoid confusion between Go and Python components:
+
+1. **TPM Plugin Gateway (Go)**
+   - **Location:** `spire/pkg/agent/tpmplugin/tpm_plugin_gateway.go`
+   - **Type:** `TPMPluginGateway`
+   - **Purpose:** Bridge/gateway that runs inside SPIRE Agent (Go process)
+   - **Role:** Client library that communicates with the Python server
+
+2. **TPM Plugin Server (Python)**
+   - **Location:** `tpm-plugin/tpm_plugin_server.py`
+   - **Purpose:** HTTP/UDS server that handles TPM operations
+   - **Role:** Actual plugin that performs TPM operations using `tpm2-tools`
+
+**Key Distinction:**
+- The **Gateway** is a Go library embedded in SPIRE Agent
+- The **Server** is a separate Python process that handles TPM operations
+- The Gateway communicates with the Server via HTTP over UDS
+
+---
 
 ## Component Flow: SPIRE Agent Sovereign SVID (Periodic Refresh)
 
@@ -33,10 +110,11 @@ The SPIRE Agent periodically refreshes its own Sovereign SVID (approximately eve
 └────────┬────────┘
          │
          │ Step 3-4: TPM Operations (with nonce)
+         │ (via TPM Plugin Gateway → TPM Plugin Server)
          ▼
 ┌─────────────────┐     ┌─────────────────┐
 │  TPM Plugin     │────▶│ Keylime Agent   │
-│  (Python)       │     │  (Rust)         │
+│  Server (Python)│     │  (Rust)         │
 └─────────────────┘     └─────────────────┘
          │
          │ Step 5-6: Host Attestation
@@ -165,48 +243,31 @@ message AttestAgentResponse {
 
 ---
 
-#### Step 3: Generate TPM App Key (if not exists)
+#### Step 3: Generate TPM App Key (Automatic on Startup)
 
-**Component:** SPIRE Agent → SPIRE TPM Plugin
+**Component:** SPIRE TPM Plugin (Internal)
 
 **Status:** 🆕 New (Phase 3)
 
-**Transport:** JSON over UDS (Phase 3)
+**Transport:** N/A (Internal TPM Plugin operation)
 
-**Protocol:** JSON REST API
+**Protocol:** N/A (Internal TPM Plugin operation)
 
-**Port/Path:** UDS socket (default: `/tmp/spire-data/tpm-plugin/tpm-plugin.sock`)
+**Port/Path:** N/A (Internal TPM Plugin operation)
 
-**Implementation:** JSON over UDS (Phase 3) is the transport mechanism. The client requires `TPM_PLUGIN_ENDPOINT` to be set (defaults to `unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock` if not specified). HTTP over localhost is not supported for security reasons.
+**Implementation:** The TPM Plugin automatically generates the App Key during startup and stores it for future use. No API endpoint is required.
 
 **Action:**
-- SPIRE Agent calls `BuildSovereignAttestation()` which triggers TPM operations
-- If App Key doesn't exist, TPM Plugin generates a new App Key using TPM
-- App Key is stored in a context file for future use
+- TPM Plugin generates a new App Key using TPM on startup (if not already exists)
+- App Key public key and context are stored in the work directory
+- Stored values are used automatically in subsequent operations (Step 4 and Step 5)
 
-**Request Format (JSON over UDS):**
-```json
-POST /generate-app-key
-Content-Type: application/json
-
-{
-  "work_dir": "/tmp/spire-data/tpm-plugin",
-  "force": false
-}
-```
-
-**Response Format (JSON):**
-```json
-{
-  "status": "success",
-  "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-  "app_key_context": "/tmp/spire-data/tpm-plugin/app.ctx"
-}
-```
+**Storage:**
+- **App Key Public Key:** Stored in memory and/or work directory
+- **App Key Context:** Stored at `/tmp/spire-data/tpm-plugin/app.ctx` (or configured work directory)
 
 **Code Location:**
-- Client: `pkg/agent/tpmplugin/tpm_plugin.go::GenerateAppKey()` → `generateAppKeyHTTP()`
-- Server: `tpm-plugin/tpm_plugin_server.py::handle_generate_app_key()`
+- Server: `tpm-plugin/tpm_plugin_server.py` (startup initialization)
 
 ---
 
@@ -223,10 +284,11 @@ Content-Type: application/json
 **Port/Path:** UDS socket (default: `/tmp/spire-data/tpm-plugin/tpm-plugin.sock`)
 
 **Action:**
-- TPM Plugin generates a TPM Quote using the App Key
+- TPM Plugin generates a TPM Quote using the stored App Key (from Step 3)
 - **Nonce from Step 2 (SPIRE Server) is embedded in the quote's `extraData` field**
 - The nonce is converted from hex string to bytes and placed in `TPMS_ATTEST.extraData`
 - Quote format: `r<base64-message>:<base64-signature>:<base64-pcrs>`
+- **Automatically triggers Step 5 (Delegated Certification)** after quote generation
 
 **Request Format (JSON over UDS):**
 ```json
@@ -236,8 +298,7 @@ Content-Type: application/json
 {
   "nonce": "<hex-nonce-from-spire-server>",
   "pcr_list": "sha256:0,1,2,3,4,5,6,7",
-  "work_dir": "/tmp/spire-data/tpm-plugin",
-  "app_key_context": "/tmp/spire-data/tpm-plugin/app.ctx"
+  "work_dir": "/tmp/spire-data/tpm-plugin"
 }
 ```
 
@@ -245,39 +306,42 @@ Content-Type: application/json
 ```json
 {
   "status": "success",
-  "quote": "r<base64-message>:<base64-signature>:<base64-pcrs>"
+  "quote": "r<base64-message>:<base64-signature>:<base64-pcrs>",
+  "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l..."
 }
 ```
+
+**Note:** The `app_key_context` is not required in the request since it is automatically retrieved from the stored App Key context (generated in Step 3). The TPM Plugin uses the stored App Key public key and context for quote generation.
 
 **Nonce Embedding:**
 - The hex-encoded nonce from SPIRE Server is converted to bytes
 - Embedded in `TPMS_ATTEST.extraData` field of the TPM Quote
 - Used by Keylime Verifier to verify quote freshness
 
+**Automatic Delegated Certification:**
+- After generating the quote, the TPM Plugin automatically calls Step 5 (Delegated Certification)
+- Uses the stored App Key public key and context to request certification from the Keylime Agent
+- The certificate is included in the response alongside the quote
+
 **Code Location:**
-- Client: `pkg/agent/tpmplugin/tpm_plugin.go::GenerateQuote()` → `generateQuoteHTTP()`
+- Client: `pkg/agent/tpmplugin/tpm_plugin_gateway.go::GenerateQuote()` → `generateQuoteHTTP()`
 - Server: `tpm-plugin/tpm_plugin_server.py::handle_generate_quote()`
 
 ---
 
-#### Step 5: Request App Key Certificate (Delegated Certification)
+#### Step 5: Request App Key Certificate (Delegated Certification) - Automatic
 
-**Component:** SPIRE Agent → SPIRE TPM Plugin → Keylime Agent
+**Component:** SPIRE TPM Plugin → Keylime Agent (Automatically triggered by Step 4)
 
 **Status:** 🆕 New (Phase 3)
 
-**Transport:** 
-- SPIRE Agent → SPIRE TPM Plugin: JSON over UDS (Phase 3)
-- SPIRE TPM Plugin → Keylime Agent: JSON over UDS (Phase 3)
+**Transport:** JSON over UDS (Phase 3)
 
 **Protocol:** JSON REST API
 
-**Port/Path:** 
-- SPIRE Agent → SPIRE TPM Plugin: UDS socket (default: `/tmp/spire-data/tpm-plugin/tpm-plugin.sock`)
-- SPIRE TPM Plugin → Keylime Agent: UDS socket (default: `/tmp/keylime-agent.sock` or as configured)
+**Port/Path:** UDS socket (default: `/tmp/keylime-agent.sock` or as configured)
 
 **Endpoints:**
-- SPIRE Agent → SPIRE TPM Plugin: `POST /request-certificate`
 - SPIRE TPM Plugin → Keylime Agent: `POST /v2.2/delegated_certification/certify_app_key`
 
 **Authentication:** None (UDS-only communication, both components must be on the same physical host)
@@ -285,30 +349,14 @@ Content-Type: application/json
 **Security Note:** UDS (UNIX Domain Socket) communication ensures that both the SPIRE TPM Plugin and rust-keylime Agent must be running on the same physical host. This prevents remote routing of connections that could occur with TCP/IP (localhost:port). The rust-keylime Agent's network listener is disabled by default (`enable_network_listener = false`) to enforce UDS-only communication for the delegated certification interface.
 
 **Action:**
-- SPIRE Agent requests App Key certificate via TPM Plugin server
+- **Automatically triggered by Step 4** after TPM Quote generation
+- TPM Plugin uses the stored App Key public key and context (from Step 3)
 - TPM Plugin server forwards the request to Keylime Agent over UDS
 - Keylime Agent uses the host's TPM AK (Attestation Key) to certify the App Key
 - Returns a base64-encoded certificate containing TPM2_Certify output
+- Certificate is included in Step 4's response to the SPIRE Agent
 
-**Request Format (SPIRE Agent → SPIRE TPM Plugin, JSON over UDS):**
-```json
-POST /request-certificate
-Content-Type: application/json
-
-{
-  "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-  "app_key_context_path": "/tmp/spire-data/tpm-plugin/app.ctx",
-  "endpoint": "unix:///tmp/keylime-agent.sock"
-}
-```
-
-**Response Format (SPIRE TPM Plugin → SPIRE Agent, JSON):**
-```json
-{
-  "status": "success",
-  "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l..."
-}
-```
+**Note:** This step is **not called directly by the SPIRE Agent**. It is automatically executed by the TPM Plugin as part of Step 4's quote generation flow. The SPIRE Agent receives the certificate as part of Step 4's response.
 
 **Request Format (SPIRE TPM Plugin → Keylime Agent, JSON over UDS):**
 ```json
@@ -354,7 +402,7 @@ The protocol uses HTTP/1.1 over UDS (JSON REST API):
 - `500 Internal Server Error`: TPM operation failed
 
 **Code Location:**
-- SPIRE Agent Client: `pkg/agent/tpmplugin/tpm_plugin.go::RequestCertificate()` → `requestCertificateHTTP()`
+- SPIRE Agent Gateway: `pkg/agent/tpmplugin/tpm_plugin_gateway.go::RequestCertificate()` → `requestCertificateHTTP()`
 - SPIRE TPM Plugin Server: `tpm-plugin/tpm_plugin_server.py::handle_request_certificate()`
 - SPIRE TPM Plugin Client: `tpm-plugin/delegated_certification.py::DelegatedCertificationClient::request_certificate()`
 - Keylime Agent Server: `rust-keylime/keylime-agent/src/delegated_certification_handler.rs::certify_app_key()`
@@ -403,7 +451,7 @@ message SovereignAttestation {
 ```
 
 **Code Location:**
-- `pkg/agent/tpmplugin/tpm_plugin.go::BuildSovereignAttestation()`
+- `pkg/agent/tpmplugin/tpm_plugin_gateway.go::BuildSovereignAttestation()`
 - `pkg/agent/client/client.go::BuildSovereignAttestation()`
 
 ---

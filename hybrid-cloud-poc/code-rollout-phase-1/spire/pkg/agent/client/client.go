@@ -120,7 +120,7 @@ type client struct {
 	dialOpts []grpc.DialOption
 
 	// Unified-Identity - Phase 3: TPM plugin client for real TPM operations
-	tpmPlugin *tpmplugin.TPMPluginClient
+	tpmPlugin *tpmplugin.TPMPluginGateway
 }
 
 // New creates a new client struct with the configuration provided
@@ -159,7 +159,7 @@ func newClient(c *Config) *client {
 				// Default to UDS socket
 				tpmPluginEndpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
 			}
-			cl.tpmPlugin = tpmplugin.NewTPMPluginClient(pluginPath, "", tpmPluginEndpoint, c.Log)
+			cl.tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, c.Log)
 			c.Log.Info("Unified-Identity - Phase 3: TPM plugin client initialized")
 		} else {
 			c.Log.Warn("Unified-Identity - Phase 3: TPM plugin CLI not found, will use stub data")
@@ -884,7 +884,7 @@ func (c *client) BuildSovereignAttestationWithNonce(nonce string) *types.Soverei
 
 // Unified-Identity - Phase 3: Build real SovereignAttestation using TPM plugin with provided nonce
 // This version accepts a nonce parameter (from SPIRE Server) instead of generating one locally
-func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginClient, nonce string, log logrus.FieldLogger) *types.SovereignAttestation {
+func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginGateway, nonce string, log logrus.FieldLogger) *types.SovereignAttestation {
 	if tpmPlugin == nil {
 		// Try to create a TPM plugin client
 		pluginPath := os.Getenv("TPM_PLUGIN_CLI_PATH")
@@ -909,7 +909,7 @@ func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginC
 				// Default to UDS socket
 				tpmPluginEndpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
 			}
-			tpmPlugin = tpmplugin.NewTPMPluginClient(pluginPath, "", tpmPluginEndpoint, log)
+			tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, log)
 			if log != nil {
 				log.Info("Unified-Identity - Phase 3: TPM plugin client created")
 			}
@@ -943,7 +943,7 @@ func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginC
 // This is a standalone function that can be called from anywhere (e.g., node attestor)
 // It creates a TPM plugin client if one is not provided
 // NOTE: This version generates a nonce locally (fallback) - prefer BuildSovereignAttestationWithPluginAndNonce
-func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginClient, log logrus.FieldLogger) *types.SovereignAttestation {
+func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginGateway, log logrus.FieldLogger) *types.SovereignAttestation {
 	// Unified-Identity - Phase 3: Try to use real TPM plugin if available
 	if tpmPlugin == nil {
 		// Try to create a TPM plugin client
@@ -969,7 +969,7 @@ func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginClient, l
 				// Default to UDS socket
 				tpmPluginEndpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
 			}
-			tpmPlugin = tpmplugin.NewTPMPluginClient(pluginPath, "", tpmPluginEndpoint, log)
+			tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, log)
 			if log != nil {
 				log.Info("Unified-Identity - Phase 3: TPM plugin client created")
 			}

@@ -32,8 +32,9 @@ logger = logging.getLogger(__name__)
 class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
     """HTTP request handler for TPM Plugin API"""
     
-    def __init__(self, *args, work_dir: str = None, **kwargs):
+    def __init__(self, *args, work_dir: str = None, plugin: TPMPlugin = None, **kwargs):
         self.work_dir = work_dir or "/tmp/spire-data/tpm-plugin"
+        self.plugin = plugin  # Store plugin instance with app key already generated
         super().__init__(*args, **kwargs)
     
     def log_message(self, format, *args):
@@ -57,66 +58,74 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         # Route to appropriate handler
         path = urlparse(self.path).path
         
-        if path == "/generate-app-key":
-            self.handle_generate_app_key(request_data)
-        elif path == "/generate-quote":
+        if path == "/generate-quote":
             self.handle_generate_quote(request_data)
         elif path == "/request-certificate":
             self.handle_request_certificate(request_data)
         else:
             self.send_error(404, f"Unknown endpoint: {path}")
     
-    def handle_generate_app_key(self, request_data: dict):
-        """Handle /generate-app-key endpoint"""
-        try:
-            work_dir = request_data.get("work_dir", self.work_dir)
-            force = request_data.get("force", False)
-            
-            plugin = TPMPlugin(work_dir=work_dir)
-            success, app_key_public, app_key_ctx = plugin.generate_app_key(force=force)
-            
-            if not success:
-                self.send_error(500, "Unified-Identity - Phase 3: Failed to generate App Key")
-                return
-            
-            response = {
-                "status": "success",
-                "app_key_public": app_key_public,
-                "app_key_context": app_key_ctx
-            }
-            
-            self.send_json_response(200, response)
-        except Exception as e:
-            logger.error("Unified-Identity - Phase 3: Error generating App Key: %s", e)
-            self.send_error(500, f"Internal error: {e}")
-    
     def handle_generate_quote(self, request_data: dict):
-        """Handle /generate-quote endpoint"""
+        """Handle /generate-quote endpoint - automatically triggers delegated certification"""
         try:
             nonce = request_data.get("nonce")
             if not nonce:
                 self.send_error(400, "Unified-Identity - Phase 3: Nonce is required")
                 return
             
-            work_dir = request_data.get("work_dir", self.work_dir)
             pcr_list = request_data.get("pcr_list", "sha256:0,1")
-            app_key_context = request_data.get("app_key_context")
             
-            plugin = TPMPlugin(work_dir=work_dir)
+            # Use stored plugin instance (app key already generated on startup)
+            plugin = self.plugin
+            if plugin is None:
+                self.send_error(500, "Unified-Identity - Phase 3: Plugin not initialized")
+                return
+            
+            # Generate quote using stored app key
             success, quote_b64, metadata = plugin.generate_quote(
                 nonce=nonce,
-                pcr_list=pcr_list,
-                app_key_context=app_key_context
+                pcr_list=pcr_list
             )
             
             if not success:
                 self.send_error(500, "Unified-Identity - Phase 3: Failed to generate quote")
                 return
             
+            # Automatically trigger delegated certification (Step 5)
+            app_key_certificate = None
+            try:
+                # Get stored app key public key and context
+                app_key_public = plugin.get_app_key_public()
+                app_key_context = plugin.get_app_key_context()
+                
+                if app_key_public and app_key_context:
+                    # Request certificate from Keylime Agent
+                    endpoint = request_data.get("endpoint")  # Optional, uses default if not provided
+                    client = DelegatedCertificationClient(endpoint=endpoint)
+                    cert_success, cert_b64, error = client.request_certificate(
+                        app_key_public=app_key_public,
+                        app_key_context_path=app_key_context
+                    )
+                    
+                    if cert_success:
+                        app_key_certificate = cert_b64
+                        logger.info("Unified-Identity - Phase 3: App Key certificate obtained via delegated certification")
+                    else:
+                        logger.warning("Unified-Identity - Phase 3: Failed to obtain certificate: %s", error)
+                else:
+                    logger.warning("Unified-Identity - Phase 3: App Key public or context not available, skipping certificate")
+            except Exception as e:
+                logger.warning("Unified-Identity - Phase 3: Error during delegated certification: %s", e)
+                # Continue without certificate - it's optional
+            
             response = {
                 "status": "success",
                 "quote": quote_b64
             }
+            
+            # Include certificate in response if available
+            if app_key_certificate:
+                response["app_key_certificate"] = app_key_certificate
             
             self.send_json_response(200, response)
         except Exception as e:
@@ -202,11 +211,11 @@ class UnixHTTPServer(HTTPServer):
             os.unlink(self.socket_path)
 
 
-def create_handler_class(work_dir: str):
-    """Create a handler class with work_dir bound"""
+def create_handler_class(work_dir: str, plugin: TPMPlugin):
+    """Create a handler class with work_dir and plugin instance bound"""
     class Handler(TPMPluginHTTPHandler):
         def __init__(self, *args, **kwargs):
-            super().__init__(*args, work_dir=work_dir, **kwargs)
+            super().__init__(*args, work_dir=work_dir, plugin=plugin, **kwargs)
     return Handler
 
 
@@ -229,7 +238,19 @@ def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = Non
     # Ensure work directory exists
     os.makedirs(work_dir, mode=0o755, exist_ok=True)
     
-    HandlerClass = create_handler_class(work_dir)
+    # Generate App Key on startup (Step 3: Automatic on Startup)
+    logger.info("Unified-Identity - Phase 3: Generating App Key on startup...")
+    plugin = TPMPlugin(work_dir=work_dir)
+    success, app_key_public, app_key_ctx = plugin.generate_app_key(force=False)
+    
+    if not success:
+        logger.error("Unified-Identity - Phase 3: Failed to generate App Key on startup")
+        sys.exit(1)
+    
+    logger.info("Unified-Identity - Phase 3: App Key generated successfully on startup")
+    logger.info("Unified-Identity - Phase 3: App Key context: %s", app_key_ctx)
+    
+    HandlerClass = create_handler_class(work_dir, plugin)
     
     if socket_path:
         # Use UNIX domain socket
