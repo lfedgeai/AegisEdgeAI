@@ -1,4 +1,4 @@
-# ✨ High-Assurance Federated Authorization Models
+# High-Assurance Federated Authorization Models
 
 The challenge is to securely convey new claims **HW-rooted TPM attestation** and **Attested Geographic location** from the Enterprise workload to the Service Provider's (SP) policy engine in a robust **Federated Identity** architecture.
 
@@ -6,10 +6,10 @@ This document presents three authorization models, each with different trade-off
 
 ## Table of Contents
 
-- [Model 1: Single Identity JWT](#-model-1-single-identity-jwt-with-old-and-new-claims)
-- [Model 2: Nested JWT in HTTP Header](#-model-2-new-claims-in-a-signed-jwt-within-a-http-header)
-- [Model 3: X.509 Certificate (SPIFFE/SPIRE SVID)](#-model-3-new-claims-with-a-short-lived-x509-certificate-eg-spiffespire-svid)
-- [Strategic Conclusion: The Ownership Factor](#-strategic-conclusion-the-ownership-factor)
+- [Model 1: Single Identity JWT](#model-1-single-identity-jwt-with-old-and-new-claims)
+- [Model 2: Nested JWT in HTTP Header](#model-2-new-claims-in-a-signed-jwt-within-a-http-header)
+- [Model 3: X.509 Certificate (SPIFFE/SPIRE SVID)](#model-3-new-claims-with-a-short-lived-x509-certificate-eg-spiffespire-svid)
+- [Strategic Conclusion: The Ownership Factor](#strategic-conclusion-the-ownership-factor)
 - [The Problem: Authentication Method Reference (AMR) "geo" Claim](#the-problem-authentication-method-reference-amr-geo-claim)
   - [Critical Gaps in Current Implementation](#critical-gaps-in-current-implementation)
   - [Our Proposal: A Standard for Verifiable Claims](#our-proposal-a-standard-for-verifiable-claims)
@@ -33,18 +33,18 @@ This document presents three authorization models, each with different trade-off
   - [Implementing Dynamic Geolocation Binding](#implementing-dynamic-geolocation-binding)
   - [Integration Flow Summary](#integration-flow-summary)
   - [Important Considerations](#important-considerations)
-- [Appendix: Open Policy Agent (OPA) Geo-Hardware Binding Example](#-appendix-open-policy-agent-opa-geo-hardware-binding-example)
-  - [Policy Data (`data.json`)](#1--policy-data-datajson---the-trusted-reference)
-  - [OPA Rego Policy (`geofence_tpm_map.rego`)](#2--opa-rego-policy-geofence_tpm_maprego---the-logic)
-  - [Data Classification Policy (`dcp_partial_eval.rego`)](#3--data-classification-policy-dcp_partial_evalrego---partial-evaluation-for-query-filtering)
-  - [Integration: Sequential AUP → DCP Enforcement](#4--integration-sequential-aup--dcp-enforcement)
-  - [Why This Approach Scales](#5--why-this-approach-scales)
+- [Appendix: Open Policy Agent (OPA) Geo-Hardware Binding Example](#appendix-open-policy-agent-opa-geo-hardware-binding-example)
+  - [Policy Data (`data.json`)](#1-policy-data-datajson---the-trusted-reference)
+  - [OPA Rego Policy (`geofence_tpm_map.rego`)](#2-opa-rego-policy-geofence_tpm_maprego---the-logic)
+  - [Data Classification Policy (`dcp_partial_eval.rego`)](#3-data-classification-policy-dcp_partial_evalrego---partial-evaluation-for-query-filtering)
+  - [Integration: Sequential AUP → DCP Enforcement](#4-integration-sequential-aup--dcp-enforcement)
+  - [Why This Approach Scales](#5-why-this-approach-scales)
 
-## 🏛️ Model 1: Single Identity JWT with old and new claims 
+## Model 1: Single Identity JWT with old and new claims 
 
 This model embeds *all* claims—identity, role, and hardware assurance—into a single, comprehensive, and fully **signed JWT**.
 
-### 🔑 Security Claims and Sourcing
+### Security Claims and Sourcing
 
 | Claim Type              | Location       | Assurance Level         | Source & Signing Authority              |
 |--------------------------|----------------|-------------------------|-----------------------------------------|
@@ -57,11 +57,11 @@ This model embeds *all* claims—identity, role, and hardware assurance—into a
 2. **PRO:** **Unquestionable Integrity.** The single signature guarantees authenticity and non-tampering of *all* authorization data, simplifying SP validation.  
 3. **CON:** **Low Agility.** The token’s TTL must be extremely short (e.g., minutes) to ensure TPM/Geo data is current, leading to **high-overhead, frequent token re-issuance**.  
 
-## 🛡️ Model 2: New Claims in a signed JWT within a HTTP header
+## Model 2: New Claims in a signed JWT within a HTTP header
 
 This model separates stable identity claims from dynamic assurance claims, placing the latter in a dynamically generated, **signed JWT** within a HTTP header.
 
-### 🛡️ Security Claims and Sourcing
+### Security Claims and Sourcing
 
 | Claim Type              | Location                     | Assurance Level | Source & Integrity Mechanism     |
 |--------------------------|------------------------------|-----------------|----------------------------------|
@@ -73,11 +73,11 @@ This model separates stable identity claims from dynamic assurance claims, placi
 2. **PRO:** **Highest Flexibility.** Claims can be updated instantly by the device (per request) without refreshing the Identity JWT.  
 3. **CON:** **Maximum Complexity.** Requires sophisticated SP infrastructure to verify two signatures per request and manage the trust anchor for every Enterprise device's Attestation Key (AK), complicating cross-organizational PKI establishment.  
 
-## 🔐 Model 3: New Claims with a short-lived X.509 Certificate (e.g., SPIFFE/SPIRE SVID)
+## Model 3: New Claims with a short-lived X.509 Certificate (e.g., SPIFFE/SPIRE SVID)
 
 This model replaces the JWT for primary identity and role claims with a short-lived **X.509 Certificate (SVID - SPIFFE Verifiable Identity Document)** issued to the workload. The assurance claims (TPM/Geo) are then anchored to the certificate.
 
-### 🔑 Security Claims and Sourcing
+### Security Claims and Sourcing
 
 | Claim Type              | Location                     | Assurance Level | Source & Integrity Mechanism     |
 |-------------------------|------------------------------|-----------------|----------------------------------|
@@ -90,7 +90,7 @@ This model replaces the JWT for primary identity and role claims with a short-li
 2. **PRO:** **Highest Security & Scalability.** Automated certificate renewal, mutual TLS (mTLS) support, standardized workload identity across organizations, and fine-grained revocation via CRL/OCSP.
 3. **CON:** **Infrastructure Complexity.** Requires deployment of SPIFFE/SPIRE infrastructure (or equivalent workload identity system) and coordination of certificate authorities across organizational boundaries.
 
-## 🎯 Strategic Conclusion: The Ownership Factor
+## Strategic Conclusion: The Ownership Factor
 
 The optimal authorization model depends on the **ownership and trust relationship** between the Enterprise workload and the Service Provider (SP) application. Each model offers different trade-offs between security, complexity, and operational overhead.
 
@@ -993,7 +993,7 @@ For RSA/ECDSA, the private key is used to sign.
 
 The Trusted Platform Module (TPM) is a secure crypto-processor that provides a **Hardware Root of Trust**. It protects cryptographic keys and ensures platform integrity, binding security directly to the physical device.
 
-### 🔑 Key Hierarchy: Identity and Privacy
+### Key Hierarchy: Identity and Privacy
 
 | Term | Full Name / Function | Purpose | Security Context |
 |------|---------------------|---------|------------------|
@@ -1001,13 +1001,13 @@ The Trusted Platform Module (TPM) is a secure crypto-processor that provides a *
 | **TPM AK** | Attestation Key | A key generated by the TPM, unique per platform/context, and certified by a CA. | **Privacy and Attestation**. Used to sign quotes without revealing the unique EK identity, preventing tracking. |
 | **TPM App Key** | Application Key | A general-purpose key pair created for application use (e.g., signing data, client mTLS). | **Application Use**. Used for real-world crypto operations; protected by the TPM and certified to be non-exportable. |
 
-### 📄 Certification and Trust
+### Certification and Trust
 
 | Term | Function | Chain of Trust | Security Context |
 |------|----------|----------------|------------------|
 | **TPM App Cert** | Application Key Certificate (often certified by the AK) | This certificate cryptographically proves that the App Key's private component is genuinely resident within the TPM that owns the certified AK. | **Hardware Binding**. Gives a remote party confidence that the application key is non-exportable and protected by hardware. |
 
-### 📝 Integrity and Proof
+### Integrity and Proof
 
 | Term | Function | Purpose | Security Context |
 |------|----------|---------|------------------|
@@ -1150,7 +1150,7 @@ The OPA policy (see the `is_geolocation_attested` rule in the `geofence_tpm_map.
 - **PCR Selection:** PCR 17 or 18 are recommended, but any PCR not used by the boot process can be reserved. The choice must be consistent across policy data, JWT claims, and extension scripts.
 - **Continuous vs On-Demand:** Keylime can generate quotes continuously (for runtime monitoring) or on-demand (for JWT issuance). The geolocation extension should run frequently enough to keep the location evidence current.
 
-## 🛡️ Appendix: Open Policy Agent (OPA) Geo-Hardware Binding Example
+## Appendix: Open Policy Agent (OPA) Geo-Hardware Binding Example
 
 This example demonstrates how **Open Policy Agent (OPA)** enforces a highly secure **Acceptable Use Policy (AUP)** and **Data Classification Policy (DCP)**: 
 - Access is only granted if the device's **attested location** is within an approved **trusted zone** AND the device's unique **TPM Endorsement Key (EK)** is authorized to operate in that *exact same zone*.
@@ -1158,7 +1158,7 @@ This example demonstrates how **Open Policy Agent (OPA)** enforces a highly secu
 
 The scalability of this approach lies in the sequential enforcement of the AUP and DCP policies. The flexibility of this approach lies in the ability to define trusted zones and TPM PCR policies in policy data (which can be updated without code changes) and delegate complex cryptographic verification (TPM PCR binding) to external services as needed.
 
-### 1\. 📂 Policy Data (`data.json`) - The Trusted Reference
+### 1. Policy Data (`data.json`) - The Trusted Reference
 
 This data maps specific geographic boundaries (`bounding_box`) to the full **TPM EK Public Key strings** that are approved for operation within that region.
 
@@ -1210,7 +1210,7 @@ This data maps specific geographic boundaries (`bounding_box`) to the full **TPM
 }
 ```
 
-### 2\. 📜 OPA Rego Policy (`geofence_tpm_map.rego`) - The Logic
+### 2. OPA Rego Policy (`geofence_tpm_map.rego`) - The Logic
 
 This policy uses the `some` keyword to iterate over the `trusted_ek_zones`. The rule succeeds only if a **single zone** satisfies **all binding conditions**: (1) Location latitude/longitude containment within the zone's bounding box, (2) Hardware EK authorization check, (3) Freshness nonce verification, and (4) Cryptographic geolocation attestation via TPM PCR binding.
 
@@ -1291,7 +1291,7 @@ allow if {
 }
 ```
 
-### 3\. 📊 Data Classification Policy (`dcp_partial_eval.rego`) - Partial Evaluation for Query Filtering
+### 3. Data Classification Policy (`dcp_partial_eval.rego`) - Partial Evaluation for Query Filtering
 
 This policy implements **Partial Evaluation** (Data Filtering Compilation) to return query constraints that the database must enforce. The policy assumes the AUP checks have already passed (user is trusted), and now determines **what data** the user is allowed to access based on their role clearance and project access.
 
@@ -1452,7 +1452,7 @@ allow_data_access if {
 }
 ```
 
-### 4\. 🔄 Integration: Sequential AUP → DCP Enforcement
+### 4. Integration: Sequential AUP → DCP Enforcement
 
 The microservice implements a **two-phase authorization** pattern:
 
@@ -1501,7 +1501,7 @@ WHERE classification_ordinal <= 3
 LIMIT 100;
 ```
 
-### 5\. 🎯 Why This Approach Scales
+### 5. Why This Approach Scales
 
 1. **Pre-Filtering at Policy Layer:** OPA performs expensive checks (TPM attestation, geolocation) **once** before any database access.
 
