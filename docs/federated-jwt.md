@@ -4,6 +4,42 @@ The challenge is to securely convey new claims **HW-rooted TPM attestation** and
 
 This document presents three authorization models, each with different trade-offs, and defines a unified JSON schema for verifiable identity claims that can be used across all models.
 
+## Table of Contents
+
+- [Model 1: Single Identity JWT](#-model-1-single-identity-jwt-with-old-and-new-claims)
+- [Model 2: Nested JWT in HTTP Header](#-model-2-new-claims-in-a-signed-jwt-within-a-http-header)
+- [Model 3: X.509 Certificate (SPIFFE/SPIRE SVID)](#-model-3-new-claims-with-a-short-lived-x509-certificate-eg-spiffespire-svid)
+- [Strategic Conclusion: The Ownership Factor](#-strategic-conclusion-the-ownership-factor)
+- [The Problem: Authentication Method Reference (AMR) "geo" Claim](#the-problem-authentication-method-reference-amr-geo-claim)
+  - [Critical Gaps in Current Implementation](#critical-gaps-in-current-implementation)
+  - [Our Proposal: A Standard for Verifiable Claims](#our-proposal-a-standard-for-verifiable-claims)
+- [JSON Schema for Unified Identity Claims](#json-schema-for-unified-identity-claims)
+- [TPM-Bound Geolocation](#tpm-bound-geolocation)
+- [Revocation Mechanisms for Identity Claims](#revocation-mechanisms-for-identity-claims)
+  - [Model 1: Single Identity JWT](#model-1-single-identity-jwt)
+  - [Model 2: Nested JWT in HTTP Header](#model-2-nested-jwt-in-http-header)
+  - [Model 3: X.509 Certificate (SPIFFE/SPIRE SVID)](#model-3-x509-certificate-spiffespire-svid)
+  - [TPM Attestation Verification](#tpm-attestation-verification)
+    - [TPM Quote Verification (Integrity)](#1-tpm-quote-verification-integrity)
+    - [TPM App Key Certificate Verification (Identity Binding)](#2-tpm-app-key-certificate-verification-identity-binding)
+    - [TPM Endorsement Key (EK) Verification](#3-tpm-endorsement-key-ek-verification-optional-for-peer-verification)
+  - [Workload Key Source Usage](#workload-key-source-usage)
+- [References](#references)
+- [Appendix: Understanding Jurisdiction vs. Physical Location](#appendix-understanding-jurisdiction-vs-physical-location)
+- [Appendix: Standard JWT Format](#appendix-standard-jwt-format)
+- [Appendix: TPM Key and Attestation Primer](#appendix-tpm-key-and-attestation-primer)
+- [Appendix: Attested Geolocation with TPM-Bound Geolocation](#appendix-attested-geolocation-with-tpm-bound-geolocation)
+  - [Keylime's Dynamic Quote Support](#keylimes-dynamic-quote-support)
+  - [Implementing Dynamic Geolocation Binding](#implementing-dynamic-geolocation-binding)
+  - [Integration Flow Summary](#integration-flow-summary)
+  - [Important Considerations](#important-considerations)
+- [Appendix: Open Policy Agent (OPA) Geo-Hardware Binding Example](#-appendix-open-policy-agent-opa-geo-hardware-binding-example)
+  - [Policy Data (`data.json`)](#1--policy-data-datajson---the-trusted-reference)
+  - [OPA Rego Policy (`geofence_tpm_map.rego`)](#2--opa-rego-policy-geofence_tpm_maprego---the-logic)
+  - [Data Classification Policy (`dcp_partial_eval.rego`)](#3--data-classification-policy-dcp_partial_evalrego---partial-evaluation-for-query-filtering)
+  - [Integration: Sequential AUP → DCP Enforcement](#4--integration-sequential-aup--dcp-enforcement)
+  - [Why This Approach Scales](#5--why-this-approach-scales)
+
 ## 🏛️ Model 1: Single Identity JWT with old and new claims 
 
 This model embeds *all* claims—identity, role, and hardware assurance—into a single, comprehensive, and fully **signed JWT**.
@@ -985,13 +1021,142 @@ In essence:
 - **The App Key** is your application's actual credential, which is certified by the AK process
 - **The Quote** is the evidence of the platform's measured boot integrity
 
+## Appendix: Attested Geolocation with TPM-Bound Geolocation
+
+This appendix details how **Keylime** (a continuous attestation framework) integrates with the TPM-bound geolocation mechanism to provide runtime location attestation that flows into JWT claims and is verified by OPA policies.
+
+### Keylime's Dynamic Quote Support
+
+- **Keylime supports dynamic quotes at runtime.**
+  - Keylime is fundamentally designed for continuous attestation and runtime integrity monitoring, meaning it must frequently request fresh TPM Quotes from the agent node.
+  - **Runtime Attestation:** Keylime does not stop after the initial boot check (measured boot). It relies on the Linux Integrity Measurement Architecture (IMA) to continuously monitor file integrity at runtime. When the Keylime Verifier requests a quote from the agent, the agent interacts with the TPM to generate a new quote over the PCRs, which includes the aggregated measurement of the kernel and running processes.
+  - **Agent API:** The Keylime Agent exposes a REST API endpoint (e.g., `GET /v2.1/quotes/integrity`) specifically designed to fulfill requests from the Verifier. Each time this API is called, the agent instructs the local TPM to execute the `TPM_Quote` command, producing a fresh, cryptographically signed snapshot of the current PCR values. This process is inherently dynamic.
+
+### Implementing Dynamic Geolocation Binding
+
+#### Step 1: Reserve a Dynamic PCR
+
+Select a Platform Configuration Register (PCR) not used by the boot process. **PCR 17 or 18** are standard choices for application-level measurements. The selected PCR index must be:
+- Documented in the OPA policy data as `geolocation_pcr_index` (see the Policy Data section below, under `compliance_baselines.geolocation_pcr_index`)
+- Included in the `grc.tpm-attestation.tpm-pcr-mask` field of the JWT claims
+- Referenced in `grc.geolocation.tpm-attested-pcr-index` to signal verifiers that location is TPM-bound
+
+#### Step 2: Deploy Geolocation Extension Script
+
+Deploy a custom extension or script (delivered via Keylime's Secure Payload mechanism) on the agent node that performs the following operations:
+
+1. **Retrieve Location Data:**
+   - Obtain current GPS/geolocation coordinates (latitude, longitude)
+   - Retrieve the **Remote Attestation Nonce (RAT nonce)** that will be included in the JWT's `rat-nonce` field
+   - Capture a timestamp (Unix epoch time)
+
+2. **Hash the Composite Data:**
+   - Concatenate the data in a deterministic format (e.g., `latitude:longitude:rat-nonce:timestamp`)
+   - Compute **SHA-256** hash of the concatenated string (TPM PCRs use SHA-256 by default)
+   - This hash represents the cryptographically bound location evidence
+
+3. **Extend the Reserved PCR:**
+   - Execute the TPM command `tpm2_pcrextend <PCR_INDEX>:sha256=<HASH>` to extend the reserved PCR with the location hash
+   - **Critical:** This extension must occur **before** the TPM Quote is generated, as the quote captures the PCR state at the moment of quote generation
+
+#### Step 3: Generate TPM Quote with Location PCR
+
+When the Keylime Verifier requests a quote (either on-demand or as part of continuous attestation):
+
+1. The agent instructs the TPM to generate a `TPM_Quote` command over the PCR mask that includes the reserved geolocation PCR (e.g., PCR 17)
+2. The TPM reads the current PCR values (including the extended location hash) and signs the PCR set with the Attestation Key (AK)
+3. The resulting quote is returned to the Keylime Verifier
+
+#### Step 4: Embed Quote in JWT Claims
+
+The Keylime Verifier (or an integrated Identity Provider) embeds the TPM Quote into the JWT claims:
+
+- **`grc.tpm-attestation.tpm-quote`**: Contains the signed TPM Quote (including PCR 17 with the location hash)
+- **`grc.tpm-attestation.tpm-pcr-mask`**: Bitmask indicating which PCRs were measured (must include PCR 17)
+- **`grc.geolocation.tpm-attested-location`**: Set to `true` to signal TPM binding
+- **`grc.geolocation.tpm-attested-pcr-index`**: Set to `17` (or the selected PCR index)
+- **`grc.geolocation["physical-location"]`**: Contains the actual location coordinates that were hashed
+- **`rat-nonce`**: Contains the same nonce that was included in the hash calculation
+
+#### Step 5: OPA Policy Verification
+
+The OPA policy (see the `is_geolocation_attested` rule in the `geofence_tpm_map.rego` section above) performs the cryptographic verification:
+
+1. **Extract PCR Index:** The policy reads `geolocation_pcr_index: 17` from `data.compliance_baselines.geolocation_pcr_index`
+2. **Gather Inputs:** Collects from JWT claims:
+   - `raw_location_data`: The location coordinates from `grc.geolocation["physical-location"]`
+   - `attestation_nonce`: The RAT nonce from `rat-nonce`
+   - `tpm_quote_evidence`: The TPM Quote from `grc.tpm-attestation["tpm-quote"]`
+3. **Cryptographic Verification:** Calls `verify_pcr_binding()` which:
+   - Parses the TPM Quote and extracts `PCR[17]` value
+   - Reconstructs the expected hash: `SHA-256(latitude:longitude:rat-nonce:timestamp)`
+   - Compares the PCR value against the reconstructed hash
+   - Returns `true` only if they match exactly
+
+**Security Properties Achieved:**
+- **Non-repudiation:** The location data is cryptographically bound to the TPM hardware
+- **Tamper-evidence:** Any modification to location coordinates or nonce will cause verification to fail
+- **Freshness:** The RAT nonce ensures the attestation is specific to the current transaction
+- **Hardware Root of Trust:** Only a genuine, uncompromised TPM can produce a valid quote
+
+### Integration Flow Summary
+
+```
+┌─────────────────┐
+│ Agent Node      │
+│                 │
+│ 1. Get GPS      │
+│ 2. Get RAT nonce│
+│ 3. Hash data    │
+│ 4. Extend PCR 17│
+└────────┬────────┘
+         │
+         │ TPM Quote Request
+         ▼
+┌─────────────────┐
+│ Keylime Verifier│
+│                 │
+│ 5. Request Quote│
+│ 6. Verify Quote │
+└────────┬────────┘
+         │
+         │ Embed in JWT
+         ▼
+┌─────────────────┐
+│ Identity        │
+│ Provider        │
+│                 │
+│ 7. Issue JWT    │
+│    with Quote   │
+└────────┬────────┘
+         │
+         │ JWT with Claims
+         ▼
+┌─────────────────┐
+│ Service Provider│
+│                 │
+│ 8. Query OPA    │
+│ 9. OPA verifies │
+│    PCR binding  │
+│ 10. Allow/Deny  │
+└─────────────────┘
+```
+
+### Important Considerations
+
+- **Timing:** PCR extension must occur **before** quote generation. The quote captures the PCR state at generation time.
+- **Nonce Synchronization:** The same RAT nonce used in the hash calculation must appear in the JWT's `rat-nonce` field for verification to succeed.
+- **Hash Algorithm:** TPM PCRs use SHA-256. The extension script and verification function must use the same algorithm.
+- **PCR Selection:** PCR 17 or 18 are recommended, but any PCR not used by the boot process can be reserved. The choice must be consistent across policy data, JWT claims, and extension scripts.
+- **Continuous vs On-Demand:** Keylime can generate quotes continuously (for runtime monitoring) or on-demand (for JWT issuance). The geolocation extension should run frequently enough to keep the location evidence current.
+
 ## 🛡️ Appendix: Open Policy Agent (OPA) Geo-Hardware Binding Example
 
 This example demonstrates how **Open Policy Agent (OPA)** enforces a highly secure **Acceptable Use Policy (AUP)** and **Data Classification Policy (DCP)**: 
 - Access is only granted if the device's **attested location** is within an approved **trusted zone** AND the device's unique **TPM Endorsement Key (EK)** is authorized to operate in that *exact same zone*.
 - If the client is trustworthy, what specific data is it allowed to touch? (Classification/Query Filtering)
 
-The scalability of this approach lies in the sequential enforcement of the AUP and DCP policies.
+The scalability of this approach lies in the sequential enforcement of the AUP and DCP policies. The flexibility of this approach lies in the ability to define trusted zones and TPM PCR policies in policy data (which can be updated without code changes) and delegate complex cryptographic verification (TPM PCR binding) to external services as needed.
 
 ### 1\. 📂 Policy Data (`data.json`) - The Trusted Reference
 
@@ -1345,132 +1510,3 @@ LIMIT 100;
 3. **Low Latency:** OPA returns lightweight constraint objects (JSON), not full document sets. The database query engine does the heavy lifting.
 
 4. **High Assurance:** The TPM-bound identity claims ensure that only trusted hardware in approved locations can even reach the DCP evaluation phase.
-
-## Appendix: Attested Geolocation with TPM-Bound Geolocation
-
-This appendix details how **Keylime** (a continuous attestation framework) integrates with the TPM-bound geolocation mechanism to provide runtime location attestation that flows into JWT claims and is verified by OPA policies.
-
-### Keylime's Dynamic Quote Support
-
-- **Keylime supports dynamic quotes at runtime.**
-  - Keylime is fundamentally designed for continuous attestation and runtime integrity monitoring, meaning it must frequently request fresh TPM Quotes from the agent node.
-  - **Runtime Attestation:** Keylime does not stop after the initial boot check (measured boot). It relies on the Linux Integrity Measurement Architecture (IMA) to continuously monitor file integrity at runtime. When the Keylime Verifier requests a quote from the agent, the agent interacts with the TPM to generate a new quote over the PCRs, which includes the aggregated measurement of the kernel and running processes.
-  - **Agent API:** The Keylime Agent exposes a REST API endpoint (e.g., `GET /v2.1/quotes/integrity`) specifically designed to fulfill requests from the Verifier. Each time this API is called, the agent instructs the local TPM to execute the `TPM_Quote` command, producing a fresh, cryptographically signed snapshot of the current PCR values. This process is inherently dynamic.
-
-### Implementing Dynamic Geolocation Binding
-
-#### Step 1: Reserve a Dynamic PCR
-
-Select a Platform Configuration Register (PCR) not used by the boot process. **PCR 17 or 18** are standard choices for application-level measurements. The selected PCR index must be:
-- Documented in the OPA policy data as `geolocation_pcr_index` (see the Policy Data section below, under `compliance_baselines.geolocation_pcr_index`)
-- Included in the `grc.tpm-attestation.tpm-pcr-mask` field of the JWT claims
-- Referenced in `grc.geolocation.tpm-attested-pcr-index` to signal verifiers that location is TPM-bound
-
-#### Step 2: Deploy Geolocation Extension Script
-
-Deploy a custom extension or script (delivered via Keylime's Secure Payload mechanism) on the agent node that performs the following operations:
-
-1. **Retrieve Location Data:**
-   - Obtain current GPS/geolocation coordinates (latitude, longitude)
-   - Retrieve the **Remote Attestation Nonce (RAT nonce)** that will be included in the JWT's `rat-nonce` field
-   - Capture a timestamp (Unix epoch time)
-
-2. **Hash the Composite Data:**
-   - Concatenate the data in a deterministic format (e.g., `latitude:longitude:rat-nonce:timestamp`)
-   - Compute **SHA-256** hash of the concatenated string (TPM PCRs use SHA-256 by default)
-   - This hash represents the cryptographically bound location evidence
-
-3. **Extend the Reserved PCR:**
-   - Execute the TPM command `tpm2_pcrextend <PCR_INDEX>:sha256=<HASH>` to extend the reserved PCR with the location hash
-   - **Critical:** This extension must occur **before** the TPM Quote is generated, as the quote captures the PCR state at the moment of quote generation
-
-#### Step 3: Generate TPM Quote with Location PCR
-
-When the Keylime Verifier requests a quote (either on-demand or as part of continuous attestation):
-
-1. The agent instructs the TPM to generate a `TPM_Quote` command over the PCR mask that includes the reserved geolocation PCR (e.g., PCR 17)
-2. The TPM reads the current PCR values (including the extended location hash) and signs the PCR set with the Attestation Key (AK)
-3. The resulting quote is returned to the Keylime Verifier
-
-#### Step 4: Embed Quote in JWT Claims
-
-The Keylime Verifier (or an integrated Identity Provider) embeds the TPM Quote into the JWT claims:
-
-- **`grc.tpm-attestation.tpm-quote`**: Contains the signed TPM Quote (including PCR 17 with the location hash)
-- **`grc.tpm-attestation.tpm-pcr-mask`**: Bitmask indicating which PCRs were measured (must include PCR 17)
-- **`grc.geolocation.tpm-attested-location`**: Set to `true` to signal TPM binding
-- **`grc.geolocation.tpm-attested-pcr-index`**: Set to `17` (or the selected PCR index)
-- **`grc.geolocation["physical-location"]`**: Contains the actual location coordinates that were hashed
-- **`rat-nonce`**: Contains the same nonce that was included in the hash calculation
-
-#### Step 5: OPA Policy Verification
-
-The OPA policy (see the `is_geolocation_attested` rule in the `geofence_tpm_map.rego` section above) performs the cryptographic verification:
-
-1. **Extract PCR Index:** The policy reads `geolocation_pcr_index: 17` from `data.compliance_baselines.geolocation_pcr_index`
-2. **Gather Inputs:** Collects from JWT claims:
-   - `raw_location_data`: The location coordinates from `grc.geolocation["physical-location"]`
-   - `attestation_nonce`: The RAT nonce from `rat-nonce`
-   - `tpm_quote_evidence`: The TPM Quote from `grc.tpm-attestation["tpm-quote"]`
-3. **Cryptographic Verification:** Calls `verify_pcr_binding()` which:
-   - Parses the TPM Quote and extracts `PCR[17]` value
-   - Reconstructs the expected hash: `SHA-256(latitude:longitude:rat-nonce:timestamp)`
-   - Compares the PCR value against the reconstructed hash
-   - Returns `true` only if they match exactly
-
-**Security Properties Achieved:**
-- **Non-repudiation:** The location data is cryptographically bound to the TPM hardware
-- **Tamper-evidence:** Any modification to location coordinates or nonce will cause verification to fail
-- **Freshness:** The RAT nonce ensures the attestation is specific to the current transaction
-- **Hardware Root of Trust:** Only a genuine, uncompromised TPM can produce a valid quote
-
-### Integration Flow Summary
-
-```
-┌─────────────────┐
-│ Agent Node      │
-│                 │
-│ 1. Get GPS      │
-│ 2. Get RAT nonce│
-│ 3. Hash data    │
-│ 4. Extend PCR 17│
-└────────┬────────┘
-         │
-         │ TPM Quote Request
-         ▼
-┌─────────────────┐
-│ Keylime Verifier│
-│                 │
-│ 5. Request Quote│
-│ 6. Verify Quote │
-└────────┬────────┘
-         │
-         │ Embed in JWT
-         ▼
-┌─────────────────┐
-│ Identity        │
-│ Provider        │
-│                 │
-│ 7. Issue JWT    │
-│    with Quote   │
-└────────┬────────┘
-         │
-         │ JWT with Claims
-         ▼
-┌─────────────────┐
-│ Service Provider│
-│                 │
-│ 8. Query OPA    │
-│ 9. OPA verifies │
-│    PCR binding  │
-│ 10. Allow/Deny  │
-└─────────────────┘
-```
-
-### Important Considerations
-
-- **Timing:** PCR extension must occur **before** quote generation. The quote captures the PCR state at generation time.
-- **Nonce Synchronization:** The same RAT nonce used in the hash calculation must appear in the JWT's `rat-nonce` field for verification to succeed.
-- **Hash Algorithm:** TPM PCRs use SHA-256. The extension script and verification function must use the same algorithm.
-- **PCR Selection:** PCR 17 or 18 are recommended, but any PCR not used by the boot process can be reserved. The choice must be consistent across policy data, JWT claims, and extension scripts.
-- **Continuous vs On-Demand:** Keylime can generate quotes continuously (for runtime monitoring) or on-demand (for JWT issuance). The geolocation extension should run frequently enough to keep the location evidence current.
