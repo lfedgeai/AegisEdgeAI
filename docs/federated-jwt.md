@@ -2,6 +2,8 @@
 
 The challenge is to securely convey new claims **HW-rooted TPM attestation** and **Attested Geographic location** from the Enterprise workload to the Service Provider's (SP) policy engine in a robust **Federated Identity** architecture.
 
+This document presents three authorization models, each with different trade-offs, and defines a unified JSON schema for verifiable identity claims that can be used across all models.
+
 ## 🏛️ Model 1: Single Identity JWT with old and new claims 
 
 This model embeds *all* claims—identity, role, and hardware assurance—into a single, comprehensive, and fully **signed JWT**.
@@ -35,21 +37,36 @@ This model separates stable identity claims from dynamic assurance claims, placi
 2. **PRO:** **Highest Flexibility.** Claims can be updated instantly by the device (per request) without refreshing the Identity JWT.  
 3. **CON:** **Maximum Complexity.** Requires sophisticated SP infrastructure to verify two signatures per request and manage the trust anchor for every Enterprise device's Attestation Key (AK), complicating cross-organizational PKI establishment.  
 
-## Model 3: New Claims with a short-lived X.509 Certificate (e.g., SPIFFE/SPIRE SVID)
+## 🔐 Model 3: New Claims with a short-lived X.509 Certificate (e.g., SPIFFE/SPIRE SVID)
 
-This model replaces the JWT for primary identity and role claims with a short-lived **X.509 Certificate (SVID)** issued to the workload. The assurance claims (TPM/Geo) are then anchored to the certificate.
+This model replaces the JWT for primary identity and role claims with a short-lived **X.509 Certificate (SVID - SPIFFE Verifiable Identity Document)** issued to the workload. The assurance claims (TPM/Geo) are then anchored to the certificate.
+
+### 🔑 Security Claims and Sourcing
+
+| Claim Type              | Location                     | Assurance Level | Source & Integrity Mechanism     |
+|-------------------------|------------------------------|-----------------|----------------------------------|
+| **Identity & Role**      | **X.509 SVID Certificate**   | High            | SPIFFE/SPIRE CA (Signed)         |
+| **TPM/Geo Claims**       | **JWT Payload or Certificate Extension** | **Highest**     | Enterprise/Device-Signed Token or Certificate Extension |
+
+### Flow and Trade-Offs
+
+1. **Flow:** The workload receives a short-lived SVID from a SPIFFE/SPIRE-based Certificate Authority. The TPM/Geo claims are either embedded in a JWT payload (signed by the device) or included as certificate extensions. The Service Provider (SP) verifies the SVID certificate chain and the TPM/Geo attestation claims.
+2. **PRO:** **Highest Security & Scalability.** Automated certificate renewal, mutual TLS (mTLS) support, standardized workload identity across organizations, and fine-grained revocation via CRL/OCSP.
+3. **CON:** **Infrastructure Complexity.** Requires deployment of SPIFFE/SPIRE infrastructure (or equivalent workload identity system) and coordination of certificate authorities across organizational boundaries.
 
 ## 🎯 Strategic Conclusion: The Ownership Factor
 
-The optimal authorization model depends on the **ownership and trust relationship** between the Enterprise workload and the Service Provider (SP) application.
+The optimal authorization model depends on the **ownership and trust relationship** between the Enterprise workload and the Service Provider (SP) application. Each model offers different trade-offs between security, complexity, and operational overhead.
 
 | Deployment Context         | Key Challenge                                                                 | Recommended Model | Rationale |
 |-----------------------------|-------------------------------------------------------------------------------|-------------------|-----------|
 | **B2B (federation)**   | Trust & Complexity: Difficulty in establishing shared PKI for device-specific keys across orgs. | **Model 1**       | Simplest trust anchor (Enterprise IDP signature), easiest for external SPs. |
 | **Internal (no federation)** | Performance & Agility: Overcoming high-overhead, low-agility bottleneck of Model 1. | **Model 2 (Transitional)** | Delegates dynamic claims to device without full Workload Identity System. |
-| **Internal (no federation) or External (federation, e.g., SPIFFE/SPIRE)** | Highest Security & Scalability: Achieving HW-rooted identity, automated renewal, and mutual authentication. | **Model 3 (Gold Standard)** | Workload identity identity standard (e.g. SPIFFE/SPIRE) across organizations. |
+| **Internal (no federation) or External (federation, e.g., SPIFFE/SPIRE)** | Highest Security & Scalability: Achieving HW-rooted identity, automated renewal, and mutual authentication. | **Model 3 (Gold Standard)** | Workload identity standard (e.g. SPIFFE/SPIRE) across organizations. |
 
 ## The Problem: Authentication Method Reference (AMR) "geo" Claim
+
+> **Note:** This section explains the motivation for the unified identity claims schema defined below. The schema addresses limitations in existing standards and provides a foundation for all three authorization models (Models 1, 2, and 3) described above.
 
 The current standard for indicating geolocation verification in OIDC/OAuth tokens is the **Authentication Method Reference (AMR) "geo" claim** as defined in [RFC 8176](https://datatracker.ietf.org/doc/html/rfc8176).
 
@@ -81,6 +98,8 @@ The unified identity claims schema defined in this document addresses these gaps
 The goal is to standardize the claims and the format of the claims through IANA so that they can be used in any JSON-based token (OIDC ID Token, OAuth Access Token) or SAML assertions or other formats. If there are any similar Oauth AMR claims (e.g. "geo"), they should be deprecated and replaced with this standard.
 
 ## JSON Schema for Unified Identity Claims
+
+> **Note:** This schema is used by all three authorization models (Models 1, 2, and 3) described above. The claims can be embedded in JWT payloads (Models 1 and 2), nested JWTs (Model 2), or certificate extensions (Model 3).
 
 Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org/doc/draft-richardson-rats-geographic-results/), the following JSON Schema represents unified identity claims including geographic location, workload identity, TPM attestation, and data center infrastructure:
 
@@ -968,7 +987,11 @@ In essence:
 
 ## 🛡️ Appendix: Open Policy Agent (OPA) Geo-Hardware Binding Example
 
-This example demonstrates how OPA enforces a highly secure policy: Access is only granted if the device's **attested location** is within an approved **trusted zone** AND the device's unique **TPM Endorsement Key (EK)** is authorized to operate in that *exact same zone*.
+This example demonstrates how **Open Policy Agent (OPA)** enforces a highly secure **Acceptable Use Policy (AUP)** and **Data Classification Policy (DCP)**: 
+- Access is only granted if the device's **attested location** is within an approved **trusted zone** AND the device's unique **TPM Endorsement Key (EK)** is authorized to operate in that *exact same zone*.
+- If the client is trustworthy, what specific data is it allowed to touch? (Classification/Query Filtering)
+
+The scalability of this approach lies in the sequential enforcement of the AUP and DCP policies.
 
 ### 1\. 📂 Policy Data (`data.json`) - The Trusted Reference
 
@@ -994,14 +1017,37 @@ This data maps specific geographic boundaries (`bounding_box`) to the full **TPM
         ]
       }
     ],
-    "trusted_tpm_policy": "secure-boot-baseline-2024"
+    "trusted_tpm_policy": "secure-boot-baseline-2024",
+    "geolocation_pcr_index": 17
+  },
+  "data_classification_policy": {
+    "classification_levels": [
+      { "level": "PUBLIC", "ordinal": 0 },
+      { "level": "INTERNAL", "ordinal": 1 },
+      { "level": "CONFIDENTIAL", "ordinal": 2 },
+      { "level": "SECRET", "ordinal": 3 },
+      { "level": "TOP_SECRET", "ordinal": 4 }
+    ],
+    "role_clearances": {
+      "analyst": "CONFIDENTIAL",
+      "engineer": "SECRET",
+      "director": "TOP_SECRET",
+      "contractor": "INTERNAL"
+    },
+    "project_access_rules": {
+      "Alpha": ["engineer", "director"],
+      "Beta": ["analyst", "engineer", "director"],
+      "Gamma": ["director"],
+      "Delta": ["analyst", "engineer", "director", "contractor"]
+    },
+    "need_to_know_enabled": true
   }
 }
 ```
 
 ### 2\. 📜 OPA Rego Policy (`geofence_tpm_map.rego`) - The Logic
 
-This policy uses the `some` keyword to iterate over the `trusted_ek_zones`. The rule succeeds only if a **single zone** satisfies **all 4 binding conditions** (Location latitude/longitude Check, Hardware Check, and Nonce Check).
+This policy uses the `some` keyword to iterate over the `trusted_ek_zones`. The rule succeeds only if a **single zone** satisfies **all binding conditions**: (1) Location latitude/longitude containment within the zone's bounding box, (2) Hardware EK authorization check, (3) Freshness nonce verification, and (4) Cryptographic geolocation attestation via TPM PCR binding.
 
 ```rego
 package authz.geofence_tpm_map
@@ -1079,16 +1125,352 @@ allow if {
     is_geolocation_attested
 }
 ```
+
+### 3\. 📊 Data Classification Policy (`dcp_partial_eval.rego`) - Partial Evaluation for Query Filtering
+
+This policy implements **Partial Evaluation** (Data Filtering Compilation) to return query constraints that the database must enforce. The policy assumes the AUP checks have already passed (user is trusted), and now determines **what data** the user is allowed to access based on their role clearance and project access.
+
+**Key Concept:** The policy marks `data.documents` as **unknown** during evaluation, allowing OPA to return the **residual policy logic** as query constraints rather than requiring all document data upfront.
+
+```rego
+package authz.dcp_partial_eval
+
+import rego.v1
+
+# --- Helper: Get Classification Ordinal Value ---
+# Maps classification level string to its numeric ordinal for comparison
+get_classification_ordinal(level) := ordinal if {
+    some cls in data.data_classification_policy.classification_levels
+    cls.level == level
+    ordinal := cls.ordinal
+}
+
+# --- Helper: Get User's Maximum Clearance Level ---
+# Returns the highest classification level the user's role is cleared for
+user_max_clearance := max_clearance if {
+    user_role := input.jwt_claims.role
+    max_clearance := data.data_classification_policy.role_clearances[user_role]
+}
+
+# --- Helper: Get Allowed Project IDs ---
+# Returns the list of project IDs the user's role is authorized to access
+allowed_project_ids := project_ids if {
+    user_role := input.jwt_claims.role
+    project_ids := [
+        project_id |
+        some project_id, allowed_roles in data.data_classification_policy.project_access_rules
+        some allowed_role in allowed_roles
+        allowed_role == user_role
+    ]
+}
+
+# --- Partial Evaluation: Query Constraint Generation ---
+# This rule generates the WHERE clause constraints that the database must enforce.
+# The policy treats data.documents.* as UNKNOWN, allowing OPA to return residual logic.
+query_constraints := constraints if {
+    # 1. Extract user's clearance level
+    user_clearance := user_max_clearance
+    user_clearance_ordinal := get_classification_ordinal(user_clearance)
+    
+    # 2. Get allowed project IDs
+    allowed_projects := allowed_project_ids
+    
+    # 3. Build classification constraint: user can only see documents at or below their clearance
+    # This constraint will be evaluated against UNKNOWN document.classification values
+    classification_constraint := {
+        "field": "classification",
+        "operator": "<=",
+        "value": user_clearance,
+        "ordinal_max": user_clearance_ordinal
+    }
+    
+    # 4. Build project constraint: user can only see documents in their authorized projects
+    project_constraint := {
+        "field": "project_id",
+        "operator": "IN",
+        "values": allowed_projects
+    }
+    
+    # 5. Combine constraints (both must be satisfied)
+    constraints := {
+        "classification": classification_constraint,
+        "project_id": project_constraint,
+        "logical_operator": "AND"
+    }
+}
+
+# --- SQL Query Generation (Example Output) ---
+# This demonstrates how the constraints translate to SQL WHERE clauses
+sql_where_clause := clause if {
+    constraints := query_constraints
+    classification_max := constraints.classification.ordinal_max
+    project_list := constraints.project_id.values
+    
+    # Generate SQL-compatible WHERE clause
+    clause := sprintf("WHERE classification_ordinal <= %d AND project_id IN (%s)", [
+        classification_max,
+        concat(", ", [sprintf("'%s'", [p]) | p := project_list])
+    ])
+}
+
+# --- Elasticsearch Query Generation (Example Output) ---
+# This demonstrates how the constraints translate to Elasticsearch DSL
+elasticsearch_query := query if {
+    constraints := query_constraints
+    classification_max := constraints.classification.value
+    project_list := constraints.project_id.values
+    
+    query := {
+        "bool": {
+            "must": [
+                {
+                    "range": {
+                        "classification_ordinal": {
+                            "lte": get_classification_ordinal(classification_max)
+                        }
+                    }
+                },
+                {
+                    "terms": {
+                        "project_id": project_list
+                    }
+                }
+            ]
+        }
+    }
+}
+
+# --- Rego AST Output (For Custom Query Builders) ---
+# Returns the raw Rego AST representation of the residual policy logic
+rego_ast_constraints := ast if {
+    constraints := query_constraints
+    ast := {
+        "type": "object",
+        "value": [
+            {
+                "type": "expr",
+                "terms": [
+                    {"type": "var", "value": "document"},
+                    {"type": "ref", "value": ["classification"]}
+                ],
+                "op": "<=",
+                "value": constraints.classification.value
+            },
+            {
+                "type": "expr",
+                "terms": [
+                    {"type": "var", "value": "document"},
+                    {"type": "ref", "value": ["project_id"]}
+                ],
+                "op": "in",
+                "value": constraints.project_id.values
+            }
+        ]
+    }
+}
+
+# --- Final Authorization Decision ---
+# This rule combines AUP (from geofence_tpm_map) with DCP constraints
+# In practice, the microservice would:
+# 1. First check AUP (is_trusted_location_and_hardware && is_geolocation_attested)
+# 2. If AUP passes, then evaluate DCP to get query_constraints
+# 3. Apply query_constraints to the database query
+allow_data_access if {
+    # AUP checks must pass first (imported from geofence_tpm_map package)
+    # In a real implementation, this would reference the other package:
+    # authz.geofence_tpm_map.allow
+    
+    # For this example, we assume AUP passed and focus on DCP
+    query_constraints  # Constraints are successfully generated
+    user_max_clearance  # User has a valid clearance level
+    count(allowed_project_ids) > 0  # User has access to at least one project
+}
+```
+
+### 4\. 🔄 Integration: Sequential AUP → DCP Enforcement
+
+The microservice implements a **two-phase authorization** pattern:
+
+**Phase 1: AUP (Acceptable Use Policy) - Binary Decision**
+```bash
+# Query OPA for AUP check
+curl -X POST http://opa:8181/v1/data/authz/geofence_tpm_map/allow \
+  -d @aup_request.json
+
+# Response: { "result": true } or { "result": false }
+# If false, deny immediately (hardware/location check failed)
+```
+
+**Phase 2: DCP (Data Classification Policy) - Query Constraints**
+```bash
+# If AUP passes, query OPA for DCP constraints (Partial Evaluation)
+curl -X POST http://opa:8181/v1/data/authz/dcp_partial_eval/query_constraints \
+  -d @dcp_request.json \
+  -H "Prefer: return=representation"
+
+# Response: Query constraints that can be compiled into SQL/Elasticsearch
+{
+  "result": {
+    "classification": {
+      "field": "classification",
+      "operator": "<=",
+      "value": "SECRET",
+      "ordinal_max": 3
+    },
+    "project_id": {
+      "field": "project_id",
+      "operator": "IN",
+      "values": ["Alpha", "Beta"]
+    },
+    "logical_operator": "AND"
+  }
+}
+```
+
+**Phase 3: Database Query Execution**
+```sql
+-- Microservice compiles constraints into actual database query
+SELECT * FROM documents 
+WHERE classification_ordinal <= 3 
+  AND project_id IN ('Alpha', 'Beta')
+LIMIT 100;
+```
+
+### 5\. 🎯 Why This Approach Scales
+
+1. **Pre-Filtering at Policy Layer:** OPA performs expensive checks (TPM attestation, geolocation) **once** before any database access.
+
+2. **Delegation to Database:** The database's optimized indexes handle the actual data filtering across millions of documents, not OPA.
+
+3. **Low Latency:** OPA returns lightweight constraint objects (JSON), not full document sets. The database query engine does the heavy lifting.
+
+4. **High Assurance:** The TPM-bound identity claims ensure that only trusted hardware in approved locations can even reach the DCP evaluation phase.
+
 ## Appendix: Attested Geolocation with TPM-Bound Geolocation
+
+This appendix details how **Keylime** (a continuous attestation framework) integrates with the TPM-bound geolocation mechanism to provide runtime location attestation that flows into JWT claims and is verified by OPA policies.
+
+### Keylime's Dynamic Quote Support
+
 - **Keylime supports dynamic quotes at runtime.**
   - Keylime is fundamentally designed for continuous attestation and runtime integrity monitoring, meaning it must frequently request fresh TPM Quotes from the agent node.
   - **Runtime Attestation:** Keylime does not stop after the initial boot check (measured boot). It relies on the Linux Integrity Measurement Architecture (IMA) to continuously monitor file integrity at runtime. When the Keylime Verifier requests a quote from the agent, the agent interacts with the TPM to generate a new quote over the PCRs, which includes the aggregated measurement of the kernel and running processes.
   - **Agent API:** The Keylime Agent exposes a REST API endpoint (e.g., `GET /v2.1/quotes/integrity`) specifically designed to fulfill requests from the Verifier. Each time this API is called, the agent instructs the local TPM to execute the `TPM_Quote` command, producing a fresh, cryptographically signed snapshot of the current PCR values. This process is inherently dynamic.
-- **How to add dynamic geolocation.**
-  - **Reserve a dynamic PCR:** Select a Platform Configuration Register (PCR) not used by the boot process (typically PCR 17 or 18).
-  - **Extend the agent workload:** Deploy a custom extension or script (delivered via Keylime's Secure Payload mechanism) on the agent node that:
-    - Retrieves current GPS/geolocation data along with a nonce and timestamp.
-    - Hashes this composite data.
-    - Executes the TPM command `tpm2_pcrextend` to extend the reserved PCR with the new measurement.
-  - **Generate a quote:** When the Keylime Verifier requests a quote, the attestation includes the extended value of the reserved PCR, proving the geolocation data (and nonce) were measured into the secure hardware at the time of attestation.
-  - **OPA policy validation:** Downstream OPA policy evaluation can now verify both the current software state and the attested location before allowing access.
+
+### Implementing Dynamic Geolocation Binding
+
+#### Step 1: Reserve a Dynamic PCR
+
+Select a Platform Configuration Register (PCR) not used by the boot process. **PCR 17 or 18** are standard choices for application-level measurements. The selected PCR index must be:
+- Documented in the OPA policy data as `geolocation_pcr_index` (see the Policy Data section below, under `compliance_baselines.geolocation_pcr_index`)
+- Included in the `grc.tpm-attestation.tpm-pcr-mask` field of the JWT claims
+- Referenced in `grc.geolocation.tpm-attested-pcr-index` to signal verifiers that location is TPM-bound
+
+#### Step 2: Deploy Geolocation Extension Script
+
+Deploy a custom extension or script (delivered via Keylime's Secure Payload mechanism) on the agent node that performs the following operations:
+
+1. **Retrieve Location Data:**
+   - Obtain current GPS/geolocation coordinates (latitude, longitude)
+   - Retrieve the **Remote Attestation Nonce (RAT nonce)** that will be included in the JWT's `rat-nonce` field
+   - Capture a timestamp (Unix epoch time)
+
+2. **Hash the Composite Data:**
+   - Concatenate the data in a deterministic format (e.g., `latitude:longitude:rat-nonce:timestamp`)
+   - Compute **SHA-256** hash of the concatenated string (TPM PCRs use SHA-256 by default)
+   - This hash represents the cryptographically bound location evidence
+
+3. **Extend the Reserved PCR:**
+   - Execute the TPM command `tpm2_pcrextend <PCR_INDEX>:sha256=<HASH>` to extend the reserved PCR with the location hash
+   - **Critical:** This extension must occur **before** the TPM Quote is generated, as the quote captures the PCR state at the moment of quote generation
+
+#### Step 3: Generate TPM Quote with Location PCR
+
+When the Keylime Verifier requests a quote (either on-demand or as part of continuous attestation):
+
+1. The agent instructs the TPM to generate a `TPM_Quote` command over the PCR mask that includes the reserved geolocation PCR (e.g., PCR 17)
+2. The TPM reads the current PCR values (including the extended location hash) and signs the PCR set with the Attestation Key (AK)
+3. The resulting quote is returned to the Keylime Verifier
+
+#### Step 4: Embed Quote in JWT Claims
+
+The Keylime Verifier (or an integrated Identity Provider) embeds the TPM Quote into the JWT claims:
+
+- **`grc.tpm-attestation.tpm-quote`**: Contains the signed TPM Quote (including PCR 17 with the location hash)
+- **`grc.tpm-attestation.tpm-pcr-mask`**: Bitmask indicating which PCRs were measured (must include PCR 17)
+- **`grc.geolocation.tpm-attested-location`**: Set to `true` to signal TPM binding
+- **`grc.geolocation.tpm-attested-pcr-index`**: Set to `17` (or the selected PCR index)
+- **`grc.geolocation["physical-location"]`**: Contains the actual location coordinates that were hashed
+- **`rat-nonce`**: Contains the same nonce that was included in the hash calculation
+
+#### Step 5: OPA Policy Verification
+
+The OPA policy (see the `is_geolocation_attested` rule in the `geofence_tpm_map.rego` section above) performs the cryptographic verification:
+
+1. **Extract PCR Index:** The policy reads `geolocation_pcr_index: 17` from `data.compliance_baselines.geolocation_pcr_index`
+2. **Gather Inputs:** Collects from JWT claims:
+   - `raw_location_data`: The location coordinates from `grc.geolocation["physical-location"]`
+   - `attestation_nonce`: The RAT nonce from `rat-nonce`
+   - `tpm_quote_evidence`: The TPM Quote from `grc.tpm-attestation["tpm-quote"]`
+3. **Cryptographic Verification:** Calls `verify_pcr_binding()` which:
+   - Parses the TPM Quote and extracts `PCR[17]` value
+   - Reconstructs the expected hash: `SHA-256(latitude:longitude:rat-nonce:timestamp)`
+   - Compares the PCR value against the reconstructed hash
+   - Returns `true` only if they match exactly
+
+**Security Properties Achieved:**
+- **Non-repudiation:** The location data is cryptographically bound to the TPM hardware
+- **Tamper-evidence:** Any modification to location coordinates or nonce will cause verification to fail
+- **Freshness:** The RAT nonce ensures the attestation is specific to the current transaction
+- **Hardware Root of Trust:** Only a genuine, uncompromised TPM can produce a valid quote
+
+### Integration Flow Summary
+
+```
+┌─────────────────┐
+│ Agent Node      │
+│                 │
+│ 1. Get GPS      │
+│ 2. Get RAT nonce│
+│ 3. Hash data    │
+│ 4. Extend PCR 17│
+└────────┬────────┘
+         │
+         │ TPM Quote Request
+         ▼
+┌─────────────────┐
+│ Keylime Verifier│
+│                 │
+│ 5. Request Quote│
+│ 6. Verify Quote │
+└────────┬────────┘
+         │
+         │ Embed in JWT
+         ▼
+┌─────────────────┐
+│ Identity        │
+│ Provider        │
+│                 │
+│ 7. Issue JWT    │
+│    with Quote   │
+└────────┬────────┘
+         │
+         │ JWT with Claims
+         ▼
+┌─────────────────┐
+│ Service Provider│
+│                 │
+│ 8. Query OPA    │
+│ 9. OPA verifies │
+│    PCR binding  │
+│ 10. Allow/Deny  │
+└─────────────────┘
+```
+
+### Important Considerations
+
+- **Timing:** PCR extension must occur **before** quote generation. The quote captures the PCR state at generation time.
+- **Nonce Synchronization:** The same RAT nonce used in the hash calculation must appear in the JWT's `rat-nonce` field for verification to succeed.
+- **Hash Algorithm:** TPM PCRs use SHA-256. The extension script and verification function must use the same algorithm.
+- **PCR Selection:** PCR 17 or 18 are recommended, but any PCR not used by the boot process can be reserved. The choice must be consistent across policy data, JWT claims, and extension scripts.
+- **Continuous vs On-Demand:** Keylime can generate quotes continuously (for runtime monitoring) or on-demand (for JWT issuance). The geolocation extension should run frequently enough to keep the location evidence current.
