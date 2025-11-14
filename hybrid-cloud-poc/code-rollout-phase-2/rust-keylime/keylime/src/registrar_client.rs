@@ -452,20 +452,46 @@ impl RegistrarClient {
             // The current Registrar API version is not enabled.
             // Find the latest enabled version that is supported
             if let Some(ref supported) = self.supported_api_versions {
+                debug!(
+                    "Checking API version compatibility: agent enabled = {:?}, registrar supported = {:?}",
+                    ai.enabled_api_versions, supported
+                );
                 for api_version in ai.enabled_api_versions.iter().rev() {
-                    if supported.contains(&api_version.to_string()) {
+                    let api_version_str = api_version.trim();
+                    debug!(
+                        "Checking if registrar supports agent version '{}' (trimmed from '{}')",
+                        api_version_str, api_version
+                    );
+                    // Trim whitespace from both sides for comparison
+                    let version_matches = supported.iter().any(|s| s.trim() == api_version_str);
+                    if version_matches {
+                        debug!("Found compatible API version: {}", api_version_str);
                         // Found a compatible API version, it should work
                         let r =
                             self.try_register_agent(ai, api_version).await;
 
                         // If successful, cache the API version for future requests
                         if r.is_ok() {
-                            self.api_version = api_version.to_string();
+                            self.api_version = api_version_str.to_string();
                             return r;
+                        } else {
+                            warn!(
+                                "Registration attempt with API version {} failed: {:?}",
+                                api_version_str, r
+                            );
                         }
+                    } else {
+                        debug!(
+                            "API version '{}' not found in registrar supported list",
+                            api_version_str
+                        );
                     }
                 }
                 // None of the enabled APIs is supported
+                warn!(
+                    "No compatible API version found. Agent enabled: {:?}, Registrar supported: {:?}",
+                    ai.enabled_api_versions, supported
+                );
                 Err(self.incompatible(
                     ai.enabled_api_versions.join(", "),
                     supported.join(", "),
@@ -566,8 +592,16 @@ impl RegistrarClient {
             // The current Registrar API version is not enabled.
             // Find the latest enabled version that is supported
             if let Some(ref supported) = self.supported_api_versions {
+                debug!(
+                    "Checking API version compatibility for activation: agent enabled = {:?}, registrar supported = {:?}",
+                    ai.enabled_api_versions, supported
+                );
                 for api_version in ai.enabled_api_versions.iter().rev() {
-                    if supported.contains(&api_version.to_string()) {
+                    let api_version_str = api_version.trim();
+                    // Trim whitespace from both sides for comparison
+                    let version_matches = supported.iter().any(|s| s.trim() == api_version_str);
+                    if version_matches {
+                        debug!("Found compatible API version for activation: {}", api_version_str);
                         // Found a compatible API version, it should work
                         let r = self
                             .try_activate_agent(auth_tag, ai, api_version)
@@ -575,12 +609,21 @@ impl RegistrarClient {
 
                         // If successful, cache the API version for future requests
                         if r.is_ok() {
-                            self.api_version = api_version.to_string();
+                            self.api_version = api_version_str.to_string();
                             return r;
+                        } else {
+                            warn!(
+                                "Activation attempt with API version {} failed: {:?}",
+                                api_version_str, r
+                            );
                         }
                     }
                 }
                 // None of the enabled APIs is supported
+                warn!(
+                    "No compatible API version found for activation. Agent enabled: {:?}, Registrar supported: {:?}",
+                    ai.enabled_api_versions, supported
+                );
                 Err(self.incompatible(
                     ai.enabled_api_versions.join(", "),
                     supported.join(", "),

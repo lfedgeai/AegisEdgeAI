@@ -2541,16 +2541,47 @@ pub fn read_ek_ca_chain(
         for handle in handle_list.iter() {
             if let TpmHandle::NvIndex(nv_idx) = handle {
                 // Attempt to get the NV authorization handle
-                let nv_auth_handle =
-                    context.execute_without_session(|ctx| {
-                        ctx.tr_from_tpm_public(*handle)
-                            .map(|v| NvAuth::NvIndex(v.into()))
-                    })?;
+                let nv_auth_handle = match context.execute_without_session(|ctx| {
+                    ctx.tr_from_tpm_public(*handle)
+                        .map(|v| NvAuth::NvIndex(v.into()))
+                }) {
+                    Ok(handle) => handle,
+                    Err(_) => {
+                        // NV index may not be accessible, skip it
+                        continue;
+                    }
+                };
 
-                // Read the full NV data
-                let data = context.execute_with_nullauth_session(|ctx| {
+                // Read the full NV data - handle uninitialized NV indices gracefully
+                let data = match context.execute_with_nullauth_session(|ctx| {
                     nv::read_full(ctx, nv_auth_handle, *nv_idx)
-                })?;
+                }) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        // Check if error is NV_UNINITIALIZED (0x0000014a = TPM2_RC_NV_UNINITIALIZED)
+                        // This is expected for hardware TPMs where NV indices may not be initialized
+                        // The EK certificate chain NV indices (0x01c00100-0x01c001ff) are optional
+                        let error_str = format!("{:?}", e);
+                        let error_display = format!("{}", e);
+                        let should_skip = error_str.contains("0x0000014a") || 
+                                         error_str.contains("0x14a") ||
+                                         error_str.contains("NV_UNINITIALIZED") ||
+                                         error_str.contains("not initialized") ||
+                                         error_str.contains("NV uninitialized") ||
+                                         error_display.contains("0x0000014a") ||
+                                         error_display.contains("0x14a") ||
+                                         error_display.contains("NV_UNINITIALIZED");
+                        
+                        if should_skip {
+                            // NV index exists but is not initialized - skip it (this is normal for hardware TPMs)
+                            debug!("Skipping uninitialized NV index {:?} (expected for hardware TPM): {}", nv_idx, error_display);
+                            continue;
+                        }
+                        // For other errors, log and propagate them
+                        warn!("NV_Read error for index {:?}: {}", nv_idx, error_display);
+                        return Err(e);
+                    }
+                };
 
                 result.extend(data);
             } else {

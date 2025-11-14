@@ -155,6 +155,85 @@ fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Method 3: Full Certificate Chain Dump"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# Count certificates in chain
+CERT_COUNT=$(grep -c "BEGIN CERTIFICATE" "$SVID_FILE" 2>/dev/null || echo "0")
+
+if [ "$CERT_COUNT" -eq 0 ]; then
+    echo "✗ No certificates found in file"
+else
+    echo "Found $CERT_COUNT certificate(s) in chain."
+    echo ""
+    
+    # Extract each certificate and display with labels
+    CERT_INDEX=0
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+    
+    # Split certificates into separate files using a more robust method
+    python3 <<PYEOF
+import re
+import os
+from pathlib import Path
+
+svid_file = os.environ.get('DUMP_SVID_FILE', '$SVID_FILE')
+temp_dir = '$TEMP_DIR'
+
+with open(svid_file, "rb") as f:
+    content = f.read()
+
+# Find all certificate blocks
+blocks = re.findall(
+    b"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+    content,
+    re.DOTALL,
+)
+
+for idx, block in enumerate(blocks):
+    cert_file = Path(temp_dir) / f"cert_{idx}.pem"
+    cert_file.write_bytes(block)
+PYEOF
+    
+    # Sort certificate files by index
+    for cert_file in $(ls -1 "$TEMP_DIR"/cert_*.pem 2>/dev/null | sort -V); do
+        if [ ! -f "$cert_file" ]; then
+            continue
+        fi
+        
+        # Determine certificate type
+        SPIFFE_ID=$(openssl x509 -in "$cert_file" -noout -text 2>/dev/null | grep -oP 'URI:spiffe://[^\s,]+' | head -1 || echo "")
+        
+        if [ "$CERT_INDEX" -eq 0 ]; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔹 CERTIFICATE [$CERT_INDEX]: WORKLOAD SVID (Leaf Certificate)"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        elif [ -n "$SPIFFE_ID" ] && echo "$SPIFFE_ID" | grep -q "/spire/agent/"; then
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔸 CERTIFICATE [$CERT_INDEX]: SPIRE AGENT SVID (Policy Enforcement)"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        else
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔷 CERTIFICATE [$CERT_INDEX]: Intermediate/CA Certificate"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        fi
+        
+        echo ""
+        openssl x509 -in "$cert_file" -text -noout 2>/dev/null || echo "  (could not read certificate)"
+        
+        CERT_INDEX=$((CERT_INDEX + 1))
+    done
+    
+    rm -rf "$TEMP_DIR"
+    trap - EXIT
+fi
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Summary"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
