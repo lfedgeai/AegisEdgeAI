@@ -130,6 +130,11 @@ stop_all_instances_and_cleanup() {
     echo "     Removing SVID dump directory..."
     rm -rf /tmp/svid-dump 2>/dev/null || true
     
+    # Clean up TLS certificates
+    echo "     Removing TLS certificates..."
+    rm -rf "${KEYLIME_DIR}/cv_ca" 2>/dev/null || true
+    rm -rf "${KEYLIME_DIR}/reg_ca" 2>/dev/null || true
+    
     # Step 3: Clean up all PID files
     echo "  3. Removing PID files..."
     rm -f /tmp/keylime-verifier.pid 2>/dev/null || true

@@ -69,16 +69,78 @@ def generate_proto_stubs():
         print("Install protoc: https://grpc.io/docs/protoc-installation/")
         return False
 
-def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
+def wait_for_agent_svid_in_logs(agent_log_path="/tmp/spire-agent.log", max_wait_seconds=60, check_interval=2):
+    """
+    Wait for SPIRE agent to have an SVID in the logs before proceeding.
+    
+    Args:
+        agent_log_path: Path to SPIRE agent log file
+        max_wait_seconds: Maximum time to wait in seconds (default: 60)
+        check_interval: Interval between log checks in seconds (default: 2)
+    
+    Returns:
+        bool: True if SVID found in logs, False if timeout
+    """
+    import time
+    
+    if not os.path.exists(agent_log_path):
+        print(f"  ⚠ Agent log file not found at {agent_log_path}")
+        print("  Will proceed anyway - agent may be logging elsewhere")
+        return True  # Proceed anyway
+    
+    print("  Waiting for SPIRE agent to have SVID in logs...")
+    print(f"  Checking log file: {agent_log_path}")
+    
+    start_time = time.time()
+    check_count = 0
+    
+    # Patterns that indicate agent has SVID ready
+    svid_patterns = [
+        "Node attestation was successful",
+        "SVID loaded",
+        "spiffe://",
+    ]
+    
+    while time.time() - start_time < max_wait_seconds:
+        try:
+            with open(agent_log_path, 'r') as f:
+                log_content = f.read()
+                
+            # Check if any SVID pattern is found
+            for pattern in svid_patterns:
+                if pattern in log_content:
+                    elapsed = int(time.time() - start_time)
+                    print(f"  ✓ Found SVID indicator in agent logs after {elapsed}s")
+                    # Wait a bit more to allow registration entries to propagate
+                    # Agent syncs with server every ~5 seconds, so wait a bit longer
+                    print("  Waiting additional 8s for registration entries to propagate...")
+                    time.sleep(8)
+                    return True
+        except Exception as e:
+            # If we can't read the log, continue waiting
+            pass
+        
+        check_count += 1
+        if check_count % 5 == 0:  # Show progress every 5 checks
+            elapsed = int(time.time() - start_time)
+            print(f"  ... still waiting for SVID in logs ({elapsed}s/{max_wait_seconds}s)...")
+        
+        time.sleep(check_interval)
+    
+    elapsed = int(time.time() - start_time)
+    print(f"  ⚠ Timeout waiting for SVID in agent logs after {elapsed}s")
+    print("  Will proceed anyway - agent may have SVID but not logged it yet")
+    return False  # Timeout, but we'll still try
+
+def fetch_from_workload_api_grpc(max_wait_seconds=60):
     """
     Unified-Identity - Phase 3: Fetch SVID from SPIRE Agent Workload API using gRPC directly.
     
     This function uses gRPC to call the Workload API, allowing access to AttestedClaims
-    from the protobuf response.
+    from the protobuf response. It waits for the agent to have an SVID in logs before calling.
     
     Args:
-        max_retries: Maximum number of retries if "no identity issued" error occurs (default: 3)
-        retry_delay: Delay in seconds between retries (default: 5)
+        max_wait_seconds: Maximum time to wait for agent SVID in logs (default: 60)
     
     Returns:
         tuple: (cert_pem, attested_claims_json) or (None, None) on error
@@ -133,94 +195,71 @@ def fetch_from_workload_api_grpc(max_retries=3, retry_delay=5):
         # For streaming RPCs in Python gRPC, metadata is passed as a list of (key, value) tuples
         grpc_metadata = [('workload.spiffe.io', 'true')]
         
-        # Call FetchX509SVID (it's a streaming RPC) with metadata
-        # Python gRPC accepts metadata as a list of (key, value) tuples for streaming calls
-        # We'll retry if we get "no identity issued" errors (entry hasn't propagated yet)
+        # Wait for agent to have SVID in logs before calling gRPC
+        # This ensures the agent is ready before we make the call
+        wait_for_agent_svid_in_logs(max_wait_seconds=max_wait_seconds)
+        
+        print()
+        print("Calling FetchX509SVID...")
+        print("  (Agent should have SVID ready based on log check)")
         
         import time
         
-        for attempt in range(max_retries + 1):
-            if attempt > 0:
-                print(f"  Retry attempt {attempt}/{max_retries} (waiting {retry_delay}s for entry to propagate)...")
-                time.sleep(retry_delay)
-            else:
-                print("Calling FetchX509SVID...")
-                print("  (Waiting for agent to fetch SVID from server - this may take a few seconds...)")
-            
-            # The agent needs time to:
-            # 1. Attest this process (extract UID, etc.)
-            # 2. Match selectors to registration entry
-            # 3. Fetch SVID from server if not cached
-            # For streaming RPCs, the agent will send updates when SVID becomes available
-            # The first response might raise "no identity issued" if entry hasn't propagated yet
-            
-            try:
-                responses = stub.FetchX509SVID(request, metadata=grpc_metadata)
-                
-                # Get the first response (streaming may send multiple updates)
-                # The agent will send updates when SVID becomes available
-                response = None
-                max_wait_updates = 20  # Wait for up to 20 updates (agent sends updates periodically)
-                update_count = 0
-                
-                for resp in responses:
-                    update_count += 1
-                    if resp.svids and len(resp.svids) > 0:
-                        response = resp
-                        if attempt > 0:
-                            print(f"  ✓ SVID received after retry {attempt} (update {update_count})")
-                        else:
-                            print(f"  ✓ SVID received after {update_count} update(s)")
-                        break
-                    
-                    # If we've waited too long, break and retry
-                    if update_count >= max_wait_updates:
-                        if attempt < max_retries:
-                            print(f"  ⚠ No SVID after {max_wait_updates} updates - will retry...")
-                            break  # Break inner loop to retry
-                        else:
-                            print(f"  ⚠ No SVID after {max_wait_updates} updates and {max_retries} retries")
-                            print("  This usually means:")
-                            print("    1. Registration entry hasn't propagated to agent yet")
-                            print("    2. Process selectors don't match the entry")
-                            print("    3. Agent hasn't fetched SVID from server yet")
-                            print("  Try:")
-                            print("    - Wait a few more seconds and retry manually")
-                            print("    - Check agent logs: tail -20 /tmp/spire-agent.log")
-                            print("    - Verify entry: ../spire/bin/spire-server entry show -spiffeID spiffe://example.org/python-app")
-                            return None, None
-                    
-                    # Show progress for long waits
-                    if update_count % 5 == 0:
-                        print(f"  ... still waiting (update {update_count}/{max_wait_updates})...")
-                
-                # If we got a response, break out of retry loop
-                if response:
-                    break
-                    
-            except grpc.RpcError as e:
-                # If we get a permission denied error, the entry hasn't propagated yet
-                if e.code() == grpc.StatusCode.PERMISSION_DENIED:
-                    error_msg = str(e.details()) if e.details() else str(e)
-                    if "no identity issued" in error_msg.lower():
-                        if attempt < max_retries:
-                            print(f"  ⚠ Got 'no identity issued' error (attempt {attempt + 1}/{max_retries + 1})")
-                            print(f"     Entry may not have propagated yet - will retry in {retry_delay}s...")
-                            continue  # Retry
-                        else:
-                            print("  ⚠ Got 'no identity issued' error after all retries")
-                            print("  This is expected if the entry was just created.")
-                            print("  The agent syncs with the server every ~5 seconds.")
-                            print("  Recommendation: Wait 5-10 seconds after creating the entry before calling gRPC.")
-                            return None, None
-                # Re-raise other errors
-                raise
+        # The agent needs time to:
+        # 1. Attest this process (extract UID, etc.)
+        # 2. Match selectors to registration entry
+        # 3. Fetch SVID from server if not cached
+        # For streaming RPCs, the agent will send updates when SVID becomes available
         
-        if not response:
-            # If we didn't get a response after all retries, it might be a timing issue
-            print("  ⚠ No SVID received after all retries - this might be a timing issue")
-            print("  The spiffe library version handles retries automatically")
-            return None, None
+        try:
+            responses = stub.FetchX509SVID(request, metadata=grpc_metadata)
+            
+            # Get the first response (streaming may send multiple updates)
+            # The agent will send updates when SVID becomes available
+            response = None
+            max_wait_updates = 20  # Wait for up to 20 updates (agent sends updates periodically)
+            update_count = 0
+            
+            for resp in responses:
+                update_count += 1
+                if resp.svids and len(resp.svids) > 0:
+                    response = resp
+                    print(f"  ✓ SVID received after {update_count} update(s)")
+                    break
+                
+                # If we've waited too long, give up
+                if update_count >= max_wait_updates:
+                    print(f"  ⚠ No SVID after {max_wait_updates} updates")
+                    print("  This usually means:")
+                    print("    1. Registration entry hasn't propagated to agent yet")
+                    print("    2. Process selectors don't match the entry")
+                    print("    3. Agent hasn't fetched SVID from server yet")
+                    print("  Try:")
+                    print("    - Check agent logs: tail -20 /tmp/spire-agent.log")
+                    print("    - Verify entry: ../spire/bin/spire-server entry show -spiffeID spiffe://example.org/python-app")
+                    return None, None
+                
+                # Show progress for long waits
+                if update_count % 5 == 0:
+                    print(f"  ... still waiting (update {update_count}/{max_wait_updates})...")
+            
+            if not response:
+                print("  ⚠ No SVID received from agent")
+                print("  Check agent logs for details: tail -20 /tmp/spire-agent.log")
+                return None, None
+                    
+        except grpc.RpcError as e:
+            # If we get a permission denied error, log it and return
+            if e.code() == grpc.StatusCode.PERMISSION_DENIED:
+                error_msg = str(e.details()) if e.details() else str(e)
+                if "no identity issued" in error_msg.lower():
+                    print("  ⚠ Got 'no identity issued' error")
+                    print("  This means the agent doesn't have an SVID for this workload yet.")
+                    print("  Check agent logs: tail -20 /tmp/spire-agent.log")
+                    print("  Verify registration entry matches this process's selectors")
+                    return None, None
+            # Re-raise other errors
+            raise
         
         if not response.svids:
             print("Error: No SVIDs in response")
