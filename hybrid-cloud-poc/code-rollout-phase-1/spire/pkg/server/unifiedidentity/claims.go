@@ -37,35 +37,42 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 	}
 	claims["grc.workload"] = workload
 
-	tpm := map[string]any{}
-	if sovereignAttestation != nil {
-		if sovereignAttestation.AppKeyPublic != "" {
-			tpm["app-key-public"] = sovereignAttestation.AppKeyPublic
+	// Unified-Identity - Phase 3: TPM attestation and geolocation are ONLY for agent SVIDs
+	// Workload SVIDs should NOT include TPM attestation or geolocation - those are covered by the SPIRE agent
+	// Only include TPM attestation and geolocation for agent SVIDs (KeySourceTPMApp)
+	if keySource == KeySourceTPMApp {
+		tpm := map[string]any{}
+		if sovereignAttestation != nil {
+			if sovereignAttestation.AppKeyPublic != "" {
+				tpm["app-key-public"] = sovereignAttestation.AppKeyPublic
+			}
+			if len(sovereignAttestation.AppKeyCertificate) > 0 {
+				tpm["app-key-certificate"] = base64.StdEncoding.EncodeToString(sovereignAttestation.AppKeyCertificate)
+			}
+			if sovereignAttestation.TpmSignedAttestation != "" {
+				tpm["quote"] = sovereignAttestation.TpmSignedAttestation
+			}
+			if sovereignAttestation.ChallengeNonce != "" {
+				tpm["challenge-nonce"] = sovereignAttestation.ChallengeNonce
+			}
 		}
-		if len(sovereignAttestation.AppKeyCertificate) > 0 {
-			tpm["app-key-certificate"] = base64.StdEncoding.EncodeToString(sovereignAttestation.AppKeyCertificate)
-		}
-		if sovereignAttestation.TpmSignedAttestation != "" {
-			tpm["quote"] = sovereignAttestation.TpmSignedAttestation
-		}
-		if sovereignAttestation.ChallengeNonce != "" {
-			tpm["challenge-nonce"] = sovereignAttestation.ChallengeNonce
-		}
-	}
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Structure geolocation according to federated-jwt.md schema
-	// Geolocation is NOT part of grc.tpm-attestation - it's a separate top-level claim
-	if attestedClaims != nil && attestedClaims.Geolocation != "" {
-		geo := buildGeolocationClaim(attestedClaims.Geolocation, sovereignAttestation != nil)
-		if geo != nil {
-			claims["grc.geolocation"] = geo
+		// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+		// Structure geolocation according to federated-jwt.md schema
+		// Geolocation is NOT part of grc.tpm-attestation - it's a separate top-level claim
+		// Only include geolocation in agent SVIDs
+		if attestedClaims != nil && attestedClaims.Geolocation != "" {
+			geo := buildGeolocationClaim(attestedClaims.Geolocation, sovereignAttestation != nil)
+			if geo != nil {
+				claims["grc.geolocation"] = geo
+			}
+		}
+
+		if len(tpm) > 0 {
+			claims["grc.tpm-attestation"] = tpm
 		}
 	}
-
-	if len(tpm) > 0 {
-		claims["grc.tpm-attestation"] = tpm
-	}
+	// For KeySourceWorkload: Only include grc.workload (no TPM attestation, no geolocation)
 
 	return json.Marshal(claims)
 }

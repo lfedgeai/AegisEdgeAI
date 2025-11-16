@@ -12,6 +12,7 @@ Requirements:
 import os
 import sys
 import json
+import subprocess
 from pathlib import Path
 
 try:
@@ -268,15 +269,224 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
         # Get the first SVID
         svid = response.svids[0]
         
-        # Extract certificate (it's DER-encoded bytes)
+        # Unified-Identity - Phase 3: Check bundle for agent SVID
+        # The bundle field contains the trust domain bundle (root CA)
+        # We'll also check if agent SVID might be available elsewhere
+        
+        # Extract certificate chain (SPIRE automatically includes full chain in x509_svid)
         from cryptography import x509
         from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.backends import default_backend
+        
         cert_der = svid.x509_svid
-        cert = x509.load_der_x509_certificate(cert_der)
-        cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM).decode('utf-8')
+        bundle_der = svid.bundle if hasattr(svid, 'bundle') and svid.bundle else None
+        
+        # Unified-Identity - Phase 3: SPIRE automatically returns the full certificate chain
+        # The x509_svid field contains DER-encoded certificate chain:
+        #   - Workload SVID (leaf certificate) 
+        #   - Agent SVID (intermediate certificate that signed the workload)
+        # SPIRE agent/server code automatically includes the agent SVID in the chain
+        
+        try:
+            # SPIRE automatically includes the full certificate chain in x509_svid
+            # According to workload.proto: "ASN.1 DER encoded certificate chain. MAY include
+            # intermediates, the leaf certificate (or SVID itself) MUST come first."
+            # The DER bytes contain concatenated certificates: workload + agent (if included)
+            cert_der_bytes = bytes(cert_der)
+            certs = []
+            offset = 0
+            max_iterations = 10  # Safety limit
+            
+            # Parse all certificates from concatenated DER bytes
+            # SPIRE sends certificates as concatenated DER, so we iterate until we've parsed all
+            # We need to parse the DER structure to find the exact length of each certificate
+            iteration = 0
+            while offset < len(cert_der_bytes) and iteration < max_iterations:
+                iteration += 1
+                
+                # Check if we have enough bytes for a certificate header
+                if offset + 4 > len(cert_der_bytes):
+                    break
+                
+                # DER certificates start with SEQUENCE tag (0x30)
+                if cert_der_bytes[offset] != 0x30:
+                    if certs:
+                        # We've parsed at least one cert, so we're likely done
+                        break
+                    else:
+                        raise ValueError(f"Invalid DER certificate start at offset {offset}: expected 0x30, got 0x{cert_der_bytes[offset]:02x}")
+                
+                # Parse DER length field to get the exact certificate length
+                # Length can be short form (1 byte) or long form (2+ bytes)
+                length_offset = offset + 1
+                if length_offset >= len(cert_der_bytes):
+                    break
+                
+                first_length_byte = cert_der_bytes[length_offset]
+                
+                if first_length_byte & 0x80 == 0:
+                    # Short form: length is in the single byte
+                    cert_content_length = first_length_byte
+                    cert_total_length = 1 + 1 + cert_content_length  # tag + length + content
+                else:
+                    # Long form: first byte indicates number of length bytes
+                    length_bytes_count = first_length_byte & 0x7F
+                    if length_bytes_count == 0 or length_bytes_count > 4:
+                        # Invalid length encoding
+                        if certs:
+                            break
+                        else:
+                            raise ValueError(f"Invalid DER length encoding at offset {length_offset}")
+                    
+                    if length_offset + 1 + length_bytes_count > len(cert_der_bytes):
+                        break
+                    
+                    # Read the length bytes (big-endian)
+                    cert_content_length = 0
+                    for i in range(length_bytes_count):
+                        cert_content_length = (cert_content_length << 8) | cert_der_bytes[length_offset + 1 + i]
+                    
+                    cert_total_length = 1 + 1 + length_bytes_count + cert_content_length  # tag + length_byte + length_bytes + content
+                
+                # Extract the certificate bytes
+                cert_end = offset + cert_total_length
+                if cert_end > len(cert_der_bytes):
+                    # Not enough bytes for this certificate
+                    if certs:
+                        break
+                    else:
+                        raise ValueError(f"Incomplete certificate at offset {offset}: need {cert_total_length} bytes, have {len(cert_der_bytes) - offset}")
+                
+                cert_bytes = cert_der_bytes[offset:cert_end]
+                
+                # Parse the certificate
+                try:
+                    cert = x509.load_der_x509_certificate(cert_bytes, default_backend())
+                    certs.append(cert)
+                except Exception as parse_error:
+                    if certs:
+                        # We've parsed at least one cert, so if parsing fails, we're likely done
+                        break
+                    else:
+                        raise parse_error
+                
+                # Move to next certificate
+                offset = cert_end
+                
+                # If we've consumed all bytes, we're done
+                if offset >= len(cert_der_bytes):
+                    break
+            
+            if not certs:
+                raise ValueError("No certificates found in DER bytes")
+            
+            # Convert all certificates to PEM and concatenate
+            cert_pem_chain = ""
+            for cert in certs:
+                cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM).decode('utf-8')
+                cert_pem_chain += cert_pem
+            
+            cert_count = len(certs)
+            cert = certs[0]  # Use first cert (workload) for claims extraction
+            
+            # Unified-Identity - Phase 3: If only workload certificate found, fetch agent SVID
+            # According to architecture, the chain should be: Workload SVID + Agent SVID
+            # SPIRE's Workload API may not include agent SVID in x509_svid field
+            # So we need to fetch it separately and append it to complete the chain
+            if cert_count == 1:
+                # Check if there are more bytes after the first certificate
+                first_cert_der = certs[0].public_bytes(encoding=serialization.Encoding.DER)
+                if len(cert_der_bytes) > len(first_cert_der):
+                    print(f"  ⚠ Debug: DER bytes length ({len(cert_der_bytes)}) > first cert length ({len(first_cert_der)})")
+                    print(f"  ⚠ Debug: There may be additional certificates, but parsing failed")
+                    print(f"  ⚠ Debug: Remaining bytes: {len(cert_der_bytes) - len(first_cert_der)}")
+                
+                # Unified-Identity - Phase 3: Get agent SVID to complete the chain per architecture
+                # According to architecture doc, the chain should include: Workload SVID + Agent SVID
+                workload_cert = certs[0]
+                workload_issuer = workload_cert.issuer
+                
+                print(f"  Fetching agent SVID to complete certificate chain (per architecture)...")
+                print(f"  Workload SVID issuer: {workload_issuer.rfc4514_string()}")
+                
+                agent_svid_found = False
+                
+                # Method 1: Try to get agent SVID from SPIRE server via agent list and SVID mint
+                try:
+                    script_dir = Path(__file__).parent
+                    spire_server_bin = script_dir.parent / "spire" / "bin" / "spire-server"
+                    
+                    if not spire_server_bin.exists():
+                        for path in [Path("/opt/spire/bin/spire-server"), Path("/usr/local/bin/spire-server")]:
+                            if path.exists():
+                                spire_server_bin = path
+                                break
+                    
+                    if spire_server_bin.exists():
+                        # List agents to get agent SPIFFE ID
+                        list_result = subprocess.run(
+                            [str(spire_server_bin), "agent", "list", "-socketPath", "/tmp/spire-server/private/api.sock", "-output", "json"],
+                            capture_output=True,
+                            text=True,
+                            timeout=10
+                        )
+                        
+                        if list_result.returncode == 0:
+                            import json as json_lib
+                            try:
+                                agents_data = json_lib.loads(list_result.stdout)
+                                if agents_data and 'agents' in agents_data and len(agents_data['agents']) > 0:
+                                    # Get agent SPIFFE ID
+                                    agent_spiffe_id = None
+                                    for agent in agents_data['agents']:
+                                        if 'id' in agent:
+                                            if isinstance(agent['id'], dict):
+                                                td = agent['id'].get('trust_domain', '')
+                                                path = agent['id'].get('path', '')
+                                                if td and path:
+                                                    agent_spiffe_id = f"spiffe://{td}{path}"
+                                            elif isinstance(agent['id'], str) and '/spire/agent/' in agent['id']:
+                                                agent_spiffe_id = agent['id']
+                                        
+                                        if agent_spiffe_id and '/spire/agent/' in agent_spiffe_id:
+                                            print(f"  Found agent SPIFFE ID: {agent_spiffe_id}")
+                                            
+                                            # Try to mint/get agent SVID from server
+                                            # Note: This may require server API access which workloads don't have
+                                            # For now, we document that SPIRE should include it automatically
+                                            print(f"  ⚠ Note: Cannot access agent SVID via server API (requires server credentials)")
+                                            print(f"  SPIRE server/agent code should automatically include agent SVID in chain")
+                                            break
+                            except Exception as e:
+                                pass
+                except Exception:
+                    pass
+                
+                # Since we can't get agent SVID via available APIs, document the limitation
+                if not agent_svid_found:
+                    print(f"  ⚠ Agent SVID not available via Workload API or Server API (workload access)")
+                    print(f"  According to architecture, SPIRE should include agent SVID in x509_svid chain")
+                    print(f"  This may require SPIRE server/agent code modifications to include it automatically")
+            
+        except Exception as e:
+            # Fallback: try parsing as single certificate (for compatibility)
+            try:
+                cert = x509.load_der_x509_certificate(cert_der, default_backend())
+                cert_pem_chain = cert.public_bytes(encoding=serialization.Encoding.PEM).decode('utf-8')
+                cert_count = 1
+                print(f"  ⚠ Warning: Could not parse certificate chain, got single certificate: {e}")
+                print(f"  SPIRE should automatically include agent SVID in the chain")
+            except Exception as e2:
+                raise Exception(f"Failed to parse certificate(s) from DER bytes: {e2}")
         
         print(f"✓ SVID fetched successfully")
         print(f"  SPIFFE ID: {svid.spiffe_id}")
+        print(f"  Certificate chain: {cert_count} certificate(s)")
+        if cert_count >= 2:
+            print(f"  ✓ Full chain received: Workload SVID + Agent SVID (as expected)")
+        elif cert_count == 1:
+            print(f"  ⚠ Warning: Only workload certificate in chain")
+            print(f"  SPIRE should automatically include agent SVID in the chain")
         print()
         
         # Unified-Identity - Phase 3: Extract Unified Identity claims from certificate extension
@@ -331,7 +541,7 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
             claims_json = None
         
         channel.close()
-        return cert_pem, claims_json
+        return cert_pem_chain, claims_json
         
     except Exception as e:
         print(f"Error fetching SVID via gRPC: {e}")
@@ -369,6 +579,7 @@ def main():
     
     if cert_pem:
         cert_file = output_dir / "svid.pem"
+        # Write the full certificate chain (workload + agent if available)
         cert_file.write_text(cert_pem)
         
         # Save AttestedClaims if available (for reference, but claims are in certificate extension)

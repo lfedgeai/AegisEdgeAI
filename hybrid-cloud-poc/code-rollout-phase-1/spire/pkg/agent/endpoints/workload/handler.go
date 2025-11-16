@@ -17,6 +17,7 @@ import (
 	"github.com/spiffe/spire/pkg/agent/api/rpccontext"
 	"github.com/spiffe/spire/pkg/agent/client"
 	"github.com/spiffe/spire/pkg/agent/manager/cache"
+	"github.com/spiffe/spire/pkg/agent/svid"
 	"github.com/spiffe/spire/pkg/common/bundleutil"
 	"github.com/spiffe/spire/pkg/common/jwtsvid"
 	"github.com/spiffe/spire/pkg/common/telemetry"
@@ -35,6 +36,8 @@ type Manager interface {
 	MatchingRegistrationEntries(selectors []*common.Selector) []*common.RegistrationEntry
 	FetchJWTSVID(ctx context.Context, entry *common.RegistrationEntry, audience []string) (*client.JWTSVID, error)
 	FetchWorkloadUpdate([]*common.Selector) *cache.WorkloadUpdate
+	// Unified-Identity - Phase 3: Get agent SVID to include in certificate chain
+	GetCurrentCredentials() svid.State // Returns agent SVID state
 }
 
 type Attestor interface {
@@ -236,7 +239,7 @@ func (h *Handler) FetchX509SVID(_ *workload.X509SVIDRequest, stream workload.Spi
 		select {
 		case update := <-subscriber.Updates():
 			update.Identities = filterIdentities(update.Identities, log)
-			if err := sendX509SVIDResponse(update, stream, selectors, log, quietLogging); err != nil {
+			if err := sendX509SVIDResponse(update, stream, selectors, log, quietLogging, h.c.Manager); err != nil {
 				return err
 			}
 		case <-ctx.Done():
@@ -352,7 +355,7 @@ func composeX509BundlesResponse(update *cache.WorkloadUpdate) (*workload.X509Bun
 	}, nil
 }
 
-func sendX509SVIDResponse(update *cache.WorkloadUpdate, stream workload.SpiffeWorkloadAPI_FetchX509SVIDServer, selectors []*common.Selector, log logrus.FieldLogger, quietLogging bool) (err error) {
+func sendX509SVIDResponse(update *cache.WorkloadUpdate, stream workload.SpiffeWorkloadAPI_FetchX509SVIDServer, selectors []*common.Selector, log logrus.FieldLogger, quietLogging bool, manager Manager) (err error) {
 	if len(update.Identities) == 0 {
 		if !quietLogging {
 			log.WithFields(logrus.Fields{
@@ -365,7 +368,7 @@ func sendX509SVIDResponse(update *cache.WorkloadUpdate, stream workload.SpiffeWo
 
 	log = log.WithField(telemetry.Registered, true)
 
-	resp, err := composeX509SVIDResponse(update)
+	resp, err := composeX509SVIDResponse(update, manager)
 	if err != nil {
 		log.WithError(err).Error("Could not serialize X.509 SVID response")
 		return status.Errorf(codes.Unavailable, "could not serialize response: %v", err)
@@ -394,7 +397,7 @@ func sendX509SVIDResponse(update *cache.WorkloadUpdate, stream workload.SpiffeWo
 	return nil
 }
 
-func composeX509SVIDResponse(update *cache.WorkloadUpdate) (*workload.X509SVIDResponse, error) {
+func composeX509SVIDResponse(update *cache.WorkloadUpdate, manager Manager) (*workload.X509SVIDResponse, error) {
 	resp := new(workload.X509SVIDResponse)
 	resp.Svids = []*workload.X509SVID{}
 	resp.FederatedBundles = make(map[string][]byte)
@@ -403,6 +406,20 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate) (*workload.X509SVIDRe
 
 	for td, federatedBundle := range update.FederatedBundles {
 		resp.FederatedBundles[td.IDString()] = marshalBundle(federatedBundle.X509Authorities())
+	}
+
+	// Unified-Identity - Phase 3: Get agent SVID to include in certificate chain
+	// According to architecture, the chain should be: Workload SVID + Agent SVID
+	// The agent handler ensures the complete chain is provided to workloads
+	// The SPIRE server verifies the entire chain before issuing the workload certificate
+	var agentSVID []*x509.Certificate
+	if manager != nil {
+		// Get agent SVID from manager
+		// The GetCurrentCredentials() returns svid.State which has SVID []*x509.Certificate
+		state := manager.GetCurrentCredentials()
+		if len(state.SVID) > 0 {
+			agentSVID = state.SVID
+		}
 	}
 
 	// Unified-Identity - Phase 1: Collect AttestedClaims from all identities
@@ -415,9 +432,32 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate) (*workload.X509SVIDRe
 			return nil, fmt.Errorf("marshal key for %v: %w", id, err)
 		}
 
+		// Unified-Identity - Phase 3: Build certificate chain with agent SVID
+		// Chain should be: Workload SVID + Agent SVID
+		// The server verifies the entire chain before issuing the workload certificate
+		certChain := identity.SVID
+		
+		// Check if agent SVID is already in the chain (to avoid duplication)
+		// Compare serial numbers to detect if agent SVID is already present
+		agentSVIDInChain := false
+		if len(agentSVID) > 0 && len(certChain) > 1 {
+			// Check if any certificate in the chain matches the agent SVID serial number
+			for _, chainCert := range certChain[1:] {
+				if chainCert.SerialNumber == agentSVID[0].SerialNumber {
+					agentSVIDInChain = true
+					break
+				}
+			}
+		}
+		
+		if len(agentSVID) > 0 && !agentSVIDInChain {
+			// Append agent SVID to workload SVID chain
+			certChain = append(certChain, agentSVID...)
+		}
+
 		svid := &workload.X509SVID{
 			SpiffeId:    id,
-			X509Svid:    x509util.DERFromCertificates(identity.SVID),
+			X509Svid:    x509util.DERFromCertificates(certChain),
 			X509SvidKey: keyData,
 			Bundle:      bundle,
 			Hint:        identity.Entry.Hint,

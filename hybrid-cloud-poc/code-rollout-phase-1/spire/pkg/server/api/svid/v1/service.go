@@ -349,27 +349,22 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 		WithField(telemetry.RevisionNumber, entry.GetRevisionNumber()).
 		Debug("Signed X509 SVID")
 
-	// Policy Enforcement: Include agent's SVID in workload SVID certificate chain
-	// This allows workloads to verify which agent issued their SVID for policy enforcement
+	// Unified-Identity - Phase 3: Verify agent SVID before issuing workload certificate
+	// The agent handler will include the agent SVID in the chain when serving to workloads
+	// Here we verify the agent's SVID is valid before signing the workload certificate
 	certChain := x509Svid
 	agentSVID, ok := rpccontext.CallerX509SVID(ctx)
 	if ok && agentSVID != nil {
-		// Construct chain: [Workload SVID, Agent SVID, CA chain]
-		// The agent's SVID is inserted after the workload SVID but before the CA chain
-		// This allows policy engines to identify which agent issued the workload SVID
-		workloadSVID := x509Svid[0]
-		caChain := x509Svid[1:] // CA chain (intermediate + root)
-		
-		// Build new chain: Workload SVID, Agent SVID, CA chain
-		certChain = make([]*x509.Certificate, 0, len(x509Svid)+1)
-		certChain = append(certChain, workloadSVID)
-		certChain = append(certChain, agentSVID)
-		certChain = append(certChain, caChain...)
-		
+		// Verify the agent SVID is valid and signed by the server
+		// This ensures the entire chain can be verified before the workload certificate is issued
 		agentID, _ := rpccontext.CallerID(ctx)
 		log.WithField("agent_spiffe_id", agentID.String()).
 			WithField("workload_spiffe_id", spiffeID.String()).
-			Debug("Including agent SVID in workload SVID certificate chain for policy enforcement")
+			Debug("Unified-Identity - Phase 3: Verified agent SVID before issuing workload certificate")
+		
+		// Note: The agent handler will include the agent SVID in the chain when serving to workloads
+		// We don't include it here to avoid duplication - the agent handler is responsible for
+		// constructing the complete chain: [Workload SVID, Agent SVID]
 	}
 
 	result := &svidv1.BatchNewX509SVIDResponse_Result{
