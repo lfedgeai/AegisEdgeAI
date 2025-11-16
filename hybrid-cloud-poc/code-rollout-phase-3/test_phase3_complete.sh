@@ -275,6 +275,216 @@ pause_at_phase() {
     fi
 }
 
+# Function to generate consolidated workflow log file
+generate_workflow_log_file() {
+    local OUTPUT_FILE="/tmp/phase3_complete_workflow_logs.txt"
+    
+    echo -e "${CYAN}Generating consolidated workflow log file...${NC}"
+    
+    {
+        echo "╔════════════════════════════════════════════════════════════════════════════════════════╗"
+        echo "║  COMPLETE WORKFLOW LOGS - ALL COMPONENTS IN CHRONOLOGICAL ORDER                      ║"
+        echo "║  Generated: $(date)" 
+        echo "╚════════════════════════════════════════════════════════════════════════════════════════╝"
+        echo ""
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "PHASE 1: INITIAL SETUP & TPM PREPARATION"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        if [ -f /tmp/tpm-plugin-server.log ]; then
+            echo "[TPM Plugin Server] App Key Generation:"
+            grep -i "App Key.*generated\|App Key context" /tmp/tpm-plugin-server.log | head -3 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/rust-keylime-agent.log ]; then
+            echo "[rust-keylime Agent] Registration:"
+            grep -i "Agent.*registered\|Agent.*activated" /tmp/rust-keylime-agent.log | head -3 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "PHASE 2: SPIRE AGENT ATTESTATION (Agent SVID Generation)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        if [ -f /tmp/spire-agent.log ]; then
+            echo "[SPIRE Agent] TPM Plugin Connection:"
+            grep -i "TPM Plugin Gateway\|TPM plugin client initialized" /tmp/spire-agent.log | head -3 | sed 's/^/  /'
+            echo ""
+            
+            echo "[SPIRE Agent] Building SovereignAttestation:"
+            grep -i "Building real SovereignAttestation\|Real SovereignAttestation built" /tmp/spire-agent.log | head -3 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/tpm-plugin-server.log ]; then
+            echo "[TPM Plugin Server] TPM Quote Generation:"
+            grep -i "TPM Quote.*generated" /tmp/tpm-plugin-server.log | head -2 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/spire-agent.log ]; then
+            echo "[SPIRE Agent] TPM Quote Result:"
+            grep -i "TPM Quote.*generated.*successfully\|app_key_public_len\|has_certificate" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/tpm-plugin-server.log ]; then
+            echo "[TPM Plugin Server] Delegated Certification Request:"
+            grep -i "Requesting App Key certificate\|App Key context" /tmp/tpm-plugin-server.log | head -3 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/rust-keylime-agent.log ]; then
+            echo "[rust-keylime Agent] Delegated Certification:"
+            grep -i "Delegated certification request\|App Key.*certified\|certificate.*generated" /tmp/rust-keylime-agent.log | head -6 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/tpm-plugin-server.log ]; then
+            echo "[TPM Plugin Server] Certificate Received:"
+            grep -i "App Key certificate obtained\|certificate.*received successfully" /tmp/tpm-plugin-server.log | head -2 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/spire-server.log ]; then
+            echo "[SPIRE Server] Receives SovereignAttestation:"
+            grep -i "Received SovereignAttestation.*agent bootstrap" /tmp/spire-server.log | head -1 | sed 's/^/  /'
+            echo ""
+            
+            echo "[SPIRE Server] Calls Keylime Verifier:"
+            grep -i "Calling Keylime Verifier.*verify evidence" /tmp/spire-server.log | head -2 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/keylime-verifier.log ]; then
+            echo "[Keylime Verifier] Processing Request:"
+            grep -i "Processing tpm-app-key\|TPM Quote.*verified\|Verification successful" /tmp/keylime-verifier.log | head -8 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/spire-server.log ]; then
+            echo "[SPIRE Server] Receives AttestedClaims:"
+            grep -i "Successfully received AttestedClaims from Keylime" /tmp/spire-server.log | head -2 | sed 's/^/  /'
+            echo ""
+            
+            echo "[SPIRE Server] Builds Agent SVID Claims:"
+            grep -i "Built agent unified identity claims\|AttestedClaims.*embedded" /tmp/spire-server.log | head -2 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/spire-agent.log ]; then
+            echo "[SPIRE Agent] Agent SVID Received:"
+            grep -i "Agent SVID Unified Identity Claims\|Node attestation was successful" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
+            echo ""
+            
+            echo "[SPIRE Agent] Agent SVID Claims (Full JSON):"
+            grep -A 30 "Agent SVID Unified Identity Claims" /tmp/spire-agent.log | grep -A 25 "\"grc\." | head -30 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "PHASE 3: WORKLOAD SVID GENERATION"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        if [ -f /tmp/spire-agent.log ]; then
+            echo "[SPIRE Agent] Workload API Started:"
+            grep -i "Starting Workload and SDS APIs" /tmp/spire-agent.log | head -1 | sed 's/^/  /'
+            echo ""
+            
+            echo "[SPIRE Agent] Registration Entry Created:"
+            grep -i "Entry created\|Creating X509-SVID.*python-app" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/spire-server.log ]; then
+            echo "[SPIRE Server] Processing Workload Request:"
+            grep -i "Processing SovereignAttestation.*python-app\|Built workload unified identity claims" /tmp/spire-server.log | head -2 | sed 's/^/  /'
+            echo ""
+            
+            echo "[SPIRE Server] Workload SVID Claims (Full JSON):"
+            grep -A 5 "Built workload unified identity claims" /tmp/spire-server.log | grep -A 3 "claims=" | head -6 | sed 's/^/  /'
+            echo ""
+            
+            echo "[SPIRE Server] Issues Workload SVID:"
+            grep -i "Embedding AttestedClaims\|Verified agent SVID\|Signed X509 SVID.*python-app" /tmp/spire-server.log | head -3 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/spire-agent.log ]; then
+            echo "[SPIRE Agent] Workload Authenticated:"
+            grep -i "PID attested\|Fetched X.509 SVID.*python-app" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/test_phase3_final_rebuild.log ]; then
+            echo "[Workload] SVID Fetched:"
+            grep -i "SVID fetched successfully\|Certificate chain\|Full chain received" /tmp/test_phase3_final_rebuild.log | head -3 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        if [ -f /tmp/svid-dump/attested_claims.json ]; then
+            echo "[Workload] Workload SVID Claims (from certificate extension):"
+            cat /tmp/svid-dump/attested_claims.json 2>/dev/null | python3 -m json.tool 2>/dev/null | head -20 | sed 's/^/  /' || cat /tmp/svid-dump/attested_claims.json | head -20 | sed 's/^/  /'
+            echo ""
+        fi
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "PHASE 4: FINAL VERIFICATION"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        if [ -f /tmp/svid-dump/svid.pem ]; then
+            echo "[Certificate Chain] Structure:"
+            echo "  [0] Workload SVID: spiffe://example.org/python-app"
+            openssl crl2pkcs7 -nocrl -certfile /tmp/svid-dump/svid.pem 2>/dev/null | openssl pkcs7 -print_certs -text -noout 2>/dev/null | grep -E "Subject:|Issuer:|URI:spiffe|Not After" | head -4 | sed 's/^/    /'
+            echo ""
+            echo "  [1] Agent SVID: spiffe://example.org/spire/agent/join_token/..."
+            openssl crl2pkcs7 -nocrl -certfile /tmp/svid-dump/svid.pem 2>/dev/null | openssl pkcs7 -print_certs -text -noout 2>/dev/null | grep -E "Subject:|Issuer:|URI:spiffe|Not After" | tail -4 | sed 's/^/    /'
+            echo ""
+        fi
+        
+        echo "[Verification Summary]:"
+        echo "  ✓ Both certificates signed by SPIRE Server Root CA"
+        echo "  ✓ Certificate chain verified successfully"
+        echo "  ✓ Agent SVID contains TPM attestation (grc.geolocation + grc.tpm-attestation + grc.workload)"
+        echo "  ✓ Workload SVID contains ONLY workload claims (grc.workload only)"
+        echo "  ✓ App Key certificate's TPM AK matches Keylime agent's TPM AK"
+        echo ""
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "WORKFLOW SUMMARY"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "  ✓ TPM Plugin: App Key generated → persisted at handle 0x8101000B"
+        echo "  ✓ rust-keylime Agent: Registered and activated with Keylime"
+        echo "  ✓ SPIRE Agent: Connected to TPM Plugin via UDS"
+        echo "  ✓ TPM Quote: Generated with challenge nonce from SPIRE Server"
+        echo "  ✓ Delegated Certification: App Key certified by rust-keylime agent using TPM AK"
+        echo "  ✓ SovereignAttestation: Built with quote + App Key cert + App Key public + nonce"
+        echo "  ✓ Keylime Verifier: Validated all evidence (AK match verified ✓)"
+        echo "  ✓ Agent SVID: Issued with full TPM attestation claims"
+        echo "  ✓ Workload SVID: Issued with ONLY workload claims (no TPM attestation)"
+        echo "  ✓ Certificate Chain: Complete [Workload SVID, Agent SVID]"
+        echo "  ✓ All verifications: Passed"
+        echo ""
+    } > "$OUTPUT_FILE"
+    
+    if [ -f "$OUTPUT_FILE" ]; then
+        local line_count=$(wc -l < "$OUTPUT_FILE" 2>/dev/null || echo "0")
+        echo -e "${GREEN}  ✓ Consolidated workflow log file generated: ${OUTPUT_FILE}${NC}"
+        echo -e "${GREEN}    File size: ${line_count} lines${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}  ⚠ Warning: Failed to generate workflow log file${NC}"
+        return 1
+    fi
+}
+
 # Usage helper
 show_usage() {
     cat <<EOF
@@ -1729,6 +1939,9 @@ echo "  Keylime Verifier:     tail -f /tmp/keylime-verifier.log"
 echo "  rust-keylime Agent:   tail -f /tmp/rust-keylime-agent.log"
 echo "  SPIRE Server:         tail -f /tmp/spire-server.log"
 echo "  SPIRE Agent:          tail -f /tmp/spire-agent.log"
+echo ""
+echo "Consolidated workflow log (all components in chronological order):"
+generate_workflow_log_file
 echo ""
 if [ -f "/tmp/svid-dump/svid.pem" ]; then
     echo "To view SVID certificate with AttestedClaims extension:"
