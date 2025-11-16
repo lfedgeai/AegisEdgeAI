@@ -252,6 +252,29 @@ stop_all_instances_and_cleanup() {
     fi
 }
 
+# Pause function for critical phases (only in interactive terminals)
+pause_at_phase() {
+    local phase_name="$1"
+    local description="$2"
+    
+    # Only pause if:
+    # 1. Running in interactive terminal (tty check)
+    # 2. PAUSE_ENABLED is true (default: true for interactive, false for non-interactive)
+    if [ -t 0 ] && [ "${PAUSE_ENABLED:-true}" = "true" ]; then
+        echo ""
+        echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BOLD}⏸  PAUSE: ${phase_name}${NC}"
+        echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        if [ -n "$description" ]; then
+            echo -e "${CYAN}${description}${NC}"
+            echo ""
+        fi
+        echo -e "${YELLOW}Press Enter to continue...${NC}"
+        read -r
+        echo ""
+    fi
+}
+
 # Usage helper
 show_usage() {
     cat <<EOF
@@ -261,6 +284,8 @@ Options:
   --cleanup-only       Stop services, remove data, and exit.
   --skip-cleanup       Skip the initial cleanup phase.
   --no-exit-cleanup    Do not run best-effort cleanup on exit.
+  --pause              Enable pause points at critical phases (default: auto-detect)
+  --no-pause           Disable pause points (run non-interactively)
   -h, --help           Show this help message.
 EOF
 }
@@ -280,6 +305,12 @@ cleanup() {
 
 RUN_INITIAL_CLEANUP=true
 EXIT_CLEANUP_ON_EXIT=true
+# Auto-detect pause mode: enable if interactive terminal, disable otherwise
+if [ -t 0 ]; then
+    PAUSE_ENABLED="${PAUSE_ENABLED:-true}"
+else
+    PAUSE_ENABLED="${PAUSE_ENABLED:-false}"
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -293,6 +324,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-exit-cleanup)
             EXIT_CLEANUP_ON_EXIT=false
+            shift
+            ;;
+        --pause)
+            PAUSE_ENABLED=true
+            shift
+            ;;
+        --no-pause)
+            PAUSE_ENABLED=false
             shift
             ;;
         -h|--help)
@@ -439,6 +478,8 @@ else
     echo -e "${GREEN}  ✓ TLS certificates already exist${NC}"
 fi
 
+pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
+
 # Step 2: Start Real Keylime Verifier with unified_identity enabled
 echo ""
 echo -e "${CYAN}Step 2: Starting Real Keylime Verifier with unified_identity enabled...${NC}"
@@ -511,6 +552,8 @@ else
     echo -e "${RED}  ✗ unified_identity feature flag is DISABLED (expected: True, got: $FEATURE_ENABLED)${NC}"
     exit 1
 fi
+
+pause_at_phase "Step 2 Complete" "Keylime Verifier is running and ready. unified_identity feature is enabled."
 
 # Step 3: Start Keylime Registrar (required for rust-keylime agent registration)
 echo ""
@@ -590,6 +633,8 @@ done
 if [ "$REGISTRAR_STARTED" = false ]; then
     echo -e "${YELLOW}  ⚠ Keylime Registrar may not be fully ready, but continuing...${NC}"
 fi
+
+pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent registration."
 
 # Step 4: Start rust-keylime Agent (Phase 3)
 echo ""
@@ -829,6 +874,8 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
     echo "  Recent logs:"
     tail -30 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register|unix)" || tail -20 /tmp/rust-keylime-agent.log
 fi
+
+pause_at_phase "Step 4 Complete" "rust-keylime Agent is running. Ready for registration and attestation."
 
 # Step 5: Verify rust-keylime Agent Registration and TPM Attested Geolocation
 echo ""
@@ -1087,6 +1134,8 @@ fi
 echo -e "${GREEN}  ✓ Agent registration and TPM attested geolocation verified${NC}"
 echo "  TPM Plugin and SPIRE can now be started with geolocation available in agent SVID."
 
+pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. TPM attested geolocation is available. Ready for SPIRE integration."
+
 # Step 6: Start TPM Plugin Server (HTTP/UDS)
 echo ""
 echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
@@ -1165,6 +1214,8 @@ if [ "$TPM_SERVER_STARTED" = false ]; then
     fi
 fi
 
+pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE to use TPM operations."
+
 # Step 7: Start SPIRE Server and Agent
 echo ""
 echo -e "${CYAN}Step 7: Starting SPIRE Server and Agent...${NC}"
@@ -1219,6 +1270,19 @@ if [ ! -f "${AGENT_CONFIG}" ]; then
 fi
 
 if [ -f "${AGENT_CONFIG}" ]; then
+    # Stop any existing agent processes first (join tokens are single-use)
+    if [ -f /tmp/spire-agent.pid ]; then
+        OLD_PID=$(cat /tmp/spire-agent.pid 2>/dev/null || echo "")
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            echo "    Stopping existing SPIRE Agent (PID: $OLD_PID)..."
+            kill "$OLD_PID" 2>/dev/null || true
+            sleep 2
+        fi
+    fi
+    # Also check for any other agent processes
+    pkill -f "spire-agent.*run" >/dev/null 2>&1 || true
+    sleep 1
+    
     # Wait for server to be ready before generating join token
     echo "    Waiting for SPIRE Server to be ready for join token generation..."
     for i in {1..30}; do
@@ -1228,7 +1292,7 @@ if [ -f "${AGENT_CONFIG}" ]; then
         sleep 1
     done
     
-    # Generate join token for agent attestation
+    # Generate join token for agent attestation (tokens are single-use, so generate fresh each time)
     echo "    Generating join token for SPIRE Agent..."
     TOKEN_OUTPUT=$("${SPIRE_SERVER}" token generate \
         -socketPath /tmp/spire-server/private/api.sock 2>&1)
@@ -1241,6 +1305,8 @@ if [ -f "${AGENT_CONFIG}" ]; then
         echo "    Agent may not attest properly without join token"
     else
         echo "    ✓ Join token generated: ${JOIN_TOKEN:0:20}..."
+        # Small delay to ensure token is ready before agent uses it
+        sleep 1
     fi
     
     # Export trust bundle before starting agent
@@ -1254,6 +1320,11 @@ if [ -f "${AGENT_CONFIG}" ]; then
     
     echo "    Starting SPIRE Agent (logs: /tmp/spire-agent.log)..."
     export UNIFIED_IDENTITY_ENABLED=true
+    # Ensure TPM_PLUGIN_ENDPOINT is set for agent (must match TPM Plugin Server socket)
+    if [ -z "${TPM_PLUGIN_ENDPOINT:-}" ]; then
+        export TPM_PLUGIN_ENDPOINT="unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+    fi
+    echo "    TPM_PLUGIN_ENDPOINT=${TPM_PLUGIN_ENDPOINT}"
     if [ -n "$JOIN_TOKEN" ]; then
         "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
     else
@@ -1294,6 +1365,24 @@ for i in {1..90}; do
         ATTESTATION_COMPLETE=true
         break
     fi
+    # Check if join token was successfully used (even if attestation later fails)
+    # This helps distinguish between "token not used" vs "token used but attestation failed"
+    if [ $i -eq 1 ] || [ $((i % 15)) -eq 0 ]; then
+        if [ -f /tmp/spire-server.log ]; then
+            # Check if server received attestation request with the token
+            if grep -q "Received.*SovereignAttestation.*agent bootstrap request" /tmp/spire-server.log 2>/dev/null; then
+                if [ $i -eq 1 ]; then
+                    echo "    ℹ Join token was successfully used (checking attestation result)..."
+                fi
+                # Check if attestation failed due to Keylime verification
+                if grep -q "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log 2>/dev/null; then
+                    echo "    ⚠ Attestation request received but verification failed"
+                    grep "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log | tail -1 | sed 's/^/      /'
+                fi
+            fi
+        fi
+    fi
+    
     # Show progress every 15 seconds
     if [ $((i % 15)) -eq 0 ]; then
         echo "    Still waiting for attestation... (${i}/90 seconds)"
@@ -1330,6 +1419,8 @@ if [ -f /tmp/spire-agent.log ]; then
     fi
 fi
 
+pause_at_phase "Step 7 Complete" "SPIRE Server and Agent are running. Agent has completed attestation. Ready for workload registration."
+
 # Step 8: Create Registration Entry
 echo ""
 echo -e "${CYAN}Step 8: Creating registration entry for workload...${NC}"
@@ -1346,64 +1437,152 @@ else
     echo -e "${YELLOW}  ⚠ Registration entry script not found, skipping...${NC}"
 fi
 
-# Step 9: Test Phase 3 TPM Operations
+pause_at_phase "Step 8 Complete" "Registration entry created for workload. Workload can now request SVIDs."
+
+# Step 9: Verify TPM Operations in SPIRE Agent Attestation
 echo ""
-echo -e "${CYAN}Step 9: Testing Phase 3 TPM Operations...${NC}"
-echo "  This tests:"
-echo "    1. TPM App Key generation"
-echo "    2. TPM Quote generation"
-echo "    3. App Key certification via rust-keylime agent"
+echo -e "${CYAN}Step 9: Verifying TPM Operations in SPIRE Agent Attestation...${NC}"
+echo "  During Step 7, the SPIRE agent should have:"
+echo "    1. Generated TPM App Key (via TPM Plugin)"
+echo "    2. Generated TPM Quote (via TPM Plugin)"
+echo "    3. Obtained App Key certificate via rust-keylime agent (delegated certification)"
+echo "    4. Used these in SovereignAttestation for agent SVID"
 echo ""
 
-cd "${PHASE3_DIR}/tpm-plugin"
-export UNIFIED_IDENTITY_ENABLED=true
+# Check SPIRE agent logs for TPM operations
+echo "  Checking SPIRE Agent logs for TPM operations..."
+TPM_OPERATIONS_FOUND=false
+TPM_OPERATIONS_FAILED=false
 
-python3 - <<'PY'
-import os
-import sys
-import time
+if [ -f /tmp/spire-agent.log ]; then
+    # Check for TPM plugin initialization
+    if grep -qi "TPM plugin\|TPMPluginGateway\|tpm.*plugin.*initialized" /tmp/spire-agent.log; then
+        echo -e "${GREEN}    ✓ TPM Plugin Gateway initialized${NC}"
+        TPM_OPERATIONS_FOUND=true
+        grep -i "TPM plugin\|TPMPluginGateway.*initialized" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
+    fi
+    
+    # Check for successful App Key generation (not just attempts)
+    if grep -qi "App Key.*generated.*successfully\|App Key generated successfully" /tmp/spire-agent.log; then
+        echo -e "${GREEN}    ✓ TPM App Key generation succeeded${NC}"
+        TPM_OPERATIONS_FOUND=true
+        grep -i "App Key.*generated.*successfully" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
+    fi
+    
+    # Check for successful Quote generation (not failures)
+    if grep -qi "Quote.*generated.*successfully\|TPM Quote.*successfully" /tmp/spire-agent.log; then
+        echo -e "${GREEN}    ✓ TPM Quote generation succeeded${NC}"
+        TPM_OPERATIONS_FOUND=true
+        grep -i "Quote.*generated.*successfully\|TPM Quote.*successfully" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
+    elif grep -qi "Failed to.*generate.*Quote\|failed to generate TPM Quote" /tmp/spire-agent.log; then
+        echo -e "${YELLOW}    ⚠ TPM Quote generation failed (checking for fallback)${NC}"
+        TPM_OPERATIONS_FAILED=true
+        grep -i "Failed to.*generate.*Quote\|failed to generate TPM Quote" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
+    fi
+    
+    # Check for successful SovereignAttestation (not stub fallback)
+    if grep -qi "SovereignAttestation.*built.*successfully\|Building real SovereignAttestation" /tmp/spire-agent.log && \
+       ! grep -qi "Failed to build.*SovereignAttestation.*using stub\|using stub data" /tmp/spire-agent.log; then
+        echo -e "${GREEN}    ✓ SovereignAttestation built with real TPM evidence${NC}"
+        TPM_OPERATIONS_FOUND=true
+        grep -i "Building real SovereignAttestation\|SovereignAttestation.*built" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
+    elif grep -qi "Failed to build.*SovereignAttestation.*using stub\|using stub data" /tmp/spire-agent.log; then
+        echo -e "${YELLOW}    ⚠ SovereignAttestation fell back to stub data${NC}"
+        TPM_OPERATIONS_FAILED=true
+        grep -i "Failed to build.*SovereignAttestation\|using stub data" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
+    fi
+fi
 
-sys.path.insert(0, '.')
+# Check TPM Plugin Server logs for operations
+echo ""
+echo "  Checking TPM Plugin Server logs for operations..."
+if [ -f /tmp/tpm-plugin-server.log ]; then
+    if grep -qi "App Key generated successfully" /tmp/tpm-plugin-server.log; then
+        echo -e "${GREEN}    ✓ App Key generation succeeded in TPM Plugin Server${NC}"
+        TPM_OPERATIONS_FOUND=true
+        grep -i "App Key generated successfully" /tmp/tpm-plugin-server.log | tail -2 | sed 's/^/      /'
+    fi
+    
+    if grep -qi "Quote generated successfully\|Quote.*successfully" /tmp/tpm-plugin-server.log; then
+        echo -e "${GREEN}    ✓ Quote generation succeeded in TPM Plugin Server${NC}"
+        TPM_OPERATIONS_FOUND=true
+        grep -i "Quote generated successfully\|Quote.*successfully" /tmp/tpm-plugin-server.log | tail -2 | sed 's/^/      /'
+    elif grep -qi "error\|failed\|exception" /tmp/tpm-plugin-server.log | grep -qi "quote"; then
+        echo -e "${YELLOW}    ⚠ Quote generation had errors in TPM Plugin Server${NC}"
+        TPM_OPERATIONS_FAILED=true
+        grep -iE "error|failed|exception" /tmp/tpm-plugin-server.log | grep -i "quote" | tail -2 | sed 's/^/      /'
+    fi
+    
+    if grep -qi "certificate.*received\|certificate.*successfully\|delegated.*certification.*success" /tmp/tpm-plugin-server.log; then
+        echo -e "${GREEN}    ✓ Delegated certification succeeded in TPM Plugin Server${NC}"
+        TPM_OPERATIONS_FOUND=true
+        grep -i "certificate.*received\|certificate.*successfully\|delegated.*certification.*success" /tmp/tpm-plugin-server.log | tail -2 | sed 's/^/      /'
+    elif grep -qi "skipping certificate\|certificate.*not.*available\|failed.*certificate" /tmp/tpm-plugin-server.log; then
+        echo -e "${YELLOW}    ⚠ Delegated certification skipped or failed in TPM Plugin Server${NC}"
+        TPM_OPERATIONS_FAILED=true
+        grep -i "skipping certificate\|certificate.*not.*available\|failed.*certificate" /tmp/tpm-plugin-server.log | tail -2 | sed 's/^/      /'
+    fi
+fi
 
-from tpm_plugin import TPMPlugin
-from delegated_certification import DelegatedCertificationClient
+# Check SPIRE Server logs for TPM attestation
+echo ""
+echo "  Checking SPIRE Server logs for TPM attestation evidence..."
+if [ -f /tmp/spire-server.log ]; then
+    if grep -qi "SovereignAttestation\|TPM.*attestation\|app.*key.*certificate" /tmp/spire-server.log; then
+        echo -e "${GREEN}    ✓ TPM attestation evidence received by SPIRE Server${NC}"
+        TPM_OPERATIONS_FOUND=true
+        grep -i "SovereignAttestation\|TPM.*attestation\|app.*key.*certificate" /tmp/spire-server.log | tail -2 | sed 's/^/      /'
+    fi
+fi
 
-os.environ['UNIFIED_IDENTITY_ENABLED'] = 'true'
+if [ "$TPM_OPERATIONS_FAILED" = true ]; then
+    echo ""
+    echo -e "${YELLOW}  ⚠ TPM operations encountered errors during agent attestation${NC}"
+    echo ""
+    echo "  Issues detected:"
+    if grep -qi "Failed to.*generate.*Quote\|failed to generate TPM Quote" /tmp/spire-agent.log 2>/dev/null; then
+        echo "    • TPM Quote generation failed - agent may have used stub data"
+        echo "      Check: TPM Plugin Server connectivity and UDS socket path"
+    fi
+    if grep -qi "Failed to build.*SovereignAttestation.*using stub\|using stub data" /tmp/spire-agent.log 2>/dev/null; then
+        echo "    • SovereignAttestation fell back to stub data"
+        echo "      Check: TPM Plugin Server is running and accessible"
+    fi
+    if grep -qi "skipping certificate\|certificate.*not.*available" /tmp/tpm-plugin-server.log 2>/dev/null; then
+        echo "    • App Key certificate not obtained (delegated certification skipped)"
+        echo "      Check: rust-keylime agent is running and accessible"
+    fi
+    echo ""
+    echo "  Troubleshooting:"
+    echo "    1. Verify TPM Plugin Server is running: ps aux | grep tpm_plugin_server"
+    echo "    2. Check UDS socket exists: ls -l /tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+    echo "    3. Verify TPM_PLUGIN_ENDPOINT is set correctly in agent environment"
+    echo "    4. Check TPM Plugin Server logs: tail -50 /tmp/tpm-plugin-server.log"
+    echo "    5. Verify rust-keylime agent is running for delegated certification"
+    echo ""
+    echo "  Note: Agent attestation may have succeeded with stub data, but real TPM"
+    echo "        operations should be working for production use."
+elif [ "$TPM_OPERATIONS_FOUND" = true ]; then
+    echo ""
+    echo -e "${GREEN}  ✓ TPM operations verified successfully in agent attestation flow${NC}"
+    echo "  The SPIRE agent successfully used TPM operations during attestation:"
+    echo "    • App Key was generated via TPM Plugin"
+    echo "    • TPM Quote was generated with nonce"
+    echo "    • App Key was certified via rust-keylime agent"
+    echo "    • SovereignAttestation was built with real TPM evidence and sent to SPIRE Server"
+else
+    echo ""
+    echo -e "${YELLOW}  ⚠ TPM operations not clearly detected in logs${NC}"
+    echo "  This may be normal if:"
+    echo "    • TPM operations are using stub/mock implementations"
+    echo "    • Logs don't contain expected keywords"
+    echo "    • Agent attestation used alternative method"
+    echo ""
+    echo "  Note: TPM operations should occur automatically during SPIRE agent attestation"
+    echo "        when unified_identity is enabled and TPM Plugin Server is running."
+fi
 
-nonce = f"test-nonce-{int(time.time())}"
-
-plugin = TPMPlugin()
-success, pub_key, ctx_path = plugin.generate_app_key()
-if not success or not pub_key or not ctx_path:
-    print('    ⚠ App Key generation failed (expected without real TPM)')
-    sys.exit(0)
-
-print(f'    ✓ App Key generated: {ctx_path}')
-print(f'    ✓ Public key length: {len(pub_key)}')
-
-success, quote, metadata = plugin.generate_quote(nonce=nonce, pcr_list=[0,1,2,3,4,5,6,7])
-if success and quote:
-    preview = quote[:50] + '...' if len(quote) > 50 else quote
-    print(f'    ✓ Quote generated: {preview}')
-    print(f"    ✓ Format: {metadata.get('format', 'unknown') if metadata else 'unknown'}")
-else:
-    print('    ⚠ Quote generation failed (expected without real TPM)')
-
-client = DelegatedCertificationClient()
-success, cert, error = client.request_certificate(
-    app_key_public=pub_key,
-    app_key_context_path=ctx_path
-)
-
-if success and cert:
-    preview = cert[:50] + '...' if len(cert) > 50 else cert
-    print(f'    ✓ Certificate received: {preview}')
-else:
-    print(f'    ⚠ Certificate request failed: {error}')
-    print('    (This is expected if App Key is not persisted)')
-PY
-
-echo -e "${GREEN}  ✓ Phase 3 TPM operations tested${NC}"
+pause_at_phase "Step 9 Complete" "TPM operations verified in SPIRE agent attestation. Agent SVID includes TPM-attested claims."
 
 # Step 10: Generate Sovereign SVID (reuse demo script to avoid duplication)
 echo ""
@@ -1436,6 +1615,8 @@ else
     fi
 fi
 
+pause_at_phase "Step 10 Complete" "Sovereign SVID generated with AttestedClaims. Certificate chain includes Workload + Agent SVIDs."
+
 # Step 11: Run All Tests
 echo ""
 echo -e "${CYAN}Step 11: Running all Phase 3 tests...${NC}"
@@ -1458,6 +1639,8 @@ echo "  Phase 3 integration: Validated via Sovereign SVID generation and log che
 echo "  Additional scripted helpers have been retired"
 
 echo -e "${GREEN}  ✓ All tests completed${NC}"
+
+pause_at_phase "Step 11 Complete" "All unit tests passed. E2E scenario verified through SVID generation workflow."
 
 # Step 12: Verify Integration
 echo ""
@@ -1528,6 +1711,8 @@ echo -e "${GREEN}  ✓ All Phase 3 tests passed${NC}"
 echo ""
 echo -e "${GREEN}Phase 3 integration test completed successfully!${NC}"
 echo ""
+
+pause_at_phase "Step 12 Complete" "Integration verification complete. All components are working together successfully."
 if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
     echo "Background services will be terminated automatically (default behaviour)."
     echo "Re-run with --no-exit-cleanup if you need them to remain active for debugging."

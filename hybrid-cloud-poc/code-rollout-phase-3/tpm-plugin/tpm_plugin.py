@@ -197,9 +197,13 @@ class TPMPlugin:
                         app_key_public = f.read()
                     # Store for later retrieval
                     self._app_key_public = app_key_public
-                    self._app_key_context = str(app_ctx_path)
+                    # Use handle if context file doesn't exist (key is persisted)
+                    if app_ctx_path.exists():
+                        self._app_key_context = str(app_ctx_path)
+                    else:
+                        self._app_key_context = self.app_handle
                     logger.info("Unified-Identity - Phase 3: App Key public key exported successfully")
-                    return (True, app_key_public, str(app_ctx_path))
+                    return (True, app_key_public, self._app_key_context)
                 else:
                     logger.warning("Unified-Identity - Phase 3: Failed to export existing App Key public key")
         
@@ -250,24 +254,43 @@ class TPMPlugin:
             logger.error("Unified-Identity - Phase 3: Failed to persist App Key")
             return (False, None, None)
         
-        # Export public key
-        logger.debug("Unified-Identity - Phase 3: Exporting App Key public key")
+        # After persistence, we can use the handle directly, but keep context file for delegated certification
+        # The context file is still needed for operations that require loading the key
+        # Export public key using persistent handle (more reliable after persistence)
+        logger.debug("Unified-Identity - Phase 3: Exporting App Key public key from persistent handle")
         success, _, _ = self._run_tpm_command(
-            ["tpm2_readpublic", "-c", str(app_ctx_path), "-f", "pem", "-o", str(app_pub_path)]
+            ["tpm2_readpublic", "-c", self.app_handle, "-f", "pem", "-o", str(app_pub_path)]
         )
         if not success:
-            logger.error("Unified-Identity - Phase 3: Failed to export App Key public key")
-            return (False, None, None)
+            # Fallback: try using context file
+            logger.debug("Unified-Identity - Phase 3: Fallback: Exporting from context file")
+            success, _, _ = self._run_tpm_command(
+                ["tpm2_readpublic", "-c", str(app_ctx_path), "-f", "pem", "-o", str(app_pub_path)]
+            )
+            if not success:
+                logger.error("Unified-Identity - Phase 3: Failed to export App Key public key")
+                return (False, None, None)
         
         with open(app_pub_path, 'r') as f:
             app_key_public = f.read()
         
         # Store for later retrieval
         self._app_key_public = app_key_public
-        self._app_key_context = str(app_ctx_path)
+        
+        # After persistence, the context file may not exist anymore
+        # The rust-keylime agent can handle both context files and persistent handles
+        # If context file exists, use it; otherwise, use the persistent handle
+        if app_ctx_path.exists():
+            self._app_key_context = str(app_ctx_path)
+            logger.debug("Unified-Identity - Phase 3: Using context file for delegated certification: %s", app_ctx_path)
+        else:
+            # Context file doesn't exist (key is persisted), use handle instead
+            # rust-keylime agent's load_app_key_from_context will handle the handle format
+            self._app_key_context = self.app_handle
+            logger.debug("Unified-Identity - Phase 3: Context file not found, using persistent handle %s for delegated certification", self.app_handle)
         
         logger.info("Unified-Identity - Phase 3: App Key generated and persisted successfully")
-        return (True, app_key_public, str(app_ctx_path))
+        return (True, app_key_public, self._app_key_context)
     
     def get_app_key_public(self) -> Optional[str]:
         """
@@ -293,20 +316,61 @@ class TPMPlugin:
     
     def get_app_key_context(self) -> Optional[str]:
         """
-        Get the stored App Key context path.
+        Get the stored App Key context path or persistent handle.
         
         Returns:
-            Path to app key context file or None if not generated
+            Path to app key context file, or persistent handle (0x8101000B) if context file doesn't exist.
+            The rust-keylime agent can handle both formats.
         """
-        if self._app_key_context:
-            return self._app_key_context
+        try:
+            # First, check if _app_key_context is already set
+            if self._app_key_context:
+                # If it's a handle (starts with 0x), return it directly
+                if isinstance(self._app_key_context, str) and self._app_key_context.startswith("0x"):
+                    logger.info("Unified-Identity - Phase 3: get_app_key_context() returning persistent handle: %s", self._app_key_context)
+                    return self._app_key_context
+                # If it's a file path, check if it exists
+                if isinstance(self._app_key_context, str) and os.path.exists(self._app_key_context):
+                    logger.info("Unified-Identity - Phase 3: get_app_key_context() returning context file: %s", self._app_key_context)
+                    return self._app_key_context
+                # If it's a string but file doesn't exist, assume it's a handle or use default handle
+                if isinstance(self._app_key_context, str):
+                    logger.warning("Unified-Identity - Phase 3: _app_key_context is set but file doesn't exist: %s, using handle %s", 
+                                 self._app_key_context, self.app_handle)
+                    self._app_key_context = self.app_handle
+                    return self.app_handle
+        except Exception as e:
+            logger.error("Unified-Identity - Phase 3: Exception in get_app_key_context(): %s", e, exc_info=True)
+            # Fall through to check handle
         
         # Check if context file exists
         app_ctx_path = self.work_dir / "app.ctx"
         if app_ctx_path.exists():
             self._app_key_context = str(app_ctx_path)
+            logger.debug("Unified-Identity - Phase 3: Found context file, returning: %s", self._app_key_context)
             return self._app_key_context
         
+        # If context file doesn't exist but key was persisted, use handle
+        # Check if key exists at persistent handle
+        logger.debug("Unified-Identity - Phase 3: Checking if App Key exists at persistent handle %s", self.app_handle)
+        try:
+            result = subprocess.run(
+                ["tpm2_readpublic", "-c", self.app_handle],
+                capture_output=True,
+                timeout=5,
+                check=False
+            )
+            if result.returncode == 0:
+                logger.debug("Unified-Identity - Phase 3: App Key found at persistent handle %s", self.app_handle)
+                self._app_key_context = self.app_handle
+                return self.app_handle
+            else:
+                logger.warning("Unified-Identity - Phase 3: App Key not found at persistent handle %s (exit code: %d)", 
+                             self.app_handle, result.returncode)
+        except Exception as e:
+            logger.warning("Unified-Identity - Phase 3: Could not verify persistent handle: %s", e)
+        
+        logger.warning("Unified-Identity - Phase 3: get_app_key_context() returning None - no context file or handle found")
         return None
     
     def generate_quote(self, nonce: str, pcr_list: Union[str, list] = "sha256:0,1") -> Tuple[bool, Optional[str], Optional[Dict]]:

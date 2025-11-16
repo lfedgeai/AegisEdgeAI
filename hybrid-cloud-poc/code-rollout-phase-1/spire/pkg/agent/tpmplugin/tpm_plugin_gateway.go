@@ -86,10 +86,24 @@ func NewTPMPluginGateway(pluginPath, workDir, endpoint string, log logrus.FieldL
 	
 	// Create HTTP client with UDS transport only
 	socketPath := strings.TrimPrefix(endpoint, "unix://")
+	
+	// Verify socket exists before creating transport (warn if not, but don't fail - might be created later)
+	if _, err := os.Stat(socketPath); os.IsNotExist(err) {
+		log.WithError(err).WithField("socket_path", socketPath).Warn("Unified-Identity - Phase 3: TPM Plugin Server socket does not exist yet, will retry on first request")
+	}
+	
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			// Only support UNIX domain sockets
-			return net.Dial("unix", socketPath)
+			// Verify socket exists before dialing for better error messages
+			if _, err := os.Stat(socketPath); os.IsNotExist(err) {
+				return nil, fmt.Errorf("TPM Plugin Server socket does not exist: %s (is the TPM Plugin Server running? check: ls -l %s)", socketPath, socketPath)
+			}
+			conn, err := net.Dial("unix", socketPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to connect to TPM Plugin Server socket %s: %w (is the server running?)", socketPath, err)
+			}
+			return conn, nil
 		},
 	}
 	httpClient := &http.Client{
@@ -141,9 +155,10 @@ func (g *TPMPluginGateway) generateAppKeyHTTP(force bool) (*AppKeyResult, error)
 }
 
 
-// QuoteResult contains the quote and optional certificate from the TPM plugin
+// QuoteResult contains the quote, App Key public key, and optional certificate from the TPM plugin
 type QuoteResult struct {
 	Quote            string
+	AppKeyPublic     string // App Key public key (PEM format) - required for Keylime verification
 	AppKeyCertificate []byte // Optional, may be nil if delegated certification failed
 }
 
@@ -177,6 +192,7 @@ func (g *TPMPluginGateway) generateQuoteHTTP(nonce, pcrList string) (*QuoteResul
 	var result struct {
 		Status            string `json:"status"`
 		Quote             string `json:"quote"`
+		AppKeyPublic      string `json:"app_key_public"`              // Required, PEM format
 		AppKeyCertificate string `json:"app_key_certificate,omitempty"` // Optional, base64-encoded
 	}
 	
@@ -188,8 +204,13 @@ func (g *TPMPluginGateway) generateQuoteHTTP(nonce, pcrList string) (*QuoteResul
 		return nil, fmt.Errorf("Quote generation failed: status=%s", result.Status)
 	}
 	
+	if result.AppKeyPublic == "" {
+		return nil, fmt.Errorf("App Key public key is required but not provided in quote response")
+	}
+	
 	quoteResult := &QuoteResult{
-		Quote: result.Quote,
+		Quote:        result.Quote,
+		AppKeyPublic: result.AppKeyPublic, // Required for Keylime verification
 	}
 	
 	// Decode certificate if present
@@ -206,8 +227,9 @@ func (g *TPMPluginGateway) generateQuoteHTTP(nonce, pcrList string) (*QuoteResul
 	}
 	
 	g.log.WithFields(logrus.Fields{
-		"quote_len":        len(quoteResult.Quote),
-		"has_certificate":  quoteResult.AppKeyCertificate != nil,
+		"quote_len":         len(quoteResult.Quote),
+		"app_key_public_len": len(quoteResult.AppKeyPublic),
+		"has_certificate":   quoteResult.AppKeyCertificate != nil,
 	}).Info("Unified-Identity - Phase 3: TPM Quote generated successfully via HTTP/UDS")
 	
 	return quoteResult, nil
@@ -291,9 +313,14 @@ func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.Sover
 	// The App Key public is needed for the SovereignAttestation, but the certificate is optional.
 	
 	// Build SovereignAttestation
+	// AppKeyPublic is required by Keylime Verifier for verification
+	if quoteResult.AppKeyPublic == "" {
+		return nil, fmt.Errorf("App Key public key is required but not provided by TPM plugin")
+	}
+	
 	sovereignAttestation := &types.SovereignAttestation{
 		TpmSignedAttestation: quoteResult.Quote,
-		AppKeyPublic:         "", // Will be populated by server if needed, or we can add a getter endpoint
+		AppKeyPublic:         quoteResult.AppKeyPublic, // Required for Keylime verification
 		ChallengeNonce:       nonce,
 	}
 	

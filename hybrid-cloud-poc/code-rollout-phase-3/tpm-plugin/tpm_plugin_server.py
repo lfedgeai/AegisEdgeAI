@@ -18,6 +18,7 @@ import logging
 import os
 import socket
 import sys
+import socketserver
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
@@ -36,6 +37,16 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         self.work_dir = work_dir or "/tmp/spire-data/tpm-plugin"
         self.plugin = plugin  # Store plugin instance with app key already generated
         super().__init__(*args, **kwargs)
+    
+    def address_string(self):
+        """Override to handle UDS addresses properly"""
+        # For UDS, client_address might be empty or a string
+        if isinstance(self.client_address, tuple) and len(self.client_address) > 0:
+            return str(self.client_address[0])
+        elif isinstance(self.client_address, str):
+            return self.client_address
+        else:
+            return "uds-client"
     
     def log_message(self, format, *args):
         """Override to use our logger"""
@@ -94,12 +105,33 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             # Automatically trigger delegated certification (Step 5)
             app_key_certificate = None
             try:
-                # Get stored app key public key and context
+                # Get stored app key public key and context (handle or file path)
                 app_key_public = plugin.get_app_key_public()
+                
+                # Direct access to _app_key_context before calling get_app_key_context()
+                direct_context = getattr(plugin, '_app_key_context', None)
+                logger.info("Unified-Identity - Phase 3: Direct access to _app_key_context: %s", direct_context)
+                
                 app_key_context = plugin.get_app_key_context()
                 
+                # Explicit logging to debug the issue
+                logger.info("Unified-Identity - Phase 3: Delegated certification check - app_key_public: %s, app_key_context: %s", 
+                           "present" if app_key_public else "None",
+                           app_key_context if app_key_context else "None")
+                logger.info("Unified-Identity - Phase 3: Plugin state - _app_key_context: %s, app_handle: %s", 
+                           getattr(plugin, '_app_key_context', 'not set'),
+                           getattr(plugin, 'app_handle', 'not set'))
+                
+                # If get_app_key_context() returned None but _app_key_context is set, use it directly
+                if not app_key_context and direct_context and isinstance(direct_context, str) and direct_context.startswith("0x"):
+                    logger.warning("Unified-Identity - Phase 3: get_app_key_context() returned None but _app_key_context is set, using it directly: %s", direct_context)
+                    app_key_context = direct_context
+                
                 if app_key_public and app_key_context:
+                    logger.info("Unified-Identity - Phase 3: Requesting App Key certificate via delegated certification")
+                    logger.debug("Unified-Identity - Phase 3: App Key context: %s (handle or file path)", app_key_context)
                     # Request certificate from Keylime Agent
+                    # The rust-keylime agent can handle both context file paths and persistent handles (0x8101000B)
                     endpoint = request_data.get("endpoint")  # Optional, uses default if not provided
                     client = DelegatedCertificationClient(endpoint=endpoint)
                     cert_success, cert_b64, error = client.request_certificate(
@@ -114,13 +146,24 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
                         logger.warning("Unified-Identity - Phase 3: Failed to obtain certificate: %s", error)
                 else:
                     logger.warning("Unified-Identity - Phase 3: App Key public or context not available, skipping certificate")
+                    if not app_key_public:
+                        logger.debug("Unified-Identity - Phase 3: App Key public key is None")
+                    if not app_key_context:
+                        logger.debug("Unified-Identity - Phase 3: App Key context is None")
             except Exception as e:
-                logger.warning("Unified-Identity - Phase 3: Error during delegated certification: %s", e)
+                logger.warning("Unified-Identity - Phase 3: Error during delegated certification: %s", e, exc_info=True)
                 # Continue without certificate - it's optional
+            
+            # Get App Key public key (required for Keylime verification)
+            app_key_public = plugin.get_app_key_public()
+            if not app_key_public:
+                self.send_error(500, "Unified-Identity - Phase 3: App Key public key not available")
+                return
             
             response = {
                 "status": "success",
-                "quote": quote_b64
+                "quote": quote_b64,
+                "app_key_public": app_key_public  # Required for Keylime verification
             }
             
             # Include certificate in response if available
@@ -168,7 +211,9 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode('utf-8'))
+        response_body = json.dumps(data).encode('utf-8')
+        self.wfile.write(response_body)
+        self.wfile.flush()  # Ensure response is sent immediately
     
     def do_GET(self):
         """Handle GET requests (health check)"""
@@ -185,25 +230,59 @@ class UnixHTTPServer(HTTPServer):
         # If server_address is a string, treat it as a UDS path
         if isinstance(server_address, str):
             self.socket_path = server_address
-            # Create a dummy address for HTTPServer
+            # Remove socket file if it exists
+            if os.path.exists(self.socket_path):
+                os.unlink(self.socket_path)
+            
+            # Create a dummy address for HTTPServer (but don't let it bind/activate)
             HTTPServer.__init__(self, ("localhost", 0), RequestHandlerClass, bind_and_activate=False)
+            
+            # Manually set up UDS socket
+            if bind_and_activate:
+                self.server_bind()
+                self.server_activate()
         else:
             self.socket_path = None
             HTTPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
     
     def server_bind(self):
         if self.socket_path:
-            # Remove socket file if it exists
-            if os.path.exists(self.socket_path):
-                os.unlink(self.socket_path)
-            
-            # Create socket
+            # Create UDS socket
             self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.socket.bind(self.socket_path)
             # Set socket permissions (read/write for owner and group)
             os.chmod(self.socket_path, 0o660)
+            # IMPORTANT: Call listen() immediately after bind() for UDS sockets
+            self.socket.listen(5)
+            logger.info("Unified-Identity - Phase 3: UDS socket bound and listening: %s", self.socket_path)
         else:
             HTTPServer.server_bind(self)
+    
+    def server_activate(self):
+        """Override to handle UDS sockets - socket is already listening from server_bind()"""
+        if self.socket_path:
+            # For UDS, listen() was already called in server_bind()
+            # Verify socket is ready
+            if self.socket and self.socket.fileno() >= 0:
+                logger.debug("Unified-Identity - Phase 3: UDS socket activated and ready for connections")
+            else:
+                logger.error("Unified-Identity - Phase 3: UDS socket not properly initialized")
+        else:
+            # For regular TCP sockets, use default behavior
+            HTTPServer.server_activate(self)
+    
+    def get_request(self):
+        """Override to handle UDS connections properly"""
+        if self.socket_path:
+            # For UDS, accept connection and return it with a dummy address
+            # BaseHTTPRequestHandler expects (request, (host, port)) tuple
+            conn, addr = self.socket.accept()
+            # Return connection and dummy address tuple for UDS
+            return conn, ("uds-client", 0)
+        else:
+            # For TCP, use default behavior
+            return HTTPServer.get_request(self)
     
     def server_close(self):
         HTTPServer.server_close(self)
@@ -256,15 +335,10 @@ def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = Non
         # Use UNIX domain socket
         socket_path = os.path.abspath(socket_path)
         logger.info("Unified-Identity - Phase 3: Starting TPM Plugin server on UDS: %s", socket_path)
-        server = UnixHTTPServer(socket_path, HandlerClass)
-        # Explicitly bind the socket so it's created immediately (before serve_forever)
-        server.server_bind()
-        # Call server_activate to listen on the socket (this creates the socket file)
-        if hasattr(server, 'server_activate'):
-            server.server_activate()
-        else:
-            # Fallback: manually call listen if server_activate doesn't exist
-            server.socket.listen(5)
+        server = UnixHTTPServer(socket_path, HandlerClass, bind_and_activate=True)
+        # server_bind() is called automatically by __init__ with bind_and_activate=True
+        # This creates the socket, binds it, and calls listen()
+        # server_activate() is also called automatically, which we've overridden for UDS
     elif http_port:
         # HTTP over localhost is not supported for security reasons
         logger.error("Unified-Identity - Phase 3: HTTP over localhost is not supported for security reasons. Use UDS only (--socket-path)")
@@ -273,15 +347,10 @@ def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = Non
         # Default to UDS
         default_socket = os.path.join(work_dir, "tpm-plugin.sock")
         logger.info("Unified-Identity - Phase 3: Starting TPM Plugin server on UDS (default): %s", default_socket)
-        server = UnixHTTPServer(default_socket, HandlerClass)
-        # Explicitly bind the socket so it's created immediately (before serve_forever)
-        server.server_bind()
-        # Call server_activate to listen on the socket (this creates the socket file)
-        if hasattr(server, 'server_activate'):
-            server.server_activate()
-        else:
-            # Fallback: manually call listen if server_activate doesn't exist
-            server.socket.listen(5)
+        server = UnixHTTPServer(default_socket, HandlerClass, bind_and_activate=True)
+        # server_bind() is called automatically by __init__ with bind_and_activate=True
+        # This creates the socket, binds it, and calls listen()
+        # server_activate() is also called automatically, which we've overridden for UDS
     
     try:
         logger.info("Unified-Identity - Phase 3: TPM Plugin server started")
