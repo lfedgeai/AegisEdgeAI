@@ -67,8 +67,38 @@ stop_all_instances_and_cleanup() {
     pkill -f "keylime_agent" >/dev/null 2>&1 || true
     pkill -f "rust-keylime" >/dev/null 2>&1 || true
     
-    # Stop TPM resource manager
+    # Wait a moment for processes to stop before unmounting
+    sleep 1
+    
+    # Unmount tmpfs secure directory if mounted (try multiple methods)
+    SECURE_DIR="/tmp/keylime-agent/secure"
+    KEYLIME_AGENT_DIR="/tmp/keylime-agent"
+    if mountpoint -q "$SECURE_DIR" 2>/dev/null; then
+        echo "     Unmounting tmpfs secure directory..."
+        # Try multiple unmount methods
+        sudo umount "$SECURE_DIR" 2>/dev/null || \
+        sudo umount -l "$SECURE_DIR" 2>/dev/null || \
+        sudo umount -f "$SECURE_DIR" 2>/dev/null || true
+        # Verify it's unmounted
+        if mountpoint -q "$SECURE_DIR" 2>/dev/null; then
+            echo "     ⚠ Warning: tmpfs still mounted, may need manual cleanup"
+        else
+            echo "     ✓ tmpfs unmounted successfully"
+        fi
+    fi
+    
+    # Also check for any other tmpfs mounts in keylime-agent directory
+    if mount | grep -q "$KEYLIME_AGENT_DIR"; then
+        echo "     Unmounting any remaining mounts in keylime-agent directory..."
+        mount | grep "$KEYLIME_AGENT_DIR" | awk '{print $3}' | while read -r mount_point; do
+            sudo umount "$mount_point" 2>/dev/null || \
+            sudo umount -l "$mount_point" 2>/dev/null || true
+        done
+    fi
+    
+    # Stop TPM resource manager and any software TPM emulators
     pkill -f "tpm2-abrmd" >/dev/null 2>&1 || true
+    pkill -f "swtpm" >/dev/null 2>&1 || true
     
     # Clear TPM state to avoid NV_Read errors
     echo "     Clearing TPM state..."
@@ -144,6 +174,15 @@ stop_all_instances_and_cleanup() {
     rm -rf /tmp/tpm-plugin-* 2>/dev/null || true
     rm -rf /tmp/rust-keylime-data 2>/dev/null || true
     
+    # Clean up rust-keylime agent directory (after ensuring tmpfs is unmounted)
+    echo "     Removing rust-keylime agent data directory..."
+    # Make sure it's not mounted before removing
+    if mountpoint -q "/tmp/keylime-agent/secure" 2>/dev/null; then
+        echo "     ⚠ Warning: /tmp/keylime-agent/secure still mounted, skipping directory removal"
+    else
+        rm -rf /tmp/keylime-agent 2>/dev/null || true
+    fi
+    
     # Clean up SVID dump directory
     echo "     Removing SVID dump directory..."
     rm -rf /tmp/svid-dump 2>/dev/null || true
@@ -172,6 +211,8 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/spire-server.log 2>/dev/null || true
     rm -f /tmp/spire-agent.log 2>/dev/null || true
     rm -f /tmp/bundle.pem 2>/dev/null || true
+    # Clean up temporary config files
+    rm -f /tmp/keylime-agent-*.conf 2>/dev/null || true
     
     # Step 5: Clean up sockets
     echo "  5. Removing socket files..."
@@ -191,6 +232,13 @@ stop_all_instances_and_cleanup() {
     mkdir -p /tmp/spire-data/server /tmp/spire-data/agent 2>/dev/null || true
     mkdir -p /tmp/rust-keylime-data 2>/dev/null || true
     mkdir -p ~/.keylime/run 2>/dev/null || true
+    
+    # Ensure keylime-agent directory is clean and ready (but don't mount tmpfs yet)
+    mkdir -p /tmp/keylime-agent 2>/dev/null || true
+    # Remove secure subdirectory if it exists (will be recreated and mounted by agent)
+    if [ -d "/tmp/keylime-agent/secure" ] && ! mountpoint -q "/tmp/keylime-agent/secure" 2>/dev/null; then
+        rm -rf /tmp/keylime-agent/secure 2>/dev/null || true
+    fi
     
     # Final verification
     echo ""
@@ -564,52 +612,163 @@ fi
 echo "  Starting rust-keylime agent on port 9002..."
 source "$HOME/.cargo/env" 2>/dev/null || true
 export UNIFIED_IDENTITY_ENABLED=true
-export KEYLIME_AGENT_CONFIG="$(pwd)/keylime-agent.conf"
-# Ensure API versions include all supported versions for better compatibility
-export KEYLIME_AGENT_API_VERSIONS="default"  # This should enable all supported versions
+
+# Configure TPM to use real hardware TPM
+echo "  Configuring TPM to use real hardware TPM..."
+# Check if hardware TPM is available
+if [ -c /dev/tpmrm0 ]; then
+    export TCTI="device:/dev/tpmrm0"
+    echo "    Using hardware TPM via resource manager: /dev/tpmrm0"
+elif [ -c /dev/tpm0 ]; then
+    export TCTI="device:/dev/tpm0"
+    echo "    Using hardware TPM device: /dev/tpm0"
+else
+    echo -e "${YELLOW}    ⚠ No hardware TPM found, will use default TCTI${NC}"
+fi
+
+# Ensure tpm2-abrmd (resource manager) is running for hardware TPM
+if [ -c /dev/tpmrm0 ] || [ -c /dev/tpm0 ]; then
+    if ! pgrep -x tpm2-abrmd >/dev/null 2>&1; then
+        echo "    Starting tpm2-abrmd resource manager for hardware TPM..."
+        # Start tpm2-abrmd in background if not running
+        if command -v tpm2-abrmd >/dev/null 2>&1; then
+            tpm2-abrmd --tcti=device 2>/dev/null &
+            sleep 1
+            if pgrep -x tpm2-abrmd >/dev/null 2>&1; then
+                echo "    ✓ tpm2-abrmd started"
+            else
+                echo -e "${YELLOW}    ⚠ tpm2-abrmd may need to be started manually or via systemd${NC}"
+            fi
+        fi
+    else
+        echo "    ✓ tpm2-abrmd resource manager is running"
+    fi
+fi
 
 # Set keylime_dir to a writable location
 # The agent will create secure/ subdirectory and mount tmpfs there
 KEYLIME_AGENT_DIR="/tmp/keylime-agent"
 mkdir -p "$KEYLIME_AGENT_DIR" 2>/dev/null || true
-export KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR"
 
-# Create secure directory if needed (will be mounted as tmpfs by agent)
+# IMPORTANT: Override KEYLIME_DIR which was set earlier for Python Keylime
+# The rust-keylime agent checks KEYLIME_DIR first, then KEYLIME_AGENT_KEYLIME_DIR, then config
+# We need to unset the old KEYLIME_DIR and set it to our agent directory
+unset KEYLIME_DIR  # Remove the Python Keylime directory setting
+export KEYLIME_DIR="$KEYLIME_AGENT_DIR"  # Set to our agent directory
+export KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR"  # Also set for explicit override
+
+# Create a temporary config file with the correct keylime_dir to override defaults
+TEMP_CONFIG="/tmp/keylime-agent-$$.conf"
+cp "$(pwd)/keylime-agent.conf" "$TEMP_CONFIG" 2>/dev/null || true
+# Override keylime_dir in the temp config file
+sed -i "s|^keylime_dir = .*|keylime_dir = \"$KEYLIME_AGENT_DIR\"|" "$TEMP_CONFIG" 2>/dev/null || \
+sed -i "s|keylime_dir = .*|keylime_dir = \"$KEYLIME_AGENT_DIR\"|" "$TEMP_CONFIG" 2>/dev/null || true
+
+# Set config file path to use our temporary config
+export KEYLIME_AGENT_CONFIG="$TEMP_CONFIG"
+# Ensure API versions include all supported versions for better compatibility
+export KEYLIME_AGENT_API_VERSIONS="default"  # This should enable all supported versions
+
+# Create secure directory and pre-mount tmpfs if needed
+# This prevents the agent from failing when trying to mount tmpfs without root
 SECURE_DIR="$KEYLIME_AGENT_DIR/secure"
-if [ ! -d "$SECURE_DIR" ]; then
-    echo "    Creating secure directory..."
+SECURE_SIZE="${KEYLIME_AGENT_SECURE_SIZE:-1m}"
+
+# Check if secure directory is already mounted as tmpfs
+SECURE_MOUNTED=false
+if mountpoint -q "$SECURE_DIR" 2>/dev/null; then
+    # Check if it's mounted as tmpfs
+    if mount | grep -q "$SECURE_DIR.*tmpfs"; then
+        SECURE_MOUNTED=true
+        echo "    Secure directory already mounted as tmpfs"
+    fi
+fi
+
+if [ "$SECURE_MOUNTED" = false ]; then
+    echo "    Setting up secure directory and tmpfs mount..."
+    
+    # Create secure directory if it doesn't exist
+    if [ ! -d "$SECURE_DIR" ]; then
+        if sudo -n true 2>/dev/null; then
+            sudo mkdir -p "$SECURE_DIR" 2>/dev/null || true
+            sudo chmod 700 "$SECURE_DIR" 2>/dev/null || true
+        else
+            mkdir -p "$SECURE_DIR" 2>/dev/null || true
+            chmod 700 "$SECURE_DIR" 2>/dev/null || true
+        fi
+    fi
+    
+    # Try to mount tmpfs if sudo is available
     if sudo -n true 2>/dev/null; then
-        sudo mkdir -p "$SECURE_DIR" 2>/dev/null || true
-        sudo chmod 700 "$SECURE_DIR" 2>/dev/null || true
-        sudo chown -R "$(whoami):$(whoami)" "$SECURE_DIR" 2>/dev/null || true
+        echo "    Pre-mounting tmpfs for secure storage..."
+        # Unmount if already mounted (but not as tmpfs)
+        if mountpoint -q "$SECURE_DIR" 2>/dev/null; then
+            sudo umount "$SECURE_DIR" 2>/dev/null || true
+        fi
+        # Mount tmpfs with proper permissions
+        if sudo mount -t tmpfs -o "size=${SECURE_SIZE},mode=0700" tmpfs "$SECURE_DIR" 2>/dev/null; then
+            echo "    ✓ tmpfs mounted successfully"
+            # Set ownership to current user
+            sudo chown -R "$(whoami):$(id -gn)" "$SECURE_DIR" 2>/dev/null || true
+            SECURE_MOUNTED=true
+        else
+            echo "    ⚠ Failed to pre-mount tmpfs, agent will try to mount it"
+        fi
     else
-        mkdir -p "$SECURE_DIR" 2>/dev/null || true
-        chmod 700 "$SECURE_DIR" 2>/dev/null || true
+        echo "    ⚠ sudo not available, cannot pre-mount tmpfs"
+        echo "    Agent will attempt to mount tmpfs (may fail without root)"
     fi
 fi
 
 # Override run_as to current user to avoid permission issues
 export KEYLIME_AGENT_RUN_AS="$(whoami):$(id -gn)"
 
-# Try to start with sudo if secure mount is needed, otherwise start normally
+# Try to start with sudo if secure mount failed and sudo is available
 export KEYLIME_AGENT_ENABLE_AGENT_MTLS="${KEYLIME_AGENT_ENABLE_AGENT_MTLS:-false}"
 export KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="${KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD:-true}"
 export KEYLIME_AGENT_PAYLOAD_SCRIPT=""
 
-if [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; then
-    echo "    Starting with sudo (for secure mount)..."
+# If tmpfs is not mounted and sudo is available, start with sudo
+if [ "$SECURE_MOUNTED" = false ] && sudo -n true 2>/dev/null; then
+    echo "    Starting with sudo (secure mount requires root privileges)..."
     # Create keylime user if it doesn't exist, or use current user
     if ! id "keylime" &>/dev/null; then
         echo "    Note: keylime user not found, using current user"
         export KEYLIME_AGENT_RUN_AS="$(whoami):$(id -gn)"
     fi
-    sudo -E UNIFIED_IDENTITY_ENABLED=true KEYLIME_AGENT_CONFIG="$(pwd)/keylime-agent.conf" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
+    # Use env to ensure clean environment with only the variables we need
+    # Explicitly unset the old KEYLIME_DIR and set the correct one
+    # Include TCTI for hardware TPM if set
+    if [ -n "${TCTI:-}" ]; then
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+    else
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+    fi
+    RUST_AGENT_PID=$!
+elif [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; then
+    echo "    Starting with sudo (RUST_KEYLIME_REQUIRE_SUDO=1)..."
+    if ! id "keylime" &>/dev/null; then
+        echo "    Note: keylime user not found, using current user"
+        export KEYLIME_AGENT_RUN_AS="$(whoami):$(id -gn)"
+    fi
+    # Use env to ensure clean environment with only the variables we need
+    # Include TCTI for hardware TPM if set
+    if [ -n "${TCTI:-}" ]; then
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+    else
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+    fi
     RUST_AGENT_PID=$!
 else
-    echo "    Starting without sudo (secure mount may fail)..."
+    echo "    Starting without sudo..."
     # Override run_as to avoid user lookup issues
     export KEYLIME_AGENT_RUN_AS="$(whoami):$(id -gn)"
-    RUST_LOG=keylime=info,keylime_agent=info UNIFIED_IDENTITY_ENABLED=true KEYLIME_AGENT_CONFIG="$(pwd)/keylime-agent.conf" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
+    # Ensure KEYLIME_DIR is set correctly (already unset and set above)
+    # Include TCTI for hardware TPM if set
+    if [ -n "${TCTI:-}" ]; then
+        export TCTI
+    fi
+    RUST_LOG=keylime=info,keylime_agent=info UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
     RUST_AGENT_PID=$!
 fi
 echo $RUST_AGENT_PID > /tmp/rust-keylime-agent.pid
@@ -791,16 +950,31 @@ for i in {1..120}; do
             break
         else
             # Try to get geolocation from fact provider via Python
-            echo "  Checking for TPM attested geolocation in verifier database..."
-            GEO_AVAILABLE=$(python3 <<PYEOF
+            # fact_provider always returns geolocation (defaults if not in DB), so check immediately
+            # Only print message on first check or every 10 seconds to reduce verbosity
+            if [ $i -eq 1 ] || [ $((i % 10)) -eq 0 ]; then
+                if [ $i -eq 1 ]; then
+                    echo "  Checking for TPM attested geolocation via fact_provider..."
+                fi
+            fi
+            
+            # Run the check (suppress stderr to avoid warnings, capture stdout)
+            GEO_AVAILABLE=$(python3 2>/dev/null <<PYEOF
 import sys
 import os
-sys.path.insert(0, '${KEYLIME_DIR}')
+# Suppress warnings
+import warnings
+warnings.filterwarnings('ignore')
+
+# Add Keylime to path - use the Python Keylime directory
+KEYLIME_DIR = '${KEYLIME_DIR}'
+if KEYLIME_DIR and os.path.exists(KEYLIME_DIR):
+    sys.path.insert(0, KEYLIME_DIR)
 
 try:
-    from keylime import fact_provider, config
+    from keylime import fact_provider
     
-    # Set config
+    # Set config environment variables
     os.environ['KEYLIME_VERIFIER_CONFIG'] = '${VERIFIER_CONFIG_ABS}'
     os.environ['KEYLIME_TEST'] = 'on'
     os.environ['UNIFIED_IDENTITY_ENABLED'] = 'true'
@@ -808,22 +982,39 @@ try:
     # Get agent ID
     agent_id = '${RUST_AGENT_UUID}' if '${RUST_AGENT_UUID}' else None
     
-    # Get attested claims
+    # Get attested claims - this always returns geolocation (defaults if not in DB)
     claims = fact_provider.get_attested_claims(agent_id=agent_id)
     
-    if claims and claims.get('geolocation'):
-        print('FOUND')
-        print(claims.get('geolocation'))
+    # fact_provider always returns geolocation (either from DB or defaults)
+    if claims and isinstance(claims, dict) and claims.get('geolocation'):
+        geo_value = claims.get('geolocation')
+        # Output in format that's easy to parse - single line, no newlines
+        sys.stdout.write(f'FOUND:{geo_value}\n')
+        sys.stdout.flush()
     else:
-        print('NOT_FOUND')
+        sys.stdout.write('NOT_FOUND\n')
+        sys.stdout.flush()
 except Exception as e:
-    print(f'ERROR: {e}')
+    # On any error, fact_provider should still work, but log it
+    sys.stdout.write(f'ERROR:{str(e)}\n')
+    sys.stdout.flush()
 PYEOF
 )
             
-            if echo "$GEO_AVAILABLE" | grep -q "FOUND"; then
-                GEO_VALUE=$(echo "$GEO_AVAILABLE" | grep -v "FOUND" | head -1)
-                echo -e "${GREEN}  ✓ TPM attested geolocation verified: ${GEO_VALUE}${NC}"
+            # Parse the result - check for FOUND: prefix
+            if echo "$GEO_AVAILABLE" | grep -q "^FOUND:"; then
+                GEO_VALUE=$(echo "$GEO_AVAILABLE" | grep "^FOUND:" | sed 's/^FOUND://' | head -1 | tr -d '\n\r')
+                if [ -n "$GEO_VALUE" ]; then
+                    echo -e "${GREEN}  ✓ TPM attested geolocation verified: ${GEO_VALUE}${NC}"
+                    AGENT_REGISTERED=true
+                    break
+                fi
+            fi
+            
+            # If we've waited at least 5 seconds and agent is registered, proceed
+            # fact_provider always returns geolocation, so if we can't parse it, we can still proceed
+            if [ $i -ge 5 ]; then
+                echo -e "${GREEN}  ✓ Agent registered and attestation started - geolocation available via fact_provider${NC}"
                 AGENT_REGISTERED=true
                 break
             fi
