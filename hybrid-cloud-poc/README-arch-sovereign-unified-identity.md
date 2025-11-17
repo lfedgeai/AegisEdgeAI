@@ -1,6 +1,6 @@
 # Sovereign Unified Identity for Workloads
 
-This document describes the complete end-to-end architecture flow for generating a SPIRE Agent Sovereign Unified SVID with TPM attestation and geolocation claims. The flow spans multiple components using different transport mechanisms and data formats.
+This document describes the complete end-to-end architecture flow for generating a SPIRE Agent Sovereign Unified SVID with TPM attestation and geolocation claims. The flow spans multiple components using different transport mechanisms and data formats. The workload SVID has the full certificate chain and claims, including the TPM attestation and geolocation claims, from the SPIRE Agent Sovereign Unified SVID.
 
 ## Interface Classification
 
