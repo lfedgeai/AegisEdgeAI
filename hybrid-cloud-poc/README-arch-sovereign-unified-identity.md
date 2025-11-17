@@ -1,6 +1,6 @@
-This document describes the complete end-to-end architecture flow for generating a SPIRE Agent Sovereign SVID with TPM attestation and geolocation claims. The flow spans multiple components using different transport mechanisms and data formats.
+This document describes the complete end-to-end architecture flow for generating a SPIRE Agent Sovereign Unified SVID with TPM attestation and geolocation claims. The flow spans multiple components using different transport mechanisms and data formats.
 
-### Interface Classification
+## Interface Classification
 
 **Existing Interfaces (Standard SPIRE/Keylime):**
 - `spire-agent → spire-server`: Protobuf gRPC over mTLS (standard SPIRE)
@@ -264,7 +264,10 @@ message AttestAgentResponse {
 
 **Storage:**
 - **App Key Public Key:** Stored in memory and/or work directory
-- **App Key Context:** Stored at `/tmp/spire-data/tpm-plugin/app.ctx` (or configured work directory)
+- **App Key Context:** 
+  - Initially stored at `/tmp/spire-data/tpm-plugin/app.ctx` (or configured work directory)
+  - After persistence, stored as persistent handle (e.g., `0x8101000B`) in TPM
+  - The plugin tracks both the file path and persistent handle for compatibility
 
 **Code Location:**
 - Server: `tpm-plugin/tpm_plugin_server.py` (startup initialization)
@@ -307,9 +310,12 @@ Content-Type: application/json
 {
   "status": "success",
   "quote": "r<base64-message>:<base64-signature>:<base64-pcrs>",
+  "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
   "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l..."
 }
 ```
+
+**Note:** The `app_key_public` field is **required** and must be included in the response. It is used by the SPIRE Agent to build the `SovereignAttestation` and is required by the Keylime Verifier for verification.
 
 **Note:** The `app_key_context` is not required in the request since it is automatically retrieved from the stored App Key context (generated in Step 3). The TPM Plugin uses the stored App Key public key and context for quote generation.
 
@@ -367,7 +373,7 @@ Content-Type: application/json
   "api_version": "v1",
   "command": "certify_app_key",
   "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-  "app_key_context_path": "/tmp/spire-data/tpm-plugin/app.ctx"
+  "app_key_context_path": "/tmp/spire-data/tpm-plugin/app.ctx"  // or persistent handle like "0x8101000B"
 }
 ```
 
@@ -387,7 +393,7 @@ The certificate is a base64-encoded JSON structure containing TPM2_Certify outpu
   "certify_data": "<base64-encoded-attestation>",
   "signature": "<base64-encoded-signature>",
   "hash_alg": "sha256",
-  "format": "phase3_compatible"
+  "format": "phase2_compatible"
 }
 ```
 
@@ -1112,9 +1118,21 @@ The workload SVID certificate chain does NOT include:
 The workload SVID contains:
 - Workload SPIFFE ID
 - Standard X.509 certificate fields (subject, issuer, validity, etc.)
-- Certificate chain (Workload SVID → CA chain)
+- Certificate chain (Workload SVID → Agent SVID → CA chain)
 - Trust bundle for validation
 - Private key for mTLS authentication
+- **AttestedClaims Extension (OID: 1.3.6.1.4.1.99999.1)** with ONLY `grc.workload` claims:
+  ```json
+  {
+    "grc.workload": {
+      "workload-id": "spiffe://example.org/python-app",
+      "key-source": "workload-key",
+      "public-key": "-----BEGIN PUBLIC KEY-----\n...",
+      "workload-code-hash": "sha256:..."
+    }
+  }
+  ```
+  **Note:** Workload SVID does NOT include `grc.tpm-attestation` or `grc.geolocation` claims. These are only present in the Agent SVID, as TPM attestation is handled by the SPIRE agent.
 
 **Code Location:**
 - `pkg/agent/endpoints/workload/handler.go::FetchX509SVID()`
@@ -1130,11 +1148,11 @@ The workload SVID contains:
 | **Requestor** | SPIRE Agent (itself) | Workload (application) |
 | **Frequency** | Periodic (~30s) | On-demand (when workload requests) |
 | **Attestation** | TPM + Host Integrity + Geolocation | Process selectors only |
-| **Claims** | Unified Identity (TPM, geolocation, GPU) | Standard SPIFFE ID only |
-| **Certificate Extension** | Custom OID with unified claims | Standard X.509 only |
+| **Claims** | Unified Identity (TPM, geolocation, GPU) | Workload identity only (`grc.workload`) |
+| **Certificate Extension** | Custom OID with unified claims (`grc.workload` + `grc.tpm-attestation` + `grc.geolocation`) | Custom OID with workload claims only (`grc.workload`) |
 | **Dependencies** | TPM Plugin, Keylime Agent, Keylime Verifier | SPIRE Agent only |
 | **Used for Workload SVID** | Authentication & Authorization (mTLS) | N/A (this is the workload SVID) |
-| **In Workload SVID Chain** | No (not in certificate chain) | Yes (workload SVID is the leaf cert) |
+| **In Workload SVID Chain** | Yes (included for policy enforcement) | Yes (workload SVID is the leaf cert) |
 
 ---
 
@@ -1317,6 +1335,14 @@ Each interface includes error handling:
 - **rust-keylime Agent:** HTTP status codes (400, 403, 500) with JSON error messages
 - **SPIRE gRPC:** gRPC status codes (InvalidArgument, Internal, etc.)
 - **Keylime Verifier:** HTTP status codes (400, 422, 500) with detailed failure information
+
+---
+
+## Demonstration
+
+```bash
+./code-rollout-phase-3/test_phase3_complete.sh
+```
 
 ---
 
