@@ -37,9 +37,9 @@ if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
 fi
 
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║  Unified-Identity - Phase 3: Complete Integration Test       ║"
-echo "║  Phase 3: Hardware Integration & Delegated Certification    ║"
-echo "║  Testing: TPM App Key + rust-keylime Agent -> Sovereign SVID  ║"
+echo "║  Unified-Identity - Phase 3: Complete Integration Test         ║"
+echo "║  Phase 3: Hardware Integration & Delegated Certification       ║"
+echo "║  Testing: TPM App Key + rust-keylime Agent -> Sovereign SVID   ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 
