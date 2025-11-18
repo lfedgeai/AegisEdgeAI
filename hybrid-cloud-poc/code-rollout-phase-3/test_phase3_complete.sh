@@ -1462,10 +1462,8 @@ if [ -f "${AGENT_CONFIG}" ]; then
         echo "    ⚠ Trust bundle export failed, but continuing..."
     fi
     
-    # Configure SPIRE agent SVID renewal for demo purposes (15 seconds)
-    # Note: SPIRE requires minimum 24h, but for demos we use 15s to see renewal activity
-    echo "    Configuring SPIRE agent SVID renewal for demo (15s interval)..."
-    configure_spire_agent_svid_renewal "${AGENT_CONFIG}" "15"
+    # Note: For short demos we rely on the existing agent config (24h minimum)
+    echo "    Skipping SVID renewal reconfiguration (SPIRE minimum = 24h)"
     
     echo "    Starting SPIRE Agent (logs: /tmp/spire-agent.log)..."
     export UNIFIED_IDENTITY_ENABLED=true
