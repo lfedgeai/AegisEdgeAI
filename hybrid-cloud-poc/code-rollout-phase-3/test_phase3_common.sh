@@ -1,67 +1,257 @@
 #!/bin/bash
-# Unified-Identity - Phase 3: Complete End-to-End Integration Test
-# Tests the full workflow: SPIRE Server + Keylime Verifier + rust-keylime Agent -> Sovereign SVID Generation
-# Phase 3: Hardware Integration & Delegated Certification
+# Unified-Identity - Phase 3: Common Test Library
+# Shared functions and logic for Phase 3 integration tests
+# This file is sourced by test_phase3_complete.sh and test_phase3_persistent.sh
 
-set -uo pipefail
-# Don't exit on error (-e) - we want to continue even if some steps fail
-
-# Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-# Ensure feature flag is enabled by default (can be overridden by caller)
-export UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PHASE1_DIR="${SCRIPT_DIR}/../code-rollout-phase-1"
-PHASE2_DIR="${SCRIPT_DIR}/../code-rollout-phase-2"
-PHASE3_DIR="${SCRIPT_DIR}"
-KEYLIME_DIR="${PHASE2_DIR}/keylime"
-SPIRE_DIR="${PHASE1_DIR}/spire"
-
-# Colors
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
-    GREEN=""
-    RED=""
-    YELLOW=""
-    CYAN=""
-    BLUE=""
-    BOLD=""
-    NC=""
+# Check if this script is being sourced or executed directly
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    echo "Error: This script is a library and should be sourced, not executed directly."
+    echo "Usage: source test_phase3_common.sh"
+    exit 1
 fi
 
-echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║  Unified-Identity - Phase 3: Complete Integration Test         ║"
-echo "║  Phase 3: Hardware Integration & Delegated Certification       ║"
-echo "║  Testing: TPM App Key + rust-keylime Agent -> Sovereign SVID   ║"
-echo "╚════════════════════════════════════════════════════════════════╝"
-echo ""
+# Initialize if not already done
+if [ -z "${PHASE3_COMMON_INITIALIZED:-}" ]; then
+    # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+    # Ensure feature flag is enabled by default (can be overridden by caller)
+    export UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
 
-# Source cleanup.sh to reuse the stop_all_instances_and_cleanup function
-# This avoids code duplication and ensures consistency
-source "${SCRIPT_DIR}/cleanup.sh"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
+    PHASE1_DIR="${SCRIPT_DIR}/../code-rollout-phase-1"
+    PHASE2_DIR="${SCRIPT_DIR}/../code-rollout-phase-2"
+    PHASE3_DIR="${SCRIPT_DIR}"
+    KEYLIME_DIR="${PHASE2_DIR}/keylime"
+    SPIRE_DIR="${PHASE1_DIR}/spire"
 
-# Wrap the cleanup function to add "Step 0:" prefix for consistency with test script output
-# Save original function before we override it by copying it with a different name
-{
-    func_def=$(declare -f stop_all_instances_and_cleanup)
-    # Replace function name in the definition (only the first occurrence on the function declaration line)
-    func_def="${func_def/stop_all_instances_and_cleanup ()/_original_stop_all_instances_and_cleanup ()}"
-    # Evaluate to define the function
-    eval "$func_def"
-}
+    # Colors
+    GREEN='\033[0;32m'
+    RED='\033[0;31m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'
+    BLUE='\033[0;34m'
+    BOLD='\033[1m'
+    NC='\033[0m'
 
-# Override with wrapper that adds Step 0 prefix
+    if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
+        GREEN=""
+        RED=""
+        YELLOW=""
+        CYAN=""
+        BLUE=""
+        BOLD=""
+        NC=""
+    fi
+
+    export PHASE3_COMMON_INITIALIZED=1
+fi
+
+# Function to stop all existing instances and clean up all data
 stop_all_instances_and_cleanup() {
     echo -e "${CYAN}Step 0: Stopping all existing instances and cleaning up all data...${NC}"
     echo ""
-    SKIP_HEADER=1 _original_stop_all_instances_and_cleanup
+    
+    # Step 1: Stop all processes
+    echo "  1. Stopping all processes..."
+    
+    # Stop SPIRE processes
+    echo "     Stopping SPIRE Server and Agent..."
+    pkill -f "spire-server" >/dev/null 2>&1 || true
+    pkill -f "spire-agent" >/dev/null 2>&1 || true
+    
+    # Stop Keylime processes
+    echo "     Stopping Keylime Verifier and Registrar..."
+    pkill -f "keylime_verifier" >/dev/null 2>&1 || true
+    pkill -f "keylime_registrar" >/dev/null 2>&1 || true
+    pkill -f "python.*keylime" >/dev/null 2>&1 || true
+    
+    # Stop rust-keylime Agent
+    echo "     Stopping rust-keylime Agent..."
+    pkill -f "keylime_agent" >/dev/null 2>&1 || true
+    pkill -f "rust-keylime" >/dev/null 2>&1 || true
+    
+    # Wait a moment for processes to stop before unmounting
+    sleep 1
+    
+    # Unmount tmpfs secure directory if mounted (try multiple methods)
+    SECURE_DIR="/tmp/keylime-agent/secure"
+    KEYLIME_AGENT_DIR="/tmp/keylime-agent"
+    if mountpoint -q "$SECURE_DIR" 2>/dev/null; then
+        echo "     Unmounting tmpfs secure directory..."
+        # Try multiple unmount methods
+        sudo umount "$SECURE_DIR" 2>/dev/null || \
+        sudo umount -l "$SECURE_DIR" 2>/dev/null || \
+        sudo umount -f "$SECURE_DIR" 2>/dev/null || true
+        # Verify it's unmounted
+        if mountpoint -q "$SECURE_DIR" 2>/dev/null; then
+            echo "     ⚠ Warning: tmpfs still mounted, may need manual cleanup"
+        else
+            echo "     ✓ tmpfs unmounted successfully"
+        fi
+    fi
+    
+    # Also check for any other tmpfs mounts in keylime-agent directory
+    if mount | grep -q "$KEYLIME_AGENT_DIR"; then
+        echo "     Unmounting any remaining mounts in keylime-agent directory..."
+        mount | grep "$KEYLIME_AGENT_DIR" | awk '{print $3}' | while read -r mount_point; do
+            sudo umount "$mount_point" 2>/dev/null || \
+            sudo umount -l "$mount_point" 2>/dev/null || true
+        done
+    fi
+    
+    # Stop TPM resource manager and any software TPM emulators
+    pkill -f "tpm2-abrmd" >/dev/null 2>&1 || true
+    pkill -f "swtpm" >/dev/null 2>&1 || true
+    
+    # Clear TPM state to avoid NV_Read errors
+    echo "     Clearing TPM state..."
+    if [ -c /dev/tpm0 ] || [ -c /dev/tpmrm0 ]; then
+        # Try to clear TPM using tpm2_clear (requires authorization)
+        # This will reset NV indices and clear TPM state
+        if command -v tpm2_clear >/dev/null 2>&1; then
+            # Use tpmrm0 if available (resource manager), otherwise tpm0
+            TPM_DEVICE="/dev/tpmrm0"
+            if [ ! -c "$TPM_DEVICE" ]; then
+                TPM_DEVICE="/dev/tpm0"
+            fi
+            # Try to clear TPM (may fail if not authorized, but that's okay)
+            TCTI="device:${TPM_DEVICE}" tpm2_clear -c 2>/dev/null || \
+            TCTI="device:${TPM_DEVICE}" tpm2_startup -c 2>/dev/null || true
+            echo "     TPM cleared/reset"
+        fi
+    fi
+    
+    # Kill processes using ports
+    if command -v lsof >/dev/null 2>&1; then
+        echo "     Freeing up ports..."
+        lsof -ti:8881 | xargs kill -9 >/dev/null 2>&1 || true
+        lsof -ti:9002 | xargs kill -9 >/dev/null 2>&1 || true
+        lsof -ti:8080 | xargs kill -9 >/dev/null 2>&1 || true
+        lsof -ti:8081 | xargs kill -9 >/dev/null 2>&1 || true
+    fi
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k 8881/tcp >/dev/null 2>&1 || true
+        fuser -k 9002/tcp >/dev/null 2>&1 || true
+        fuser -k 8080/tcp >/dev/null 2>&1 || true
+        fuser -k 8081/tcp >/dev/null 2>&1 || true
+    fi
+    
+    # Wait for processes to fully stop
+    sleep 2
+    
+    # Force kill any remaining processes
+    RUNNING_COUNT=0
+    if pgrep -f "spire-server|spire-agent|keylime" >/dev/null 2>&1; then
+        RUNNING_COUNT=$(pgrep -f "spire-server|spire-agent|keylime" | wc -l)
+        if [ "$RUNNING_COUNT" -gt 0 ]; then
+            echo "     Force killing $RUNNING_COUNT remaining process(es)..."
+            pkill -9 -f "spire-server" >/dev/null 2>&1 || true
+            pkill -9 -f "spire-agent" >/dev/null 2>&1 || true
+            pkill -9 -f "keylime" >/dev/null 2>&1 || true
+            sleep 1
+        fi
+    fi
+    
+    # Step 2: Clean up all data directories and databases
+    echo "  2. Cleaning up all data directories and databases..."
+    
+    # Clean up SPIRE data directories
+    echo "     Removing SPIRE data directories..."
+    sudo rm -rf /opt/spire/data 2>/dev/null || true
+    rm -rf /tmp/spire-server 2>/dev/null || true
+    rm -rf /tmp/spire-agent 2>/dev/null || true
+    rm -rf /tmp/spire-data 2>/dev/null || true
+    
+    # Clean up Keylime databases
+    echo "     Removing Keylime databases..."
+    rm -f "${KEYLIME_DIR}/verifier.db" 2>/dev/null || true
+    rm -f "${KEYLIME_DIR}/verifier.sqlite" 2>/dev/null || true
+    rm -f "${KEYLIME_DIR}"/*.db 2>/dev/null || true
+    rm -f "${KEYLIME_DIR}"/*.sqlite 2>/dev/null || true
+    
+    # Clean up Phase 3 TPM data
+    echo "     Removing Phase 3 TPM data..."
+    rm -rf /tmp/phase3-demo-tpm 2>/dev/null || true
+    rm -rf "$HOME/.spire/data/agent/tpm-plugin" 2>/dev/null || true
+    rm -rf /tmp/spire-data/tpm-plugin 2>/dev/null || true
+    rm -rf /tmp/tpm-plugin-* 2>/dev/null || true
+    rm -rf /tmp/rust-keylime-data 2>/dev/null || true
+    
+    # Clean up rust-keylime agent directory (after ensuring tmpfs is unmounted)
+    echo "     Removing rust-keylime agent data directory..."
+    # Make sure it's not mounted before removing
+    if mountpoint -q "/tmp/keylime-agent/secure" 2>/dev/null; then
+        echo "     ⚠ Warning: /tmp/keylime-agent/secure still mounted, skipping directory removal"
+    else
+        rm -rf /tmp/keylime-agent 2>/dev/null || true
+    fi
+    
+    # Clean up SVID dump directory
+    echo "     Removing SVID dump directory..."
+    rm -rf /tmp/svid-dump 2>/dev/null || true
+    
+    # Clean up TLS certificates
+    echo "     Removing TLS certificates..."
+    rm -rf "${KEYLIME_DIR}/cv_ca" 2>/dev/null || true
+    rm -rf "${KEYLIME_DIR}/reg_ca" 2>/dev/null || true
+    
+    # Step 3: Clean up all PID files
+    echo "  3. Removing PID files..."
+    rm -f /tmp/keylime-verifier.pid 2>/dev/null || true
+    rm -f /tmp/keylime-registrar.pid 2>/dev/null || true
+    rm -f /tmp/keylime-agent.pid 2>/dev/null || true
+    rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
+    rm -f /tmp/spire-server.pid 2>/dev/null || true
+    rm -f /tmp/spire-agent.pid 2>/dev/null || true
+    
+    # Step 4: Clean up all log files
+    echo "  4. Removing log files..."
+    rm -f /tmp/keylime-test.log 2>/dev/null || true
+    rm -f /tmp/keylime-verifier.log 2>/dev/null || true
+    rm -f /tmp/keylime-registrar.log 2>/dev/null || true
+    rm -f /tmp/keylime-agent.log 2>/dev/null || true
+    rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
+    rm -f /tmp/spire-server.log 2>/dev/null || true
+    rm -f /tmp/spire-agent.log 2>/dev/null || true
+    rm -f /tmp/bundle.pem 2>/dev/null || true
+    # Clean up temporary config files
+    rm -f /tmp/keylime-agent-*.conf 2>/dev/null || true
+    
+    # Step 5: Clean up sockets
+    echo "  5. Removing socket files..."
+    rm -f /tmp/spire-server/private/api.sock 2>/dev/null || true
+    rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
+    rm -f /var/run/keylime/keylime-agent-certify.sock 2>/dev/null || true
+    rm -f "$HOME/.keylime/run/keylime-agent-certify.sock" 2>/dev/null || true
+    rm -rf /tmp/spire-server 2>/dev/null || true
+    rm -rf /tmp/spire-agent 2>/dev/null || true
+    
+    # Step 6: Recreate clean data directories
+    echo "  6. Creating clean data directories..."
+    sudo mkdir -p /opt/spire/data/server /opt/spire/data/agent 2>/dev/null || true
+    sudo chown -R "$(whoami):$(whoami)" /opt/spire/data 2>/dev/null || true
+    mkdir -p /tmp/spire-server/private 2>/dev/null || true
+    mkdir -p /tmp/spire-agent/public 2>/dev/null || true
+    mkdir -p /tmp/spire-data/server /tmp/spire-data/agent 2>/dev/null || true
+    mkdir -p /tmp/rust-keylime-data 2>/dev/null || true
+    mkdir -p ~/.keylime/run 2>/dev/null || true
+    
+    # Ensure keylime-agent directory is clean and ready (but don't mount tmpfs yet)
+    mkdir -p /tmp/keylime-agent 2>/dev/null || true
+    # Remove secure subdirectory if it exists (will be recreated and mounted by agent)
+    if [ -d "/tmp/keylime-agent/secure" ] && ! mountpoint -q "/tmp/keylime-agent/secure" 2>/dev/null; then
+        rm -rf /tmp/keylime-agent/secure 2>/dev/null || true
+    fi
+    
+    # Final verification
+    echo ""
+    if ! pgrep -f "spire-server|spire-agent|keylime" >/dev/null 2>&1; then
+        echo -e "${GREEN}  ✓ All existing instances stopped and all data cleaned up${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}  ⚠ Some processes may still be running:${NC}"
+        pgrep -f "spire-server|spire-agent|keylime" || true
+        return 1
+    fi
 }
 
 # Pause function for critical phases (only in interactive terminals)
@@ -231,24 +421,6 @@ generate_workflow_log_file() {
             echo "[SPIRE Agent] Workload Authenticated:"
             grep -i "PID attested\|Fetched X.509 SVID.*python-app" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
             echo ""
-            
-            echo "[SPIRE Agent] SVID Renewal Configuration:"
-            if grep -q "availability_target" /tmp/spire-agent.log 2>/dev/null; then
-                grep -i "availability_target" /tmp/spire-agent.log | head -1 | sed 's/^/  /'
-            else
-                echo "  Configured for 15s renewal interval (demo purposes)"
-            fi
-            echo ""
-            
-            echo "[SPIRE Agent] SVID Renewal Activity:"
-            RENEWAL_EVENTS=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-            if [ "$RENEWAL_EVENTS" -gt 0 ]; then
-                echo "  Found $RENEWAL_EVENTS renewal events:"
-                grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | tail -10 | sed 's/^/    /'
-            else
-                echo "  No renewal events yet (renewal configured for 15s intervals)"
-            fi
-            echo ""
         fi
         
         if [ -f /tmp/test_phase3_final_rebuild.log ]; then
@@ -300,14 +472,6 @@ generate_workflow_log_file() {
         echo "  ✓ Agent SVID: Issued with full TPM attestation claims"
         echo "  ✓ Workload SVID: Issued with ONLY workload claims (no TPM attestation)"
         echo "  ✓ Certificate Chain: Complete [Workload SVID, Agent SVID]"
-        if [ -f /tmp/spire-agent.log ]; then
-            RENEWAL_COUNT=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-            if [ "$RENEWAL_COUNT" -gt 0 ]; then
-                echo "  ✓ SPIRE Agent SVID Renewal: Active ($RENEWAL_COUNT renewal events, 15s interval for demo)"
-            else
-                echo "  ✓ SPIRE Agent SVID Renewal: Configured (15s interval for demo)"
-            fi
-        fi
         echo "  ✓ All verifications: Passed"
         echo ""
     } > "$OUTPUT_FILE"
@@ -323,24 +487,28 @@ generate_workflow_log_file() {
     fi
 }
 
-# Usage helper
+# Usage helper (can be overridden by calling script)
 show_usage() {
+    local script_name="${SCRIPT_NAME:-$(basename "${BASH_SOURCE[1]}")}"
+    local default_behavior="${DEFAULT_CLEANUP_BEHAVIOR:-continue running}"
     cat <<EOF
-Usage: $(basename "$0") [options]
+Usage: ${script_name} [options]
 
 Options:
   --cleanup-only       Stop services, remove data, and exit.
   --skip-cleanup       Skip the initial cleanup phase.
-  --exit-cleanup       Run cleanup on exit (default: components continue running)
-  --no-exit-cleanup    Do not run best-effort cleanup on exit (default behavior)
+  --exit-cleanup       Run cleanup on exit
+  --no-exit-cleanup    Do not run best-effort cleanup on exit
   --pause              Enable pause points at critical phases (default: auto-detect)
   --no-pause           Disable pause points (run non-interactively)
   -h, --help           Show this help message.
 
 Environment Variables:
+  SPIRE_AGENT_SVID_RENEWAL_INTERVAL  SVID renewal interval in seconds (default: 300)
+                                     SPIRE agent will renew SVIDs when this much time
+                                     remains before expiration.
 
-Note: By default, all components continue running after script exit. Use --exit-cleanup
-      to restore the old behavior of cleaning up on exit.
+Note: Default behavior: ${default_behavior}
 EOF
 }
 
@@ -358,8 +526,8 @@ cleanup() {
 }
 
 RUN_INITIAL_CLEANUP=true
-# Modified: Default to NOT cleaning up on exit so components continue running
-EXIT_CLEANUP_ON_EXIT="${EXIT_CLEANUP_ON_EXIT:-false}"
+# Default EXIT_CLEANUP_ON_EXIT can be set by calling script via DEFAULT_EXIT_CLEANUP
+EXIT_CLEANUP_ON_EXIT="${EXIT_CLEANUP_ON_EXIT:-${DEFAULT_EXIT_CLEANUP:-false}}"
 # Auto-detect pause mode: enable if interactive terminal, disable otherwise
 if [ -t 0 ]; then
     PAUSE_ENABLED="${PAUSE_ENABLED:-true}"
@@ -367,8 +535,8 @@ else
     PAUSE_ENABLED="${PAUSE_ENABLED:-false}"
 fi
 
-# Note: SVID renewal configuration is not used in this script (for short demos)
-# For persistent deployments with SVID renewal, use test_phase3_persistent.sh
+# SPIRE Agent SVID renewal interval (in seconds, configurable via environment variable)
+SPIRE_AGENT_SVID_RENEWAL_INTERVAL="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-300}"
 # Convert seconds to SPIRE format (e.g., 300s -> 5m, 60s -> 1m)
 convert_seconds_to_spire_duration() {
     local seconds=$1
@@ -445,13 +613,13 @@ configure_spire_agent_svid_renewal() {
     fi
 }
 
-while [[ $# -gt 0 ]]; do
+# Main execution function
+run_phase3_test() {
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
     case "$1" in
         --cleanup-only)
-            # For --cleanup-only, use the original function directly (not the wrapper)
-            echo -e "${CYAN}Stopping all existing instances and cleaning up all data...${NC}"
-            echo ""
-            SKIP_HEADER=1 _original_stop_all_instances_and_cleanup
+            stop_all_instances_and_cleanup
             exit 0
             ;;
         --skip-cleanup)
@@ -1462,10 +1630,9 @@ if [ -f "${AGENT_CONFIG}" ]; then
         echo "    ⚠ Trust bundle export failed, but continuing..."
     fi
     
-    # Configure SPIRE agent SVID renewal for demo purposes (15 seconds)
-    # Note: SPIRE requires minimum 24h, but for demos we use 15s to see renewal activity
-    echo "    Configuring SPIRE agent SVID renewal for demo (15s interval)..."
-    configure_spire_agent_svid_renewal "${AGENT_CONFIG}" "15"
+    # Configure SPIRE agent SVID renewal interval
+    echo "    Configuring SPIRE agent SVID renewal..."
+    configure_spire_agent_svid_renewal "${AGENT_CONFIG}" "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}"
     
     echo "    Starting SPIRE Agent (logs: /tmp/spire-agent.log)..."
     export UNIFIED_IDENTITY_ENABLED=true
@@ -1502,32 +1669,18 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Wait for Agent to complete attestation and receive its SVID
-echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
+# Wait for Agent to complete attestation (allow more time)
+echo "  Waiting for SPIRE Agent to complete attestation..."
 ATTESTATION_COMPLETE=false
 for i in {1..90}; do
-    # Check if agent has its SVID by checking for Workload API socket
-    # The socket is created as soon as the agent has its SVID and is ready
-    if [ -S /tmp/spire-agent/public/api.sock ] 2>/dev/null; then
-        # Verify agent is also listed on server
-        AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
-        if echo "$AGENT_LIST" | grep -q "spiffe://"; then
-            echo -e "${GREEN}  ✓ SPIRE Agent is attested and has SVID${NC}"
-            # Show agent details
-            echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
-            ATTESTATION_COMPLETE=true
-            break
-        fi
-    else
-        # Fallback: Check if agent is attested on server (even if socket not ready yet)
-        AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
-        if echo "$AGENT_LIST" | grep -q "spiffe://"; then
-            echo -e "${GREEN}  ✓ SPIRE Agent is attested${NC}"
-            # Show agent details
-            echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
-            ATTESTATION_COMPLETE=true
-            break
-        fi
+    # Check if agent is attested
+    AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
+    if echo "$AGENT_LIST" | grep -q "spiffe://"; then
+        echo -e "${GREEN}  ✓ SPIRE Agent is attested${NC}"
+        # Show agent details
+        echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
+        ATTESTATION_COMPLETE=true
+        break
     fi
     # Check if join token was successfully used (even if attestation later fails)
     # This helps distinguish between "token not used" vs "token used but attestation failed"
@@ -1549,9 +1702,7 @@ for i in {1..90}; do
     
     # Show progress every 15 seconds
     if [ $((i % 15)) -eq 0 ]; then
-        elapsed=$i
-        remaining=$((90 - i))
-        echo "    Still waiting for attestation... (${elapsed}s elapsed, ${remaining}s remaining)"
+        echo "    Still waiting for attestation... (${i}/90 seconds)"
         # Check logs for errors
         if [ -f /tmp/spire-agent.log ]; then
             if tail -20 /tmp/spire-agent.log | grep -q "ERROR\|Failed"; then
@@ -1858,28 +2009,6 @@ else
 fi
 
 echo ""
-echo "  Checking SPIRE Agent logs for SVID renewal activity..."
-if [ -f /tmp/spire-agent.log ]; then
-    # Look for renewal-related log entries
-    RENEWAL_LOGS=$(grep -iE "renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | wc -l)
-    if [ "$RENEWAL_LOGS" -gt 0 ]; then
-        echo -e "${GREEN}  ✓ Found $RENEWAL_LOGS SVID renewal-related log entries${NC}"
-        echo "  Recent renewal activity:"
-        grep -iE "renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | tail -5 | sed 's/^/    /'
-    else
-        echo -e "${YELLOW}  ⚠ No SVID renewal activity found in agent logs (may occur after 15s interval)${NC}"
-        echo "  Note: Renewal is configured for 15s intervals for demo purposes"
-    fi
-    # Check if availability_target was set
-    if grep -q "availability_target" /tmp/spire-agent.log 2>/dev/null; then
-        AVAIL_TARGET=$(grep -i "availability_target" /tmp/spire-agent.log | tail -1)
-        echo "  Configuration: $AVAIL_TARGET" | sed 's/^/    /'
-    fi
-else
-    echo -e "${YELLOW}  ⚠ SPIRE Agent log not found${NC}"
-fi
-
-echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║  Integration Test Summary                                     ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
@@ -1893,15 +2022,6 @@ if [ -f "${SPIRE_SERVER}" ]; then
     echo -e "${GREEN}  ✓ Registration entry created${NC}"
     if [ -f "/tmp/svid-dump/attested_claims.json" ]; then
         echo -e "${GREEN}  ✓ Sovereign SVID generated with AttestedClaims${NC}"
-    fi
-    # Show SVID renewal configuration
-    if [ -f /tmp/spire-agent.log ]; then
-        RENEWAL_COUNT=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-        if [ "$RENEWAL_COUNT" -gt 0 ]; then
-            echo -e "${GREEN}  ✓ SPIRE Agent SVID renewal active ($RENEWAL_COUNT renewal events logged)${NC}"
-        else
-            echo -e "${CYAN}  ℹ SPIRE Agent SVID renewal configured (15s interval for demo)${NC}"
-        fi
     fi
 fi
 echo -e "${GREEN}  ✓ All Phase 3 tests passed${NC}"
@@ -1921,13 +2041,8 @@ else
     echo "  SPIRE Agent: PID $(cat /tmp/spire-agent.pid 2>/dev/null || echo 'N/A')"
     echo ""
     echo -e "${CYAN}SPIRE Agent SVID Renewal:${NC}"
-    echo "  Configured for 15s intervals (demo purposes)"
-    if [ -f /tmp/spire-agent.log ]; then
-        RENEWAL_COUNT=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-        if [ "$RENEWAL_COUNT" -gt 0 ]; then
-            echo "  Active: $RENEWAL_COUNT renewal events logged"
-        fi
-    fi
+    echo "  Configured renewal interval: ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}s ($(convert_seconds_to_spire_duration ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}))"
+    echo "  Agent will automatically renew SVIDs when ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}s remain before expiration"
     echo ""
     echo -e "${CYAN}Workload SVID Access:${NC}"
     echo "  Workloads can retrieve SVIDs anytime via SPIRE Agent Workload API"
@@ -1965,3 +2080,4 @@ echo "  $0 --exit-cleanup            # cleanup services on exit (old behavior)"
 echo "  $0 --no-exit-cleanup         # keep services running (default)"
 echo ""
 echo "Environment variables:"
+echo "  SPIRE_AGENT_SVID_RENEWAL_INTERVAL  # SVID renewal interval in seconds (default: 300)"

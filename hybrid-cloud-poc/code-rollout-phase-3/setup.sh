@@ -79,17 +79,21 @@ else
     echo "[WARN] Certification Server import check failed (may need keylime dependencies)"
 fi
 
-echo ""
-echo "=========================================="
-echo "Unified-Identity - Phase 3: Setup Complete"
-echo "=========================================="
-echo ""
-echo "Next steps:"
-echo "1. Enable feature flag: export UNIFIED_IDENTITY_ENABLED=true"
-echo "2. Start Keylime Agent certification server:"
-echo "   python3 scripts/start_keylime_cert_server.py"
-echo "3. Configure SPIRE Agent with feature flag enabled"
-echo "4. Run tests: ./test/test_e2e_phase3.sh"
-echo ""
-echo "See README.md for detailed instructions."
-
+# Check if script is being sourced or executed directly
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    # Script is being executed directly - show completion message
+    echo ""
+    echo "=========================================="
+    echo "Unified-Identity - Phase 3: Setup Complete"
+    echo "=========================================="
+    echo ""
+    echo "Next steps:"
+    echo "1. Enable feature flag: export UNIFIED_IDENTITY_ENABLED=true"
+    echo "2. Start Keylime Agent certification server:"
+    echo "   python3 scripts/start_keylime_cert_server.py"
+    echo "3. Configure SPIRE Agent with feature flag enabled"
+    echo "4. Run tests: ./test/test_e2e_phase3.sh"
+    echo ""
+    echo "See README.md for detailed instructions."
+fi
+# If script is sourced, setup functions are available but completion message doesn't show

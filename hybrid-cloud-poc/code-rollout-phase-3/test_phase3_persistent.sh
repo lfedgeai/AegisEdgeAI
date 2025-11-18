@@ -1,7 +1,11 @@
 #!/bin/bash
-# Unified-Identity - Phase 3: Complete End-to-End Integration Test
+# Unified-Identity - Phase 3: Persistent Services Deployment
 # Tests the full workflow: SPIRE Server + Keylime Verifier + rust-keylime Agent -> Sovereign SVID Generation
 # Phase 3: Hardware Integration & Delegated Certification
+# 
+# This script starts all components and keeps them running after script exit.
+# Components are configured for long-running operation with automatic SVID renewal.
+# Use test_phase3_complete.sh for short demos that clean up on exit.
 
 set -uo pipefail
 # Don't exit on error (-e) - we want to continue even if some steps fail
@@ -37,9 +41,10 @@ if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
 fi
 
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║  Unified-Identity - Phase 3: Complete Integration Test         ║"
+echo "║  Unified-Identity - Phase 3: Persistent Services Deployment     ║"
 echo "║  Phase 3: Hardware Integration & Delegated Certification       ║"
 echo "║  Testing: TPM App Key + rust-keylime Agent -> Sovereign SVID   ║"
+echo "║  All services will continue running after script exit          ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -231,24 +236,6 @@ generate_workflow_log_file() {
             echo "[SPIRE Agent] Workload Authenticated:"
             grep -i "PID attested\|Fetched X.509 SVID.*python-app" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
             echo ""
-            
-            echo "[SPIRE Agent] SVID Renewal Configuration:"
-            if grep -q "availability_target" /tmp/spire-agent.log 2>/dev/null; then
-                grep -i "availability_target" /tmp/spire-agent.log | head -1 | sed 's/^/  /'
-            else
-                echo "  Configured for 15s renewal interval (demo purposes)"
-            fi
-            echo ""
-            
-            echo "[SPIRE Agent] SVID Renewal Activity:"
-            RENEWAL_EVENTS=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-            if [ "$RENEWAL_EVENTS" -gt 0 ]; then
-                echo "  Found $RENEWAL_EVENTS renewal events:"
-                grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | tail -10 | sed 's/^/    /'
-            else
-                echo "  No renewal events yet (renewal configured for 15s intervals)"
-            fi
-            echo ""
         fi
         
         if [ -f /tmp/test_phase3_final_rebuild.log ]; then
@@ -300,14 +287,6 @@ generate_workflow_log_file() {
         echo "  ✓ Agent SVID: Issued with full TPM attestation claims"
         echo "  ✓ Workload SVID: Issued with ONLY workload claims (no TPM attestation)"
         echo "  ✓ Certificate Chain: Complete [Workload SVID, Agent SVID]"
-        if [ -f /tmp/spire-agent.log ]; then
-            RENEWAL_COUNT=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-            if [ "$RENEWAL_COUNT" -gt 0 ]; then
-                echo "  ✓ SPIRE Agent SVID Renewal: Active ($RENEWAL_COUNT renewal events, 15s interval for demo)"
-            else
-                echo "  ✓ SPIRE Agent SVID Renewal: Configured (15s interval for demo)"
-            fi
-        fi
         echo "  ✓ All verifications: Passed"
         echo ""
     } > "$OUTPUT_FILE"
@@ -338,6 +317,9 @@ Options:
   -h, --help           Show this help message.
 
 Environment Variables:
+  SPIRE_AGENT_SVID_RENEWAL_INTERVAL  SVID renewal interval in seconds (default: 86400 = 24h, minimum: 24h)
+                                     SPIRE agent will renew SVIDs when this much time
+                                     remains before expiration.
 
 Note: By default, all components continue running after script exit. Use --exit-cleanup
       to restore the old behavior of cleaning up on exit.
@@ -367,8 +349,10 @@ else
     PAUSE_ENABLED="${PAUSE_ENABLED:-false}"
 fi
 
-# Note: SVID renewal configuration is not used in this script (for short demos)
-# For persistent deployments with SVID renewal, use test_phase3_persistent.sh
+# SPIRE Agent SVID renewal interval (in seconds, configurable via environment variable)
+# SPIRE requires availability_target to be at least 24 hours (86400 seconds)
+# Default to 24 hours if not specified
+SPIRE_AGENT_SVID_RENEWAL_INTERVAL="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
 # Convert seconds to SPIRE format (e.g., 300s -> 5m, 60s -> 1m)
 convert_seconds_to_spire_duration() {
     local seconds=$1
@@ -448,10 +432,8 @@ configure_spire_agent_svid_renewal() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --cleanup-only)
-            # For --cleanup-only, use the original function directly (not the wrapper)
-            echo -e "${CYAN}Stopping all existing instances and cleaning up all data...${NC}"
-            echo ""
-            SKIP_HEADER=1 _original_stop_all_instances_and_cleanup
+            # For --cleanup-only, call cleanup.sh directly
+            "${SCRIPT_DIR}/cleanup.sh"
             exit 0
             ;;
         --skip-cleanup)
@@ -1462,10 +1444,9 @@ if [ -f "${AGENT_CONFIG}" ]; then
         echo "    ⚠ Trust bundle export failed, but continuing..."
     fi
     
-    # Configure SPIRE agent SVID renewal for demo purposes (15 seconds)
-    # Note: SPIRE requires minimum 24h, but for demos we use 15s to see renewal activity
-    echo "    Configuring SPIRE agent SVID renewal for demo (15s interval)..."
-    configure_spire_agent_svid_renewal "${AGENT_CONFIG}" "15"
+    # Configure SPIRE agent SVID renewal interval
+    echo "    Configuring SPIRE agent SVID renewal..."
+    configure_spire_agent_svid_renewal "${AGENT_CONFIG}" "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}"
     
     echo "    Starting SPIRE Agent (logs: /tmp/spire-agent.log)..."
     export UNIFIED_IDENTITY_ENABLED=true
@@ -1858,28 +1839,6 @@ else
 fi
 
 echo ""
-echo "  Checking SPIRE Agent logs for SVID renewal activity..."
-if [ -f /tmp/spire-agent.log ]; then
-    # Look for renewal-related log entries
-    RENEWAL_LOGS=$(grep -iE "renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | wc -l)
-    if [ "$RENEWAL_LOGS" -gt 0 ]; then
-        echo -e "${GREEN}  ✓ Found $RENEWAL_LOGS SVID renewal-related log entries${NC}"
-        echo "  Recent renewal activity:"
-        grep -iE "renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | tail -5 | sed 's/^/    /'
-    else
-        echo -e "${YELLOW}  ⚠ No SVID renewal activity found in agent logs (may occur after 15s interval)${NC}"
-        echo "  Note: Renewal is configured for 15s intervals for demo purposes"
-    fi
-    # Check if availability_target was set
-    if grep -q "availability_target" /tmp/spire-agent.log 2>/dev/null; then
-        AVAIL_TARGET=$(grep -i "availability_target" /tmp/spire-agent.log | tail -1)
-        echo "  Configuration: $AVAIL_TARGET" | sed 's/^/    /'
-    fi
-else
-    echo -e "${YELLOW}  ⚠ SPIRE Agent log not found${NC}"
-fi
-
-echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║  Integration Test Summary                                     ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
@@ -1893,15 +1852,6 @@ if [ -f "${SPIRE_SERVER}" ]; then
     echo -e "${GREEN}  ✓ Registration entry created${NC}"
     if [ -f "/tmp/svid-dump/attested_claims.json" ]; then
         echo -e "${GREEN}  ✓ Sovereign SVID generated with AttestedClaims${NC}"
-    fi
-    # Show SVID renewal configuration
-    if [ -f /tmp/spire-agent.log ]; then
-        RENEWAL_COUNT=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-        if [ "$RENEWAL_COUNT" -gt 0 ]; then
-            echo -e "${GREEN}  ✓ SPIRE Agent SVID renewal active ($RENEWAL_COUNT renewal events logged)${NC}"
-        else
-            echo -e "${CYAN}  ℹ SPIRE Agent SVID renewal configured (15s interval for demo)${NC}"
-        fi
     fi
 fi
 echo -e "${GREEN}  ✓ All Phase 3 tests passed${NC}"
@@ -1921,13 +1871,8 @@ else
     echo "  SPIRE Agent: PID $(cat /tmp/spire-agent.pid 2>/dev/null || echo 'N/A')"
     echo ""
     echo -e "${CYAN}SPIRE Agent SVID Renewal:${NC}"
-    echo "  Configured for 15s intervals (demo purposes)"
-    if [ -f /tmp/spire-agent.log ]; then
-        RENEWAL_COUNT=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-        if [ "$RENEWAL_COUNT" -gt 0 ]; then
-            echo "  Active: $RENEWAL_COUNT renewal events logged"
-        fi
-    fi
+    echo "  Configured renewal interval: ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}s ($(convert_seconds_to_spire_duration ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}))"
+    echo "  Agent will automatically renew SVIDs when ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}s remain before expiration"
     echo ""
     echo -e "${CYAN}Workload SVID Access:${NC}"
     echo "  Workloads can retrieve SVIDs anytime via SPIRE Agent Workload API"
@@ -1965,3 +1910,4 @@ echo "  $0 --exit-cleanup            # cleanup services on exit (old behavior)"
 echo "  $0 --no-exit-cleanup         # keep services running (default)"
 echo ""
 echo "Environment variables:"
+echo "  SPIRE_AGENT_SVID_RENEWAL_INTERVAL  # SVID renewal interval in seconds (default: 86400 = 24h, minimum: 24h)"
