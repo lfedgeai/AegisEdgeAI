@@ -22,6 +22,8 @@ pub struct KeylimeQuote {
     pub mb_measurement_list: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ima_measurement_list_entry: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geolocation: Option<String>, // Unified-Identity - Phase 3: Geolocation string with sensor info
 }
 
 #[cfg(test)]

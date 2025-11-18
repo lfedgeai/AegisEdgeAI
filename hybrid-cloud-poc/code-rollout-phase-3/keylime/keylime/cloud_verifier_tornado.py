@@ -1725,6 +1725,7 @@ class VerifyEvidenceHandler(BaseHandler):
         app_key_certificate = data.get("app_key_certificate", "")
         tpm_ak = data.get("tpm_ak", "")
         tpm_ek = data.get("tpm_ek", "")
+        geolocation_from_request = data.get("geolocation", None)  # Unified-Identity - Phase 3: Extract geolocation from request if present
 
         # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
         # Validate required fields
@@ -1822,8 +1823,38 @@ class VerifyEvidenceHandler(BaseHandler):
 
         # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
         # Step 5: Retrieve attested claims
-        logger.info("Unified-Identity - Phase 2: Step 5 - Retrieving attested claims")
-        attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=None)
+        # Try to identify agent from TPM keys to retrieve geolocation from metadata
+        agent_id = None
+        if tpm_ak or tpm_ek:
+            try:
+                from keylime.db.keylime_db import SessionManager, make_engine
+                from keylime.db.verifier_db import VerfierMain
+                
+                engine = make_engine("cloud_verifier")
+                with SessionManager().session_context(engine) as session:
+                    # Try to find agent by AK first, then EK
+                    if tpm_ak:
+                        agent = session.query(VerfierMain).filter(VerfierMain.ak_tpm == tpm_ak).first()
+                        if agent:
+                            agent_id = agent.agent_id
+                    if not agent_id and tpm_ek:
+                        # EK is stored in registrar, not verifier DB, so we can't easily look it up here
+                        # For now, we'll rely on geolocation from request or defaults
+                        pass
+            except Exception as e:
+                logger.debug("Unified-Identity - Phase 3: Could not identify agent from TPM keys: %s", e)
+        
+        logger.info("Unified-Identity - Phase 2: Step 5 - Retrieving attested claims (agent_id: %s)", agent_id)
+        attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=agent_id)
+        
+        # Unified-Identity - Phase 3: If geolocation was provided in request and not in metadata, use it
+        if geolocation_from_request and (not attested_claims.get("geolocation") or attested_claims.get("geolocation") is None):
+            # Parse and structure the geolocation
+            from keylime import fact_provider as fp
+            parsed_geo = fp._parse_geolocation_string(geolocation_from_request)
+            if parsed_geo:
+                attested_claims["geolocation"] = parsed_geo
+                logger.info("Unified-Identity - Phase 3: Using geolocation from request: %s", geolocation_from_request)
 
         # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
         # Generate audit ID

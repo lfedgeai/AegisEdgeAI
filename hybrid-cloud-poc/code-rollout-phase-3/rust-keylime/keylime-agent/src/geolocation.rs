@@ -20,18 +20,97 @@ use tss_esapi::{
 pub const GEOLOCATION_PCR_INDEX: u32 = 17;
 
 /// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-/// Get current geolocation data (hardcoded for now, can be made dynamic in the future)
+/// Get current geolocation data with sensor detection
 /// Returns a structured geolocation string that can be hashed and extended into PCR
+/// Format: "mobile:sensor_id:geolocation" or "GNSS:sensor_id:geolocation" or "none"
 fn get_current_geolocation() -> String {
     // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-    // Hardcoded geolocation - can be made dynamic in the future
-    // Format: "country:state:city:latitude:longitude" or similar
-    // For now, using a simple format that can be parsed later
-    let default_geo = std::env::var("KEYLIME_AGENT_GEOLOCATION")
-        .unwrap_or_else(|_| "US:California:San Francisco:37.7749:-122.4194".to_string());
-    
-    info!("Unified-Identity - Phase 3: Using geolocation: {}", default_geo);
-    default_geo
+    // Check for specific USB device IDs to determine sensor type
+    let lsusb_output = std::process::Command::new("lsusb")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .unwrap_or_default();
+
+    let mut sensor_type = None;
+    let mut sensor_id = None;
+    let mut geolocation_data: Option<String> = None;
+
+    // Check for Huawei Mobile (12d1:1433)
+    if lsusb_output.contains("12d1:1433") {
+        sensor_type = Some("mobile");
+        sensor_id = Some("12d1:1433");
+        // Check if geolocation is provided via environment variable
+        if let Ok(env_value) = std::env::var("KEYLIME_AGENT_GEOLOCATION") {
+            let trimmed = env_value.trim();
+            if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("none") {
+                geolocation_data = Some(trimmed.to_string());
+            }
+        }
+        // If no geolocation data available, set to "none"
+        if geolocation_data.is_none() {
+            geolocation_data = Some("none".to_string());
+        }
+    }
+    // Check for common u-blox GNSS receivers (example VIDs/PIDs)
+    else if lsusb_output.contains("1546:01a7") || lsusb_output.contains("1546:01a8") || lsusb_output.contains("0403:6015") {
+        sensor_type = Some("GNSS");
+        // Extract sensor ID from lsusb output
+        for line in lsusb_output.lines() {
+            if line.contains("1546:01a7") {
+                sensor_id = Some("1546:01a7");
+                break;
+            } else if line.contains("1546:01a8") {
+                sensor_id = Some("1546:01a8");
+                break;
+            } else if line.contains("0403:6015") {
+                sensor_id = Some("0403:6015");
+                break;
+            }
+        }
+        // Check if geolocation is provided via environment variable
+        if let Ok(env_value) = std::env::var("KEYLIME_AGENT_GEOLOCATION") {
+            let trimmed = env_value.trim();
+            if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("none") {
+                geolocation_data = Some(trimmed.to_string());
+            }
+        }
+        // If no geolocation data available, set to "none"
+        if geolocation_data.is_none() {
+            geolocation_data = Some("none".to_string());
+        }
+    }
+    // Check for environment variable override (no sensor detected)
+    else if let Ok(env_value) = std::env::var("KEYLIME_AGENT_GEOLOCATION") {
+        let trimmed = env_value.trim();
+        if !trimmed.is_empty() {
+            geolocation_data = Some(trimmed.to_string());
+        }
+    }
+
+    // Format the geolocation string
+    let result = if let (Some(sensor), Some(id)) = (sensor_type, sensor_id) {
+        // Sensor detected - format with sensor info
+        if let Some(geo) = geolocation_data {
+            let formatted = format!("{}:{}:{}", sensor, id, geo);
+            info!("Unified-Identity - Phase 3: Detected {} sensor (ID: {}), geolocation: {}", sensor, id, geo);
+            formatted
+        } else {
+            // Should not happen, but handle gracefully
+            info!("Unified-Identity - Phase 3: Sensor detected but no geolocation data");
+            format!("{}:{}:none", sensor, id)
+        }
+    } else if let Some(geo) = geolocation_data {
+        // No sensor, but environment variable provided
+        info!("Unified-Identity - Phase 3: Using geolocation from environment: {}", geo);
+        geo
+    } else {
+        // No sensor and no environment variable
+        info!("Unified-Identity - Phase 3: No geolocation sensor detected or data unavailable");
+        "none".to_string()
+    };
+
+    result
 }
 
 /// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification

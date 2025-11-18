@@ -617,6 +617,10 @@ message AgentX509SVIDParams {
 }
 ```
 
+> **Note:** If no mobile/GNSS sensors or GPU telemetry sources are detected, the
+> corresponding values in `attested_claims` are returned as `null` and no longer
+> fall back to synthetic defaults.
+
 **HTTP Headers:**
 ```
 Content-Type: application/json
@@ -654,7 +658,7 @@ Content-Type: application/json
 **Action:**
 - Keylime Verifier requests a TPM Quote from Keylime Agent
 - Keylime Agent:
-  1. Gets current geolocation (from environment variable `KEYLIME_AGENT_GEOLOCATION` or default)
+  1. Gets current geolocation (from sensors or `KEYLIME_AGENT_GEOLOCATION`; if unavailable, records `"none"`)
   2. Hashes geolocation with nonce and timestamp
   3. Extends the hash into PCR 17
   4. Generates TPM Quote including PCR 17
@@ -694,7 +698,7 @@ GET /v2.2/quotes/integrity?nonce=<nonce>&mask=<mask>&partial=1&ima_ml_entry=0
   2. **Fact provider** (`fact_provider.py::get_attested_claims()`) which:
      - Checks verifier database for agent metadata with geolocation
      - Falls back to fact store (if host identified by EK/AK)
-     - Uses default geolocation from configuration if not found
+     - Returns `null` when no sensor data or stored metadata is available (no synthetic GNSS default)
   3. **Verification:** The Verifier validates that PCR 17 contains the expected geolocation hash by:
      - Re-hashing the retrieved geolocation string with the nonce and timestamp
      - Comparing the hash with PCR 17 value from the quote

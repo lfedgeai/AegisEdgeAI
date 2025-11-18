@@ -56,6 +56,7 @@ def process_quote_response(
         ima_measurement_list_entry = json_response.get("ima_measurement_list_entry", 0)
         mb_measurement_list = json_response.get("mb_measurement_list", None)
         boottime = json_response.get("boottime", 0)
+        geolocation = json_response.get("geolocation", None)  # Unified-Identity - Phase 3: Extract geolocation from quote response
 
         logger.debug(
             "received data for agent %s, quote: %s, nonce: %s, public key(b64): %s, ima_measurement_list: %s, ima_measurement_list_entry: %s, measured_boot_log: %s, boottime: %s",
@@ -216,6 +217,35 @@ def process_quote_response(
             agent["public_key"] = received_public_key
             agent["b64_encrypted_V"] = ""
             agent["provide_V"] = True
+
+        # Unified-Identity - Phase 3: Store geolocation in agent metadata if provided
+        if geolocation:
+            try:
+                import json
+                from keylime.db.keylime_db import SessionManager, make_engine
+                from keylime.db.verifier_db import VerfierMain
+
+                engine = make_engine("cloud_verifier")
+                with SessionManager().session_context(engine) as session:
+                    update_agent = session.query(VerfierMain).filter(VerfierMain.agent_id == agent_id).first()
+                    if update_agent:
+                        # Parse existing metadata or create new dict
+                        if update_agent.meta_data:
+                            try:
+                                metadata = json.loads(update_agent.meta_data) if isinstance(update_agent.meta_data, str) else update_agent.meta_data
+                            except (json.JSONDecodeError, TypeError):
+                                metadata = {}
+                        else:
+                            metadata = {}
+                        
+                        # Update geolocation in metadata
+                        metadata["geolocation"] = geolocation
+                        update_agent.meta_data = json.dumps(metadata)
+                        session.add(update_agent)
+                        # session.commit() is automatically called by context manager
+                        logger.info("Unified-Identity - Phase 3: Stored geolocation in agent metadata: %s", geolocation)
+            except Exception as e:
+                logger.warning("Unified-Identity - Phase 3: Failed to store geolocation in agent metadata: %s", e)
 
     # ok we're done
     return failure

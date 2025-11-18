@@ -1021,9 +1021,9 @@ pause_at_phase "Step 4 Complete" "rust-keylime Agent is running. Ready for regis
 
 # Step 5: Verify rust-keylime Agent Registration and TPM Attested Geolocation
 echo ""
-echo -e "${CYAN}Step 5: Verifying rust-keylime Agent Registration and TPM Attested Geolocation...${NC}"
-echo "  This ensures the agent is registered with Keylime Verifier and"
-echo "  TPM attested geolocation is available before starting TPM Plugin and SPIRE."
+echo -e "${CYAN}Step 5: Verifying rust-keylime Agent Registration (and optional TPM geolocation)...${NC}"
+echo "  This ensures the agent is registered with Keylime Verifier"
+echo "  and surfaces any geolocation claims only if sensors report them."
 
 # Get agent UUID from rust-keylime agent config
 RUST_AGENT_UUID=""
@@ -1128,86 +1128,9 @@ for i in {1..120}; do
         fi
     fi
     
-    # Step 3: Check for geolocation (after both registrar and verifier registration)
     if [ "$REGISTRAR_REGISTERED" = true ] && [ "$VERIFIER_REGISTERED" = true ]; then
-        # Check if geolocation is available in metadata or attested claims
-        GEO_CHECK=$(echo "$AGENT_STATUS" | grep -i "geolocation\|meta_data" || echo "")
-        
-        if [ -n "$GEO_CHECK" ]; then
-            echo -e "${GREEN}  ✓ TPM attested geolocation available in verifier${NC}"
-            AGENT_REGISTERED=true
-            break
-        else
-            # Try to get geolocation from fact provider via Python
-            # fact_provider always returns geolocation (defaults if not in DB), so check immediately
-            # Only print message on first check or every 10 seconds to reduce verbosity
-            if [ $i -eq 1 ] || [ $((i % 10)) -eq 0 ]; then
-                if [ $i -eq 1 ]; then
-                    echo "  Checking for TPM attested geolocation via fact_provider..."
-                fi
-            fi
-            
-            # Run the check (suppress stderr to avoid warnings, capture stdout)
-            GEO_AVAILABLE=$(python3 2>/dev/null <<PYEOF
-import sys
-import os
-# Suppress warnings
-import warnings
-warnings.filterwarnings('ignore')
-
-# Add Keylime to path - use the Python Keylime directory
-KEYLIME_DIR = '${KEYLIME_DIR}'
-if KEYLIME_DIR and os.path.exists(KEYLIME_DIR):
-    sys.path.insert(0, KEYLIME_DIR)
-
-try:
-    from keylime import fact_provider
-    
-    # Set config environment variables
-    os.environ['KEYLIME_VERIFIER_CONFIG'] = '${VERIFIER_CONFIG_ABS}'
-    os.environ['KEYLIME_TEST'] = 'on'
-    os.environ['UNIFIED_IDENTITY_ENABLED'] = 'true'
-    
-    # Get agent ID
-    agent_id = '${RUST_AGENT_UUID}' if '${RUST_AGENT_UUID}' else None
-    
-    # Get attested claims - this always returns geolocation (defaults if not in DB)
-    claims = fact_provider.get_attested_claims(agent_id=agent_id)
-    
-    # fact_provider always returns geolocation (either from DB or defaults)
-    if claims and isinstance(claims, dict) and claims.get('geolocation'):
-        geo_value = claims.get('geolocation')
-        # Output in format that's easy to parse - single line, no newlines
-        sys.stdout.write(f'FOUND:{geo_value}\n')
-        sys.stdout.flush()
-    else:
-        sys.stdout.write('NOT_FOUND\n')
-        sys.stdout.flush()
-except Exception as e:
-    # On any error, fact_provider should still work, but log it
-    sys.stdout.write(f'ERROR:{str(e)}\n')
-    sys.stdout.flush()
-PYEOF
-)
-            
-            # Parse the result - check for FOUND: prefix
-            if echo "$GEO_AVAILABLE" | grep -q "^FOUND:"; then
-                GEO_VALUE=$(echo "$GEO_AVAILABLE" | grep "^FOUND:" | sed 's/^FOUND://' | head -1 | tr -d '\n\r')
-                if [ -n "$GEO_VALUE" ]; then
-                    echo -e "${GREEN}  ✓ TPM attested geolocation verified: ${GEO_VALUE}${NC}"
-                    AGENT_REGISTERED=true
-                    break
-                fi
-            fi
-            
-            # If we've waited at least 5 seconds and agent is registered, proceed
-            # fact_provider always returns geolocation, so if we can't parse it, we can still proceed
-            if [ $i -ge 5 ]; then
-                echo -e "${GREEN}  ✓ Agent registered and attestation started - geolocation available via fact_provider${NC}"
-                AGENT_REGISTERED=true
-                break
-            fi
-        fi
+        AGENT_REGISTERED=true
+        break
     fi
     
     # Show progress every 10 seconds
@@ -1273,10 +1196,87 @@ if [ "$AGENT_REGISTERED" = false ]; then
     exit 1
 fi
 
-echo -e "${GREEN}  ✓ Agent registration and TPM attested geolocation verified${NC}"
-echo "  TPM Plugin and SPIRE can now be started with geolocation available in agent SVID."
+echo -e "${GREEN}  ✓ Agent registration verified${NC}"
 
-pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. TPM attested geolocation is available. Ready for SPIRE integration."
+# Retrieve attested claims (including optional geolocation/GPU metrics)
+CLAIMS_RESULT=$(KEYLIME_FACT_DIR="${KEYLIME_DIR}" KEYLIME_FACT_CONFIG="${VERIFIER_CONFIG_ABS}" KEYLIME_FACT_AGENT_ID="${RUST_AGENT_UUID}" python3 <<'PY'
+import json
+import os
+import sys
+import warnings
+
+warnings.filterwarnings("ignore")
+
+keylime_dir = os.environ.get("KEYLIME_FACT_DIR")
+if keylime_dir and os.path.exists(keylime_dir):
+    sys.path.insert(0, keylime_dir)
+
+try:
+    from keylime import fact_provider
+except Exception as exc:  # pragma: no cover
+    sys.stdout.write(f"ERROR:import:{exc}\n")
+    sys.exit(0)
+
+config_path = os.environ.get("KEYLIME_FACT_CONFIG")
+if config_path:
+    os.environ["KEYLIME_VERIFIER_CONFIG"] = config_path
+
+os.environ["KEYLIME_TEST"] = "on"
+os.environ["UNIFIED_IDENTITY_ENABLED"] = "true"
+
+agent_id = os.environ.get("KEYLIME_FACT_AGENT_ID") or None
+
+try:
+    claims = fact_provider.get_attested_claims(agent_id=agent_id)
+except Exception as exc:  # pragma: no cover
+    sys.stdout.write(f"ERROR:claims:{exc}\n")
+    sys.exit(0)
+
+if claims:
+    path = "/tmp/keylime-attested-claims.json"
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(claims, fh, indent=2)
+    sys.stdout.write(f"CLAIMS_FILE:{path}\n")
+    geo = claims.get("geolocation")
+    if geo:
+        sys.stdout.write(f"GEO:{geo}\n")
+else:
+    sys.stdout.write("NO_CLAIMS\n")
+PY
+)
+
+CLAIMS_FILE=""
+GEO_VALUE=""
+
+if echo "$CLAIMS_RESULT" | grep -q "^CLAIMS_FILE:"; then
+    CLAIMS_FILE=$(echo "$CLAIMS_RESULT" | grep "^CLAIMS_FILE:" | tail -1 | cut -d':' -f2- | tr -d '\r')
+fi
+
+if echo "$CLAIMS_RESULT" | grep -q "^GEO:"; then
+    GEO_VALUE=$(echo "$CLAIMS_RESULT" | grep "^GEO:" | tail -1 | cut -d':' -f2- | tr -d '\r')
+fi
+
+if echo "$CLAIMS_RESULT" | grep -q "^ERROR:"; then
+    echo -e "${YELLOW}  ⚠ Unable to retrieve attested claims: ${CLAIMS_RESULT}${NC}"
+elif echo "$CLAIMS_RESULT" | grep -q "NO_CLAIMS"; then
+    echo -e "${YELLOW}  ℹ Fact provider returned no attested claims${NC}"
+fi
+
+if [ -n "$CLAIMS_FILE" ] && [ -f "$CLAIMS_FILE" ]; then
+    echo "  Attested claims saved to $CLAIMS_FILE"
+    echo "  Claims:"
+    sed 's/^/    /' "$CLAIMS_FILE"
+fi
+
+if [ -n "$GEO_VALUE" ]; then
+    echo -e "${GREEN}  ✓ TPM attested geolocation reported: ${GEO_VALUE}${NC}"
+else
+    echo -e "${YELLOW}  ℹ No TPM-attested geolocation reported (sensor not detected or data unavailable)${NC}"
+fi
+
+echo "  TPM Plugin and SPIRE can now be started."
+
+pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. Geolocation claims are optional and surface only when sensors report them. Ready for SPIRE integration."
 
 # Step 6: Start TPM Plugin Server (HTTP/UDS)
 echo ""

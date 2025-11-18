@@ -68,11 +68,13 @@ async fn identity(
     // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
     // Extend geolocation into PCR 17 for TPM-bound attestation
     let mut quote_mask = 0u32;
+    let mut geolocation_str: Option<String> = None;
     if geolocation::is_unified_identity_enabled() {
         match geolocation::extend_geolocation_into_pcr(&mut *context, param.nonce.as_bytes(), data.hash_alg) {
-            Ok(_) => {
+            Ok(geo) => {
                 // Include PCR 17 in the quote mask (bit 17 = 0x20000)
                 quote_mask |= 0x20000;
+                geolocation_str = Some(geo);
                 info!("Unified-Identity - Phase 3: Geolocation extended into PCR 17, included in quote mask");
             }
             Err(e) => {
@@ -106,6 +108,7 @@ async fn identity(
         hash_alg: data.hash_alg.to_string(),
         enc_alg: data.enc_alg.to_string(),
         sign_alg: data.sign_alg.to_string(),
+        geolocation: geolocation_str.clone(),
         ..Default::default()
     };
 
@@ -231,11 +234,13 @@ async fn integrity(
     // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
     // Extend geolocation into PCR 17 for TPM-bound attestation
     let mut quote_mask = mask;
+    let mut geolocation_str: Option<String> = None;
     if geolocation::is_unified_identity_enabled() {
         match geolocation::extend_geolocation_into_pcr(&mut *context, param.nonce.as_bytes(), data.hash_alg) {
-            Ok(_) => {
+            Ok(geo) => {
                 // Include PCR 17 in the quote mask (bit 17 = 0x20000)
                 quote_mask |= 0x20000;
+                geolocation_str = Some(geo);
                 info!("Unified-Identity - Phase 3: Geolocation extended into PCR 17, included in integrity quote mask");
             }
             Err(e) => {
@@ -270,6 +275,7 @@ async fn integrity(
         hash_alg: data.hash_alg.to_string(),
         enc_alg: data.enc_alg.to_string(),
         sign_alg: data.sign_alg.to_string(),
+        geolocation: geolocation_str.clone(),
         ..Default::default()
     };
 

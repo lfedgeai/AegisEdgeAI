@@ -16,6 +16,89 @@ from keylime.db.verifier_db import VerfierMain
 logger = keylime_logging.init_logging("fact_provider")
 
 
+def _get_optional_str(section: str, option: str) -> Optional[str]:
+    value = config.get(section, option, fallback="")
+    value = value.strip()
+    return value or None
+
+
+def _get_optional_float(section: str, option: str) -> Optional[float]:
+    value = config.get(section, option, fallback="")
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        logger.warning(
+            "Unified-Identity - Phase 2: Invalid float for %s.%s ('%s'), ignoring",
+            section,
+            option,
+            value,
+        )
+        return None
+
+
+def _get_optional_int(section: str, option: str) -> Optional[int]:
+    value = config.get(section, option, fallback="")
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(
+            "Unified-Identity - Phase 2: Invalid integer for %s.%s ('%s'), ignoring",
+            section,
+            option,
+            value,
+        )
+        return None
+
+
+# Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+def _parse_geolocation_string(geolocation_str: Optional[str]) -> Optional[Dict[str, Any]]:
+    """
+    Parse geolocation string from rust-keylime agent.
+    
+    Format can be:
+    - "mobile:sensor_id:geolocation" (e.g., "mobile:12d1:1433:none")
+    - "GNSS:sensor_id:geolocation" (e.g., "GNSS:1546:01a7:none")
+    - Plain geolocation string (e.g., "US:California:San Francisco:37.7749:-122.4194")
+    - "none"
+    - None
+    
+    Returns:
+        Dictionary with structured geolocation data, or None if no geolocation available
+    """
+    if not geolocation_str or geolocation_str.strip() == "" or geolocation_str.strip().lower() == "none":
+        return None
+    
+    # Check if it's a structured format: "sensor_type:sensor_id:geolocation"
+    parts = geolocation_str.split(":", 2)
+    if len(parts) == 3:
+        sensor_type, sensor_id, geo_data = parts
+        # If geolocation is "none", return structured format with sensor info
+        if geo_data.lower() == "none":
+            return {
+                sensor_type.lower(): {
+                    "sensor_id": sensor_id,
+                    "geolocation": None
+                }
+            }
+        # If geolocation has actual data, return structured format with both
+        else:
+            return {
+                sensor_type.lower(): {
+                    "sensor_id": sensor_id,
+                    "geolocation": geo_data
+                }
+            }
+    
+    # Plain geolocation string (legacy format)
+    return {"geolocation": geolocation_str}
+
+
 # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 def get_host_identifier_from_ek(tpm_ek: Optional[str]) -> Optional[str]:
     """
@@ -100,16 +183,12 @@ def get_attested_claims(
     logger.info("Unified-Identity - Phase 2: Retrieving attested claims")
 
     # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
-    # Default values (can be overridden by configuration or database)
-    default_geolocation = config.get(
-        "verifier", "unified_identity_default_geolocation", fallback="Spain: N40.4168, W3.7038"
-    )
-    default_integrity = config.get(
-        "verifier", "unified_identity_default_integrity", fallback="passed_all_checks"
-    )
-    default_gpu_status = config.get("verifier", "unified_identity_default_gpu_status", fallback="healthy")
-    default_gpu_utilization = config.getfloat("verifier", "unified_identity_default_gpu_utilization", fallback=15.0)
-    default_gpu_memory = config.getint("verifier", "unified_identity_default_gpu_memory", fallback=10240)
+    # Default values (optional)
+    default_geolocation = _get_optional_str("verifier", "unified_identity_default_geolocation")
+    default_integrity = _get_optional_str("verifier", "unified_identity_default_integrity")
+    default_gpu_status = _get_optional_str("verifier", "unified_identity_default_gpu_status")
+    default_gpu_utilization = _get_optional_float("verifier", "unified_identity_default_gpu_utilization")
+    default_gpu_memory = _get_optional_int("verifier", "unified_identity_default_gpu_memory")
 
     # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
     # Try to retrieve facts from verifier database if agent_id is provided
@@ -129,7 +208,9 @@ def get_attested_claims(
 
                             metadata = json.loads(agent.meta_data) if isinstance(agent.meta_data, str) else agent.meta_data
                             if isinstance(metadata, dict):
-                                geolocation = metadata.get("geolocation", default_geolocation)
+                                geolocation_raw = metadata.get("geolocation", default_geolocation)
+                                # Parse geolocation string to structured format
+                                geolocation = _parse_geolocation_string(geolocation_raw)
                                 integrity = metadata.get("host_integrity_status", default_integrity)
                                 gpu_metrics = metadata.get("gpu_metrics_health", {})
                                 if isinstance(gpu_metrics, dict):
@@ -150,8 +231,10 @@ def get_attested_claims(
                                     "host_integrity_status": integrity,
                                     "gpu_metrics_health": {
                                         "status": gpu_status,
-                                        "utilization_pct": float(gpu_utilization),
-                                        "memory_mb": int(gpu_memory),
+                                        "utilization_pct": float(gpu_utilization)
+                                        if gpu_utilization is not None
+                                        else None,
+                                        "memory_mb": int(gpu_memory) if gpu_memory is not None else None,
                                     },
                                 }
                         except Exception as e:
@@ -179,16 +262,16 @@ def get_attested_claims(
             return facts
 
     # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
-    # Return default facts
-    logger.info("Unified-Identity - Phase 2: Using default facts")
+    # Parse default geolocation if provided, otherwise return None
+    geolocation = _parse_geolocation_string(default_geolocation) if default_geolocation else None
+    
+    # Return None for geolocation and GPU metrics when no sensor data is available
+    # (no defaults - sensors must be present to provide data)
+    logger.info("Unified-Identity - Phase 2: No sensor data available, returning None for geolocation and GPU metrics")
     return {
-        "geolocation": default_geolocation,
-        "host_integrity_status": default_integrity,
-        "gpu_metrics_health": {
-            "status": default_gpu_status,
-            "utilization_pct": float(default_gpu_utilization),
-            "memory_mb": int(default_gpu_memory),
-        },
+        "geolocation": geolocation,  # Structured format if sensor detected, None otherwise
+        "host_integrity_status": default_integrity,  # Integrity is always available from TPM
+        "gpu_metrics_health": None,  # No default - GPU sensor must be present
     }
 
 
