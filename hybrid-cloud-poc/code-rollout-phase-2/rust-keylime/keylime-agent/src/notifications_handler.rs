@@ -24,13 +24,10 @@ async fn revocation(
         .send(RevocationMessage::Revocation(body.into_inner()))
         .await
     {
-        Err(e) => {
-            HttpResponse::InternalServerError().json(JsonWrapper::error(
-                500,
-                "Fail to send Revocation message to revocation worker"
-                    .to_string(),
-            ))
-        }
+        Err(e) => HttpResponse::InternalServerError().json(JsonWrapper::error(
+            500,
+            "Fail to send Revocation message to revocation worker".to_string(),
+        )),
         Ok(_) => HttpResponse::Ok().json(JsonWrapper::success(())),
     }
 }
@@ -44,8 +41,7 @@ async fn notifications_default(req: HttpRequest) -> impl Responder {
         http::Method::POST => {
             error = 400;
             message = "URI not supported, only /revocation is supported for POST in /notifications/ interface";
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, message));
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, message));
         }
         _ => {
             error = 405;
@@ -67,13 +63,9 @@ async fn notifications_default(req: HttpRequest) -> impl Responder {
 }
 
 /// Configure the endpoints for the /notifications scope
-pub(crate) fn configure_notifications_endpoints(
-    cfg: &mut web::ServiceConfig,
-) {
+pub(crate) fn configure_notifications_endpoints(cfg: &mut web::ServiceConfig) {
     _ = cfg
-        .service(
-            web::resource("/revocation").route(web::post().to(revocation)),
-        )
+        .service(web::resource("/revocation").route(web::post().to(revocation)))
         .default_service(web::to(notifications_default));
 }
 
@@ -88,10 +80,9 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_notifications_default() {
-        let mut app = test::init_service(
-            App::new().service(web::resource("/").to(notifications_default)),
-        )
-        .await;
+        let mut app =
+            test::init_service(App::new().service(web::resource("/").to(notifications_default)))
+                .await;
 
         let req = test::TestRequest::post()
             .uri("/")
@@ -128,37 +119,31 @@ mod tests {
     #[cfg(feature = "testing")]
     #[actix_rt::test]
     async fn test_revocation() {
-        let revocation_cert = Some(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("test-data/test-cert.pem"),
-        );
+        let revocation_cert =
+            Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-data/test-cert.pem"));
 
-        let revocation_actions_dir = Some(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/actions"),
-        );
+        let revocation_actions_dir =
+            Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/actions"));
 
         let (mut fixture, mutex) = QuoteData::fixture().await.unwrap(); //#[allow_ci]
 
         // Replace the channels on the fixture with some local ones
-        let (mut revocation_tx, mut revocation_rx) =
-            mpsc::channel::<RevocationMessage>(1);
+        let (mut revocation_tx, mut revocation_rx) = mpsc::channel::<RevocationMessage>(1);
         fixture.revocation_tx = revocation_tx;
 
         let quotedata = web::Data::new(fixture);
 
-        let mut app =
-            test::init_service(App::new().app_data(quotedata.clone()).route(
-                "/vX.Y/notifications/revocation",
-                web::post().to(revocation),
-            ))
-            .await;
+        let mut app = test::init_service(
+            App::new()
+                .app_data(quotedata.clone())
+                .route("/vX.Y/notifications/revocation", web::post().to(revocation)),
+        )
+        .await;
 
-        let sig_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("test-data/revocation.sig");
+        let sig_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data/revocation.sig");
         let signature = fs::read_to_string(sig_path).unwrap(); //#[allow_ci]
 
-        let message_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("test-data/test_ok.json");
+        let message_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data/test_ok.json");
         let message = fs::read_to_string(message_path).unwrap(); //#[allow_ci]
 
         let arbiter = Arbiter::new();

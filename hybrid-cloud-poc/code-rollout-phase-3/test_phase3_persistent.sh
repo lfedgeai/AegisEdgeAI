@@ -19,6 +19,8 @@ PHASE1_DIR="${SCRIPT_DIR}/../code-rollout-phase-1"
 PHASE2_DIR="${SCRIPT_DIR}/../code-rollout-phase-2"
 PHASE3_DIR="${SCRIPT_DIR}"
 KEYLIME_DIR="${PHASE2_DIR}/keylime"
+PYTHON_KEYLIME_DIR="${KEYLIME_DIR}"
+RUST_KEYLIME_DIR="${PHASE2_DIR}/rust-keylime"
 SPIRE_DIR="${PHASE1_DIR}/spire"
 
 # Colors
@@ -763,7 +765,7 @@ pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent 
 echo ""
 echo -e "${CYAN}Step 4: Starting rust-keylime Agent (Phase 3) with delegated certification...${NC}"
 
-cd "${PHASE3_DIR}/rust-keylime"
+cd "${RUST_KEYLIME_DIR}"
 
 # Check if binary exists
 if [ ! -f "target/release/keylime_agent" ]; then
@@ -817,6 +819,15 @@ fi
 # The agent will create secure/ subdirectory and mount tmpfs there
 KEYLIME_AGENT_DIR="/tmp/keylime-agent"
 mkdir -p "$KEYLIME_AGENT_DIR" 2>/dev/null || true
+
+# Ensure rust-keylime agent trusts the Keylime verifier/registrar certificates
+AGENT_CV_CA_SRC="${PYTHON_KEYLIME_DIR}/cv_ca"
+AGENT_CV_CA_DST="${KEYLIME_AGENT_DIR}/cv_ca"
+if [ -d "$AGENT_CV_CA_SRC" ]; then
+    rm -rf "$AGENT_CV_CA_DST" 2>/dev/null || true
+    mkdir -p "$AGENT_CV_CA_DST" 2>/dev/null || true
+    cp -a "${AGENT_CV_CA_SRC}/." "${AGENT_CV_CA_DST}/" 2>/dev/null || true
+fi
 
 # IMPORTANT: Override KEYLIME_DIR which was set earlier for Python Keylime
 # The rust-keylime agent checks KEYLIME_DIR first, then KEYLIME_AGENT_KEYLIME_DIR, then config
@@ -891,9 +902,13 @@ fi
 # Override run_as to current user to avoid permission issues
 export KEYLIME_AGENT_RUN_AS="$(whoami):$(id -gn)"
 
-# Try to start with sudo if secure mount failed and sudo is available
-export KEYLIME_AGENT_ENABLE_AGENT_MTLS="${KEYLIME_AGENT_ENABLE_AGENT_MTLS:-false}"
+# Configure rust-keylime agent networking defaults (enable HTTPS + mTLS)
+export KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="${KEYLIME_AGENT_ENABLE_NETWORK_LISTENER:-true}"
+export KEYLIME_AGENT_ENABLE_AGENT_MTLS="${KEYLIME_AGENT_ENABLE_AGENT_MTLS:-true}"
 export KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="${KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD:-true}"
+export KEYLIME_AGENT_TRUSTED_CLIENT_CA="${KEYLIME_AGENT_TRUSTED_CLIENT_CA:-cv_ca/cacert.crt}"
+export KEYLIME_AGENT_SERVER_CERT="${KEYLIME_AGENT_SERVER_CERT:-cv_ca/server-cert.crt}"
+export KEYLIME_AGENT_SERVER_KEY="${KEYLIME_AGENT_SERVER_KEY:-cv_ca/server-private.pem}"
 export KEYLIME_AGENT_PAYLOAD_SCRIPT=""
 
 # If tmpfs is not mounted and sudo is available, start with sudo
@@ -908,9 +923,9 @@ if [ "$SECURE_MOUNTED" = false ] && sudo -n true 2>/dev/null; then
     # Explicitly unset the old KEYLIME_DIR and set the correct one
     # Include TCTI for hardware TPM if set
     if [ -n "${TCTI:-}" ]; then
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="$KEYLIME_AGENT_ENABLE_AGENT_MTLS" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" KEYLIME_AGENT_TRUSTED_CLIENT_CA="$KEYLIME_AGENT_TRUSTED_CLIENT_CA" KEYLIME_AGENT_SERVER_CERT="$KEYLIME_AGENT_SERVER_CERT" KEYLIME_AGENT_SERVER_KEY="$KEYLIME_AGENT_SERVER_KEY" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     else
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="$KEYLIME_AGENT_ENABLE_AGENT_MTLS" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" KEYLIME_AGENT_TRUSTED_CLIENT_CA="$KEYLIME_AGENT_TRUSTED_CLIENT_CA" KEYLIME_AGENT_SERVER_CERT="$KEYLIME_AGENT_SERVER_CERT" KEYLIME_AGENT_SERVER_KEY="$KEYLIME_AGENT_SERVER_KEY" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     fi
     RUST_AGENT_PID=$!
 elif [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; then
@@ -922,9 +937,9 @@ elif [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; th
     # Use env to ensure clean environment with only the variables we need
     # Include TCTI for hardware TPM if set
     if [ -n "${TCTI:-}" ]; then
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="$KEYLIME_AGENT_ENABLE_AGENT_MTLS" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" KEYLIME_AGENT_TRUSTED_CLIENT_CA="$KEYLIME_AGENT_TRUSTED_CLIENT_CA" KEYLIME_AGENT_SERVER_CERT="$KEYLIME_AGENT_SERVER_CERT" KEYLIME_AGENT_SERVER_KEY="$KEYLIME_AGENT_SERVER_KEY" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     else
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="$KEYLIME_AGENT_ENABLE_AGENT_MTLS" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" KEYLIME_AGENT_TRUSTED_CLIENT_CA="$KEYLIME_AGENT_TRUSTED_CLIENT_CA" KEYLIME_AGENT_SERVER_CERT="$KEYLIME_AGENT_SERVER_CERT" KEYLIME_AGENT_SERVER_KEY="$KEYLIME_AGENT_SERVER_KEY" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     fi
     RUST_AGENT_PID=$!
 else
@@ -937,7 +952,7 @@ else
         export TCTI
     fi
     # Use nohup to ensure agent continues running after script exits
-    nohup env RUST_LOG=keylime=info,keylime_agent=info UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
+    nohup env RUST_LOG=keylime=debug,keylime_agent=debug UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="$KEYLIME_AGENT_ENABLE_AGENT_MTLS" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" KEYLIME_AGENT_TRUSTED_CLIENT_CA="$KEYLIME_AGENT_TRUSTED_CLIENT_CA" KEYLIME_AGENT_SERVER_CERT="$KEYLIME_AGENT_SERVER_CERT" KEYLIME_AGENT_SERVER_KEY="$KEYLIME_AGENT_SERVER_KEY" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
     RUST_AGENT_PID=$!
 fi
 echo $RUST_AGENT_PID > /tmp/rust-keylime-agent.pid
@@ -1009,8 +1024,8 @@ echo "  TPM attested geolocation is available before starting TPM Plugin and SPI
 
 # Get agent UUID from rust-keylime agent config
 RUST_AGENT_UUID=""
-if [ -f "${PHASE3_DIR}/rust-keylime/keylime-agent.conf" ]; then
-    RUST_AGENT_UUID=$(grep "^uuid" "${PHASE3_DIR}/rust-keylime/keylime-agent.conf" 2>/dev/null | cut -d'=' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d '"' | tr -d "'" || echo "")
+if [ -f "${RUST_KEYLIME_DIR}/keylime-agent.conf" ]; then
+    RUST_AGENT_UUID=$(grep "^uuid" "${RUST_KEYLIME_DIR}/keylime-agent.conf" 2>/dev/null | cut -d'=' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d '"' | tr -d "'" || echo "")
 fi
 
 # If not found in config, try to get from agent logs

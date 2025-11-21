@@ -106,25 +106,20 @@ fn ml_extend(
                 );
                 let mut vals = DigestValues::new();
                 vals.set(pcr_hash_alg.into(), pcr_template_hash);
-                context.execute_with_nullauth_session(|ctx| {
-                    ctx.pcr_extend(PcrHandle::Pcr10, vals)
-                })?;
+                context
+                    .execute_with_nullauth_session(|ctx| ctx.pcr_extend(PcrHandle::Pcr10, vals))?;
             }
             Some(search_hash) => {
                 let mut hasher = openssl::hash::Hasher::new(pcr_digest)?;
                 hasher.update(running_hash.value())?;
                 hasher.update(&pcr_template_hash)?;
-                running_hash =
-                    ima::Digest::new(pcr_hash_alg, &hasher.finish()?)?;
+                running_hash = ima::Digest::new(pcr_hash_alg, &hasher.finish()?)?;
                 let digest = Digest::try_from(running_hash.value())?;
                 let mut vals = DigestValues::new();
                 vals.set(pcr_hash_alg.into(), digest.clone());
 
                 if digest == *search_hash {
-                    println!(
-                        "Located last IMA file updated: {}",
-                        entry.event_data.path()
-                    );
+                    println!("Located last IMA file updated: {}", entry.event_data.path());
                     return Ok(position);
                 }
             }
@@ -153,14 +148,14 @@ struct Args {
 fn main() -> std::result::Result<(), ImaEmulatorError> {
     let args = Args::parse();
 
-    let tcti =
-        match Tcti::from_environment_variable() {
-            Ok(tcti) => tcti,
-            Err(_) => return Err(ImaEmulatorError::Other(
-                "This stub requires TCTI environment variable set properly"
-                    .to_string(),
-            )),
-        };
+    let tcti = match Tcti::from_environment_variable() {
+        Ok(tcti) => tcti,
+        Err(_) => {
+            return Err(ImaEmulatorError::Other(
+                "This stub requires TCTI environment variable set properly".to_string(),
+            ))
+        }
+    };
 
     let mut context = Context::new(tcti)?;
 
@@ -170,8 +165,7 @@ fn main() -> std::result::Result<(), ImaEmulatorError> {
         ));
     }
 
-    let ima_hash_alg: HashAlgorithm =
-        args.ima_hash_alg.as_str().try_into()?;
+    let ima_hash_alg: HashAlgorithm = args.ima_hash_alg.as_str().try_into()?;
     let mut positions = HashMap::new();
     for pcr_hash_alg in args.hash_algs {
         let pcr_hash_alg: HashAlgorithm = pcr_hash_alg.as_str().try_into()?;
@@ -183,21 +177,15 @@ fn main() -> std::result::Result<(), ImaEmulatorError> {
         let pcr_list = PcrSelectionListBuilder::new()
             .with_selection((*pcr_hash_alg).into(), &[PcrSlot::Slot10])
             .build()?;
-        let pcr_data = context
-            .execute_without_session(|ctx| pcr::read_all(ctx, pcr_list))?;
+        let pcr_data = context.execute_without_session(|ctx| pcr::read_all(ctx, pcr_list))?;
         let digest = pcr_data
             .pcr_bank((*pcr_hash_alg).into())
             .ok_or_else(|| {
-                ImaEmulatorError::Other(format!(
-                    "IMA slot does not have {} bank",
-                    *pcr_hash_alg,
-                ))
+                ImaEmulatorError::Other(format!("IMA slot does not have {} bank", *pcr_hash_alg,))
             })?
             .get_digest(PcrSlot::Slot10)
             .ok_or_else(|| {
-                ImaEmulatorError::Other(
-                    "could not read value from IMA PCR".to_string(),
-                )
+                ImaEmulatorError::Other("could not read value from IMA PCR".to_string())
             })?;
 
         let pcr_digest: MessageDigest = (*pcr_hash_alg).into();
@@ -228,7 +216,8 @@ fn main() -> std::result::Result<(), ImaEmulatorError> {
                 ima_hash_alg,
                 *pcr_hash_alg,
                 None,
-                ).expect("Error extending position {position} on PCR bank {pcr_hash_alg}");
+            )
+            .expect("Error extending position {position} on PCR bank {pcr_hash_alg}");
         }
 
         // FIXME: We could poll IMA_ML as in the python implementation, though

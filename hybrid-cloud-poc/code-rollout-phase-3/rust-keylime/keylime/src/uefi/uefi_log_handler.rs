@@ -11,9 +11,7 @@
 // - Event data names (for EFI variables, if UTF-16 encoded)
 // - PCR index for each event
 use crate::error::{Error as KeylimeError, Result};
-use base64::{
-    engine::general_purpose::STANDARD as base64_standard, Engine as _,
-};
+use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use std::collections::HashMap;
@@ -68,9 +66,7 @@ impl UefiLogHandler {
 
     pub fn from_bytes(log_bytes: &[u8]) -> Result<Self> {
         if log_bytes.is_empty() {
-            return Err(KeylimeError::UEFILog(
-                "Empty UEFI Log file".to_string(),
-            ));
+            return Err(KeylimeError::UEFILog("Empty UEFI Log file".to_string()));
         }
 
         let mut cursor = Cursor::new(&log_bytes);
@@ -88,8 +84,7 @@ impl UefiLogHandler {
 
         if pcr_index_0 != 0 || event_type_0 != EV_NO_ACTION {
             return Err(KeylimeError::UEFILog(
-                "First event in the log is not a valid TCG_EfiSpecIdEvent."
-                    .to_string(),
+                "First event in the log is not a valid TCG_EfiSpecIdEvent.".to_string(),
             ));
         }
 
@@ -138,8 +133,7 @@ impl UefiLogHandler {
         while cursor.position() < log_bytes.len() as u64 {
             let pcr_index = cursor.read_u32::<LittleEndian>()?;
             let event_type_val = cursor.read_u32::<LittleEndian>()?;
-            let event_type_str =
-                Self::map_event_type_to_str(event_type_val).to_string();
+            let event_type_str = Self::map_event_type_to_str(event_type_val).to_string();
 
             let digest_count = cursor.read_u32::<LittleEndian>()?;
             let mut digests_map = HashMap::new();
@@ -148,10 +142,7 @@ impl UefiLogHandler {
                 if let Some(digest_size) = active_algs_map.get(&alg_id) {
                     let mut digest_buffer = vec![0u8; *digest_size];
                     cursor.read_exact(&mut digest_buffer)?;
-                    digests_map.insert(
-                        Self::map_alg_id_to_str(alg_id).to_string(),
-                        digest_buffer,
-                    );
+                    digests_map.insert(Self::map_alg_id_to_str(alg_id).to_string(), digest_buffer);
                 } else {
                     let known_size = Self::get_known_digest_size(alg_id);
                     let mut digest_buffer = vec![0u8; known_size];
@@ -185,16 +176,13 @@ impl UefiLogHandler {
 
         for event in &self.events {
             buffer.write_u32::<LittleEndian>(event.pcr_index)?;
-            let event_type_val =
-                Self::map_str_to_event_type(&event.event_type);
+            let event_type_val = Self::map_str_to_event_type(&event.event_type);
             buffer.write_u32::<LittleEndian>(event_type_val)?;
 
             buffer.write_u32::<LittleEndian>(event.digests.len() as u32)?;
 
             let mut digests_sorted: Vec<_> = event.digests.iter().collect();
-            digests_sorted.sort_by_key(|(alg_name, _)| {
-                Self::map_str_to_alg_id(alg_name)
-            });
+            digests_sorted.sort_by_key(|(alg_name, _)| Self::map_str_to_alg_id(alg_name));
 
             // Iterate over the sorted vector, not the HashMap directly.
             for (alg_name, digest_value) in digests_sorted {
@@ -237,10 +225,7 @@ impl UefiLogHandler {
     }
 
     /// Returns a list of all events that affect a specific PCR index.
-    pub fn get_events_for_pcr_index(
-        &self,
-        pcr_index: u32,
-    ) -> Vec<&ParsedUefiEvent> {
+    pub fn get_events_for_pcr_index(&self, pcr_index: u32) -> Vec<&ParsedUefiEvent> {
         self.events
             .iter()
             .filter(|event| event.pcr_index == pcr_index)
@@ -249,10 +234,7 @@ impl UefiLogHandler {
 
     /// Returns a list of all events of a specific type.
     /// `event_type_str` should be one of the TCG-defined strings like "EV_POST_CODE".
-    pub fn get_events_by_type(
-        &self,
-        event_type_str: &str,
-    ) -> Vec<&ParsedUefiEvent> {
+    pub fn get_events_by_type(&self, event_type_str: &str) -> Vec<&ParsedUefiEvent> {
         self.events
             .iter()
             .filter(|event| event.event_type == event_type_str)
@@ -360,8 +342,7 @@ mod tests {
     async fn test_uefi_log_handler() {
         let log_path = "/sys/kernel/security/tpm0/binary_bios_measurements";
         if std::fs::File::open(log_path).is_ok() {
-            let handler = UefiLogHandler::new(log_path)
-                .expect("Failed to parse UEFI log");
+            let handler = UefiLogHandler::new(log_path).expect("Failed to parse UEFI log");
             assert!(!handler.get_active_algorithms().is_empty());
             let pcr_indexes = vec![0, 1, 2, 3, 4, 5, 6, 7];
             let mut all_events: Vec<&ParsedUefiEvent> = Vec::new();
@@ -386,23 +367,21 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // pcr_index: 0
             0x03, 0x00, 0x00, 0x00, // event_type: EV_NO_ACTION
             // digest: 20 bytes of a SHA1 digest (zeros in this case)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             // event_size: 37 bytes (size of the TCG_EfiSpecIdEventStruct that follows)
             37, 0x00, 0x00, 0x00,
             // 2. Event Content (TCG_EfiSpecIdEventStruct)
             // signature: "Spec ID Event\0" (16 bytes)
-            0x53, 0x70, 0x65, 0x63, 0x20, 0x49, 0x44, 0x20, 0x45, 0x76, 0x65,
-            0x6e, 0x74, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, // platform_class
+            0x53, 0x70, 0x65, 0x63, 0x20, 0x49, 0x44, 0x20, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // platform_class
             0x00, // spec_version_minor
             0x02, // spec_version_major
             0x00, // spec_errata
             0x02, // uintn_size
             0x02, 0x00, 0x00, 0x00, // numberOfAlgorithms: 2
             // alg_id: SHA1, digest_size: 20
-            0x04, 0x00, 20, 0x00,
-            // alg_id: SHA256, digest_size: 32
+            0x04, 0x00, 20, 0x00, // alg_id: SHA256, digest_size: 32
             0x0B, 0x00, 32, 0x00, // vendorInfoSize: 0
             0x00,
             // --- Event 2: A normal measurement event (TCG_PCR_EVENT2 format) ---
@@ -410,18 +389,15 @@ mod tests {
             0x04, 0x00, 0x00, 0x00, // pcr_index: 4
             0x01, 0x00, 0x00, 0x00, // event_type: EV_POST_CODE
             // 2. Digests List
-            0x02, 0x00, 0x00,
-            0x00, // count: 2 (one digest for SHA1 and another for SHA256)
+            0x02, 0x00, 0x00, 0x00, // count: 2 (one digest for SHA1 and another for SHA256)
             // SHA1 Digest (20 bytes)
             0x04, 0x00, // alg_id: SHA1
-            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
-            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
-            // SHA256 Digest (32 bytes)
+            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, // SHA256 Digest (32 bytes)
             0x0B, 0x00, // alg_id: SHA256
-            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
-            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
-            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
-            // 3. Event Content
+            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
+            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
+            0xBB, 0xBB, 0xBB, 0xBB, // 3. Event Content
             0x04, 0x00, 0x00, 0x00, // eventSize: 4
             0xDE, 0xAD, 0xBE, 0xEF, // eventData (4 bytes)
         ];
@@ -432,10 +408,7 @@ mod tests {
 
         let mut active_algs = handler.get_active_algorithms().clone();
         active_algs.sort(); // We sort for a deterministic comparison.
-        assert_eq!(
-            active_algs,
-            vec!["sha1".to_string(), "sha256".to_string()]
-        );
+        assert_eq!(active_algs, vec!["sha1".to_string(), "sha256".to_string()]);
 
         assert_eq!(handler.events.len(), 1);
         assert!(handler.get_events_for_pcr_index(1).is_empty());
@@ -567,23 +540,21 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // pcr_index: 0
             0x03, 0x00, 0x00, 0x00, // event_type: EV_NO_ACTION
             // digest: 20 bytes of a SHA1 digest (zeros in this case)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             // event_size: 37 bytes (size of the TCG_EfiSpecIdEventStruct that follows)
             37, 0x00, 0x00, 0x00,
             // 2. Event Content (TCG_EfiSpecIdEventStruct)
             // signature: "Spec ID Event\0" (16 bytes)
-            0x53, 0x70, 0x65, 0x63, 0x20, 0x49, 0x44, 0x20, 0x45, 0x76, 0x65,
-            0x6e, 0x74, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, // platform_class
+            0x53, 0x70, 0x65, 0x63, 0x20, 0x49, 0x44, 0x20, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // platform_class
             0x00, // spec_version_minor
             0x02, // spec_version_major
             0x00, // spec_errata
             0x02, // uintn_size
             0x02, 0x00, 0x00, 0x00, // numberOfAlgorithms: 2
             // alg_id: SHA1, digest_size: 20
-            0x04, 0x00, 20, 0x00,
-            // alg_id: SHA256, digest_size: 32
+            0x04, 0x00, 20, 0x00, // alg_id: SHA256, digest_size: 32
             0x0B, 0x00, 32, 0x00, // vendorInfoSize: 0
             0x00,
             // --- Event 2: A normal measurement event (TCG_PCR_EVENT2 format) ---
@@ -591,18 +562,15 @@ mod tests {
             0x04, 0x00, 0x00, 0x00, // pcr_index: 4
             0x01, 0x00, 0x00, 0x00, // event_type: EV_POST_CODE
             // 2. Digests List
-            0x02, 0x00, 0x00,
-            0x00, // count: 2 (one digest for SHA1 and another for SHA256)
+            0x02, 0x00, 0x00, 0x00, // count: 2 (one digest for SHA1 and another for SHA256)
             // SHA1 Digest (20 bytes)
             0x04, 0x00, // alg_id: SHA1
-            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
-            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
-            // SHA256 Digest (32 bytes)
+            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+            0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, // SHA256 Digest (32 bytes)
             0x0B, 0x00, // alg_id: SHA256
-            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
-            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
-            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
-            // 3. Event Content
+            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
+            0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
+            0xBB, 0xBB, 0xBB, 0xBB, // 3. Event Content
             0x04, 0x00, 0x00, 0x00, // eventSize: 4
             0xDE, 0xAD, 0xBE, 0xEF, // eventData (4 bytes)
         ];
@@ -625,10 +593,7 @@ mod tests {
             ("unknown", 0),
         ];
         for (alg_str, expected_id) in algs {
-            assert_eq!(
-                UefiLogHandler::map_str_to_alg_id(alg_str),
-                expected_id
-            );
+            assert_eq!(UefiLogHandler::map_str_to_alg_id(alg_str), expected_id);
         }
     }
 

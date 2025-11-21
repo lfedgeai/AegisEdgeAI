@@ -65,8 +65,10 @@ impl AttestationClient {
             None
         };
 
-        debug!("ResilientClient: initial delay: {} ms, max retries: {}, max delay: {:?} ms", 
-            config.initial_delay_ms, config.max_retries, config.max_delay_ms);
+        debug!(
+            "ResilientClient: initial delay: {} ms, max retries: {}, max delay: {:?} ms",
+            config.initial_delay_ms, config.max_retries, config.max_delay_ms
+        );
         let client = ResilientClient::new(
             base_client,
             Duration::from_millis(config.initial_delay_ms),
@@ -85,10 +87,8 @@ impl AttestationClient {
     ) -> Result<ResponseInformation> {
         info!("--- Phase 1: Sending Capabilities Negotiation ---");
         info!("Capabilities negotiation URL (POST): {}", config.url);
-        let mut context_info =
-            context_info_handler::get_context_info(config.avoid_tpm)?;
-        let mut filler =
-            struct_filler::get_filler_request(context_info.as_mut());
+        let mut context_info = context_info_handler::get_context_info(config.avoid_tpm)?;
+        let mut filler = struct_filler::get_filler_request(context_info.as_mut());
 
         let req = filler.get_attestation_request();
         if let Ok(json_str) = serde_json::to_string(&req) {
@@ -145,10 +145,9 @@ impl AttestationClient {
 
         // Only validate Location header for 201 Created responses per RFC 9110 Section 10.2.2
         if sc.as_u16() == 201 {
-            if let Err(e) = HeaderValidator::validate_201_created_response(
-                &headers,
-                Some(config.url),
-            ) {
+            if let Err(e) =
+                HeaderValidator::validate_201_created_response(&headers, Some(config.url))
+            {
                 warn!("201 Created response validation failed: {}", e);
                 // Don't fail the request, just log the warning for now
             }
@@ -179,30 +178,23 @@ impl AttestationClient {
         ) {
             Ok(location) => location,
             Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Location header validation failed: {}",
-                    e
-                ));
+                return Err(anyhow::anyhow!("Location header validation failed: {}", e));
             }
         };
 
-        let patch_url = url_selector::get_evidence_submission_request_url(
-            &url_selector::UrlArgs {
-                verifier_url: config.verifier_url.to_string(),
-                agent_identifier: None,
-                api_version: None,
-                location: Some(location_header.to_string()),
-            },
-        );
+        let patch_url = url_selector::get_evidence_submission_request_url(&url_selector::UrlArgs {
+            verifier_url: config.verifier_url.to_string(),
+            agent_identifier: None,
+            api_version: None,
+            location: Some(location_header.to_string()),
+        });
 
         info!("Location header from 201 Created response: {location_header}");
         info!("Evidence handling URL (PATCH): {patch_url}");
 
         // Use struct_filler to handle evidence collection and construction
-        let mut context_info =
-            context_info_handler::get_context_info(config.avoid_tpm)?;
-        let mut filler =
-            struct_filler::get_filler_request(context_info.as_mut());
+        let mut context_info = context_info_handler::get_context_info(config.avoid_tpm)?;
+        let mut filler = struct_filler::get_filler_request(context_info.as_mut());
 
         let evidence_request_struct = filler
             .get_evidence_handling_request(&neg_response, config)
@@ -213,8 +205,7 @@ impl AttestationClient {
             ..*config
         };
 
-        let evidence_json_body =
-            serde_json::to_string(&evidence_request_struct)?;
+        let evidence_json_body = serde_json::to_string(&evidence_request_struct)?;
 
         let evidence_response = self
             .send_evidence(evidence_json_body, &evidence_config)
@@ -268,10 +259,10 @@ mod tests {
             .mount(&mock_server)
             .await;
         Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(201).insert_header(
-                "Location",
-                "/v3.0/agents/some-id/attestations/1",
-            ))
+            .respond_with(
+                ResponseTemplate::new(201)
+                    .insert_header("Location", "/v3.0/agents/some-id/attestations/1"),
+            )
             .mount(&mock_server)
             .await;
 
@@ -288,19 +279,16 @@ mod tests {
         assert_eq!(response.status_code, StatusCode::CREATED);
 
         // The server should have received 3 requests in total (2 failures + 1 success)
-        let received_requests =
-            mock_server.received_requests().await.unwrap();
+        let received_requests = mock_server.received_requests().await.unwrap();
         assert_eq!(received_requests.len(), 3);
     }
 
     #[actix_rt::test]
     async fn test_send_negotiation_http_error() {
-        let negotiation_config =
-            create_test_config("http://127.0.0.1:9999/test", "", "", "");
+        let negotiation_config = create_test_config("http://127.0.0.1:9999/test", "", "", "");
 
         let client = AttestationClient::new(&negotiation_config).unwrap();
-        let result =
-            client.send_negotiation(&negotiation_config.clone()).await;
+        let result = client.send_negotiation(&negotiation_config.clone()).await;
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -356,7 +344,9 @@ mod tests {
 
         let config = create_test_config(
             "http://localhost:3000/v3.0/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/attestations",
-            "", "", "",
+            "",
+            "",
+            "",
         );
 
         let client = AttestationClient::new(&config).unwrap();
@@ -385,7 +375,9 @@ mod tests {
 
         let config = create_test_config(
             "http://localhost:3000/v3.0/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/attestations",
-            "", "", "",
+            "",
+            "",
+            "",
         );
 
         let client = AttestationClient::new(&config).unwrap();
@@ -467,29 +459,28 @@ mod tests {
                     );
 
                     // Validate Location header for 201 Created responses per RFC 9110 Section 10.2.2
-                    let evidence_validation =
-                        if evidence_response.status_code.as_u16() == 201 {
-                            HeaderValidator::validate_201_created_response(
-                                &evidence_response.headers,
-                                Some("http://localhost:3000"),
-                            )
-                            .map(|_| ())
-                        } else {
-                            Ok(())
-                        };
+                    let evidence_validation = if evidence_response.status_code.as_u16() == 201 {
+                        HeaderValidator::validate_201_created_response(
+                            &evidence_response.headers,
+                            Some("http://localhost:3000"),
+                        )
+                        .map(|_| ())
+                    } else {
+                        Ok(())
+                    };
 
                     if evidence_validation.is_err() {
-                        warn!("Evidence response header validation failed: {:?}", evidence_validation.err());
+                        warn!(
+                            "Evidence response header validation failed: {:?}",
+                            evidence_validation.err()
+                        );
                         // Don't fail the test, just log as this might be due to mock server limitations
                     }
                 }
                 Err(e) => {
                     // Evidence submission failure is acceptable for this test
                     // We're primarily testing RFC compliance validation
-                    info!(
-                        "Evidence submission failed (expected with mock): {}",
-                        e
-                    );
+                    info!("Evidence submission failed (expected with mock): {}", e);
                 }
             }
 
@@ -550,8 +541,7 @@ mod tests {
         // Create the client
         let client = AttestationClient::new(&config).unwrap();
 
-        let result =
-            client.send_evidence(single_serialized_body, &config).await;
+        let result = client.send_evidence(single_serialized_body, &config).await;
 
         // Assertions
         assert!(result.is_ok(), "send_evidence should succeed");
@@ -559,8 +549,7 @@ mod tests {
         assert_eq!(response.status_code, StatusCode::ACCEPTED);
 
         // Verify that the mock server received exactly one request.
-        let received_requests =
-            mock_server.received_requests().await.unwrap();
+        let received_requests = mock_server.received_requests().await.unwrap();
         assert_eq!(received_requests.len(), 1);
     }
 }

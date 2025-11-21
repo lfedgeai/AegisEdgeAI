@@ -72,10 +72,7 @@ impl<'a> CertificateBuilder<'a> {
     /// # Arguments:
     ///
     /// * cn (&str): The subject Common Name
-    pub fn common_name(
-        &'a mut self,
-        cn: &'a str,
-    ) -> &'a mut CertificateBuilder<'a> {
+    pub fn common_name(&'a mut self, cn: &'a str) -> &'a mut CertificateBuilder<'a> {
         self.common_name = Some(cn);
         self
     }
@@ -99,10 +96,7 @@ impl<'a> CertificateBuilder<'a> {
     ///
     /// * days_from_now (u32): The number of days from now when the built certificate will become
     ///   valid
-    pub fn not_before(
-        &'a mut self,
-        days_from_now: u32,
-    ) -> &'a mut CertificateBuilder<'a> {
+    pub fn not_before(&'a mut self, days_from_now: u32) -> &'a mut CertificateBuilder<'a> {
         self.not_before = Some(days_from_now);
         self
     }
@@ -112,10 +106,7 @@ impl<'a> CertificateBuilder<'a> {
     /// # Arguments:
     ///
     /// * days_from_now (u32): The number of days from now when the built certificate will expire
-    pub fn not_after(
-        &'a mut self,
-        days_from_now: u32,
-    ) -> &'a mut CertificateBuilder<'a> {
+    pub fn not_after(&'a mut self, days_from_now: u32) -> &'a mut CertificateBuilder<'a> {
         self.not_after = Some(days_from_now);
         self
     }
@@ -128,10 +119,7 @@ impl<'a> CertificateBuilder<'a> {
     ///   the value `2` corresponds to the version 3 of the X.509 standard
     ///
     /// If not called, the version 3 of the X.509 standard will be used
-    pub fn version(
-        &'a mut self,
-        version: i32,
-    ) -> &'a mut CertificateBuilder<'a> {
+    pub fn version(&'a mut self, version: i32) -> &'a mut CertificateBuilder<'a> {
         self.version = Some(version);
         self
     }
@@ -155,10 +143,7 @@ impl<'a> CertificateBuilder<'a> {
     ///
     /// * dns_names (Vec<&str>): A Vec<&str> containing DNS names to add to the certificate Subject
     ///   Alternative Name
-    pub fn add_dns_names(
-        &'a mut self,
-        dns_names: Vec<&'a str>,
-    ) -> &'a mut CertificateBuilder<'a> {
+    pub fn add_dns_names(&'a mut self, dns_names: Vec<&'a str>) -> &'a mut CertificateBuilder<'a> {
         match &mut self.dns_names {
             None => {
                 self.dns_names = Some(dns_names);
@@ -178,10 +163,7 @@ impl<'a> CertificateBuilder<'a> {
     ///
     /// * ips: (Vec<&str>): A Vec<&str> containing IPs to add to the certificate Subject
     ///   Alternative Name
-    pub fn add_ips(
-        &'a mut self,
-        ips: Vec<&'a str>,
-    ) -> &'a mut CertificateBuilder<'a> {
+    pub fn add_ips(&'a mut self, ips: Vec<&'a str>) -> &'a mut CertificateBuilder<'a> {
         match &mut self.ips {
             None => {
                 self.ips = Some(ips);
@@ -220,32 +202,25 @@ impl<'a> CertificateBuilder<'a> {
 
     /// Generate the certificate using the previously set options
     pub fn build(&'a mut self) -> Result<X509, CertificateBuilderError> {
-        let mut name_builder = X509Name::builder().map_err(|source| {
-            CertificateBuilderError::NameBuilderError {
+        let mut name_builder =
+            X509Name::builder().map_err(|source| CertificateBuilderError::NameBuilderError {
                 message: "failed to create X509 Name object".into(),
                 source,
-            }
-        })?;
+            })?;
 
-        let mut builder = X509::builder().map_err(|source| {
-            CertificateBuilderError::BuilderError {
-                message: "failed to create X509 certificate builder object"
-                    .into(),
+        let mut builder =
+            X509::builder().map_err(|source| CertificateBuilderError::BuilderError {
+                message: "failed to create X509 certificate builder object".into(),
                 source,
-            }
-        })?;
+            })?;
 
         match self.common_name {
             Some(cn) => {
                 name_builder
                     .append_entry_by_nid(Nid::COMMONNAME, cn)
-                    .map_err(|source| {
-                        CertificateBuilderError::NameBuilderError {
-                            message:
-                                "failed to set Common Name in Name builder"
-                                    .into(),
-                            source,
-                        }
+                    .map_err(|source| CertificateBuilderError::NameBuilderError {
+                        message: "failed to set Common Name in Name builder".into(),
+                        source,
                     })?;
             }
             None => {
@@ -262,75 +237,66 @@ impl<'a> CertificateBuilder<'a> {
         })?;
 
         // Self-signed certificate, the issuer is the same as the subject
-        builder.set_issuer_name(&name).map_err(|source| {
-            CertificateBuilderError::BuilderError {
+        builder
+            .set_issuer_name(&name)
+            .map_err(|source| CertificateBuilderError::BuilderError {
                 message: "failed to set X509 issuer name".into(),
                 source,
-            }
-        })?;
+            })?;
 
         // If the not_before is not set, use the default value of 0 to make the certificate valid
         // from now
         let not_before = self.not_before.unwrap_or(0);
-        let valid_from =
-            Asn1Time::days_from_now(not_before).map_err(|source| {
-                CertificateBuilderError::ASN1TimeDaysFromNowError {
-                    days: not_before,
-                    source,
-                }
-            })?;
+        let valid_from = Asn1Time::days_from_now(not_before).map_err(|source| {
+            CertificateBuilderError::ASN1TimeDaysFromNowError {
+                days: not_before,
+                source,
+            }
+        })?;
         builder.set_not_before(&valid_from).map_err(|source| {
             CertificateBuilderError::BuilderError {
-                message: "failed to set X509 certificate Not Before date"
-                    .into(),
+                message: "failed to set X509 certificate Not Before date".into(),
                 source,
             }
         })?;
 
         // If the not_after is not set, use the default value of 365 days
         let not_after = self.not_after.unwrap_or(365);
-        let valid_to =
-            Asn1Time::days_from_now(not_after).map_err(|source| {
-                CertificateBuilderError::ASN1TimeDaysFromNowError {
-                    days: not_after,
-                    source,
-                }
-            })?;
+        let valid_to = Asn1Time::days_from_now(not_after).map_err(|source| {
+            CertificateBuilderError::ASN1TimeDaysFromNowError {
+                days: not_after,
+                source,
+            }
+        })?;
         builder.set_not_after(&valid_to).map_err(|source| {
             CertificateBuilderError::BuilderError {
-                message: "failed to set X509 certificate Not After date"
-                    .into(),
+                message: "failed to set X509 certificate Not After date".into(),
                 source,
             }
         })?;
 
         // If the version is not set, use the default value 2, which corresponds to X.509 version 3
         let v = self.version.unwrap_or(2);
-        builder.set_version(v).map_err(|source| {
-            CertificateBuilderError::BuilderError {
+        builder
+            .set_version(v)
+            .map_err(|source| CertificateBuilderError::BuilderError {
                 message: "failed to set X509 certificate version".into(),
                 source,
-            }
-        })?;
+            })?;
 
         match self.private_key {
             Some(p) => {
-                let pubkey = crate::crypto::pkey_pub_from_priv(p).map_err(
-                    |source| CertificateBuilderError::PubkeyFromPrivError {
-                        source,
-                    },
-                )?;
+                let pubkey = crate::crypto::pkey_pub_from_priv(p)
+                    .map_err(|source| CertificateBuilderError::PubkeyFromPrivError { source })?;
 
                 builder.set_pubkey(&pubkey).map_err(|source| {
                     CertificateBuilderError::BuilderError {
-                        message: "failed to set X509 certificate public key"
-                            .into(),
+                        message: "failed to set X509 certificate public key".into(),
                         source,
                     }
                 })?;
 
-                let h =
-                    self.hash_algorithm.unwrap_or(MessageDigest::sha256());
+                let h = self.hash_algorithm.unwrap_or(MessageDigest::sha256());
                 builder
                     .sign(p, h)
                     .map_err(|source| CertificateBuilderError::BuilderError {
@@ -350,9 +316,7 @@ impl<'a> CertificateBuilder<'a> {
         }
 
         if let Some(dns_names) = &self.dns_names {
-            for dns_name in
-                dns_names.iter().filter(|&n| !LOCAL_DNS_NAMES.contains(n))
-            {
+            for dns_name in dns_names.iter().filter(|&n| !LOCAL_DNS_NAMES.contains(n)) {
                 san = san.dns(dns_name);
             }
         }
@@ -362,27 +326,24 @@ impl<'a> CertificateBuilder<'a> {
         }
 
         if let Some(additional_ips) = &self.ips {
-            for ip in
-                additional_ips.iter().filter(|&i| !LOCAL_IPS.contains(i))
-            {
+            for ip in additional_ips.iter().filter(|&i| !LOCAL_IPS.contains(i)) {
                 san = san.ip(ip);
             }
         }
 
-        let x509 = san.build(&builder.x509v3_context(None, None)).map_err(
-            |source| CertificateBuilderError::BuilderError {
+        let x509 = san
+            .build(&builder.x509v3_context(None, None))
+            .map_err(|source| CertificateBuilderError::BuilderError {
                 message: "failed to build Subject Alternative Name".into(),
                 source,
-            },
-        )?;
-        builder.append_extension(x509).map_err(|source| {
-            CertificateBuilderError::BuilderError {
-                message:
-                    "failed to append X509 certificate Subject Alternative Name extension"
-                        .into(),
+            })?;
+        builder
+            .append_extension(x509)
+            .map_err(|source| CertificateBuilderError::BuilderError {
+                message: "failed to append X509 certificate Subject Alternative Name extension"
+                    .into(),
                 source,
-            }
-        })?;
+            })?;
 
         Ok(builder.build())
     }
@@ -394,10 +355,7 @@ mod tests {
     use super::*;
     use crate::crypto::*;
 
-    fn test_generate_certificate(
-        privkey: PKey<Private>,
-        pubkey: PKey<Public>,
-    ) {
+    fn test_generate_certificate(privkey: PKey<Private>, pubkey: PKey<Public>) {
         // Minimal certificate
         let r = CertificateBuilder::new()
             .private_key(&privkey)
@@ -405,8 +363,7 @@ mod tests {
             .build();
         assert!(r.is_ok());
         let cert = r.unwrap(); //#[allow_ci]
-        let cert_pubkey_pem =
-            cert.public_key().unwrap().public_key_to_pem().unwrap(); //#[allow_ci]
+        let cert_pubkey_pem = cert.public_key().unwrap().public_key_to_pem().unwrap(); //#[allow_ci]
         let pubkey_pem = pubkey.public_key_to_pem().unwrap(); //#[allow_ci]
         assert_eq!(cert_pubkey_pem, pubkey_pem);
 
@@ -576,9 +533,9 @@ mod tests {
 
         for group in [
             EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap(), //#[allow_ci]
-            EcGroup::from_curve_name(Nid::SECP256K1).unwrap(), //#[allow_ci]
-            EcGroup::from_curve_name(Nid::SECP384R1).unwrap(), //#[allow_ci],
-            EcGroup::from_curve_name(Nid::SECP521R1).unwrap(), //#[allow_ci]
+            EcGroup::from_curve_name(Nid::SECP256K1).unwrap(),        //#[allow_ci]
+            EcGroup::from_curve_name(Nid::SECP384R1).unwrap(),        //#[allow_ci],
+            EcGroup::from_curve_name(Nid::SECP521R1).unwrap(),        //#[allow_ci]
         ] {
             let (pubkey, privkey) = ecc_generate_pair(&group).unwrap(); //#[allow_ci]
 

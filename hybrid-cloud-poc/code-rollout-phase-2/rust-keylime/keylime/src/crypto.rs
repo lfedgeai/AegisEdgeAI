@@ -157,9 +157,7 @@ pub enum CryptoError {
     PublicKeyToPEMError(#[source] openssl::error::ErrorStack),
 
     /// Error composing RSA public key structure from public components
-    #[error(
-        "failed to compose RSA public key structure from public components"
-    )]
+    #[error("failed to compose RSA public key structure from public components")]
     RSAFromComponents(#[source] openssl::error::ErrorStack),
 
     /// Error generating RSA key pair
@@ -208,9 +206,7 @@ pub enum CryptoError {
     SubjectPublicKeyInfoFromRSAError(#[source] tss_esapi::Error),
 
     /// Error converting TSS Public structure into SubjectPublicKeyInfo
-    #[error(
-        "failed to convert TSS Public structure into SubjectPublicKeyInfo"
-    )]
+    #[error("failed to convert TSS Public structure into SubjectPublicKeyInfo")]
     SubjectPublicKeyInfoFromTSSPublicError(#[source] tss_esapi::Error),
 
     /// Error encoding SubjectPublicKeyInfo in DER format
@@ -270,16 +266,14 @@ pub enum CryptoError {
 
 /// Load a X509 certificate in DER format from file
 pub fn load_x509_der(input_cert_path: &Path) -> Result<X509, CryptoError> {
-    let contents =
-        std::fs::read(input_cert_path).map_err(CryptoError::IOReadError)?;
+    let contents = std::fs::read(input_cert_path).map_err(CryptoError::IOReadError)?;
 
     X509::from_der(&contents).map_err(CryptoError::X509FromDERError)
 }
 
 /// Load X509 certificate in PEM format from file
 pub fn load_x509_pem(input_cert_path: &Path) -> Result<X509, CryptoError> {
-    let contents =
-        std::fs::read(input_cert_path).map_err(CryptoError::IOReadError)?;
+    let contents = std::fs::read(input_cert_path).map_err(CryptoError::IOReadError)?;
 
     X509::from_pem(&contents).map_err(CryptoError::X509FromPEMError)
 }
@@ -294,20 +288,14 @@ pub fn load_x509(path: &Path) -> Result<X509, CryptoError> {
 }
 
 /// Load X509 certificate chain in PEM format from file
-fn load_x509_cert_chain(
-    input_cert_path: &Path,
-) -> Result<Vec<X509>, CryptoError> {
-    let contents =
-        read_to_string(input_cert_path).map_err(CryptoError::IOReadError)?;
+fn load_x509_cert_chain(input_cert_path: &Path) -> Result<Vec<X509>, CryptoError> {
+    let contents = read_to_string(input_cert_path).map_err(CryptoError::IOReadError)?;
 
-    X509::stack_from_pem(contents.as_bytes())
-        .map_err(CryptoError::X509ChainFromPEMError)
+    X509::stack_from_pem(contents.as_bytes()).map_err(CryptoError::X509ChainFromPEMError)
 }
 
 /// Load X509 certificate chains in PEM format from a list of files
-pub fn load_x509_cert_list(
-    input_cert_list: Vec<&Path>,
-) -> Result<Vec<X509>, CryptoError> {
+pub fn load_x509_cert_list(input_cert_list: Vec<&Path>) -> Result<Vec<X509>, CryptoError> {
     let mut loaded = Vec::<X509>::new();
 
     // This is necessary to avoid choking on failures loading certs from a file
@@ -326,12 +314,11 @@ pub fn load_x509_cert_list(
 
 /// Write a X509 certificate to a file in PEM format
 pub fn write_x509(cert: &X509, file_path: &Path) -> Result<(), CryptoError> {
-    let mut file = std::fs::File::create(file_path).map_err(|source| {
-        CryptoError::FSCreateError {
+    let mut file =
+        std::fs::File::create(file_path).map_err(|source| CryptoError::FSCreateError {
             file: file_path.display().to_string(),
             source,
-        }
-    })?;
+        })?;
     _ = file
         .write(&cert.to_pem().map_err(CryptoError::X509ToPEMError)?)
         .map_err(CryptoError::IOWriteError)?;
@@ -361,16 +348,14 @@ pub fn x509_to_der(cert: &X509) -> Result<Vec<u8>, CryptoError> {
 /// Encode a TSS Public key in PEM format
 ///
 /// The public key is returned as a Vec<u8>
-pub fn tss_pubkey_to_pem(
-    pubkey: tss_esapi::structures::Public,
-) -> Result<Vec<u8>, CryptoError> {
+pub fn tss_pubkey_to_pem(pubkey: tss_esapi::structures::Public) -> Result<Vec<u8>, CryptoError> {
     // Converting Public TSS key to PEM
     let key = SubjectPublicKeyInfo::try_from(pubkey)
         .map_err(CryptoError::SubjectPublicKeyInfoFromTSSPublicError)?;
-    let key_der = picky_asn1_der::to_vec(&key)
-        .map_err(CryptoError::SubjectPublicKeyInfoToDERError)?;
-    let openssl_key = PKey::public_key_from_der(&key_der)
-        .map_err(CryptoError::PublicKeyFromDERError)?;
+    let key_der =
+        picky_asn1_der::to_vec(&key).map_err(CryptoError::SubjectPublicKeyInfoToDERError)?;
+    let openssl_key =
+        PKey::public_key_from_der(&key_der).map_err(CryptoError::PublicKeyFromDERError)?;
     let pem = openssl_key
         .public_key_to_pem()
         .map_err(CryptoError::PublicKeyToPEMError)?;
@@ -379,10 +364,7 @@ pub fn tss_pubkey_to_pem(
 }
 
 /// Calculate the hash of the input data using the given Message Digest algorithm
-pub fn hash(
-    data: &[u8],
-    algorithm: MessageDigest,
-) -> Result<Vec<u8>, CryptoError> {
+pub fn hash(data: &[u8], algorithm: MessageDigest) -> Result<Vec<u8>, CryptoError> {
     Ok(openssl::hash::hash(algorithm, data)
         .map_err(CryptoError::HashError)?
         .to_vec())
@@ -526,15 +508,13 @@ pub fn load_key_pair(
     let private = match key_password {
         Some(pw) => {
             if pw.is_empty() {
-                PKey::private_key_from_pem(&pem)
-                    .map_err(CryptoError::PrivateKeyFromPEMError)?
+                PKey::private_key_from_pem(&pem).map_err(CryptoError::PrivateKeyFromPEMError)?
             } else {
                 PKey::private_key_from_pem_passphrase(&pem, pw.as_bytes())
                     .map_err(CryptoError::PrivateKeyFromPEMError)?
             }
         }
-        None => PKey::private_key_from_pem(&pem)
-            .map_err(CryptoError::PrivateKeyFromPEMError)?,
+        None => PKey::private_key_from_pem(&pem).map_err(CryptoError::PrivateKeyFromPEMError)?,
     };
     let public = pkey_pub_from_priv(&private)?;
     Ok((public, private))
@@ -549,12 +529,11 @@ pub fn write_key_pair(
     passphrase: Option<&str>,
 ) -> Result<(), CryptoError> {
     // Write the generated key to the file
-    let mut file = std::fs::File::create(file_path).map_err(|source| {
-        CryptoError::FSCreateError {
+    let mut file =
+        std::fs::File::create(file_path).map_err(|source| CryptoError::FSCreateError {
             file: file_path.display().to_string(),
             source,
-        }
-    })?;
+        })?;
     match passphrase {
         Some(pw) => {
             if pw.is_empty() {
@@ -664,8 +643,8 @@ pub fn load_or_generate_key(
                 ecc_generate_pair(&group)?
             }
             EncryptionAlgorithm::EccSm2 => {
-                let group = EcGroup::from_curve_name(Nid::SM2)
-                    .map_err(CryptoError::ECGroupFromNidError)?;
+                let group =
+                    EcGroup::from_curve_name(Nid::SM2).map_err(CryptoError::ECGroupFromNidError)?;
                 ecc_generate_pair(&group)?
             }
         };
@@ -678,18 +657,14 @@ pub fn load_or_generate_key(
 }
 
 fn rsa_generate(key_size: u32) -> Result<PKey<Private>, CryptoError> {
-    PKey::from_rsa(
-        Rsa::generate(key_size).map_err(CryptoError::RSAGenerateError)?,
-    )
-    .map_err(CryptoError::PKeyFromRSAError)
+    PKey::from_rsa(Rsa::generate(key_size).map_err(CryptoError::RSAGenerateError)?)
+        .map_err(CryptoError::PKeyFromRSAError)
 }
 
 /// Generate RSA key pair with the given size
 ///
 /// Returns a tuple containing the PKey<Public> and PKey<Private>
-pub fn rsa_generate_pair(
-    key_size: u32,
-) -> Result<(PKey<Public>, PKey<Private>), CryptoError> {
+pub fn rsa_generate_pair(key_size: u32) -> Result<(PKey<Public>, PKey<Private>), CryptoError> {
     let private = rsa_generate(key_size)?;
     let public = pkey_pub_from_priv(&private)?;
 
@@ -722,8 +697,7 @@ pub fn validate_key_algorithm(
         },
         KeyClass::Symmetric => {
             return Err(CryptoError::UnsupportedKeyAlgorithm {
-                id: "Symmetric algorithms not supported for key validation"
-                    .to_string(),
+                id: "Symmetric algorithms not supported for key validation".to_string(),
             });
         }
     };
@@ -750,22 +724,16 @@ pub fn validate_key_algorithm(
 /// Generate a ECC key pair on given group
 ///
 /// Returns a tuple containing the PKey<Public> and PKey<Private>
-pub fn ecc_generate_pair(
-    group: &EcGroupRef,
-) -> Result<(PKey<Public>, PKey<Private>), CryptoError> {
-    let private = PKey::from_ec_key(
-        EcKey::generate(group)
-            .map_err(CryptoError::ECGeneratePrivateKeyError)?,
-    )
-    .map_err(CryptoError::PKeyFromEcKeyError)?;
+pub fn ecc_generate_pair(group: &EcGroupRef) -> Result<(PKey<Public>, PKey<Private>), CryptoError> {
+    let private =
+        PKey::from_ec_key(EcKey::generate(group).map_err(CryptoError::ECGeneratePrivateKeyError)?)
+            .map_err(CryptoError::PKeyFromEcKeyError)?;
     let public = pkey_pub_from_priv(&private)?;
 
     Ok((public, private))
 }
 
-fn pkey_pub_from_priv(
-    privkey: &PKey<Private>,
-) -> Result<PKey<Public>, CryptoError> {
+fn pkey_pub_from_priv(privkey: &PKey<Private>) -> Result<PKey<Public>, CryptoError> {
     match privkey.id() {
         Id::RSA => {
             let rsa = Rsa::from_public_components(
@@ -790,9 +758,8 @@ fn pkey_pub_from_priv(
                 .ec_key()
                 .map_err(CryptoError::ECGetPrivateKeyError)?;
 
-            let pubkey =
-                EcKey::from_public_key(ec_key.group(), ec_key.public_key())
-                    .map_err(CryptoError::ECKeyFromPublicPointError)?;
+            let pubkey = EcKey::from_public_key(ec_key.group(), ec_key.public_key())
+                .map_err(CryptoError::ECKeyFromPublicPointError)?;
 
             PKey::from_ec_key(pubkey).map_err(CryptoError::PKeyFromEcKeyError)
         }
@@ -806,9 +773,7 @@ pub fn pkey_pub_to_pem(pubkey: &PKey<Public>) -> Result<String, CryptoError> {
     pubkey
         .public_key_to_pem()
         .map_err(CryptoError::PublicKeyToPEMError)
-        .and_then(|s| {
-            String::from_utf8(s).map_err(CryptoError::StringFromVec)
-        })
+        .and_then(|s| String::from_utf8(s).map_err(CryptoError::StringFromVec))
 }
 
 pub fn generate_tls_context(
@@ -816,13 +781,13 @@ pub fn generate_tls_context(
     key: &PKey<Private>,
     ca_certs: Vec<X509>,
 ) -> Result<SslAcceptorBuilder, CryptoError> {
-    let mut ssl_context_builder = SslAcceptor::mozilla_intermediate_v5(
-        SslMethod::tls(),
-    )
-    .map_err(|source| CryptoError::SSLContextBuilderError {
-        message: "failed to create Context Builder object".into(),
-        source,
-    })?;
+    let mut ssl_context_builder =
+        SslAcceptor::mozilla_intermediate_v5(SslMethod::tls()).map_err(|source| {
+            CryptoError::SSLContextBuilderError {
+                message: "failed to create Context Builder object".into(),
+                source,
+            }
+        })?;
     ssl_context_builder
         .set_certificate(tls_cert)
         .map_err(|source| CryptoError::SSLContextBuilderError {
@@ -838,20 +803,16 @@ pub fn generate_tls_context(
 
     // Build verification cert store.
     let mut mtls_store_builder =
-        X509StoreBuilder::new().map_err(|source| {
-            CryptoError::X509StoreBuilderError {
-                message:
-                    "failed to create X509 certificate store builder object"
-                        .into(),
-                source,
-            }
+        X509StoreBuilder::new().map_err(|source| CryptoError::X509StoreBuilderError {
+            message: "failed to create X509 certificate store builder object".into(),
+            source,
         })?;
     for cert in ca_certs {
         mtls_store_builder
             .add_cert(cert)
-            .map_err(|source| CryptoError::X509StoreBuilderError{
+            .map_err(|source| CryptoError::X509StoreBuilderError {
                 message: "failed to add certificate to X509 trusted certificate store".into(),
-                    source,
+                source,
             })?;
     }
 
@@ -859,8 +820,7 @@ pub fn generate_tls_context(
     ssl_context_builder
         .set_verify_cert_store(mtls_store)
         .map_err(|source| CryptoError::SSLContextBuilderError {
-            message: "failed to set SSL server trusted certificate store"
-                .into(),
+            message: "failed to set SSL server trusted certificate store".into(),
             source,
         })?;
 
@@ -887,10 +847,7 @@ pub fn generate_tls_context(
  * PBKDF2 function defaults to SHA-1 unless otherwise specified, and
  * Python-Keylime uses this default.
  */
-pub fn pbkdf2(
-    input_password: String,
-    input_salt: String,
-) -> Result<String, CryptoError> {
+pub fn pbkdf2(input_password: String, input_salt: String) -> Result<String, CryptoError> {
     let password = input_password.as_bytes();
     let salt = input_salt.as_bytes();
     let count = 2000;
@@ -898,14 +855,8 @@ pub fn pbkdf2(
     // explicitly as a parameter; here, key length is implicitly defined in
     // the length of the 'key' variable.
     let mut key = [0; 32];
-    pkcs5::pbkdf2_hmac(
-        password,
-        salt,
-        count,
-        MessageDigest::sha1(),
-        &mut key,
-    )
-    .map_err(CryptoError::PBKDF2Error)?;
+    pkcs5::pbkdf2_hmac(password, salt, count, MessageDigest::sha1(), &mut key)
+        .map_err(CryptoError::PBKDF2Error)?;
     Ok(hex::encode(&key[..]))
 }
 
@@ -920,39 +871,36 @@ pub fn asym_verify(
     message: &str,
     signature: &str,
 ) -> Result<bool, CryptoError> {
-    let mut verifier = Verifier::new(MessageDigest::sha256(), keypair)
-        .map_err(|source| CryptoError::VerifyError {
+    let mut verifier = Verifier::new(MessageDigest::sha256(), keypair).map_err(|source| {
+        CryptoError::VerifyError {
             message: "failed to create signature verifier object".into(),
             source,
-        })?;
+        }
+    })?;
     verifier
         .set_rsa_padding(Padding::PKCS1_PSS)
         .map_err(|source| CryptoError::VerifyError {
-            message: "failed to set signature verifier padding algorithm"
-                .into(),
+            message: "failed to set signature verifier padding algorithm".into(),
             source,
         })?;
     verifier
         .set_rsa_mgf1_md(MessageDigest::sha256())
         .map_err(|source| CryptoError::VerifyError {
-            message:
-                "failed to set signature verifier Message Digest algorithm"
-                    .into(),
+            message: "failed to set signature verifier Message Digest algorithm".into(),
             source,
         })?;
     verifier
         .set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::MAXIMUM_LENGTH)
         .map_err(|source| CryptoError::VerifyError {
-            message: "failed to set signature verifier RSA PSS salt length"
-                .into(),
+            message: "failed to set signature verifier RSA PSS salt length".into(),
             source,
         })?;
-    verifier.update(message.as_bytes()).map_err(|source| {
-        CryptoError::VerifyError {
+    verifier
+        .update(message.as_bytes())
+        .map_err(|source| CryptoError::VerifyError {
             message: "failed adding input data to signature verifier".into(),
             source,
-        }
-    })?;
+        })?;
     verifier
         .verify(
             &general_purpose::STANDARD
@@ -973,16 +921,12 @@ pub fn asym_verify(
  * Take in an RSA-encrypted ciphertext and an RSA private key and decrypt the
  * ciphertext based on PKCS1 OAEP.
  */
-pub fn rsa_oaep_decrypt(
-    priv_key: &PKey<Private>,
-    data: &[u8],
-) -> Result<Vec<u8>, CryptoError> {
-    let mut decrypter = Decrypter::new(priv_key).map_err(|source| {
-        CryptoError::RSAOAEPDecryptError {
+pub fn rsa_oaep_decrypt(priv_key: &PKey<Private>, data: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    let mut decrypter =
+        Decrypter::new(priv_key).map_err(|source| CryptoError::RSAOAEPDecryptError {
             message: "failed to create RSA decrypter object".into(),
             source,
-        }
-    })?;
+        })?;
 
     decrypter
         .set_rsa_padding(Padding::PKCS1_OAEP)
@@ -993,36 +937,33 @@ pub fn rsa_oaep_decrypt(
     decrypter
         .set_rsa_mgf1_md(MessageDigest::sha1())
         .map_err(|source| CryptoError::RSAOAEPDecryptError {
-            message: "failed to set RSA decrypter Message Digest algorithm"
-                .into(),
+            message: "failed to set RSA decrypter Message Digest algorithm".into(),
             source,
         })?;
     decrypter
         .set_rsa_oaep_md(MessageDigest::sha1())
         .map_err(|source| CryptoError::RSAOAEPDecryptError {
-            message:
-                "failed to set RSA decrypter OAEP Message Digest algorithm"
-                    .into(),
+            message: "failed to set RSA decrypter OAEP Message Digest algorithm".into(),
             source,
         })?;
 
     // Create an output buffer
-    let buffer_len = decrypter.decrypt_len(data).map_err(|source| {
-        CryptoError::RSAOAEPDecryptError {
-            message: "failed to get RSA decrypter output length".into(),
-            source,
-        }
-    })?;
+    let buffer_len =
+        decrypter
+            .decrypt_len(data)
+            .map_err(|source| CryptoError::RSAOAEPDecryptError {
+                message: "failed to get RSA decrypter output length".into(),
+                source,
+            })?;
     let mut decrypted = vec![0; buffer_len];
 
     // Decrypt and truncate the buffer
-    let decrypted_len =
-        decrypter.decrypt(data, &mut decrypted).map_err(|source| {
-            CryptoError::RSAOAEPDecryptError {
-                message: "failed to decrypt data with RSA OAEP".into(),
-                source,
-            }
-        })?;
+    let decrypted_len = decrypter.decrypt(data, &mut decrypted).map_err(|source| {
+        CryptoError::RSAOAEPDecryptError {
+            message: "failed to decrypt data with RSA OAEP".into(),
+            source,
+        }
+    })?;
     decrypted.truncate(decrypted_len);
 
     Ok(decrypted)
@@ -1043,11 +984,9 @@ pub fn compute_hmac(key: &[u8], data: &[u8]) -> Result<Vec<u8>, CryptoError> {
     // https://keylime-docs.readthedocs.io/en/latest/rest_apis.html#post--v1.0-keys-ukey
     // https://github.com/keylime/keylime/blob/910b38b296038b187a020c095dc747e9c46cbef3/keylime/crypto.py#L151
     let mut signer =
-        Signer::new(MessageDigest::sha384(), &pkey).map_err(|source| {
-            CryptoError::SignError {
-                message: "failed creating Signer object".into(),
-                source,
-            }
+        Signer::new(MessageDigest::sha384(), &pkey).map_err(|source| CryptoError::SignError {
+            message: "failed creating Signer object".into(),
+            source,
         })?;
     signer
         .update(data)
@@ -1063,11 +1002,7 @@ pub fn compute_hmac(key: &[u8], data: &[u8]) -> Result<Vec<u8>, CryptoError> {
         })
 }
 
-pub fn verify_hmac(
-    key: &[u8],
-    data: &[u8],
-    hmac: &[u8],
-) -> Result<(), CryptoError> {
+pub fn verify_hmac(key: &[u8], data: &[u8], hmac: &[u8]) -> Result<(), CryptoError> {
     let pkey = PKey::hmac(key).map_err(CryptoError::PKeyHMACNewError)?;
     // SHA-384 is used as the underlying hash algorithm.
     //
@@ -1075,11 +1010,9 @@ pub fn verify_hmac(
     // https://keylime-docs.readthedocs.io/en/latest/rest_apis.html#post--v1.0-keys-ukey
     // https://github.com/keylime/keylime/blob/910b38b296038b187a020c095dc747e9c46cbef3/keylime/crypto.py#L151
     let mut signer =
-        Signer::new(MessageDigest::sha384(), &pkey).map_err(|source| {
-            CryptoError::HMACError {
-                message: "failed to create Signer object".into(),
-                source,
-            }
+        Signer::new(MessageDigest::sha384(), &pkey).map_err(|source| CryptoError::HMACError {
+            message: "failed to create Signer object".into(),
+            source,
         })?;
     signer
         .update(data)
@@ -1160,11 +1093,8 @@ pub mod testing {
         Ok((public, private))
     }
 
-    pub fn pkey_pub_from_pem(
-        pem: &str,
-    ) -> Result<PKey<Public>, CryptoTestError> {
-        PKey::<Public>::public_key_from_pem(pem.as_bytes())
-            .map_err(CryptoTestError::OpenSSLError)
+    pub fn pkey_pub_from_pem(pem: &str) -> Result<PKey<Public>, CryptoTestError> {
+        PKey::<Public>::public_key_from_pem(pem.as_bytes()).map_err(CryptoTestError::OpenSSLError)
     }
 
     pub fn rsa_oaep_encrypt(
@@ -1188,18 +1118,12 @@ pub mod testing {
         Ok(encrypted)
     }
 
-    pub fn encrypt_aead(
-        key: &[u8],
-        iv: &[u8],
-        data: &[u8],
-    ) -> Result<Vec<u8>, CryptoTestError> {
+    pub fn encrypt_aead(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, CryptoTestError> {
         let cipher = match key.len() {
             AES_128_KEY_LEN => Cipher::aes_128_gcm(),
             AES_256_KEY_LEN => Cipher::aes_256_gcm(),
             other => {
-                return Err(
-                    CryptoError::InvalidKeyLength { length: other }.into()
-                );
+                return Err(CryptoError::InvalidKeyLength { length: other }.into());
             }
         };
         let iv_len = iv.len();
@@ -1210,39 +1134,24 @@ pub mod testing {
             });
         }
         let mut tag = vec![0u8; AES_BLOCK_SIZE];
-        let ciphertext = openssl::symm::encrypt_aead(
-            cipher,
-            key,
-            Some(iv),
-            &[],
-            data,
-            &mut tag,
-        )?;
+        let ciphertext = openssl::symm::encrypt_aead(cipher, key, Some(iv), &[], data, &mut tag)?;
 
-        let mut result =
-            Vec::with_capacity(iv.len() + ciphertext.len() + tag.len());
+        let mut result = Vec::with_capacity(iv.len() + ciphertext.len() + tag.len());
         result.extend(iv);
         result.extend(ciphertext);
         result.extend(tag);
         Ok(result)
     }
 
-    pub fn rsa_generate(
-        key_size: u32,
-    ) -> Result<PKey<Private>, CryptoTestError> {
+    pub fn rsa_generate(key_size: u32) -> Result<PKey<Private>, CryptoTestError> {
         super::rsa_generate(key_size).map_err(CryptoTestError::CryptoError)
     }
 
-    pub fn write_x509_der(
-        cert: &X509,
-        file_path: &Path,
-    ) -> Result<(), CryptoTestError> {
+    pub fn write_x509_der(cert: &X509, file_path: &Path) -> Result<(), CryptoTestError> {
         let mut file =
-            std::fs::File::create(file_path).map_err(|source| {
-                CryptoError::FSCreateError {
-                    file: file_path.display().to_string(),
-                    source,
-                }
+            std::fs::File::create(file_path).map_err(|source| CryptoError::FSCreateError {
+                file: file_path.display().to_string(),
+                source,
             })?;
         _ = file
             .write(&cert.to_der().map_err(CryptoError::X509ToDERError)?)
@@ -1264,8 +1173,7 @@ mod tests {
     fn test_compute_hmac() {
         let key = String::from("mysecret");
         let message = String::from("hellothere");
-        let mac =
-            compute_hmac(key.as_bytes(), message.as_bytes()).map(hex::encode);
+        let mac = compute_hmac(key.as_bytes(), message.as_bytes()).map(hex::encode);
         assert_eq!(
             format!(
                 "{}{}",
@@ -1284,8 +1192,7 @@ mod tests {
         let salt = String::from("thesaltiestsalt");
         let key = pbkdf2(password, salt);
         assert_eq!(
-            "8a6de415abb8b27de5c572c8137bd14e5658395f9a2346e0b1ad8b9d8b9028af"
-                .to_string(),
+            "8a6de415abb8b27de5c572c8137bd14e5658395f9a2346e0b1ad8b9d8b9028af".to_string(),
             key.unwrap() //#[allow_ci]
         );
     }
@@ -1298,15 +1205,13 @@ mod tests {
         let data2 = b"hola, mundo!";
 
         // Sign the data
-        let mut signer =
-            Signer::new(MessageDigest::sha256(), &priv_key).unwrap(); //#[allow_ci]
+        let mut signer = Signer::new(MessageDigest::sha256(), &priv_key).unwrap(); //#[allow_ci]
         signer.update(data).unwrap(); //#[allow_ci]
         signer.update(data2).unwrap(); //#[allow_ci]
         let signature = signer.sign_to_vec().unwrap(); //#[allow_ci]
 
         // Verify the data
-        let mut verifier =
-            Verifier::new(MessageDigest::sha256(), &pub_key).unwrap(); //#[allow_ci]
+        let mut verifier = Verifier::new(MessageDigest::sha256(), &pub_key).unwrap(); //#[allow_ci]
         verifier.update(data).unwrap(); //#[allow_ci]
         verifier.update(data2).unwrap(); //#[allow_ci]
         assert!(verifier.verify(&signature).unwrap()); //#[allow_ci]
@@ -1319,16 +1224,14 @@ mod tests {
             .join("test-data")
             .join("test-rsa.pem");
 
-        let (pub_key, priv_key) = rsa_import_pair(rsa_key_path)
-            .expect("unable to import RSA key pair");
+        let (pub_key, priv_key) =
+            rsa_import_pair(rsa_key_path).expect("unable to import RSA key pair");
         let plaintext = b"0123456789012345";
-        let ciphertext = rsa_oaep_encrypt(&pub_key, &plaintext[..])
-            .expect("unable to encrypt");
+        let ciphertext = rsa_oaep_encrypt(&pub_key, &plaintext[..]).expect("unable to encrypt");
 
         // We can't check against the fixed ciphertext, as OAEP
         // involves randomness. Check with a round-trip instead.
-        let decrypted = rsa_oaep_decrypt(&priv_key, &ciphertext[..])
-            .expect("unable to decrypt");
+        let decrypted = rsa_oaep_decrypt(&priv_key, &ciphertext[..]).expect("unable to decrypt");
         assert_eq!(decrypted, plaintext);
     }
 
@@ -1337,8 +1240,8 @@ mod tests {
         let key = b"0123456789012345";
         let iv = b"ABCDEFGHIJKLMNOP";
         let plaintext = b"test string, longer than the block size";
-        let ciphertext = encrypt_aead(&key[..], &iv[..], &plaintext[..])
-            .expect("unable to encrypt");
+        let ciphertext =
+            encrypt_aead(&key[..], &iv[..], &plaintext[..]).expect("unable to encrypt");
         let expected = hex::decode("4142434445464748494A4B4C4D4E4F50B2198661586C9839CCDD0B1D5B4FF92FA9C0E6477C4E8E42C19ACD9E8061DD1E759401337DA285A70580E6A2E10B5D3A09994F46D90AB6").unwrap(); //#[allow_ci]
         assert_eq!(ciphertext, expected);
     }
@@ -1347,8 +1250,7 @@ mod tests {
     fn test_decrypt_aead_short() {
         let key = b"0123456789012345";
         let ciphertext = hex::decode("4142434445464748494A4B4C4D4E4F50B2198661586C9839CCDD0B1D5B4FF92FA9C0E6477C4E8E42C19ACD9E8061DD1E759401337DA285A70580E6A2E10B5D3A09994F46D90AB6").unwrap(); //#[allow_ci]
-        let plaintext = decrypt_aead(&key[..], &ciphertext[..])
-            .expect("unable to decrypt");
+        let plaintext = decrypt_aead(&key[..], &ciphertext[..]).expect("unable to decrypt");
         let expected = b"test string, longer than the block size";
         assert_eq!(plaintext, expected);
     }
@@ -1358,8 +1260,8 @@ mod tests {
         let key = b"01234567890123450123456789012345";
         let iv = b"ABCDEFGHIJKLMNOP";
         let plaintext = b"test string, longer than the block size";
-        let ciphertext = encrypt_aead(&key[..], &iv[..], &plaintext[..])
-            .expect("unable to encrypt");
+        let ciphertext =
+            encrypt_aead(&key[..], &iv[..], &plaintext[..]).expect("unable to encrypt");
         let expected = hex::decode("4142434445464748494A4B4C4D4E4F50FCE7CA78C08FB1D5E04DB3C4AA6B6ED2F09C4AD7985BD1DB9FF15F9FDA869D0C01B27FF4618737BB53C84D256455AAB53B9AC7EAF88C4B").unwrap(); //#[allow_ci]
         assert_eq!(ciphertext, expected);
     }
@@ -1368,8 +1270,7 @@ mod tests {
     fn test_decrypt_aead_long() {
         let key = b"01234567890123450123456789012345";
         let ciphertext = hex::decode("4142434445464748494A4B4C4D4E4F50FCE7CA78C08FB1D5E04DB3C4AA6B6ED2F09C4AD7985BD1DB9FF15F9FDA869D0C01B27FF4618737BB53C84D256455AAB53B9AC7EAF88C4B").unwrap(); //#[allow_ci]
-        let plaintext = decrypt_aead(&key[..], &ciphertext[..])
-            .expect("unable to decrypt");
+        let plaintext = decrypt_aead(&key[..], &ciphertext[..]).expect("unable to decrypt");
         let expected = b"test string, longer than the block size";
         assert_eq!(plaintext, expected);
     }
@@ -1417,8 +1318,7 @@ mod tests {
 
         // Get RSA keys
         let contents = read_to_string(rsa_key_path);
-        let private =
-            PKey::private_key_from_pem(contents.unwrap().as_bytes()).unwrap(); //#[allow_ci]
+        let private = PKey::private_key_from_pem(contents.unwrap().as_bytes()).unwrap(); //#[allow_ci]
         let public = pkey_pub_from_priv(&private).unwrap(); //#[allow_ci]
 
         let message = String::from("Hello World!");
@@ -1445,24 +1345,20 @@ mod tests {
 
         // Create temporary directory and files names
         let temp_dir = tempfile::tempdir().unwrap(); //#[allow_ci]
-        let encrypted_path =
-            Path::new(&temp_dir.path()).join("encrypted.pem");
+        let encrypted_path = Path::new(&temp_dir.path()).join("encrypted.pem");
         let empty_pw_path = Path::new(&temp_dir.path()).join("empty_pw.pem");
         let none_pw_path = Path::new(&temp_dir.path()).join("none_pw.pem");
 
         let message = b"Hello World!";
 
         // Write keys to files
-        assert!(write_key_pair(&private, &encrypted_path, Some("password"))
-            .is_ok());
+        assert!(write_key_pair(&private, &encrypted_path, Some("password")).is_ok());
         assert!(write_key_pair(&private, &empty_pw_path, Some("")).is_ok());
         assert!(write_key_pair(&private, &none_pw_path, None).is_ok());
 
         // Read keys from files
-        let (_, priv_from_encrypted) =
-            load_key_pair(&encrypted_path, Some("password")).unwrap(); //#[allow_ci]
-        let (_, priv_from_empty) =
-            load_key_pair(&empty_pw_path, Some("")).unwrap(); //#[allow_ci]
+        let (_, priv_from_encrypted) = load_key_pair(&encrypted_path, Some("password")).unwrap(); //#[allow_ci]
+        let (_, priv_from_empty) = load_key_pair(&empty_pw_path, Some("")).unwrap(); //#[allow_ci]
         let (_, priv_from_none) = load_key_pair(&none_pw_path, None).unwrap(); //#[allow_ci]
 
         for keypair in [
@@ -1471,14 +1367,12 @@ mod tests {
             priv_from_none.as_ref(),
         ] {
             // Sign the data
-            let mut signer =
-                Signer::new(MessageDigest::sha256(), keypair).unwrap(); //#[allow_ci]
+            let mut signer = Signer::new(MessageDigest::sha256(), keypair).unwrap(); //#[allow_ci]
             signer.update(message).unwrap(); //#[allow_ci]
             let signature = signer.sign_to_vec().unwrap(); //#[allow_ci]
 
             // Verify the data
-            let mut verifier =
-                Verifier::new(MessageDigest::sha256(), keypair).unwrap(); //#[allow_ci]
+            let mut verifier = Verifier::new(MessageDigest::sha256(), keypair).unwrap(); //#[allow_ci]
             verifier.update(message).unwrap(); //#[allow_ci]
             assert!(verifier.verify(&signature).unwrap()); //#[allow_ci]
         }
@@ -1490,7 +1384,10 @@ mod tests {
         let h = hash(input, MessageDigest::sha256());
         assert!(h.is_ok());
         let hex = hex::encode(h.unwrap()); //#[allow_ci]
-        assert_eq!(hex, "7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9");
+        assert_eq!(
+            hex,
+            "7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9"
+        );
 
         let h = hash(input, MessageDigest::sha384());
         assert!(h.is_ok());
@@ -1550,8 +1447,8 @@ mod tests {
         let cert = r.unwrap(); //#[allow_ci]
 
         // Test getting public key from cert
-        let pubkey_from_cert = x509_get_pubkey(&cert)
-            .expect("Failed to get public key from certificate");
+        let pubkey_from_cert =
+            x509_get_pubkey(&cert).expect("Failed to get public key from certificate");
         assert_eq!(
             pubkey
                 .public_key_to_der()
@@ -1583,10 +1480,8 @@ mod tests {
         assert!(chain.len() == 2);
 
         // Test adding loading certs from a list, including an non-existing file
-        let non_existing =
-            Path::new("/non_existing_path/non_existing_cert.pem");
-        let cert_list: Vec<&Path> =
-            vec![&cert_a_path, non_existing, &cert_b_path];
+        let non_existing = Path::new("/non_existing_path/non_existing_cert.pem");
+        let cert_list: Vec<&Path> = vec![&cert_a_path, non_existing, &cert_b_path];
         let r = load_x509_cert_list(cert_list);
         assert!(r.is_ok());
         let loaded_list = r.unwrap(); //#[allow_ci]
@@ -1617,9 +1512,9 @@ mod tests {
 
         for group in [
             EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap(), //#[allow_ci]
-            EcGroup::from_curve_name(Nid::SECP256K1).unwrap(), //#[allow_ci]
-            EcGroup::from_curve_name(Nid::SECP384R1).unwrap(), //#[allow_ci],
-            EcGroup::from_curve_name(Nid::SECP521R1).unwrap(), //#[allow_ci]
+            EcGroup::from_curve_name(Nid::SECP256K1).unwrap(),        //#[allow_ci]
+            EcGroup::from_curve_name(Nid::SECP384R1).unwrap(),        //#[allow_ci],
+            EcGroup::from_curve_name(Nid::SECP521R1).unwrap(),        //#[allow_ci]
         ] {
             let (pubkey, privkey) = ecc_generate_pair(&group).unwrap(); //#[allow_ci]
 
@@ -1628,9 +1523,7 @@ mod tests {
     }
     #[test]
     fn test_match_cert_to_template() {
-        for (file_name, template) in
-            [("test-cert.pem", "H-1"), ("prime256v1.cert.pem", "H-5")]
-        {
+        for (file_name, template) in [("test-cert.pem", "H-1"), ("prime256v1.cert.pem", "H-5")] {
             let cert_path = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("test-data")
                 .join(file_name);
@@ -1651,10 +1544,7 @@ mod tests {
     fn test_validate_key_algorithm_rsa_2048() {
         // Generate RSA 2048 key and validate it
         let (_, private_key) = rsa_generate_pair(2048).unwrap(); //#[allow_ci]
-        let result = validate_key_algorithm(
-            &private_key,
-            EncryptionAlgorithm::Rsa2048,
-        );
+        let result = validate_key_algorithm(&private_key, EncryptionAlgorithm::Rsa2048);
         assert!(result.is_ok(), "RSA 2048 key should validate successfully");
     }
 
@@ -1662,10 +1552,7 @@ mod tests {
     fn test_validate_key_algorithm_rsa_3072() {
         // Generate RSA 3072 key and validate it
         let (_, private_key) = rsa_generate_pair(3072).unwrap(); //#[allow_ci]
-        let result = validate_key_algorithm(
-            &private_key,
-            EncryptionAlgorithm::Rsa3072,
-        );
+        let result = validate_key_algorithm(&private_key, EncryptionAlgorithm::Rsa3072);
         assert!(result.is_ok(), "RSA 3072 key should validate successfully");
     }
 
@@ -1673,10 +1560,7 @@ mod tests {
     fn test_validate_key_algorithm_rsa_4096() {
         // Generate RSA 4096 key and validate it
         let (_, private_key) = rsa_generate_pair(4096).unwrap(); //#[allow_ci]
-        let result = validate_key_algorithm(
-            &private_key,
-            EncryptionAlgorithm::Rsa4096,
-        );
+        let result = validate_key_algorithm(&private_key, EncryptionAlgorithm::Rsa4096);
         assert!(result.is_ok(), "RSA 4096 key should validate successfully");
     }
 
@@ -1684,10 +1568,7 @@ mod tests {
     fn test_validate_key_algorithm_wrong_size() {
         // Generate RSA 2048 key but validate as RSA 4096
         let (_, private_key) = rsa_generate_pair(2048).unwrap(); //#[allow_ci]
-        let result = validate_key_algorithm(
-            &private_key,
-            EncryptionAlgorithm::Rsa4096,
-        );
+        let result = validate_key_algorithm(&private_key, EncryptionAlgorithm::Rsa4096);
         assert!(
             result.is_err(),
             "RSA 2048 key should fail RSA 4096 validation"
@@ -1709,8 +1590,7 @@ mod tests {
         // Generate ECC 256 key and validate it
         let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap(); //#[allow_ci]
         let (_, private_key) = ecc_generate_pair(&group).unwrap(); //#[allow_ci]
-        let result =
-            validate_key_algorithm(&private_key, EncryptionAlgorithm::Ecc256);
+        let result = validate_key_algorithm(&private_key, EncryptionAlgorithm::Ecc256);
         assert!(result.is_ok(), "ECC 256 key should validate successfully");
     }
 
@@ -1721,8 +1601,7 @@ mod tests {
         // Generate ECC 384 key and validate it
         let group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap(); //#[allow_ci]
         let (_, private_key) = ecc_generate_pair(&group).unwrap(); //#[allow_ci]
-        let result =
-            validate_key_algorithm(&private_key, EncryptionAlgorithm::Ecc384);
+        let result = validate_key_algorithm(&private_key, EncryptionAlgorithm::Ecc384);
         assert!(result.is_ok(), "ECC 384 key should validate successfully");
     }
 
@@ -1736,22 +1615,14 @@ mod tests {
         // File doesn't exist, should generate new key
         assert!(!key_path.exists());
 
-        let result = load_or_generate_key(
-            &key_path,
-            None,
-            EncryptionAlgorithm::Rsa2048,
-            false,
-        );
+        let result = load_or_generate_key(&key_path, None, EncryptionAlgorithm::Rsa2048, false);
 
         assert!(result.is_ok(), "Should generate new key successfully");
         assert!(key_path.exists(), "Key file should be created");
 
         // Verify the key is valid RSA 2048
         let (_, private_key) = result.unwrap(); //#[allow_ci]
-        let validation = validate_key_algorithm(
-            &private_key,
-            EncryptionAlgorithm::Rsa2048,
-        );
+        let validation = validate_key_algorithm(&private_key, EncryptionAlgorithm::Rsa2048);
         assert!(validation.is_ok(), "Generated key should be RSA 2048");
     }
 
@@ -1767,12 +1638,7 @@ mod tests {
         write_key_pair(&priv1, &key_path, None).unwrap(); //#[allow_ci]
 
         // Now load it using load_or_generate_key
-        let result = load_or_generate_key(
-            &key_path,
-            None,
-            EncryptionAlgorithm::Rsa2048,
-            false,
-        );
+        let result = load_or_generate_key(&key_path, None, EncryptionAlgorithm::Rsa2048, false);
 
         assert!(result.is_ok(), "Should load existing key successfully");
 
@@ -1853,10 +1719,7 @@ mod tests {
         // Verify it's an InvalidKeyLength error
         match result {
             Err(CryptoError::InvalidKeyLength { length }) => {
-                assert_eq!(
-                    length, 2048,
-                    "Error should report actual key size"
-                );
+                assert_eq!(length, 2048, "Error should report actual key size");
             }
             _ => panic!("Expected InvalidKeyLength error"), //#[allow_ci]
         }
@@ -1902,20 +1765,12 @@ mod tests {
         let key_path = dir.path().join("test-key-3072.pem");
 
         // Generate RSA 3072 key
-        let result = load_or_generate_key(
-            &key_path,
-            None,
-            EncryptionAlgorithm::Rsa3072,
-            true,
-        );
+        let result = load_or_generate_key(&key_path, None, EncryptionAlgorithm::Rsa3072, true);
 
         assert!(result.is_ok(), "Should generate RSA 3072 key successfully");
 
         let (_, private_key) = result.unwrap(); //#[allow_ci]
-        let validation = validate_key_algorithm(
-            &private_key,
-            EncryptionAlgorithm::Rsa3072,
-        );
+        let validation = validate_key_algorithm(&private_key, EncryptionAlgorithm::Rsa3072);
         assert!(validation.is_ok(), "Generated key should be RSA 3072");
     }
 
@@ -1927,18 +1782,12 @@ mod tests {
         let key_path = dir.path().join("test-ecc-256.pem");
 
         // Generate ECC 256 key
-        let result = load_or_generate_key(
-            &key_path,
-            None,
-            EncryptionAlgorithm::Ecc256,
-            true,
-        );
+        let result = load_or_generate_key(&key_path, None, EncryptionAlgorithm::Ecc256, true);
 
         assert!(result.is_ok(), "Should generate ECC 256 key successfully");
 
         let (_, private_key) = result.unwrap(); //#[allow_ci]
-        let validation =
-            validate_key_algorithm(&private_key, EncryptionAlgorithm::Ecc256);
+        let validation = validate_key_algorithm(&private_key, EncryptionAlgorithm::Ecc256);
         assert!(validation.is_ok(), "Generated key should be ECC 256");
     }
 }

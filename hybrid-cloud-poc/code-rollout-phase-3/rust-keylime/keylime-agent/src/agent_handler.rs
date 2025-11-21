@@ -19,10 +19,7 @@ pub(crate) struct AgentInfo {
 
 // This is an Info request which gets some information about this keylime agent
 // It should return a AgentInfo object as JSON
-async fn info(
-    req: HttpRequest,
-    data: web::Data<QuoteData<'_>>,
-) -> impl Responder {
+async fn info(req: HttpRequest, data: web::Data<QuoteData<'_>>) -> impl Responder {
     debug!("Returning agent information");
 
     let mut info = AgentInfo {
@@ -48,8 +45,7 @@ async fn agent_default(req: HttpRequest) -> impl Responder {
         http::Method::GET => {
             error = 400;
             message = "URI not supported, only /info is supported for GET in /agent interface";
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, message));
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, message));
         }
         _ => {
             error = 405;
@@ -118,10 +114,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_agents_default() {
-        let mut app = test::init_service(
-            App::new().service(web::resource("/").to(agent_default)),
-        )
-        .await;
+        let mut app =
+            test::init_service(App::new().service(web::resource("/").to(agent_default))).await;
 
         let req = test::TestRequest::get().uri("/").to_request();
 

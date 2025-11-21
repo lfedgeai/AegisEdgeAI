@@ -13,11 +13,11 @@ import (
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 func TestBuildVerifyEvidenceRequest(t *testing.T) {
 	tests := []struct {
-		name                string
+		name                 string
 		sovereignAttestation *SovereignAttestationProto
-		nonce               string
-		wantErr             bool
-		validate            func(t *testing.T, req *VerifyEvidenceRequest)
+		nonce                string
+		wantErr              bool
+		validate             func(t *testing.T, req *VerifyEvidenceRequest)
 	}{
 		{
 			name: "valid request with all fields",
@@ -36,6 +36,8 @@ func TestBuildVerifyEvidenceRequest(t *testing.T) {
 				assert.Equal(t, "sha256", req.Data.HashAlg)
 				assert.Equal(t, "test-public-key", req.Data.AppKeyPublic)
 				assert.NotEmpty(t, req.Data.AppKeyCertificate)
+				assert.Equal(t, "127.0.0.1", req.Data.AgentIP)
+				assert.Equal(t, 9002, req.Data.AgentPort)
 				assert.Equal(t, "SPIRE Server", req.Metadata.Source)
 				assert.Equal(t, "PoR/tpm-app-key", req.Metadata.SubmissionType)
 			},
@@ -130,4 +132,3 @@ func TestNewClient(t *testing.T) {
 		})
 	}
 }
-

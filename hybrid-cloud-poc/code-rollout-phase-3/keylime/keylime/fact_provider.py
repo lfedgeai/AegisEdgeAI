@@ -1,8 +1,8 @@
 """
-Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 
 This module provides attested facts (geolocation, host integrity, GPU metrics)
-for the Unified Identity flow. In Phase 2, facts are retrieved from the registrar
+for the Unified Identity flow. Facts are retrieved from the registrar
 or a simple fact store.
 """
 
@@ -16,90 +16,7 @@ from keylime.db.verifier_db import VerfierMain
 logger = keylime_logging.init_logging("fact_provider")
 
 
-def _get_optional_str(section: str, option: str) -> Optional[str]:
-    value = config.get(section, option, fallback="")
-    value = value.strip()
-    return value or None
-
-
-def _get_optional_float(section: str, option: str) -> Optional[float]:
-    value = config.get(section, option, fallback="")
-    value = value.strip()
-    if not value:
-        return None
-    try:
-        return float(value)
-    except ValueError:
-        logger.warning(
-            "Unified-Identity - Phase 2: Invalid float for %s.%s ('%s'), ignoring",
-            section,
-            option,
-            value,
-        )
-        return None
-
-
-def _get_optional_int(section: str, option: str) -> Optional[int]:
-    value = config.get(section, option, fallback="")
-    value = value.strip()
-    if not value:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        logger.warning(
-            "Unified-Identity - Phase 2: Invalid integer for %s.%s ('%s'), ignoring",
-            section,
-            option,
-            value,
-        )
-        return None
-
-
-# Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
-def _parse_geolocation_string(geolocation_str: Optional[str]) -> Optional[Dict[str, Any]]:
-    """
-    Parse geolocation string from rust-keylime agent.
-    
-    Format can be:
-    - "mobile:sensor_id:geolocation" (e.g., "mobile:12d1:1433:none")
-    - "GNSS:sensor_id:geolocation" (e.g., "GNSS:1546:01a7:none")
-    - Plain geolocation string (e.g., "US:California:San Francisco:37.7749:-122.4194")
-    - "none"
-    - None
-    
-    Returns:
-        Dictionary with structured geolocation data, or None if no geolocation available
-    """
-    if not geolocation_str or geolocation_str.strip() == "" or geolocation_str.strip().lower() == "none":
-        return None
-    
-    # Check if it's a structured format: "sensor_type:sensor_id:geolocation"
-    parts = geolocation_str.split(":", 2)
-    if len(parts) == 3:
-        sensor_type, sensor_id, geo_data = parts
-        # If geolocation is "none", return structured format with sensor info
-        if geo_data.lower() == "none":
-            return {
-                sensor_type.lower(): {
-                    "sensor_id": sensor_id,
-                    "geolocation": None
-                }
-            }
-        # If geolocation has actual data, return structured format with both
-        else:
-            return {
-                sensor_type.lower(): {
-                    "sensor_id": sensor_id,
-                    "geolocation": geo_data
-                }
-            }
-    
-    # Plain geolocation string (legacy format)
-    return {"geolocation": geolocation_str}
-
-
-# Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+# Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
 def get_host_identifier_from_ek(tpm_ek: Optional[str]) -> Optional[str]:
     """
     Generate a host identifier from TPM EK.
@@ -114,17 +31,17 @@ def get_host_identifier_from_ek(tpm_ek: Optional[str]) -> Optional[str]:
         return None
 
     try:
-        # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
         # Create a stable identifier from EK
         ek_bytes = tpm_ek.encode("utf-8") if isinstance(tpm_ek, str) else tpm_ek
         ek_hash = hashlib.sha256(ek_bytes).hexdigest()
         return f"ek-{ek_hash[:16]}"
     except Exception as e:
-        logger.error("Unified-Identity - Phase 2: Failed to generate host identifier from EK: %s", e)
+        logger.error("Unified-Identity - Phase 3: Failed to generate host identifier from EK: %s", e)
         return None
 
 
-# Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+# Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
 def get_host_identifier_from_ak(tpm_ak: Optional[str]) -> Optional[str]:
     """
     Generate a host identifier from TPM AK.
@@ -139,17 +56,17 @@ def get_host_identifier_from_ak(tpm_ak: Optional[str]) -> Optional[str]:
         return None
 
     try:
-        # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
         # Create a stable identifier from AK
         ak_bytes = tpm_ak.encode("utf-8") if isinstance(tpm_ak, str) else tpm_ak
         ak_hash = hashlib.sha256(ak_bytes).hexdigest()
         return f"ak-{ak_hash[:16]}"
     except Exception as e:
-        logger.error("Unified-Identity - Phase 2: Failed to generate host identifier from AK: %s", e)
+        logger.error("Unified-Identity - Phase 3: Failed to generate host identifier from AK: %s", e)
         return None
 
 
-# Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+# Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
 def get_attested_claims(
     tpm_ek: Optional[str] = None,
     tpm_ak: Optional[str] = None,
@@ -158,10 +75,11 @@ def get_attested_claims(
     """
     Retrieve attested claims (geolocation, host integrity, GPU metrics) for a host.
 
-    In Phase 2, facts are retrieved from:
-    1. Verifier database (if agent is registered)
-    2. Configuration-based defaults
-    3. Simple fact store (for testing)
+    Facts are retrieved from:
+    1. Verifier database (if agent is registered with verifier and has metadata)
+    2. Simple fact store (using host identifier derived from TPM EK/AK)
+
+    If no facts are available, returns an empty dictionary.
 
     Args:
         tpm_ek: TPM Endorsement Key (optional, for host identification)
@@ -169,28 +87,20 @@ def get_attested_claims(
         agent_id: Agent ID (optional, if host is registered)
 
     Returns:
-        Dictionary containing attested claims:
+        Dictionary containing attested claims (may be empty if no facts available):
         {
-            "geolocation": str,
-            "host_integrity_status": str,
+            "geolocation": str (optional),
+            "host_integrity_status": str (optional),
             "gpu_metrics_health": {
-                "status": str,
-                "utilization_pct": float,
-                "memory_mb": int
+                "status": str (optional),
+                "utilization_pct": float (optional),
+                "memory_mb": int (optional)
             }
         }
     """
-    logger.info("Unified-Identity - Phase 2: Retrieving attested claims")
+    logger.info("Unified-Identity - Phase 3: Retrieving attested claims")
 
-    # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
-    # Default values (optional)
-    default_geolocation = _get_optional_str("verifier", "unified_identity_default_geolocation")
-    default_integrity = _get_optional_str("verifier", "unified_identity_default_integrity")
-    default_gpu_status = _get_optional_str("verifier", "unified_identity_default_gpu_status")
-    default_gpu_utilization = _get_optional_float("verifier", "unified_identity_default_gpu_utilization")
-    default_gpu_memory = _get_optional_int("verifier", "unified_identity_default_gpu_memory")
-
-    # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+    # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
     # Try to retrieve facts from verifier database if agent_id is provided
     if agent_id:
         try:
@@ -200,7 +110,7 @@ def get_attested_claims(
             with SessionManager().session_context(engine) as session:
                 agent = session.query(VerfierMain).filter(VerfierMain.agent_id == agent_id).first()
                 if agent:
-                    # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+                    # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
                     # Check if agent has metadata with facts
                     if agent.meta_data:
                         try:
@@ -208,43 +118,34 @@ def get_attested_claims(
 
                             metadata = json.loads(agent.meta_data) if isinstance(agent.meta_data, str) else agent.meta_data
                             if isinstance(metadata, dict):
-                                geolocation_raw = metadata.get("geolocation", default_geolocation)
-                                # Parse geolocation string to structured format
-                                geolocation = _parse_geolocation_string(geolocation_raw)
-                                integrity = metadata.get("host_integrity_status", default_integrity)
-                                gpu_metrics = metadata.get("gpu_metrics_health", {})
-                                if isinstance(gpu_metrics, dict):
-                                    gpu_status = gpu_metrics.get("status", default_gpu_status)
-                                    gpu_utilization = gpu_metrics.get("utilization_pct", default_gpu_utilization)
-                                    gpu_memory = gpu_metrics.get("memory_mb", default_gpu_memory)
-                                else:
-                                    gpu_status = default_gpu_status
-                                    gpu_utilization = default_gpu_utilization
-                                    gpu_memory = default_gpu_memory
+                                # Only return facts that are actually present in metadata
+                                facts = {}
+                                if "geolocation" in metadata:
+                                    facts["geolocation"] = metadata["geolocation"]
+                                if "host_integrity_status" in metadata:
+                                    facts["host_integrity_status"] = metadata["host_integrity_status"]
+                                if "gpu_metrics_health" in metadata:
+                                    gpu_metrics = metadata["gpu_metrics_health"]
+                                    if isinstance(gpu_metrics, dict):
+                                        facts["gpu_metrics_health"] = {
+                                            "status": gpu_metrics.get("status"),
+                                            "utilization_pct": gpu_metrics.get("utilization_pct"),
+                                            "memory_mb": gpu_metrics.get("memory_mb"),
+                                        }
 
                                 logger.info(
-                                    "Unified-Identity - Phase 2: Retrieved facts from agent metadata for agent %s",
+                                    "Unified-Identity - Phase 3: Retrieved facts from agent metadata for agent %s",
                                     agent_id,
                                 )
-                                return {
-                                    "geolocation": geolocation,
-                                    "host_integrity_status": integrity,
-                                    "gpu_metrics_health": {
-                                        "status": gpu_status,
-                                        "utilization_pct": float(gpu_utilization)
-                                        if gpu_utilization is not None
-                                        else None,
-                                        "memory_mb": int(gpu_memory) if gpu_memory is not None else None,
-                                    },
-                                }
+                                return facts
                         except Exception as e:
                             logger.warning(
-                                "Unified-Identity - Phase 2: Failed to parse agent metadata, using defaults: %s", e
+                                "Unified-Identity - Phase 3: Failed to parse agent metadata: %s", e
                             )
         except Exception as e:
-            logger.warning("Unified-Identity - Phase 2: Failed to retrieve facts from database: %s", e)
+            logger.warning("Unified-Identity - Phase 3: Failed to retrieve facts from database: %s", e)
 
-    # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+    # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
     # Try to identify host from EK or AK and retrieve from fact store
     host_id = None
     if tpm_ek:
@@ -253,29 +154,21 @@ def get_attested_claims(
         host_id = get_host_identifier_from_ak(tpm_ak)
 
     if host_id:
-        # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
         # In Phase 2, we use a simple in-memory fact store
         # In production, this would query a proper fact database
         facts = _get_facts_from_store(host_id)
         if facts:
-            logger.info("Unified-Identity - Phase 2: Retrieved facts from fact store for host %s", host_id)
+            logger.info("Unified-Identity - Phase 3: Retrieved facts from fact store for host %s", host_id)
             return facts
 
-    # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
-    # Parse default geolocation if provided, otherwise return None
-    geolocation = _parse_geolocation_string(default_geolocation) if default_geolocation else None
-    
-    # Return None for geolocation and GPU metrics when no sensor data is available
-    # (no defaults - sensors must be present to provide data)
-    logger.info("Unified-Identity - Phase 2: No sensor data available, returning None for geolocation and GPU metrics")
-    return {
-        "geolocation": geolocation,  # Structured format if sensor detected, None otherwise
-        "host_integrity_status": default_integrity,  # Integrity is always available from TPM
-        "gpu_metrics_health": None,  # No default - GPU sensor must be present
-    }
+    # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
+    # No facts available - return empty dict
+    logger.info("Unified-Identity - Phase 3: No attested claims available (agent not registered with verifier or no fact store entry)")
+    return {}
 
 
-# Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+# Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
 # Simple in-memory fact store (for Phase 2 testing)
 _fact_store: Dict[str, Dict[str, Any]] = {}
 
@@ -293,7 +186,7 @@ def _get_facts_from_store(host_id: str) -> Optional[Dict[str, Any]]:
     return _fact_store.get(host_id)
 
 
-# Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+# Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
 def set_facts_in_store(host_id: str, facts: Dict[str, Any]) -> None:
     """
     Store facts in the simple fact store (for testing).
@@ -303,5 +196,5 @@ def set_facts_in_store(host_id: str, facts: Dict[str, Any]) -> None:
         facts: Facts dictionary
     """
     _fact_store[host_id] = facts
-    logger.debug("Unified-Identity - Phase 2: Stored facts for host %s", host_id)
+    logger.debug("Unified-Identity - Phase 3: Stored facts for host %s", host_id)
 

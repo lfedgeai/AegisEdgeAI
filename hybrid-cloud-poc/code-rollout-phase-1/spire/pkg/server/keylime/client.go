@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -26,12 +28,12 @@ type Client struct {
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // Config holds configuration for the Keylime client
 type Config struct {
-	BaseURL    string
-	TLSCert    string
-	TLSKey     string
-	CACert     string
-	Timeout    time.Duration
-	Logger     logrus.FieldLogger
+	BaseURL string
+	TLSCert string
+	TLSKey  string
+	CACert  string
+	Timeout time.Duration
+	Logger  logrus.FieldLogger
 }
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -40,9 +42,9 @@ type AttestedClaims struct {
 	Geolocation         string `json:"geolocation"`
 	HostIntegrityStatus string `json:"host_integrity_status"`
 	GPUMetricsHealth    struct {
-		Status        string  `json:"status"`
+		Status         string  `json:"status"`
 		UtilizationPct float64 `json:"utilization_pct"`
-		MemoryMB      int64   `json:"memory_mb"`
+		MemoryMB       int64   `json:"memory_mb"`
 	} `json:"gpu_metrics_health"`
 }
 
@@ -50,15 +52,18 @@ type AttestedClaims struct {
 // Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
 // VerifyEvidenceRequest represents the request to Keylime
 type VerifyEvidenceRequest struct {
-	Type   string `json:"type"` // Unified-Identity - Phase 2: Required by Keylime Verifier
-	Data   struct {
-		Nonce            string `json:"nonce"`
-		Quote            string `json:"quote"`
-		HashAlg          string `json:"hash_alg"`
-		AppKeyPublic     string `json:"app_key_public"`
+	Type string `json:"type"` // Unified-Identity - Phase 2: Required by Keylime Verifier
+	Data struct {
+		Nonce             string `json:"nonce"`
+		Quote             string `json:"quote"`
+		HashAlg           string `json:"hash_alg"`
+		AppKeyPublic      string `json:"app_key_public"`
 		AppKeyCertificate string `json:"app_key_certificate"`
-		TPMAK            string `json:"tpm_ak,omitempty"`
-		TPMEK            string `json:"tpm_ek,omitempty"`
+		AgentUUID         string `json:"agent_uuid,omitempty"`
+		AgentIP           string `json:"agent_ip,omitempty"`
+		AgentPort         int    `json:"agent_port,omitempty"`
+		TPMAK             string `json:"tpm_ak,omitempty"`
+		TPMEK             string `json:"tpm_ek,omitempty"`
 	} `json:"data"`
 	Metadata struct {
 		Source         string `json:"source"`
@@ -71,13 +76,13 @@ type VerifyEvidenceRequest struct {
 // VerifyEvidenceResponse represents the response from Keylime
 type VerifyEvidenceResponse struct {
 	Results struct {
-		Verified            bool   `json:"verified"`
+		Verified            bool `json:"verified"`
 		VerificationDetails struct {
-			AppKeyCertificateValid bool   `json:"app_key_certificate_valid"`
-			AppKeyPublicMatchesCert bool   `json:"app_key_public_matches_cert"`
-			QuoteSignatureValid    bool   `json:"quote_signature_valid"`
-			NonceValid             bool   `json:"nonce_valid"`
-			Timestamp              int64  `json:"timestamp"`
+			AppKeyCertificateValid  bool  `json:"app_key_certificate_valid"`
+			AppKeyPublicMatchesCert bool  `json:"app_key_public_matches_cert"`
+			QuoteSignatureValid     bool  `json:"quote_signature_valid"`
+			NonceValid              bool  `json:"nonce_valid"`
+			Timestamp               int64 `json:"timestamp"`
 		} `json:"verification_details"`
 		AttestedClaims AttestedClaims `json:"attested_claims"`
 		AuditID        string         `json:"audit_id"`
@@ -96,18 +101,21 @@ func NewClient(config Config) (*Client, error) {
 	}
 
 	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
+		// Unified-Identity - Phase 3: Increased timeout to 60s to allow for TPM quote operations
+		// With USE_TPM2_QUOTE_DIRECT, quotes complete in ~10s, but we allow extra time for
+		// network overhead and verifier processing
+		config.Timeout = 60 * time.Second
 	}
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-// Interface: SPIRE Server → Keylime Verifier
-// Status: 🆕 New (Phase 2/3 Addition)
-// Transport: mTLS over HTTPS
-// Protocol: JSON REST API
-// Port: localhost:8881
-// Endpoint: POST /v2.4/verify/evidence
-// Authentication: TLS client certificate authentication (mTLS)
-// Configure TLS for mTLS connection to Keylime Verifier
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Interface: SPIRE Server → Keylime Verifier
+	// Status: 🆕 New (Phase 2/3 Addition)
+	// Transport: mTLS over HTTPS
+	// Protocol: JSON REST API
+	// Port: localhost:8881
+	// Endpoint: POST /v2.4/verify/evidence
+	// Authentication: TLS client certificate authentication (mTLS)
+	// Configure TLS for mTLS connection to Keylime Verifier
 	tlsConfig := &tls.Config{
 		// For testing with self-signed certificates, allow insecure skip
 		// In production, this should be false and CA cert should be loaded
@@ -142,7 +150,7 @@ func NewClient(config Config) (*Client, error) {
 		baseURL: config.BaseURL,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:  config.Timeout,
+			Timeout:   config.Timeout,
 		},
 		logger: config.Logger,
 	}, nil
@@ -217,10 +225,10 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 	}
 
 	c.logger.WithFields(logrus.Fields{
-		"audit_id":      verifyResp.Results.AuditID,
-		"geolocation":   verifyResp.Results.AttestedClaims.Geolocation,
-		"integrity":     verifyResp.Results.AttestedClaims.HostIntegrityStatus,
-		"gpu_status":    verifyResp.Results.AttestedClaims.GPUMetricsHealth.Status,
+		"audit_id":    verifyResp.Results.AuditID,
+		"geolocation": verifyResp.Results.AttestedClaims.Geolocation,
+		"integrity":   verifyResp.Results.AttestedClaims.HostIntegrityStatus,
+		"gpu_status":  verifyResp.Results.AttestedClaims.GPUMetricsHealth.Status,
 	}).Info("Unified-Identity - Phase 3: Successfully received AttestedClaims from Keylime")
 
 	return &verifyResp.Results.AttestedClaims, nil
@@ -245,6 +253,11 @@ func BuildVerifyEvidenceRequest(sovereignAttestation *SovereignAttestationProto,
 	req.Data.Quote = sovereignAttestation.TpmSignedAttestation
 	req.Data.HashAlg = "sha256"
 	req.Data.AppKeyPublic = sovereignAttestation.AppKeyPublic
+	req.Data.AgentUUID = sovereignAttestation.KeylimeAgentUuid
+
+	// Provide agent endpoint details so the Keylime Verifier can look up the AK
+	req.Data.AgentIP = getEnvOrDefault("KEYLIME_AGENT_IP", "127.0.0.1")
+	req.Data.AgentPort = getEnvIntOrDefault("KEYLIME_AGENT_PORT", 9002)
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
@@ -262,6 +275,24 @@ func BuildVerifyEvidenceRequest(sovereignAttestation *SovereignAttestationProto,
 	return req, nil
 }
 
+func getEnvOrDefault(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func getEnvIntOrDefault(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	if parsed, err := strconv.Atoi(value); err == nil {
+		return parsed
+	}
+	return fallback
+}
+
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // SovereignAttestationProto represents the protobuf SovereignAttestation type
 // This is a placeholder - in the actual implementation, this would be the generated protobuf type
@@ -271,5 +302,5 @@ type SovereignAttestationProto struct {
 	AppKeyCertificate    []byte
 	ChallengeNonce       string
 	WorkloadCodeHash     string
+	KeylimeAgentUuid     string
 }
-

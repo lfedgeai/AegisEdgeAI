@@ -6,13 +6,11 @@ use log::{debug, warn};
 use rand::Rng;
 use reqwest::{Client, Method, Response, StatusCode};
 use reqwest_middleware::{
-    ClientBuilder, ClientWithMiddleware, Error, Middleware, Next,
-    RequestBuilder,
+    ClientBuilder, ClientWithMiddleware, Error, Middleware, Next, RequestBuilder,
 };
 use reqwest_retry::{
-    default_on_request_failure, default_on_request_success,
-    policies::ExponentialBackoff, Jitter, RetryTransientMiddleware,
-    Retryable, RetryableStrategy,
+    default_on_request_failure, default_on_request_success, policies::ExponentialBackoff, Jitter,
+    RetryTransientMiddleware, Retryable, RetryableStrategy,
 };
 use serde::Serialize;
 use std::time::Duration;
@@ -91,9 +89,7 @@ impl Middleware for RetryAfterMiddleware {
             };
 
             // Check if we should retry based on Retry-After header
-            if let Some(header_value) =
-                response.headers().get(RESPONSE_RETRY_AFTER_HEADER)
-            {
+            if let Some(header_value) = response.headers().get(RESPONSE_RETRY_AFTER_HEADER) {
                 if retry_count >= self.max_retries {
                     warn!(
                         "Maximum Retry-After attempts ({}) reached, not retrying further",
@@ -148,18 +144,15 @@ impl RetryableStrategy for StopOnSuccessStrategy {
                 // delay from the exponential backoff policy. We return None to signal
                 // that this strategy will not handle it, deferring to the dedicated
                 // RetryAfterMiddleware instead.
-                if response
-                    .headers()
-                    .contains_key(RESPONSE_RETRY_AFTER_HEADER)
-                {
-                    debug!("{:?} header found; deferring to RetryAfterMiddleware.", RESPONSE_RETRY_AFTER_HEADER);
+                if response.headers().contains_key(RESPONSE_RETRY_AFTER_HEADER) {
+                    debug!(
+                        "{:?} header found; deferring to RetryAfterMiddleware.",
+                        RESPONSE_RETRY_AFTER_HEADER
+                    );
                     None
                 } else {
                     // For any other status, let the default strategy decide if it's a transient error.
-                    warn!(
-                        "Received non-success status code: {}",
-                        response.status()
-                    );
+                    warn!("Received non-success status code: {}", response.status());
                     default_on_request_success(response)
                 }
             }
@@ -174,9 +167,7 @@ impl RetryableStrategy for StopOnSuccessStrategy {
 
 /// Parses the `Retry-After` header value.
 /// It can be either an integer number of seconds or an HTTP-date.
-fn parse_retry_after(
-    header_value: &reqwest::header::HeaderValue,
-) -> Option<Duration> {
+fn parse_retry_after(header_value: &reqwest::header::HeaderValue) -> Option<Duration> {
     if let Ok(value_str) = header_value.to_str() {
         // Try parsing as an integer (seconds) first.
         if let Ok(seconds) = value_str.parse::<u64>() {
@@ -187,9 +178,7 @@ fn parse_retry_after(
             let now = Utc::now().into();
             // If `duration_since` fails, it means the time has already passed.
             // In that case, we can retry immediately (duration of zero).
-            return Some(
-                http_date.duration_since(now).unwrap_or(Duration::ZERO),
-            );
+            return Some(http_date.duration_since(now).unwrap_or(Duration::ZERO));
         }
     }
     None
@@ -288,12 +277,7 @@ impl ResilientClient {
     ) -> Result<RequestBuilder, serde_json::Error> {
         let body_as_string = serde_json::to_string(json_serializable)?;
 
-        self.get_json_request(
-            method,
-            url,
-            &body_as_string,
-            custom_content_type,
-        )
+        self.get_json_request(method, url, &body_as_string, custom_content_type)
     }
 }
 
@@ -356,13 +340,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200)) // The server will succeed with 200
             .mount(&mock_server)
             .await;
-        let client = ResilientClient::new(
-            None,
-            Duration::from_millis(10),
-            3,
-            &[StatusCode::OK],
-            None,
-        );
+        let client =
+            ResilientClient::new(None, Duration::from_millis(10), 3, &[StatusCode::OK], None);
 
         let response = client
             .get_json_request_from_struct(
@@ -418,8 +397,7 @@ mod tests {
 
         assert!(response.is_ok());
         assert_eq!(response.unwrap().status(), StatusCode::ACCEPTED); //#[allow_ci]
-        let received_requests =
-            mock_server.received_requests().await.unwrap(); //#[allow_ci]
+        let received_requests = mock_server.received_requests().await.unwrap(); //#[allow_ci]
         assert_eq!(received_requests.len(), 3);
     }
 
@@ -454,8 +432,7 @@ mod tests {
 
         assert!(response.is_ok());
         assert_eq!(response.unwrap().status(), StatusCode::OK); //#[allow_ci]
-        let received_requests =
-            mock_server.received_requests().await.unwrap(); //#[allow_ci]
+        let received_requests = mock_server.received_requests().await.unwrap(); //#[allow_ci]
         assert_eq!(received_requests.len(), 1);
     }
 
@@ -494,8 +471,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
         // The server should have received 1 (original) + 2 (retries) = 3 requests.
-        let received_requests =
-            mock_server.received_requests().await.unwrap(); //#[allow_ci]
+        let received_requests = mock_server.received_requests().await.unwrap(); //#[allow_ci]
         assert_eq!(received_requests.len(), (max_retries + 1) as usize);
     }
 
@@ -513,8 +489,7 @@ mod tests {
     async fn test_retries_on_network_error() {
         // Verifies that the client retries when a network error occurs (e.g., connection refused).
         // This specifically tests the `Err(_)` arm of the `handle` method.
-        let unreachable_url =
-            format!("http://127.0.0.1:{}", find_free_port());
+        let unreachable_url = format!("http://127.0.0.1:{}", find_free_port());
         let max_retries = 2;
 
         let client = ResilientClient::new(
@@ -526,12 +501,7 @@ mod tests {
         );
 
         let response = client
-            .get_json_request_from_struct(
-                Method::GET,
-                &unreachable_url,
-                &json!({}),
-                None,
-            )
+            .get_json_request_from_struct(Method::GET, &unreachable_url, &json!({}), None)
             .unwrap() //#[allow_ci]
             .send()
             .await;
@@ -553,19 +523,11 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = ResilientClient::new(
-            None,
-            Duration::from_millis(10),
-            3,
-            &[StatusCode::OK],
-            None,
-        );
+        let client =
+            ResilientClient::new(None, Duration::from_millis(10), 3, &[StatusCode::OK], None);
 
         let response = client
-            .get_request(
-                Method::GET,
-                &format!("{}/health", &mock_server.uri()),
-            )
+            .get_request(Method::GET, &format!("{}/health", &mock_server.uri()))
             .send()
             .await;
 
@@ -574,8 +536,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(res.text().await.unwrap(), "OK"); //#[allow_ci]
 
-        let received_requests =
-            mock_server.received_requests().await.unwrap(); //#[allow_ci]
+        let received_requests = mock_server.received_requests().await.unwrap(); //#[allow_ci]
         assert_eq!(received_requests.len(), 1);
     }
 
@@ -586,9 +547,7 @@ mod tests {
         // The server will first respond with a 429 and a `Retry-After: 2` header.
         Mock::given(method("GET"))
             .and(path("/test"))
-            .respond_with(
-                ResponseTemplate::new(429).insert_header("Retry-After", "2"),
-            )
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "2"))
             .up_to_n_times(1) // Only respond this way once
             .mount(&mock_server)
             .await;
@@ -619,8 +578,7 @@ mod tests {
         // The total time should be at least 2 seconds due to the Retry-After header.
         assert!(elapsed >= Duration::from_secs(2));
         assert_eq!(response.status(), StatusCode::OK);
-        let received_requests =
-            mock_server.received_requests().await.unwrap(); //#[allow_ci]
+        let received_requests = mock_server.received_requests().await.unwrap(); //#[allow_ci]
         assert_eq!(received_requests.len(), 2);
     }
 
@@ -637,8 +595,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/test"))
             .respond_with(
-                ResponseTemplate::new(503)
-                    .insert_header("Retry-After", http_date.as_str()),
+                ResponseTemplate::new(503).insert_header("Retry-After", http_date.as_str()),
             )
             .up_to_n_times(1)
             .mount(&mock_server)
@@ -651,13 +608,8 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = ResilientClient::new(
-            None,
-            Duration::from_millis(10),
-            1,
-            &[StatusCode::OK],
-            None,
-        );
+        let client =
+            ResilientClient::new(None, Duration::from_millis(10), 1, &[StatusCode::OK], None);
 
         let start_time = std::time::Instant::now();
         let response = client
@@ -683,9 +635,7 @@ mod tests {
         // Server will respond with 429 and Retry-After header every time
         Mock::given(method("GET"))
             .and(path("/test"))
-            .respond_with(
-                ResponseTemplate::new(429).insert_header("Retry-After", "1"),
-            )
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "1"))
             .mount(&mock_server)
             .await;
 
@@ -710,8 +660,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
 
         // Should have made exactly max_retries + 1 requests (initial + retries)
-        let received_requests =
-            mock_server.received_requests().await.unwrap(); //#[allow_ci]
+        let received_requests = mock_server.received_requests().await.unwrap(); //#[allow_ci]
         assert_eq!(received_requests.len(), (max_retries + 1) as usize);
 
         // Should have waited for max_retries seconds (each retry waits 1 second)
@@ -725,19 +674,11 @@ mod tests {
             return;
         }
         // Mockoon checks if the request is using the X-Request-Id header
-        let client = ResilientClient::new(
-            None,
-            Duration::from_millis(10),
-            3,
-            &[StatusCode::OK],
-            None,
-        );
+        let client =
+            ResilientClient::new(None, Duration::from_millis(10), 3, &[StatusCode::OK], None);
 
         let response = client
-            .get_request(
-                Method::GET,
-                "http://localhost:3000/x-request-id-test",
-            )
+            .get_request(Method::GET, "http://localhost:3000/x-request-id-test")
             .send()
             .await;
         // Mockoon x-request-id-test only returns 200 OK if X-Request-ID exists
@@ -763,8 +704,7 @@ mod tests {
     async fn test_recovers_before_retry_after_limit() {
         let mock_server = MockServer::start().await;
 
-        let retry_response =
-            ResponseTemplate::new(429).insert_header("Retry-After", "1");
+        let retry_response = ResponseTemplate::new(429).insert_header("Retry-After", "1");
 
         // Fail the first two times
         Mock::given(method("GET"))
@@ -802,8 +742,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         // Should have made 3 total requests (2 failures + 1 success)
-        let received_requests =
-            mock_server.received_requests().await.unwrap(); //#[allow_ci]
+        let received_requests = mock_server.received_requests().await.unwrap(); //#[allow_ci]
         assert_eq!(received_requests.len(), 3);
 
         // Should have waited for ~2 seconds (for the two retries)
@@ -826,10 +765,7 @@ mod tests {
 
         // 3. Test with large valid number
         let header = HeaderValue::from_static("86400"); // 24 hours
-        assert_eq!(
-            parse_retry_after(&header),
-            Some(Duration::from_secs(86400))
-        );
+        assert_eq!(parse_retry_after(&header), Some(Duration::from_secs(86400)));
 
         // 4. Test with whitespace (should fail - HTTP headers shouldn't have leading/trailing spaces)
         let header = HeaderValue::from_static(" 5 ");

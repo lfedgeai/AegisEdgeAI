@@ -50,9 +50,7 @@ impl HeaderValidator {
             .ok_or(HeaderValidationError::MissingLocationHeader)?;
 
         let location_str = location.to_str().map_err(|_| {
-            HeaderValidationError::InvalidLocationHeader(
-                "Invalid UTF-8 encoding".to_string(),
-            )
+            HeaderValidationError::InvalidLocationHeader("Invalid UTF-8 encoding".to_string())
         })?;
 
         debug!("Validating Location header: {}", location_str);
@@ -64,9 +62,7 @@ impl HeaderValidator {
                 if e.to_string().contains("Invalid base URL") {
                     HeaderValidationError::InvalidBaseUrl(e.to_string())
                 } else {
-                    HeaderValidationError::InvalidLocationHeader(
-                        e.to_string(),
-                    )
+                    HeaderValidationError::InvalidLocationHeader(e.to_string())
                 }
             })
         } else {
@@ -107,11 +103,9 @@ mod tests {
 
     #[test]
     fn test_validate_location_header_absolute_url() {
-        let headers = create_test_headers_with_location(
-            "https://example.com/v3.0/agents/123/attestations/1",
-        );
-        let result =
-            HeaderValidator::validate_location_header(&headers, None);
+        let headers =
+            create_test_headers_with_location("https://example.com/v3.0/agents/123/attestations/1");
+        let result = HeaderValidator::validate_location_header(&headers, None);
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(), //#[allow_ci]
@@ -121,14 +115,9 @@ mod tests {
 
     #[test]
     fn test_validate_location_header_relative_url() {
-        let headers = create_test_headers_with_location(
-            "/v3.0/agents/123/attestations/1",
-        );
+        let headers = create_test_headers_with_location("/v3.0/agents/123/attestations/1");
         let base_url = "https://example.com";
-        let result = HeaderValidator::validate_location_header(
-            &headers,
-            Some(base_url),
-        );
+        let result = HeaderValidator::validate_location_header(&headers, Some(base_url));
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(), //#[allow_ci]
@@ -139,8 +128,7 @@ mod tests {
     #[test]
     fn test_validate_location_header_missing() {
         let headers = HeaderMap::new();
-        let result =
-            HeaderValidator::validate_location_header(&headers, None);
+        let result = HeaderValidator::validate_location_header(&headers, None);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(), //#[allow_ci]
@@ -151,30 +139,25 @@ mod tests {
     #[test]
     fn test_validate_location_header_invalid_uri() {
         let headers = create_test_headers_with_location("http://");
-        let result =
-            HeaderValidator::validate_location_header(&headers, None);
+        let result = HeaderValidator::validate_location_header(&headers, None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_201_created_response() {
         let mut headers = HeaderMap::new();
-        if let Ok(location_value) =
-            HeaderValue::from_str("https://example.com/resource/123")
-        {
+        if let Ok(location_value) = HeaderValue::from_str("https://example.com/resource/123") {
             headers.insert(LOCATION, location_value);
         }
 
-        let result =
-            HeaderValidator::validate_201_created_response(&headers, None);
+        let result = HeaderValidator::validate_201_created_response(&headers, None);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_201_created_response_missing_location() {
         let headers = HeaderMap::new();
-        let result =
-            HeaderValidator::validate_201_created_response(&headers, None);
+        let result = HeaderValidator::validate_201_created_response(&headers, None);
         assert!(result.is_err());
     }
 
@@ -183,11 +166,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         // Use unsafe bytes to create a non-UTF8 header value
         let invalid_utf8_bytes = vec![0x80, 0x81, 0x82];
-        if let Ok(header_value) = HeaderValue::from_bytes(&invalid_utf8_bytes)
-        {
+        if let Ok(header_value) = HeaderValue::from_bytes(&invalid_utf8_bytes) {
             headers.insert(LOCATION, header_value);
-            let result =
-                HeaderValidator::validate_location_header(&headers, None);
+            let result = HeaderValidator::validate_location_header(&headers, None);
             assert!(result.is_err());
             assert!(matches!(
                 result.unwrap_err(), //#[allow_ci]
@@ -199,8 +180,7 @@ mod tests {
     #[test]
     fn test_validate_location_header_relative_without_base() {
         let headers = create_test_headers_with_location("/relative/path");
-        let result =
-            HeaderValidator::validate_location_header(&headers, None);
+        let result = HeaderValidator::validate_location_header(&headers, None);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "/relative/path"); //#[allow_ci]
     }
@@ -209,10 +189,7 @@ mod tests {
     fn test_validate_location_header_relative_with_base() {
         let headers = create_test_headers_with_location("relative/path");
         let base_url = "https://api.example.com/v1/";
-        let result = HeaderValidator::validate_location_header(
-            &headers,
-            Some(base_url),
-        );
+        let result = HeaderValidator::validate_location_header(&headers, Some(base_url));
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(), //#[allow_ci]
@@ -222,24 +199,18 @@ mod tests {
 
     #[test]
     fn test_validate_location_header_absolute_with_base() {
-        let headers =
-            create_test_headers_with_location("https://other.com/resource");
+        let headers = create_test_headers_with_location("https://other.com/resource");
         let base_url = "https://api.example.com/v1/";
-        let result = HeaderValidator::validate_location_header(
-            &headers,
-            Some(base_url),
-        );
+        let result = HeaderValidator::validate_location_header(&headers, Some(base_url));
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "https://other.com/resource"); //#[allow_ci]
     }
 
     #[test]
     fn test_validate_location_header_query_and_fragment() {
-        let headers = create_test_headers_with_location(
-            "https://example.com/resource?id=123#section",
-        );
-        let result =
-            HeaderValidator::validate_location_header(&headers, None);
+        let headers =
+            create_test_headers_with_location("https://example.com/resource?id=123#section");
+        let result = HeaderValidator::validate_location_header(&headers, None);
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(), //#[allow_ci]
@@ -249,14 +220,9 @@ mod tests {
 
     #[test]
     fn test_validate_location_header_relative_query_fragment() {
-        let headers = create_test_headers_with_location(
-            "/resource?id=123&type=test#section",
-        );
+        let headers = create_test_headers_with_location("/resource?id=123&type=test#section");
         let base_url = "https://api.example.com";
-        let result = HeaderValidator::validate_location_header(
-            &headers,
-            Some(base_url),
-        );
+        let result = HeaderValidator::validate_location_header(&headers, Some(base_url));
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(), //#[allow_ci]
@@ -267,19 +233,15 @@ mod tests {
     #[test]
     fn test_validate_location_header_empty_string() {
         let headers = create_test_headers_with_location("");
-        let result =
-            HeaderValidator::validate_location_header(&headers, None);
+        let result = HeaderValidator::validate_location_header(&headers, None);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), ""); //#[allow_ci]
     }
 
     #[test]
     fn test_validate_location_header_port_in_url() {
-        let headers = create_test_headers_with_location(
-            "https://example.com:8443/api/v1/resource",
-        );
-        let result =
-            HeaderValidator::validate_location_header(&headers, None);
+        let headers = create_test_headers_with_location("https://example.com:8443/api/v1/resource");
+        let result = HeaderValidator::validate_location_header(&headers, None);
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(), //#[allow_ci]
@@ -291,10 +253,7 @@ mod tests {
     fn test_validate_location_header_invalid_base_url() {
         let headers = create_test_headers_with_location("/relative/path");
         let invalid_base = "not a valid url";
-        let result = HeaderValidator::validate_location_header(
-            &headers,
-            Some(invalid_base),
-        );
+        let result = HeaderValidator::validate_location_header(&headers, Some(invalid_base));
         assert!(result.is_err());
     }
 
@@ -302,30 +261,22 @@ mod tests {
     fn test_validate_201_created_response_with_base_url() {
         let headers = create_test_headers_with_location("/api/v1/agents/123");
         let base_url = "https://keylime.example.com";
-        let result = HeaderValidator::validate_201_created_response(
-            &headers,
-            Some(base_url),
-        );
+        let result = HeaderValidator::validate_201_created_response(&headers, Some(base_url));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_201_created_response_invalid_location_header() {
         let headers = create_test_headers_with_location("http://");
-        let result =
-            HeaderValidator::validate_201_created_response(&headers, None);
+        let result = HeaderValidator::validate_201_created_response(&headers, None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_location_header_path_traversal() {
-        let headers =
-            create_test_headers_with_location("../../../etc/passwd");
+        let headers = create_test_headers_with_location("../../../etc/passwd");
         let base_url = "https://api.example.com/v1/agents/";
-        let result = HeaderValidator::validate_location_header(
-            &headers,
-            Some(base_url),
-        );
+        let result = HeaderValidator::validate_location_header(&headers, Some(base_url));
         assert!(result.is_ok());
         // The url crate should handle path normalization
         let resolved = result.unwrap(); //#[allow_ci]
@@ -334,11 +285,9 @@ mod tests {
 
     #[test]
     fn test_validate_location_header_special_characters() {
-        let headers = create_test_headers_with_location(
-            "https://example.com/resource%20with%20spaces",
-        );
-        let result =
-            HeaderValidator::validate_location_header(&headers, None);
+        let headers =
+            create_test_headers_with_location("https://example.com/resource%20with%20spaces");
+        let result = HeaderValidator::validate_location_header(&headers, None);
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(), //#[allow_ci]
@@ -348,9 +297,7 @@ mod tests {
 
     #[test]
     fn test_validate_location_header_international_domain() {
-        let headers = create_test_headers_with_location(
-            "https://xn--e1afmkfd.xn--p1ai/resource",
-        );
+        let headers = create_test_headers_with_location("https://xn--e1afmkfd.xn--p1ai/resource");
         let r = HeaderValidator::validate_location_header(&headers, None);
         assert!(r.is_ok());
         assert_eq!(r.unwrap(), "https://xn--e1afmkfd.xn--p1ai/resource"); //#[allow_ci]
@@ -360,23 +307,16 @@ mod tests {
     fn test_validate_location_header_root_path() {
         let headers = create_test_headers_with_location("/");
         let base_url = "https://api.example.com";
-        let result = HeaderValidator::validate_location_header(
-            &headers,
-            Some(base_url),
-        );
+        let result = HeaderValidator::validate_location_header(&headers, Some(base_url));
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "https://api.example.com/"); //#[allow_ci]
     }
 
     #[test]
     fn test_validate_location_header_dot_segments() {
-        let headers =
-            create_test_headers_with_location("./current/../resource");
+        let headers = create_test_headers_with_location("./current/../resource");
         let base_url = "https://api.example.com/v1/";
-        let result = HeaderValidator::validate_location_header(
-            &headers,
-            Some(base_url),
-        );
+        let result = HeaderValidator::validate_location_header(&headers, Some(base_url));
         assert!(result.is_ok());
         // The url crate should normalize dot segments
         let resolved = result.unwrap(); //#[allow_ci]

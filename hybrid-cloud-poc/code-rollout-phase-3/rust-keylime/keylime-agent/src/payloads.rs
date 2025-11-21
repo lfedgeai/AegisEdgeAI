@@ -57,12 +57,8 @@ impl Display for PayloadMessage {
 // Parameters are based on Python codebase:
 // https://github.com/keylime/keylime/blob/1ed43ac8f75d5c3bc3a3bbbbb5037f20cf3c5a6a/ \
 // keylime/crypto.py#L189
-fn decrypt_payload(
-    symm_key: &SymmKey,
-    encrypted_payload: EncryptedData,
-) -> Result<Vec<u8>> {
-    let decrypted =
-        crypto::decrypt_aead(symm_key.as_ref(), encrypted_payload.as_ref())?;
+fn decrypt_payload(symm_key: &SymmKey, encrypted_payload: EncryptedData) -> Result<Vec<u8>> {
+    let decrypted = crypto::decrypt_aead(symm_key.as_ref(), encrypted_payload.as_ref())?;
 
     info!("Successfully decrypted payload");
     Ok(decrypted)
@@ -83,17 +79,15 @@ fn setup_unzipped(
     }
 
     match config.dec_payload_file.as_ref() {
-        "" => Err(config::KeylimeConfigError::RequiredOption(
-            "dec_payload_path".to_string(),
-        )
-        .into()),
+        "" => {
+            Err(config::KeylimeConfigError::RequiredOption("dec_payload_path".to_string()).into())
+        }
         p => {
             let dec_payload_path = unzipped.join(p);
             match config.enc_keyname.as_ref() {
-                "" => Err(config::KeylimeConfigError::RequiredOption(
-                    "enc_keyname".to_string(),
-                )
-                .into()),
+                "" => Err(
+                    config::KeylimeConfigError::RequiredOption("enc_keyname".to_string()).into(),
+                ),
                 k => {
                     let key_path = unzipped.join(k);
                     fs::create_dir(&unzipped)?;
@@ -114,7 +108,11 @@ fn write_out_key_and_payload(
     let mut key_file = fs::File::create(key_path)?;
     let bytes = key_file.write(key.as_ref())?;
     if bytes != key.as_ref().len() {
-        return Err(Error::Other(format!("Error writing symm key to {:?}: key len is {}, but {bytes} bytes were written", key_path, key.as_ref().len())));
+        return Err(Error::Other(format!(
+            "Error writing symm key to {:?}: key len is {}, but {bytes} bytes were written",
+            key_path,
+            key.as_ref().len()
+        )));
     }
     info!("Wrote payload decryption key to {key_path:?}");
 
@@ -138,9 +136,7 @@ fn run(dir: &Path, script: &str) -> Result<()> {
         return Ok(());
     }
 
-    if fs::set_permissions(&script_path, fs::Permissions::from_mode(0o700))
-        .is_err()
-    {
+    if fs::set_permissions(&script_path, fs::Permissions::from_mode(0o700)).is_err() {
         return Err(Error::Other(format!(
             "unable to set {:?} as executable",
             &script_path
@@ -171,10 +167,7 @@ fn run(dir: &Path, script: &str) -> Result<()> {
 
 // checks if keylime-agent.conf indicates the payload should be unzipped, and does so if needed.
 // the input string is the directory where the unzipped file(s) should be stored.
-fn optional_unzip_payload(
-    unzipped: &Path,
-    config: &config::AgentConfig,
-) -> Result<()> {
+fn optional_unzip_payload(unzipped: &Path, config: &config::AgentConfig) -> Result<()> {
     if config.extract_payload_zip {
         match config.dec_payload_file.as_ref() {
             "" => {
@@ -205,15 +198,9 @@ async fn run_encrypted_payload(
 ) -> Result<()> {
     let dec_payload = decrypt_payload(&symm_key, payload)?;
 
-    let (unzipped, dec_payload_path, key_path) =
-        setup_unzipped(config, mount)?;
+    let (unzipped, dec_payload_path, key_path) = setup_unzipped(config, mount)?;
 
-    write_out_key_and_payload(
-        &dec_payload,
-        &dec_payload_path,
-        &symm_key,
-        &key_path,
-    )?;
+    write_out_key_and_payload(&dec_payload, &dec_payload_path, &symm_key, &key_path)?;
 
     optional_unzip_payload(&unzipped, config)?;
     // there may also be also a separate init script
@@ -231,8 +218,7 @@ async fn run_encrypted_payload(
     let action_file = unzipped.join("action_list");
 
     if action_file.exists() {
-        let action_data = fs::read_to_string(&action_file)
-            .expect("unable to read action_list");
+        let action_data = fs::read_to_string(&action_file).expect("unable to read action_list");
 
         action_data
             .split('\n')
@@ -240,22 +226,14 @@ async fn run_encrypted_payload(
             .map(|script| script.trim())
             .map(|script| unzipped.join(script))
             .filter(|script| script.exists())
-            .try_for_each(|script| {
-                match permissions::set_mode(&script, 0o700) {
-                    Ok(()) => {
-                        info!(
-                            "Permission set for action: {}",
-                            script.display()
-                        );
-                        Ok(())
-                    }
-                    Err(e) => {
-                        error!(
-                            "Could not set permission for action {}",
-                            script.display()
-                        );
-                        Err(e)
-                    }
+            .try_for_each(|script| match permissions::set_mode(&script, 0o700) {
+                Ok(()) => {
+                    info!("Permission set for action: {}", script.display());
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Could not set permission for action {}", script.display());
+                    Err(e)
                 }
             })?
     }
@@ -340,9 +318,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     #[cfg(feature = "testing")]
-    use crate::crypto::testing::{
-        encrypt_aead, pkey_pub_from_pem, rsa_oaep_encrypt,
-    };
+    use crate::crypto::testing::{encrypt_aead, pkey_pub_from_pem, rsa_oaep_encrypt};
     #[cfg(feature = "testing")]
     use keylime::config::get_testing_config;
     #[cfg(feature = "testing")]
@@ -416,16 +392,13 @@ echo hello > test-output
     fn test_setup_unzipped() {
         let temp_workdir = tempfile::tempdir().unwrap(); //#[allow_ci]
         let test_config = get_testing_config(temp_workdir.path(), None);
-        let secure_mount =
-            PathBuf::from(&temp_workdir.path().join("tmpfs-dev"));
+        let secure_mount = PathBuf::from(&temp_workdir.path().join("tmpfs-dev"));
         fs::create_dir(&secure_mount).unwrap(); //#[allow_ci]
         let result = setup_unzipped(&test_config, &secure_mount);
         assert!(result.is_ok());
         let (unzipped, dec_payload_path, key_path) = result.unwrap(); //#[allow_ci]
         assert!(unzipped.exists());
-        assert!(
-            dec_payload_path == unzipped.join(test_config.dec_payload_file)
-        );
+        assert!(dec_payload_path == unzipped.join(test_config.dec_payload_file));
         assert!(key_path == unzipped.join(test_config.enc_keyname));
     }
 
@@ -458,17 +431,13 @@ echo hello > test-output
             f => f,
         };
 
-        let result = fs::copy(
-            payload_path,
-            temp_workdir.path().join(dec_payload_file),
-        );
+        let result = fs::copy(payload_path, temp_workdir.path().join(dec_payload_file));
         assert!(result.is_ok());
 
         let dec_payload_path = temp_workdir.path().join(dec_payload_file);
         assert!(dec_payload_path.exists());
 
-        let result =
-            optional_unzip_payload(temp_workdir.path(), &test_config);
+        let result = optional_unzip_payload(temp_workdir.path(), &test_config);
         assert!(result.is_ok());
         assert!(temp_workdir.path().join("autorun.sh").exists());
     }
@@ -482,13 +451,11 @@ echo hello > test-output
             .await;
         let temp_workdir = tempfile::tempdir().unwrap(); //#[allow_ci]
         let test_config = get_testing_config(temp_workdir.path(), None);
-        let secure_mount =
-            PathBuf::from(&temp_workdir.path().join("tmpfs-dev"));
+        let secure_mount = PathBuf::from(&temp_workdir.path().join("tmpfs-dev"));
         fs::create_dir(&secure_mount).unwrap(); //#[allow_ci]
         env::set_var("KEYLIME_TEST_DIR", temp_workdir.path());
 
-        let (mut revocation_tx, mut revocation_rx) =
-            mpsc::channel::<RevocationMessage>(1);
+        let (mut revocation_tx, mut revocation_rx) = mpsc::channel::<RevocationMessage>(1);
 
         #[cfg(feature = "with-zmq")]
         let (mut zmq_tx, mut zmq_rx) = mpsc::channel::<ZmqMessage>(1);
@@ -532,25 +499,21 @@ echo hello > test-output
 
         let temp_workdir = tempfile::tempdir().unwrap(); //#[allow_ci]
         let test_config = get_testing_config(temp_workdir.path(), None);
-        let secure_mount =
-            PathBuf::from(&temp_workdir.path().join("tmpfs-dev"));
+        let secure_mount = PathBuf::from(&temp_workdir.path().join("tmpfs-dev"));
         fs::create_dir(&secure_mount).unwrap(); //#[allow_ci]
         env::set_var("KEYLIME_TEST_DIR", temp_workdir.path());
 
         let (k, payload) = setup_key_and_payload(AES_128_KEY_LEN);
 
-        let (mut payload_tx, mut payload_rx) =
-            mpsc::channel::<PayloadMessage>(1);
+        let (mut payload_tx, mut payload_rx) = mpsc::channel::<PayloadMessage>(1);
 
-        let (mut revocation_tx, mut revocation_rx) =
-            mpsc::channel::<RevocationMessage>(1);
+        let (mut revocation_tx, mut revocation_rx) = mpsc::channel::<RevocationMessage>(1);
 
         #[cfg(feature = "with-zmq")]
         let (mut zmq_tx, mut zmq_rx) = mpsc::channel::<ZmqMessage>(1);
 
-        let script = PathBuf::from(
-            &secure_mount.join(format!("unzipped/{DEFAULT_PAYLOAD_SCRIPT}")),
-        );
+        let script =
+            PathBuf::from(&secure_mount.join(format!("unzipped/{DEFAULT_PAYLOAD_SCRIPT}")));
 
         let arbiter = Arbiter::new();
         assert!(arbiter.spawn(Box::pin(async move {

@@ -11,9 +11,7 @@ use crate::{
 use base64::{engine::general_purpose, Engine as _};
 use log::{error, info};
 use openssl::x509::X509;
-use tss_esapi::{
-    handles::KeyHandle, structures::PublicBuffer, traits::Marshall,
-};
+use tss_esapi::{handles::KeyHandle, structures::PublicBuffer, traits::Marshall};
 
 #[derive(Debug)]
 pub struct AgentRegistrationConfig {
@@ -47,22 +45,16 @@ pub struct AgentRegistration {
     pub retry_config: Option<RetryConfig>,
 }
 
-pub async fn register_agent(
-    aa: AgentRegistration,
-    ctx: &mut tpm::Context<'_>,
-) -> Result<()> {
+pub async fn register_agent(aa: AgentRegistration, ctx: &mut tpm::Context<'_>) -> Result<()> {
     let iak_pub;
     let idevid_pub;
     let ak_pub = &PublicBuffer::try_from(aa.ak.public)?.marshall()?;
-    let ek_pub =
-        &PublicBuffer::try_from(aa.ek_result.public.clone())?.marshall()?;
+    let ek_pub = &PublicBuffer::try_from(aa.ek_result.public.clone())?.marshall()?;
 
     let mut ai_builder = AgentIdentityBuilder::new()
         .ak_pub(ak_pub)
         .ek_pub(ek_pub)
-        .enabled_api_versions(
-            aa.api_versions.iter().map(|ver| ver.as_ref()).collect(),
-        )
+        .enabled_api_versions(aa.api_versions.iter().map(|ver| ver.as_ref()).collect())
         .uuid(&aa.agent_uuid)
         .ip(aa.agent_registration_config.contact_ip.clone())
         .port(aa.agent_registration_config.contact_port);
@@ -83,15 +75,12 @@ pub async fn register_agent(
         else {
             error!("IDevID and IAK are enabled but could not be generated");
             return Err(Error::ConfigurationGenericError(
-                "IDevID and IAK are enabled but could not be generated"
-                    .to_string(),
+                "IDevID and IAK are enabled but could not be generated".to_string(),
             ));
         };
 
-        iak_pub =
-            PublicBuffer::try_from(dev_id.iak_pubkey.clone())?.marshall()?;
-        idevid_pub = PublicBuffer::try_from(dev_id.idevid_pubkey.clone())?
-            .marshall()?;
+        iak_pub = PublicBuffer::try_from(dev_id.iak_pubkey.clone())?.marshall()?;
+        idevid_pub = PublicBuffer::try_from(dev_id.idevid_pubkey.clone())?.marshall()?;
         ai_builder = ai_builder
             .iak_attest(attest.marshall()?)
             .iak_sign(signature.marshall()?)
@@ -128,20 +117,23 @@ pub async fn register_agent(
 
     info!("SUCCESS: Agent {} registered", &aa.agent_uuid);
 
-    let key = ctx.activate_credential(
-        keyblob,
-        aa.ak_handle,
-        aa.ek_result.key_handle,
-    )?;
+    let key = ctx.activate_credential(keyblob, aa.ak_handle, aa.ek_result.key_handle)?;
 
-    // Flush EK if we created it
+    // Flush EK if we created it (but skip if USE_TPM2_QUOTE_DIRECT is set, as EK is persistent)
+    // When USE_TPM2_QUOTE_DIRECT is set, EK is created with tpm2 createek and persisted,
+    // so it should not be flushed
     if aa.agent_registration_config.ek_handle.is_empty() {
-        ctx.flush_context(aa.ek_result.key_handle.into())?;
+        // Check if USE_TPM2_QUOTE_DIRECT is set - if so, EK is persistent and should not be flushed
+        if std::env::var("USE_TPM2_QUOTE_DIRECT").is_ok() {
+            info!("Skipping EK flush - USE_TPM2_QUOTE_DIRECT is set, EK is persistent");
+        } else {
+            // EK is transient, safe to flush
+            ctx.flush_context(aa.ek_result.key_handle.into())?;
+        }
     }
 
     let mackey = general_purpose::STANDARD.encode(key.value());
-    let auth_tag =
-        crypto::compute_hmac(mackey.as_bytes(), aa.agent_uuid.as_bytes())?;
+    let auth_tag = crypto::compute_hmac(mackey.as_bytes(), aa.agent_uuid.as_bytes())?;
     let auth_tag = hex::encode(&auth_tag);
 
     registrar_client.activate_agent(&ai, &auth_tag).await?;

@@ -9,26 +9,24 @@ use url::Url;
 
 /// Resolve a relative URL against a base URL using the url crate
 pub fn resolve_url(base_url: &str, relative_url: &str) -> Result<String> {
-    let base = Url::parse(base_url)
-        .map_err(|e| anyhow::anyhow!("Invalid base URL: {}", e))?;
+    let base = Url::parse(base_url).map_err(|e| anyhow::anyhow!("Invalid base URL: {}", e))?;
 
     // Handle malformed URLs that start with // but aren't valid network-path references
     // This is a workaround for verifiers that incorrectly send Location headers like //v3.0/agents/...
-    let processed_relative_url = if relative_url.starts_with("//")
-        && !relative_url.starts_with("//http")
-    {
-        // Check if this might be a malformed path that should be treated as /path instead of //authority/path
-        // Try to resolve it as-is first, and if it fails due to invalid authority, treat it as a single slash path
-        match base.join(relative_url) {
-            Ok(_) => relative_url.to_string(), // It's valid, use as-is
-            Err(_) => {
-                // Failed, likely due to invalid authority - treat as single slash path
-                format!("/{}", &relative_url[2..]) // Remove one slash, making it /v3.0/agents/...
+    let processed_relative_url =
+        if relative_url.starts_with("//") && !relative_url.starts_with("//http") {
+            // Check if this might be a malformed path that should be treated as /path instead of //authority/path
+            // Try to resolve it as-is first, and if it fails due to invalid authority, treat it as a single slash path
+            match base.join(relative_url) {
+                Ok(_) => relative_url.to_string(), // It's valid, use as-is
+                Err(_) => {
+                    // Failed, likely due to invalid authority - treat as single slash path
+                    format!("/{}", &relative_url[2..]) // Remove one slash, making it /v3.0/agents/...
+                }
             }
-        }
-    } else {
-        relative_url.to_string()
-    };
+        } else {
+            relative_url.to_string()
+        };
 
     let resolved = base
         .join(&processed_relative_url)
@@ -47,19 +45,17 @@ pub fn resolve_url(base_url: &str, relative_url: &str) -> Result<String> {
             let (host_part, path_part) = remainder.split_at(path_start);
 
             // Normalize consecutive slashes in the path part only
-            let normalized_path =
-                path_part.chars().fold(String::new(), |mut acc, ch| {
-                    if ch == '/' && acc.ends_with('/') {
-                        // Skip consecutive slashes
-                        acc
-                    } else {
-                        acc.push(ch);
-                        acc
-                    }
-                });
+            let normalized_path = path_part.chars().fold(String::new(), |mut acc, ch| {
+                if ch == '/' && acc.ends_with('/') {
+                    // Skip consecutive slashes
+                    acc
+                } else {
+                    acc.push(ch);
+                    acc
+                }
+            });
 
-            url_string =
-                format!("{}{}{}", scheme_part, host_part, normalized_path);
+            url_string = format!("{}{}{}", scheme_part, host_part, normalized_path);
         }
         // If there's no path part (no '/' after hostname), no normalization needed
     }
@@ -69,23 +65,14 @@ pub fn resolve_url(base_url: &str, relative_url: &str) -> Result<String> {
 
 /// Validate and resolve URL according to RFC 3986 using the url crate
 /// This checks for RFC 3986 compliance and resolves the URL in one step
-fn validate_and_resolve_url(
-    base_url: &str,
-    relative_url: &str,
-) -> Result<String, String> {
+fn validate_and_resolve_url(base_url: &str, relative_url: &str) -> Result<String, String> {
     // Check for control characters (excluding tab) in both URLs as per RFC 3986
     for (i, &byte) in base_url.as_bytes().iter().enumerate() {
         if byte < 0x20 && byte != 0x09 {
-            return Err(format!(
-                "Control character in base URL at position {}",
-                i
-            ));
+            return Err(format!("Control character in base URL at position {}", i));
         }
         if byte == 0x7F {
-            return Err(format!(
-                "DEL character in base URL at position {}",
-                i
-            ));
+            return Err(format!("DEL character in base URL at position {}", i));
         }
     }
 
@@ -97,10 +84,7 @@ fn validate_and_resolve_url(
             ));
         }
         if byte == 0x7F {
-            return Err(format!(
-                "DEL character in relative URL at position {}",
-                i
-            ));
+            return Err(format!("DEL character in relative URL at position {}", i));
         }
     }
 
@@ -166,7 +150,10 @@ pub fn get_evidence_submission_request_url(args: &UrlArgs) -> String {
     match validate_and_resolve_url(&args.verifier_url, &location) {
         Ok(resolved_url) => resolved_url,
         Err(e) => {
-            warn!("Failed to validate/resolve evidence submission URL according to RFC 3986: {}", e);
+            warn!(
+                "Failed to validate/resolve evidence submission URL according to RFC 3986: {}",
+                e
+            );
             format!("ERROR: Invalid location header: {}", e)
         }
     }
@@ -187,8 +174,7 @@ mod tests {
         });
         assert_eq!(
             url,
-            "https://1.2.3.4:5678/v3.0/agents/024680/attestations"
-                .to_string()
+            "https://1.2.3.4:5678/v3.0/agents/024680/attestations".to_string()
         );
     } // get_attestation_request_url_test
 
@@ -205,21 +191,17 @@ mod tests {
                 verifier_url: u.clone(),
                 api_version: None,
                 agent_identifier: None,
-                location: Some(
-                    "/v3.0/agents/024680/attestations/0".to_string(),
-                ),
+                location: Some("/v3.0/agents/024680/attestations/0".to_string()),
             });
 
             match u.clone().ends_with('/') {
                 true => assert_eq!(
                     url,
-                    u.clone().to_string()
-                        + "v3.0/agents/024680/attestations/0"
+                    u.clone().to_string() + "v3.0/agents/024680/attestations/0"
                 ),
                 false => assert_eq!(
                     url,
-                    u.clone().to_string()
-                        + "/v3.0/agents/024680/attestations/0"
+                    u.clone().to_string() + "/v3.0/agents/024680/attestations/0"
                 ),
             };
         }
@@ -248,12 +230,8 @@ mod tests {
         );
 
         // Should generate a properly formatted URL
-        let expected =
-            format!("{}/v3.0/agents/{}/attestations", mockoon_base, agent_id);
-        assert_eq!(
-            url, expected,
-            "Generated URL should match expected format"
-        );
+        let expected = format!("{}/v3.0/agents/{}/attestations", mockoon_base, agent_id);
+        assert_eq!(url, expected, "Generated URL should match expected format");
 
         // Test with trailing slash on base URL
         let url_with_slash = get_negotiations_request_url(&UrlArgs {
@@ -288,8 +266,7 @@ mod tests {
             evidence_url
         );
 
-        let expected_evidence =
-            format!("{}{}", mockoon_base, location_header);
+        let expected_evidence = format!("{}{}", mockoon_base, location_header);
         assert_eq!(
             evidence_url, expected_evidence,
             "Evidence URL should correctly combine base and location"
@@ -314,13 +291,12 @@ mod tests {
         );
 
         // Test with invalid location header
-        let invalid_location =
-            get_evidence_submission_request_url(&UrlArgs {
-                verifier_url: mockoon_base.to_string(),
-                api_version: None,
-                agent_identifier: None,
-                location: Some("invalid\x00location".to_string()),
-            });
+        let invalid_location = get_evidence_submission_request_url(&UrlArgs {
+            verifier_url: mockoon_base.to_string(),
+            api_version: None,
+            agent_identifier: None,
+            location: Some("invalid\x00location".to_string()),
+        });
 
         assert!(
             invalid_location.starts_with("ERROR:"),
@@ -443,15 +419,13 @@ mod tests {
 
         // Test that tab character is allowed (exception)
         assert!(
-            validate_and_resolve_url(base_url, "http://example.com\x09")
-                .is_ok(),
+            validate_and_resolve_url(base_url, "http://example.com\x09").is_ok(),
             "Should allow tab character in URL"
         );
 
         // Test control characters in base URL
         assert!(
-            validate_and_resolve_url("http://example.com\x00", "/path")
-                .is_err(),
+            validate_and_resolve_url("http://example.com\x00", "/path").is_err(),
             "Should reject base URL with control character"
         );
     }
@@ -507,10 +481,7 @@ mod tests {
             api_version: None,
             location: None,
         };
-        assert_eq!(
-            get_api_version(&args_without_version),
-            DEFAULT_API_VERSION
-        );
+        assert_eq!(get_api_version(&args_without_version), DEFAULT_API_VERSION);
     }
 
     #[test]
@@ -720,8 +691,7 @@ mod tests {
         // This should either succeed or fail with resolve error, not with validation error
         if url.starts_with("ERROR:") {
             assert!(
-                url.contains("Failed to resolve URL:")
-                    || url.contains("Invalid verifier URL:"),
+                url.contains("Failed to resolve URL:") || url.contains("Invalid verifier URL:"),
                 "Error should be about URL resolution or validation: {}",
                 url
             );
@@ -808,16 +778,14 @@ mod tests {
         let base = "https://localhost:8881";
 
         // Test multiple consecutive slashes in path
-        let resolved =
-            resolve_url(base, "/v3.0//agents//test//attestations").unwrap(); //#[allow_ci]
+        let resolved = resolve_url(base, "/v3.0//agents//test//attestations").unwrap(); //#[allow_ci]
         assert_eq!(
             resolved,
             "https://localhost:8881/v3.0/agents/test/attestations"
         );
 
         // Test that scheme's double slash is preserved when it's a valid scheme-relative URL
-        let resolved =
-            resolve_url("https://example.com", "//other.com/path").unwrap(); //#[allow_ci]
+        let resolved = resolve_url("https://example.com", "//other.com/path").unwrap(); //#[allow_ci]
         assert_eq!(resolved, "https://other.com/path");
 
         // Test multiple consecutive slashes in path with different base
@@ -825,19 +793,15 @@ mod tests {
         assert_eq!(resolved, "https://localhost:8881/api/v1/endpoint");
 
         // Test with query parameters and fragments
-        let resolved =
-            resolve_url(base, "/v3.0//agents?query=test#fragment").unwrap(); //#[allow_ci]
+        let resolved = resolve_url(base, "/v3.0//agents?query=test#fragment").unwrap(); //#[allow_ci]
         assert_eq!(
             resolved,
             "https://localhost:8881/v3.0/agents?query=test#fragment"
         );
 
         // Test the specific Keylime case where a single slash path becomes double slash
-        let resolved = resolve_url(
-            "https://localhost:8881/",
-            "/v3.0/agents/test/attestations",
-        )
-        .unwrap(); //#[allow_ci]
+        let resolved =
+            resolve_url("https://localhost:8881/", "/v3.0/agents/test/attestations").unwrap(); //#[allow_ci]
         assert_eq!(
             resolved,
             "https://localhost:8881/v3.0/agents/test/attestations"
@@ -868,14 +832,12 @@ mod tests {
 
         // Test network-path reference (//host/path) - this is valid per RFC 3986
         // When relative_url starts with //, it's a network-path reference that inherits the scheme
-        let resolved =
-            resolve_url("https://example.com", "//other.com/path").unwrap(); //#[allow_ci]
-                                                                             // This should resolve to https://other.com/path (inherits https scheme but replaces host)
+        let resolved = resolve_url("https://example.com", "//other.com/path").unwrap(); //#[allow_ci]
+                                                                                        // This should resolve to https://other.com/path (inherits https scheme but replaces host)
         assert_eq!(resolved, "https://other.com/path");
 
         // Test the edge case with actual double slashes in path (consecutive slashes)
-        let resolved =
-            resolve_url("https://example.com", "/api//v1//test").unwrap(); //#[allow_ci]
+        let resolved = resolve_url("https://example.com", "/api//v1//test").unwrap(); //#[allow_ci]
         assert_eq!(resolved, "https://example.com/api/v1/test");
 
         // Test a realistic scenario that might produce consecutive slashes in a path
@@ -889,8 +851,12 @@ mod tests {
 
         // Test the specific issue - verifier may be sending location headers with double slashes
         // This reproduces the actual verifier crash scenario
-        let resolved = resolve_url("https://localhost:8881", "//v3.0/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/attestations/0").unwrap(); //#[allow_ci]
-                                                                                                                                            // This should now resolve correctly by treating //v3.0/... as /v3.0/...
+        let resolved = resolve_url(
+            "https://localhost:8881",
+            "//v3.0/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/attestations/0",
+        )
+        .unwrap(); //#[allow_ci]
+                   // This should now resolve correctly by treating //v3.0/... as /v3.0/...
         assert_eq!(resolved, "https://localhost:8881/v3.0/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/attestations/0");
     }
 
@@ -905,13 +871,12 @@ mod tests {
 
         for malformed_url in malformed_urls {
             // Test negotiations URL
-            let negotiations_result =
-                get_negotiations_request_url(&UrlArgs {
-                    verifier_url: malformed_url.to_string(),
-                    agent_identifier: Some("test".to_string()),
-                    api_version: None,
-                    location: None,
-                });
+            let negotiations_result = get_negotiations_request_url(&UrlArgs {
+                verifier_url: malformed_url.to_string(),
+                agent_identifier: Some("test".to_string()),
+                api_version: None,
+                location: None,
+            });
 
             if !negotiations_result.starts_with("ERROR:") {
                 // If it doesn't error, it should be a valid URL
@@ -924,21 +889,19 @@ mod tests {
             } else {
                 assert!(
                     negotiations_result.contains("Invalid verifier URL:")
-                        || negotiations_result
-                            .contains("Failed to resolve URL:"),
+                        || negotiations_result.contains("Failed to resolve URL:"),
                     "Error should be about validation or resolution: {}",
                     negotiations_result
                 );
             }
 
             // Test evidence submission URL
-            let evidence_result =
-                get_evidence_submission_request_url(&UrlArgs {
-                    verifier_url: malformed_url.to_string(),
-                    agent_identifier: None,
-                    api_version: None,
-                    location: Some("/test/path".to_string()),
-                });
+            let evidence_result = get_evidence_submission_request_url(&UrlArgs {
+                verifier_url: malformed_url.to_string(),
+                agent_identifier: None,
+                api_version: None,
+                location: Some("/test/path".to_string()),
+            });
 
             if !evidence_result.starts_with("ERROR:") {
                 // If it doesn't error, it should be a valid URL
@@ -982,9 +945,7 @@ mod tests {
                 verifier_url: invalid_url.to_string(),
                 agent_identifier: None,
                 api_version: None,
-                location: Some(
-                    "/v3.0/agents/test/attestations/1".to_string(),
-                ),
+                location: Some("/v3.0/agents/test/attestations/1".to_string()),
             });
 
             // Should return error due to invalid verifier URL
@@ -997,8 +958,7 @@ mod tests {
 
             // Error message should contain information about the control character
             assert!(
-                result.contains("Control character")
-                    || result.contains("DEL character"),
+                result.contains("Control character") || result.contains("DEL character"),
                 "Error message should mention control character issue: {}",
                 result
             );
@@ -1006,20 +966,16 @@ mod tests {
     }
 
     #[test]
-    fn test_get_evidence_submission_request_url_invalid_verifier_url_edge_cases(
-    ) {
+    fn test_get_evidence_submission_request_url_invalid_verifier_url_edge_cases() {
         // Additional edge cases for verifier URL validation to ensure lines 94-95 coverage
 
         // Test with various invalid URL patterns that should trigger RFC 3986 validation errors
         let test_cases = vec![
             (
                 "http://",
-                "Should reject incomplete URL that fails both absolute and relative parsing"
+                "Should reject incomplete URL that fails both absolute and relative parsing",
             ),
-            (
-                "://incomplete",
-                "Should reject URL with missing scheme"
-            ),
+            ("://incomplete", "Should reject URL with missing scheme"),
         ];
 
         for (invalid_url, description) in test_cases {
@@ -1031,12 +987,7 @@ mod tests {
             });
 
             // Should return either validation error or resolution error
-            assert!(
-                result.starts_with("ERROR:"),
-                "{}: {}",
-                description,
-                result
-            );
+            assert!(result.starts_with("ERROR:"), "{}: {}", description, result);
 
             // Should be either invalid verifier URL or failed resolution
             assert!(

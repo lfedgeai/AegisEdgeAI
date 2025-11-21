@@ -69,110 +69,37 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         # Route to appropriate handler
         path = urlparse(self.path).path
         
-        if path == "/generate-quote":
-            self.handle_generate_quote(request_data)
+        if path == "/get-app-key":
+            self.handle_get_app_key(request_data)
         elif path == "/request-certificate":
             self.handle_request_certificate(request_data)
         else:
             self.send_error(404, f"Unknown endpoint: {path}")
     
-    def handle_generate_quote(self, request_data: dict):
-        """Handle /generate-quote endpoint - automatically triggers delegated certification"""
+    def handle_get_app_key(self, request_data: dict):
+        """Handle /get-app-key endpoint - returns App Key public key and context"""
         try:
-            nonce = request_data.get("nonce")
-            if not nonce:
-                self.send_error(400, "Unified-Identity - Phase 3: Nonce is required")
-                return
-            
-            pcr_list = request_data.get("pcr_list", "sha256:0,1")
-            
-            # Use stored plugin instance (app key already generated on startup)
             plugin = self.plugin
             if plugin is None:
                 self.send_error(500, "Unified-Identity - Phase 3: Plugin not initialized")
                 return
             
-            # Generate quote using stored app key
-            success, quote_b64, metadata = plugin.generate_quote(
-                nonce=nonce,
-                pcr_list=pcr_list
-            )
-            
-            if not success:
-                self.send_error(500, "Unified-Identity - Phase 3: Failed to generate quote")
-                return
-            
-            # Automatically trigger delegated certification (Step 5)
-            app_key_certificate = None
-            try:
-                # Get stored app key public key and context (handle or file path)
-                app_key_public = plugin.get_app_key_public()
-                
-                # Direct access to _app_key_context before calling get_app_key_context()
-                direct_context = getattr(plugin, '_app_key_context', None)
-                logger.info("Unified-Identity - Phase 3: Direct access to _app_key_context: %s", direct_context)
-                
-                app_key_context = plugin.get_app_key_context()
-                
-                # Explicit logging to debug the issue
-                logger.info("Unified-Identity - Phase 3: Delegated certification check - app_key_public: %s, app_key_context: %s", 
-                           "present" if app_key_public else "None",
-                           app_key_context if app_key_context else "None")
-                logger.info("Unified-Identity - Phase 3: Plugin state - _app_key_context: %s, app_handle: %s", 
-                           getattr(plugin, '_app_key_context', 'not set'),
-                           getattr(plugin, 'app_handle', 'not set'))
-                
-                # If get_app_key_context() returned None but _app_key_context is set, use it directly
-                if not app_key_context and direct_context and isinstance(direct_context, str) and direct_context.startswith("0x"):
-                    logger.warning("Unified-Identity - Phase 3: get_app_key_context() returned None but _app_key_context is set, using it directly: %s", direct_context)
-                    app_key_context = direct_context
-                
-                if app_key_public and app_key_context:
-                    logger.info("Unified-Identity - Phase 3: Requesting App Key certificate via delegated certification")
-                    logger.debug("Unified-Identity - Phase 3: App Key context: %s (handle or file path)", app_key_context)
-                    # Request certificate from Keylime Agent
-                    # The rust-keylime agent can handle both context file paths and persistent handles (0x8101000B)
-                    endpoint = request_data.get("endpoint")  # Optional, uses default if not provided
-                    client = DelegatedCertificationClient(endpoint=endpoint)
-                    cert_success, cert_b64, error = client.request_certificate(
-                        app_key_public=app_key_public,
-                        app_key_context_path=app_key_context
-                    )
-                    
-                    if cert_success:
-                        app_key_certificate = cert_b64
-                        logger.info("Unified-Identity - Phase 3: App Key certificate obtained via delegated certification")
-                    else:
-                        logger.warning("Unified-Identity - Phase 3: Failed to obtain certificate: %s", error)
-                else:
-                    logger.warning("Unified-Identity - Phase 3: App Key public or context not available, skipping certificate")
-                    if not app_key_public:
-                        logger.debug("Unified-Identity - Phase 3: App Key public key is None")
-                    if not app_key_context:
-                        logger.debug("Unified-Identity - Phase 3: App Key context is None")
-            except Exception as e:
-                logger.warning("Unified-Identity - Phase 3: Error during delegated certification: %s", e, exc_info=True)
-                # Continue without certificate - it's optional
-            
-            # Get App Key public key (required for Keylime verification)
             app_key_public = plugin.get_app_key_public()
+            app_key_context = plugin.get_app_key_context()
+            
             if not app_key_public:
-                self.send_error(500, "Unified-Identity - Phase 3: App Key public key not available")
+                self.send_error(500, "Unified-Identity - Phase 3: App Key not generated")
                 return
             
             response = {
                 "status": "success",
-                "quote": quote_b64,
-                "app_key_public": app_key_public  # Required for Keylime verification
+                "app_key_public": app_key_public,
+                "app_key_context": app_key_context
             }
-            
-            # Include certificate in response if available
-            if app_key_certificate:
-                response["app_key_certificate"] = app_key_certificate
             
             self.send_json_response(200, response)
         except Exception as e:
-            logger.error("Unified-Identity - Phase 3: Error generating quote: %s", e)
+            logger.error("Unified-Identity - Phase 3: Error getting App Key: %s", e)
             self.send_error(500, f"Internal error: {e}")
     
     def handle_request_certificate(self, request_data: dict):
@@ -186,8 +113,17 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(400, "Unified-Identity - Phase 3: app_key_public and app_key_context_path are required")
                 return
             
+            # Default to HTTP endpoint if not provided or if it's the old UDS default
+            if not endpoint or endpoint == "unix:///tmp/keylime-agent.sock":
+                endpoint = "http://127.0.0.1:9002"
+                logger.info("Unified-Identity - Phase 3: Using default HTTP endpoint: %s", endpoint)
+            elif endpoint.startswith("https://"):
+                # Convert HTTPS to HTTP for simplicity
+                endpoint = endpoint.replace("https://", "http://")
+                logger.info("Unified-Identity - Phase 3: Converting HTTPS to HTTP endpoint: %s", endpoint)
+            
             client = DelegatedCertificationClient(endpoint=endpoint)
-            success, cert_b64, error = client.request_certificate(
+            success, cert_b64, agent_uuid, error = client.request_certificate(
                 app_key_public=app_key_public,
                 app_key_context_path=app_key_context_path
             )
@@ -200,6 +136,8 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
                 "status": "success",
                 "app_key_certificate": cert_b64
             }
+            if agent_uuid:
+                response["agent_uuid"] = agent_uuid
             
             self.send_json_response(200, response)
         except Exception as e:

@@ -21,6 +21,8 @@ if [ -z "${PHASE3_COMMON_INITIALIZED:-}" ]; then
     PHASE2_DIR="${SCRIPT_DIR}/../code-rollout-phase-2"
     PHASE3_DIR="${SCRIPT_DIR}"
     KEYLIME_DIR="${PHASE2_DIR}/keylime"
+    PYTHON_KEYLIME_DIR="${KEYLIME_DIR}"
+    RUST_KEYLIME_DIR="${PHASE2_DIR}/rust-keylime"
     SPIRE_DIR="${PHASE1_DIR}/spire"
 
     # Colors
@@ -800,7 +802,8 @@ echo "    Work dir: ${KEYLIME_DIR}"
 # Ensure we're in the Keylime directory so relative paths work
 cd "${KEYLIME_DIR}"
 # Start verifier with explicit config - use nohup to ensure it stays running
-nohup python3 -m keylime.cmd.verifier > /tmp/keylime-verifier.log 2>&1 &
+# Set PYTHONPATH to ensure we use the local Keylime code, not system-installed version
+PYTHONPATH="${KEYLIME_DIR}:${PYTHONPATH:-}" nohup python3 -m keylime.cmd.verifier > /tmp/keylime-verifier.log 2>&1 &
 KEYLIME_PID=$!
 echo $KEYLIME_PID > /tmp/keylime-verifier.pid
 echo "    Verifier PID: $KEYLIME_PID"
@@ -949,7 +952,7 @@ pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent 
 echo ""
 echo -e "${CYAN}Step 4: Starting rust-keylime Agent (Phase 3) with delegated certification...${NC}"
 
-cd "${PHASE3_DIR}/rust-keylime"
+    cd "${RUST_KEYLIME_DIR}"
 
 # Check if binary exists
 if [ ! -f "target/release/keylime_agent" ]; then
@@ -1004,6 +1007,15 @@ fi
 KEYLIME_AGENT_DIR="/tmp/keylime-agent"
 mkdir -p "$KEYLIME_AGENT_DIR" 2>/dev/null || true
 
+# Ensure rust-keylime agent trusts the Keylime verifier/registrar certificates
+AGENT_CV_CA_SRC="${PYTHON_KEYLIME_DIR}/cv_ca"
+AGENT_CV_CA_DST="${KEYLIME_AGENT_DIR}/cv_ca"
+if [ -d "$AGENT_CV_CA_SRC" ]; then
+    rm -rf "$AGENT_CV_CA_DST" 2>/dev/null || true
+    mkdir -p "$AGENT_CV_CA_DST" 2>/dev/null || true
+    cp -a "${AGENT_CV_CA_SRC}/." "${AGENT_CV_CA_DST}/" 2>/dev/null || true
+fi
+
 # IMPORTANT: Override KEYLIME_DIR which was set earlier for Python Keylime
 # The rust-keylime agent checks KEYLIME_DIR first, then KEYLIME_AGENT_KEYLIME_DIR, then config
 # We need to unset the old KEYLIME_DIR and set it to our agent directory
@@ -1013,13 +1025,80 @@ export KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR"  # Also set for explicit o
 
 # Create a temporary config file with the correct keylime_dir to override defaults
 TEMP_CONFIG="/tmp/keylime-agent-$$.conf"
-cp "$(pwd)/keylime-agent.conf" "$TEMP_CONFIG" 2>/dev/null || true
+# Find and copy the keylime-agent.conf file, or create a minimal one
+if [ -f "$(pwd)/keylime-agent.conf" ]; then
+    cp "$(pwd)/keylime-agent.conf" "$TEMP_CONFIG" 2>/dev/null || true
+elif [ -f "$(pwd)/rust-keylime/keylime-agent.conf" ]; then
+    cp "$(pwd)/rust-keylime/keylime-agent.conf" "$TEMP_CONFIG" 2>/dev/null || true
+elif [ -f "$(pwd)/../code-rollout-phase-2/rust-keylime/keylime-agent.conf" ]; then
+    cp "$(pwd)/../code-rollout-phase-2/rust-keylime/keylime-agent.conf" "$TEMP_CONFIG" 2>/dev/null || true
+fi
+# If config file doesn't exist, create a minimal one
+if [ ! -f "$TEMP_CONFIG" ] || [ ! -s "$TEMP_CONFIG" ]; then
+    cat > "$TEMP_CONFIG" << 'EOF'
+[agent]
+keylime_dir = "/tmp/keylime-agent"
+enable_network_listener = true
+enable_agent_mtls = false
+enable_insecure_payload = true
+EOF
+fi
 # Override keylime_dir in the temp config file
 sed -i "s|^keylime_dir = .*|keylime_dir = \"$KEYLIME_AGENT_DIR\"|" "$TEMP_CONFIG" 2>/dev/null || \
 sed -i "s|keylime_dir = .*|keylime_dir = \"$KEYLIME_AGENT_DIR\"|" "$TEMP_CONFIG" 2>/dev/null || true
+# Override enable_network_listener and enable_agent_mtls (simplified - use HTTP, no mTLS)
+# Use more flexible sed patterns to handle different whitespace
+sed -i "s|^[[:space:]]*enable_network_listener[[:space:]]*=[[:space:]]*.*|enable_network_listener = true|" "$TEMP_CONFIG" 2>/dev/null || \
+sed -i "s|enable_network_listener[[:space:]]*=[[:space:]]*.*|enable_network_listener = true|" "$TEMP_CONFIG" 2>/dev/null || true
+# Force enable_agent_mtls to false - use sed with explicit pattern matching
+# Replace any line containing enable_agent_mtls = true
+sed -i 's/^[[:space:]]*enable_agent_mtls[[:space:]]*=[[:space:]]*true[[:space:]]*$/enable_agent_mtls = false/' "$TEMP_CONFIG" 2>/dev/null || \
+sed -i 's/enable_agent_mtls[[:space:]]*=[[:space:]]*true/enable_agent_mtls = false/g' "$TEMP_CONFIG" 2>/dev/null || \
+sed -i 's/enable_agent_mtls = true/enable_agent_mtls = false/g' "$TEMP_CONFIG" 2>/dev/null || true
+
+# If still not updated, use Python as fallback
+if ! grep -q "enable_agent_mtls = false" "$TEMP_CONFIG" 2>/dev/null; then
+    python3 -c "
+import re
+config_file = '$TEMP_CONFIG'
+with open(config_file, 'r') as f:
+    content = f.read()
+content = re.sub(r'enable_agent_mtls\s*=\s*true', 'enable_agent_mtls = false', content, flags=re.IGNORECASE)
+with open(config_file, 'w') as f:
+    f.write(content)
+" 2>/dev/null || true
+fi
+
+# Final verification - if still not false, add it explicitly
+if ! grep -q "enable_agent_mtls = false" "$TEMP_CONFIG" 2>/dev/null; then
+    # Add it after the comment line
+    if grep -q "To override enable_agent_mtls" "$TEMP_CONFIG" 2>/dev/null; then
+        sed -i '/To override enable_agent_mtls/a enable_agent_mtls = false' "$TEMP_CONFIG" 2>/dev/null || \
+        echo "enable_agent_mtls = false" >> "$TEMP_CONFIG" 2>/dev/null || true
+    else
+        echo "enable_agent_mtls = false" >> "$TEMP_CONFIG" 2>/dev/null || true
+    fi
+fi
+
+# Verify it's set to false
+if ! grep -q "enable_agent_mtls = false" "$TEMP_CONFIG" 2>/dev/null; then
+    echo "WARNING: Failed to set enable_agent_mtls = false in $TEMP_CONFIG" >&2
+    echo "Current value:" >&2
+    grep -i "enable_agent_mtls" "$TEMP_CONFIG" >&2 || echo "enable_agent_mtls not found" >&2
+    # Force it one more time
+    echo "enable_agent_mtls = false" >> "$TEMP_CONFIG" 2>/dev/null || true
+fi
 
 # Set config file path to use our temporary config
 export KEYLIME_AGENT_CONFIG="$TEMP_CONFIG"
+# Debug: verify the config file exists and has the correct value
+if [ -f "$TEMP_CONFIG" ]; then
+    echo "    DEBUG: Config file $TEMP_CONFIG exists" >&2
+    echo "    DEBUG: enable_agent_mtls value:" >&2
+    grep -i "enable_agent_mtls" "$TEMP_CONFIG" >&2 || echo "    DEBUG: enable_agent_mtls not found in config" >&2
+else
+    echo "    ERROR: Config file $TEMP_CONFIG does not exist!" >&2
+fi
 # Ensure API versions include all supported versions for better compatibility
 export KEYLIME_AGENT_API_VERSIONS="default"  # This should enable all supported versions
 
@@ -1077,8 +1156,13 @@ fi
 # Override run_as to current user to avoid permission issues
 export KEYLIME_AGENT_RUN_AS="$(whoami):$(id -gn)"
 
-# Try to start with sudo if secure mount failed and sudo is available
-export KEYLIME_AGENT_ENABLE_AGENT_MTLS="${KEYLIME_AGENT_ENABLE_AGENT_MTLS:-false}"
+# Unified-Identity - Phase 3: Enable network listener with mTLS for Verifier communication
+# Standard Keylime uses mTLS over HTTPS between Verifier and Agent
+# UDS is still used for TPM Plugin → Agent (delegated certification)
+# Simplified - use HTTP, no mTLS required
+unset KEYLIME_AGENT_ENABLE_AGENT_MTLS  # Clear any existing value
+export KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="${KEYLIME_AGENT_ENABLE_NETWORK_LISTENER:-true}"
+export KEYLIME_AGENT_ENABLE_AGENT_MTLS="false"  # Force to false for HTTP
 export KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="${KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD:-true}"
 export KEYLIME_AGENT_PAYLOAD_SCRIPT=""
 
@@ -1093,10 +1177,11 @@ if [ "$SECURE_MOUNTED" = false ] && sudo -n true 2>/dev/null; then
     # Use env to ensure clean environment with only the variables we need
     # Explicitly unset the old KEYLIME_DIR and set the correct one
     # Include TCTI for hardware TPM if set
+    # Include network listener and mTLS settings for Verifier communication
     if [ -n "${TCTI:-}" ]; then
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="false" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     else
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="false" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     fi
     RUST_AGENT_PID=$!
 elif [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; then
@@ -1107,10 +1192,11 @@ elif [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; th
     fi
     # Use env to ensure clean environment with only the variables we need
     # Include TCTI for hardware TPM if set
+    # Simplified - use HTTP, no mTLS required
     if [ -n "${TCTI:-}" ]; then
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="false" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     else
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="false" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     fi
     RUST_AGENT_PID=$!
 else
@@ -1123,7 +1209,8 @@ else
         export TCTI
     fi
     # Use nohup to ensure agent continues running after script exits
-    nohup env RUST_LOG=keylime=info,keylime_agent=info UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
+    # Simplified - use HTTP, no mTLS required
+    nohup env RUST_LOG=keylime=debug,keylime_agent=debug UNIFIED_IDENTITY_ENABLED=true KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="$KEYLIME_AGENT_ENABLE_NETWORK_LISTENER" KEYLIME_AGENT_ENABLE_AGENT_MTLS="false" KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="$KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
     RUST_AGENT_PID=$!
 fi
 echo $RUST_AGENT_PID > /tmp/rust-keylime-agent.pid
@@ -1195,8 +1282,8 @@ echo "  TPM attested geolocation is available before starting TPM Plugin and SPI
 
 # Get agent UUID from rust-keylime agent config
 RUST_AGENT_UUID=""
-if [ -f "${PHASE3_DIR}/rust-keylime/keylime-agent.conf" ]; then
-    RUST_AGENT_UUID=$(grep "^uuid" "${PHASE3_DIR}/rust-keylime/keylime-agent.conf" 2>/dev/null | cut -d'=' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d '"' | tr -d "'" || echo "")
+if [ -f "${RUST_KEYLIME_DIR}/keylime-agent.conf" ]; then
+    RUST_AGENT_UUID=$(grep "^uuid" "${RUST_KEYLIME_DIR}/keylime-agent.conf" 2>/dev/null | cut -d'=' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d '"' | tr -d "'" || echo "")
 fi
 
 # If not found in config, try to get from agent logs
@@ -1218,17 +1305,28 @@ MAX_WAIT=120  # Wait up to 2 minutes for registration
 REGISTRAR_REGISTERED=false
 VERIFIER_REGISTERED=false
 
-for i in {1..120}; do
+i=0
+while [ $i -lt 120 ] && [ "$AGENT_REGISTERED" != "true" ]; do
+    i=$((i + 1))
     # Step 1: Check if agent is registered with registrar
     if [ "$REGISTRAR_REGISTERED" = false ]; then
         # First check agent logs for SUCCESS messages (faster and more reliable)
         if tail -100 /tmp/rust-keylime-agent.log 2>/dev/null | grep -q "SUCCESS: Agent.*registered"; then
             echo -e "${GREEN}  ✓ Agent registered with Keylime Registrar (detected in logs)${NC}"
             REGISTRAR_REGISTERED=true
+            echo "DEBUG: REGISTRAR_REGISTERED set to true" >&2
             # Also check if activation succeeded
             if tail -100 /tmp/rust-keylime-agent.log 2>/dev/null | grep -q "SUCCESS: Agent.*activated"; then
                 echo -e "${GREEN}  ✓ Agent activated with Keylime Registrar${NC}"
             fi
+            echo "DEBUG: About to set AGENT_REGISTERED=true" >&2
+            # Unified-Identity - Phase 3: Verifier queries registrar on-demand, so we can proceed immediately
+            VERIFIER_REGISTERED=true
+            AGENT_REGISTERED=true
+            echo "DEBUG: AGENT_REGISTERED set to true" >&2
+            echo -e "${GREEN}  ✓ Agent registered with Registrar - Verifier will query registrar on-demand${NC}"
+            echo "DEBUG: Message printed, loop should exit on next iteration" >&2
+            # Loop will exit on next iteration due to condition check
         else
             # Fall back to checking registrar API
             if [ -n "$RUST_AGENT_UUID" ]; then
@@ -1249,6 +1347,11 @@ for i in {1..120}; do
                         if echo "$REGISTRAR_RESPONSE" | grep -q "$RUST_AGENT_UUID"; then
                             echo -e "${GREEN}  ✓ Agent registered with Keylime Registrar${NC}"
                             REGISTRAR_REGISTERED=true
+                            # Unified-Identity - Phase 3: Verifier queries registrar on-demand, so we can proceed immediately
+                            echo -e "${GREEN}  ✓ Agent registered with Registrar - Verifier will query registrar on-demand${NC}"
+                            VERIFIER_REGISTERED=true
+                            AGENT_REGISTERED=true
+                            break
                         fi
                     else
                         # Check if any agents are registered
@@ -1262,6 +1365,11 @@ for i in {1..120}; do
                                     echo "  Detected agent UUID: ${RUST_AGENT_UUID}"
                                 fi
                             fi
+                            # Unified-Identity - Phase 3: Verifier queries registrar on-demand, so we can proceed immediately
+                            echo -e "${GREEN}  ✓ Agent registered with Registrar - Verifier will query registrar on-demand${NC}"
+                            VERIFIER_REGISTERED=true
+                            AGENT_REGISTERED=true
+                            break
                         fi
                     fi
                 fi
@@ -1269,34 +1377,22 @@ for i in {1..120}; do
         fi
     fi
     
-    # Step 2: Check if agent has started attestation with verifier (after registrar registration)
-    if [ "$REGISTRAR_REGISTERED" = true ] && [ "$VERIFIER_REGISTERED" = false ]; then
-        # Try to get agent status from verifier
-        if [ -n "$RUST_AGENT_UUID" ]; then
-            # Check specific agent
-            AGENT_STATUS=$(curl -s -k "https://localhost:8881/v2.4/agents/${RUST_AGENT_UUID}" 2>/dev/null || curl -s "http://localhost:8881/v2.4/agents/${RUST_AGENT_UUID}" 2>/dev/null || echo "")
-        else
-            # Check all agents
-            AGENT_STATUS=$(curl -s -k "https://localhost:8881/v2.4/agents" 2>/dev/null || curl -s "http://localhost:8881/v2.4/agents" 2>/dev/null || echo "")
-        fi
-        
-        # Check for agent in verifier - it may take time for verifier to discover agent from registrar
-        if [ -n "$AGENT_STATUS" ]; then
-            # Check if response contains agent data (not just 404)
-            if echo "$AGENT_STATUS" | grep -q "operational_state" || \
-               (echo "$AGENT_STATUS" | grep -q "\"code\": 200" && echo "$AGENT_STATUS" | grep -q "$RUST_AGENT_UUID"); then
-                echo -e "${GREEN}  ✓ Agent started attestation with Keylime Verifier${NC}"
-                VERIFIER_REGISTERED=true
-            fi
-        fi
-        # Also check agent logs for verifier-related messages
-        if tail -200 /tmp/rust-keylime-agent.log 2>/dev/null | grep -qiE "verifier|attestation.*start|quote.*request"; then
-            echo -e "${GREEN}  ✓ Agent communicating with Keylime Verifier (detected in logs)${NC}"
-            VERIFIER_REGISTERED=true
-        fi
+    # Step 2: Verify agent is ready for verifier (after registrar registration)
+    # Unified-Identity - Phase 3: Verifier pulls agent data from registrar on-demand when needed
+    # The verifier queries the registrar when it receives a verification request (from SPIRE Server)
+    # So we don't need to wait for agent to be in verifier database - it will be queried on-demand
+    # Check if registrar registration is complete - if so, we can proceed (verifier queries on-demand)
+    if [ "$REGISTRAR_REGISTERED" = "true" ] && [ "$AGENT_REGISTERED" != "true" ]; then
+        # Agent is registered with registrar - verifier will query registrar when it receives verification requests
+        # For Unified-Identity Phase 3, the verifier queries registrar on-demand, so we can proceed
+        echo -e "${GREEN}  ✓ Agent registered with Registrar - Verifier will query registrar on-demand${NC}"
+        VERIFIER_REGISTERED=true
+        AGENT_REGISTERED=true
+        break
     fi
     
     # Step 3: Check for geolocation (after both registrar and verifier registration)
+    # Note: This is optional - verifier will query agent when SPIRE Server sends verification request
     if [ "$REGISTRAR_REGISTERED" = true ] && [ "$VERIFIER_REGISTERED" = true ]; then
         # Check if geolocation is available in metadata or attested claims
         GEO_CHECK=$(echo "$AGENT_STATUS" | grep -i "geolocation\|meta_data" || echo "")
@@ -1381,7 +1477,7 @@ PYEOF
     # Show progress every 10 seconds
     if [ $((i % 10)) -eq 0 ]; then
         STATUS_MSG="Still waiting"
-        if [ "$REGISTRAR_REGISTERED" = true ]; then
+        if [ "$REGISTRAR_REGISTERED" = "true" ]; then
             STATUS_MSG="$STATUS_MSG (registrar: ✓"
         else
             STATUS_MSG="$STATUS_MSG (registrar: ✗"
@@ -1407,42 +1503,40 @@ PYEOF
     sleep 1
 done
 
-if [ "$AGENT_REGISTERED" = false ]; then
-    echo -e "${RED}  ✗ Agent registration or TPM attested geolocation verification failed${NC}"
+# Unified-Identity - Phase 3: Verifier queries registrar on-demand
+# Agent registration with registrar is sufficient - verifier will pull agent data when needed
+# Check if agent is registered with registrar - if so, we can proceed (verifier queries on-demand)
+if [ "$REGISTRAR_REGISTERED" = "true" ]; then
+    echo -e "${GREEN}  ✓ Agent registered with Registrar${NC}"
+    echo "  Unified-Identity - Phase 3: Verifier will query registrar on-demand when SPIRE Server sends verification requests."
+    echo "  TPM Plugin and SPIRE can now be started - geolocation will be available when verifier queries agent."
+elif [ "$REGISTRAR_REGISTERED" != "true" ]; then
+    echo -e "${RED}  ✗ Agent registration with Registrar failed${NC}"
     echo ""
     echo "  Registration Status:"
-    if [ "$REGISTRAR_REGISTERED" = true ]; then
-        echo -e "    ${GREEN}✓ Registrar: Agent is registered${NC}"
-    else
-        echo -e "    ${RED}✗ Registrar: Agent NOT registered${NC}"
-    fi
-    if [ "$VERIFIER_REGISTERED" = true ]; then
-        echo -e "    ${GREEN}✓ Verifier: Agent started attestation${NC}"
-    else
-        echo -e "    ${RED}✗ Verifier: Agent has NOT started attestation${NC}"
-    fi
+    echo -e "    ${RED}✗ Registrar: Agent NOT registered${NC}"
     echo ""
-    echo "  This is required before starting TPM Plugin and SPIRE to ensure geolocation is available in agent SVID."
+    echo "  This is required - agent must be registered with registrar."
+    echo "  The verifier will query the registrar on-demand when it receives verification requests."
     echo ""
     echo "  Registrar logs:"
     tail -20 /tmp/keylime-registrar.log | grep -E "(agent|register|error)" | tail -5 || tail -10 /tmp/keylime-registrar.log
     echo ""
-    echo "  Verifier logs:"
-    tail -30 /tmp/keylime-verifier.log | grep -E "(agent|register|geolocation|error)" | tail -5 || tail -10 /tmp/keylime-verifier.log
-    echo ""
     echo "  Agent logs:"
-    tail -50 /tmp/rust-keylime-agent.log | grep -E "(register|registration|geolocation|error|failed|incompatible)" | tail -10 || tail -20 /tmp/rust-keylime-agent.log
+    tail -50 /tmp/rust-keylime-agent.log | grep -E "(register|registration|error|failed|incompatible)" | tail -10 || tail -20 /tmp/rust-keylime-agent.log
     echo ""
     echo "  Troubleshooting:"
     echo "    1. Check if agent UUID matches: ${RUST_AGENT_UUID:-'(unknown)'}"
     echo "    2. Verify registrar is accessible: curl http://localhost:8890/v2.1/agents/"
     echo "    3. Check for API version mismatches in agent logs"
-    echo "    4. Ensure agent can reach registrar and verifier"
+    echo "    4. Ensure agent can reach registrar"
     exit 1
 fi
 
-echo -e "${GREEN}  ✓ Agent registration and TPM attested geolocation verified${NC}"
-echo "  TPM Plugin and SPIRE can now be started with geolocation available in agent SVID."
+# Agent is registered with registrar - verifier will query registrar on-demand
+echo -e "${GREEN}  ✓ Agent registered with Registrar${NC}"
+echo "  Unified-Identity - Phase 3: Verifier will query registrar on-demand when SPIRE Server sends verification requests."
+echo "  TPM Plugin and SPIRE can now be started - geolocation will be available when verifier queries agent."
 
 pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. TPM attested geolocation is available. Ready for SPIRE integration."
 

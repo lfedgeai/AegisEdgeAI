@@ -13,10 +13,7 @@ pub struct SupportedAuthMethod {
     ))]
     pub auth_class: String,
 
-    #[serde(rename(
-        serialize = "authentication_type",
-        deserialize = "authentication_type"
-    ))]
+    #[serde(rename(serialize = "authentication_type", deserialize = "authentication_type"))]
     pub auth_type: String,
 }
 
@@ -60,16 +57,10 @@ pub struct SessionResponseAuthRequested {
     ))]
     pub auth_class: String,
 
-    #[serde(rename(
-        serialize = "authentication_type",
-        deserialize = "authentication_type"
-    ))]
+    #[serde(rename(serialize = "authentication_type", deserialize = "authentication_type"))]
     pub auth_type: String,
 
-    #[serde(rename(
-        serialize = "chosen_parameters",
-        deserialize = "chosen_parameters"
-    ))]
+    #[serde(rename(serialize = "chosen_parameters", deserialize = "chosen_parameters"))]
     pub parameters: SessionResponseChosenParams,
 }
 
@@ -116,10 +107,7 @@ pub struct SessionIdRequestAuthProvided {
     ))]
     pub auth_class: String,
 
-    #[serde(rename(
-        serialize = "authentication_type",
-        deserialize = "authentication_type"
-    ))]
+    #[serde(rename(serialize = "authentication_type", deserialize = "authentication_type"))]
     pub auth_type: String,
 
     pub data: ProofOfPossession,
@@ -171,15 +159,9 @@ pub struct SessionIdResponseAuth {
     ))]
     pub auth_class: String,
 
-    #[serde(rename(
-        serialize = "authentication_type",
-        deserialize = "authentication_type"
-    ))]
+    #[serde(rename(serialize = "authentication_type", deserialize = "authentication_type"))]
     pub auth_type: String,
-    #[serde(rename(
-        serialize = "chosen_parameters",
-        deserialize = "chosen_parameters"
-    ))]
+    #[serde(rename(serialize = "chosen_parameters", deserialize = "chosen_parameters"))]
     pub params: SessionIdResponseChosenParams,
     pub data: SessionIdResponseAuthData,
 }
@@ -191,10 +173,7 @@ pub struct AuthenticationResultAttributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
 
-    #[serde(rename(
-        serialize = "authentication",
-        deserialize = "authentication"
-    ))]
+    #[serde(rename(serialize = "authentication", deserialize = "authentication"))]
     pub auth: Vec<SessionIdResponseAuth>,
 
     pub created_at: DateTime<Utc>,
@@ -237,8 +216,7 @@ mod tests {
             },
         };
 
-        let serialized =
-            serde_json::to_string_pretty(&session_request).unwrap(); //#[allow_ci]
+        let serialized = serde_json::to_string_pretty(&session_request).unwrap(); //#[allow_ci]
         let expected = r#"{
   "data": {
     "type": "session",
@@ -272,8 +250,7 @@ mod tests {
                 }
             }
         }"#;
-        let deserialized: SessionRequest =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let deserialized: SessionRequest = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(deserialized.data.data_type, "session");
         assert_eq!(
             deserialized.data.attributes.agent_id,
@@ -306,15 +283,12 @@ mod tests {
                         },
                     }],
                     created_at: "2025-05-08T15:39:00Z".parse().unwrap(), //#[allow_ci]
-                    challenges_expire_at: "2026-05-08T15:40:00Z"
-                        .parse()
-                        .unwrap(), //#[allow_ci]
+                    challenges_expire_at: "2026-05-08T15:40:00Z".parse().unwrap(), //#[allow_ci]
                 },
             },
         };
 
-        let serialized =
-            serde_json::to_string_pretty(&session_response).unwrap(); //#[allow_ci]
+        let serialized = serde_json::to_string_pretty(&session_response).unwrap(); //#[allow_ci]
 
         let expected = r#"{
   "data": {
@@ -361,8 +335,7 @@ mod tests {
                 }
             }
         }"#;
-        let deserialized: SessionResponse =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let deserialized: SessionResponse = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(deserialized.data.data_type, "session");
         assert_eq!(deserialized.data.id, 1);
         assert_eq!(
@@ -406,8 +379,7 @@ mod tests {
             },
         };
 
-        let serialized =
-            serde_json::to_string_pretty(&session_id_request).unwrap(); //#[allow_ci]
+        let serialized = serde_json::to_string_pretty(&session_id_request).unwrap(); //#[allow_ci]
         let expected = r#"{
   "data": {
     "type": "session",
@@ -451,8 +423,7 @@ mod tests {
                 }
             }
         }"#;
-        let deserialized: SessionIdRequest =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let deserialized: SessionIdRequest = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(deserialized.data.data_type, "session");
         assert_eq!(deserialized.data.id, 1);
         assert_eq!(
@@ -496,23 +467,16 @@ mod tests {
                         },
                     }],
                     created_at: "2025-05-08T15:39:00Z".parse().unwrap(), //#[allow_ci]
-                    challenges_expire_at: "2026-05-08T15:40:00Z"
-                        .parse()
-                        .unwrap(), //#[allow_ci]
-                    response_received_at: "2025-05-08T15:39:01Z"
-                        .parse()
-                        .unwrap(), //#[allow_ci]
+                    challenges_expire_at: "2026-05-08T15:40:00Z".parse().unwrap(), //#[allow_ci]
+                    response_received_at: "2025-05-08T15:39:01Z".parse().unwrap(), //#[allow_ci]
                     token_expires_at: Some(
-                        "2026-05-08T15:41:00Z"
-                            .parse::<DateTime<Utc>>()
-                            .unwrap(), //#[allow_ci]
+                        "2026-05-08T15:41:00Z".parse::<DateTime<Utc>>().unwrap(), //#[allow_ci]
                     ),
                 },
             },
         };
 
-        let serialized =
-            serde_json::to_string_pretty(&session_id_response).unwrap(); //#[allow_ci]
+        let serialized = serde_json::to_string_pretty(&session_id_response).unwrap(); //#[allow_ci]
         let expected = r#"{
   "data": {
     "type": "session",
@@ -574,8 +538,7 @@ mod tests {
                 }
             }
         }"#;
-        let deserialized: SessionIdResponse =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let deserialized: SessionIdResponse = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(deserialized.data.data_type, "session");
         assert_eq!(deserialized.data.id, 1);
         assert_eq!(
@@ -644,18 +607,13 @@ mod tests {
                         },
                     }],
                     created_at: "2025-04-03T09:44:12Z".parse().unwrap(), //#[allow_ci]
-                    challenges_expire_at: "2025-04-03T14:56:57Z"
-                        .parse()
-                        .unwrap(), //#[allow_ci]
-                    response_received_at: "2025-04-03T15:56:57Z"
-                        .parse()
-                        .unwrap(), //#[allow_ci]
+                    challenges_expire_at: "2025-04-03T14:56:57Z".parse().unwrap(), //#[allow_ci]
+                    response_received_at: "2025-04-03T15:56:57Z".parse().unwrap(), //#[allow_ci]
                     token_expires_at: None,
                 },
             },
         };
-        let serialized =
-            serde_json::to_string_pretty(&session_id_response).unwrap(); //#[allow_ci]
+        let serialized = serde_json::to_string_pretty(&session_id_response).unwrap(); //#[allow_ci]
         let expected = r#"{
   "data": {
     "type": "session",

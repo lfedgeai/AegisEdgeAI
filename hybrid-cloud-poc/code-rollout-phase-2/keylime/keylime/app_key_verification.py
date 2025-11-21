@@ -381,3 +381,14 @@ def verify_quote_with_app_key(
         logger.exception("Unified-Identity - Phase 3: %s", error_msg)
         return False, error_msg, None
 
+
+
+def verify_quote_with_ak(
+    quote: str, ak_public: str, nonce: str, hash_alg: str
+) -> Tuple[bool, Optional[str], Optional[Failure]]:
+    """
+    Wrapper for verifying quotes signed by the TPM AK. Reuses the App Key
+    verification logic since the cryptographic operations are identical.
+    """
+    logger.info("Unified-Identity - Phase 3: Verifying TPM Quote with AK")
+    return verify_quote_with_app_key(quote, ak_public, nonce, hash_alg)

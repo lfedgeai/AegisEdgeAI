@@ -82,9 +82,8 @@ impl FileConfigBuilder {
                         GLOBAL_CONFIG_OVERRIDE_ENV_VAR,
                         path.display()
                     );
-                    builder = builder.add_source(
-                        File::new(&env_cfg, FileFormat::Toml).required(true),
-                    );
+                    builder =
+                        builder.add_source(File::new(&env_cfg, FileFormat::Toml).required(true));
                     let f: FileConfig = builder.build()?.try_deserialize()?;
                     return Ok(f.agent);
                 } else {
@@ -106,11 +105,7 @@ impl FileConfigBuilder {
                         path.display()
                     );
                     builder = builder.add_source(
-                        File::new(
-                            &path.display().to_string(),
-                            FileFormat::Toml,
-                        )
-                        .required(false),
+                        File::new(&path.display().to_string(), FileFormat::Toml).required(false),
                     );
                 }
                 ConfigSource::Directory(path) => {
@@ -125,11 +120,8 @@ impl FileConfigBuilder {
                             .map_err(KeylimeConfigError::GlobPattern)?
                             .filter_map(|entry| entry.ok())
                             .map(|path| {
-                                File::new(
-                                    &path.display().to_string(),
-                                    FileFormat::Toml,
-                                )
-                                .required(false)
+                                File::new(&path.display().to_string(), FileFormat::Toml)
+                                    .required(false)
                             })
                             .collect::<Vec<_>>(),
                     );
@@ -162,11 +154,9 @@ mod tests {
     fn test_load_from_single_file() {
         let dir = tempfile::tempdir().expect("failed to create tempdir");
         let file_path = dir.path().join("config.toml");
-        let mut file = std::fs::File::create(&file_path)
-            .expect("failed to create config file");
+        let mut file = std::fs::File::create(&file_path).expect("failed to create config file");
         // Use the new option name `ip`
-        writeln!(file, "[agent]\nip = \"192.168.1.10\"")
-            .expect("failed to write on config file");
+        writeln!(file, "[agent]\nip = \"192.168.1.10\"").expect("failed to write on config file");
 
         let config = FileConfigBuilder::new()
             .file(&file_path)
@@ -181,18 +171,14 @@ mod tests {
     fn test_load_from_directory() {
         let dir = tempfile::tempdir().expect("failed to create tempdir");
         let file_path1 = dir.path().join("a.toml");
-        let mut file1 = std::fs::File::create(&file_path1)
-            .expect("failed to create config file");
+        let mut file1 = std::fs::File::create(&file_path1).expect("failed to create config file");
         // Use `ip`
-        writeln!(file1, "[agent]\nip = \"127.0.0.1\"")
-            .expect("failed to write on config file");
+        writeln!(file1, "[agent]\nip = \"127.0.0.1\"").expect("failed to write on config file");
 
         let file_path2 = dir.path().join("b.toml");
-        let mut file2 = std::fs::File::create(&file_path2)
-            .expect("failed to create config file");
+        let mut file2 = std::fs::File::create(&file_path2).expect("failed to create config file");
         // Use `port`
-        writeln!(file2, "[agent]\nport = 8888")
-            .expect("failed to write on config file");
+        writeln!(file2, "[agent]\nport = 8888").expect("failed to write on config file");
 
         let config = FileConfigBuilder::new()
             .directory(dir.path())

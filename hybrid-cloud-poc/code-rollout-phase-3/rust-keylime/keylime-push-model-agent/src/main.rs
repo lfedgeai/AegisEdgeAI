@@ -45,11 +45,7 @@ struct Args {
     #[arg(long, default_value = "/var/lib/keylime/cv_ca/cacert.crt")]
     ca_certificate: String,
     /// Client certificate file
-    #[arg(
-        short,
-        long,
-        default_value = "/var/lib/keylime/cv_ca/client-cert.crt"
-    )]
+    #[arg(short, long, default_value = "/var/lib/keylime/cv_ca/client-cert.crt")]
     certificate: String,
     /// Client private key file
     #[arg(
@@ -161,9 +157,7 @@ async fn run(args: &Args) -> Result<()> {
         ca_certificate: &args.ca_certificate,
         client_certificate: &args.certificate,
         ima_log_path: Some(config.ima_ml_path.as_str()),
-        initial_delay_ms: config
-            .exponential_backoff_initial_delay
-            .unwrap_or(1000),
+        initial_delay_ms: config.exponential_backoff_initial_delay.unwrap_or(1000),
         insecure: args.insecure,
         key: &args.key,
         max_delay_ms: config.exponential_backoff_max_delay,
@@ -173,8 +167,7 @@ async fn run(args: &Args) -> Result<()> {
         url: &negotiations_request_url,
         verifier_url: verifier_url.as_str(),
     };
-    let attestation_client =
-        attestation::AttestationClient::new(&neg_config)?;
+    let attestation_client = attestation::AttestationClient::new(&neg_config)?;
     let mut state_machine = state_machine::StateMachine::new(
         attestation_client,
         neg_config,
@@ -215,8 +208,7 @@ mod tests {
             method: None,
             attestation_index: None,
             session_index: None,
-            attestation_interval_seconds:
-                DEFAULT_ATTESTATION_INTERVAL_SECONDS,
+            attestation_interval_seconds: DEFAULT_ATTESTATION_INTERVAL_SECONDS,
         };
         let res = run(&args);
         assert!(res.await.is_err());
@@ -242,8 +234,7 @@ mod tests {
             method: None,
             attestation_index: None,
             session_index: None,
-            attestation_interval_seconds:
-                DEFAULT_ATTESTATION_INTERVAL_SECONDS,
+            attestation_interval_seconds: DEFAULT_ATTESTATION_INTERVAL_SECONDS,
         };
         let avoid_tpm = get_avoid_tpm_from_args(&args);
         assert!(avoid_tpm);

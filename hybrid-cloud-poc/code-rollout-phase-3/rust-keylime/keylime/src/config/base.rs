@@ -29,8 +29,6 @@ pub static DEFAULT_API_VERSIONS: &str = "default";
 pub static DEFAULT_UUID: &str = "d432fbb3-d2f1-4a97-9ef7-75bd81c00000";
 pub static DEFAULT_IP: &str = "127.0.0.1";
 pub static DEFAULT_PORT: u32 = 9002;
-pub static DEFAULT_UDS_SOCKET: &str = "/tmp/keylime-agent.sock";
-pub static DEFAULT_ENABLE_NETWORK_LISTENER: bool = false;
 pub static DEFAULT_REGISTRAR_IP: &str = "127.0.0.1";
 pub static DEFAULT_REGISTRAR_PORT: u32 = 8890;
 pub static DEFAULT_KEYLIME_DIR: &str = "/var/lib/keylime";
@@ -126,8 +124,6 @@ pub struct AgentConfig {
     pub ip: String,
     pub keylime_dir: String,
     pub port: u32,
-    pub uds_socket: String,
-    pub enable_network_listener: bool,
     pub registrar_ip: String,
     pub registrar_port: u32,
     pub run_as: String,
@@ -141,6 +137,8 @@ pub struct AgentConfig {
 
     // Pull attestation options
     pub allow_payload_revocation_actions: bool,
+    #[serde(default)]
+    pub startup_quote_test: bool,
     pub contact_ip: String,
     pub contact_port: u32,
     pub dec_payload_file: String,
@@ -256,6 +254,7 @@ impl Default for AgentConfig {
         AgentConfig {
             agent_data_path: "default".to_string(),
             allow_payload_revocation_actions: DEFAULT_ALLOW_PAYLOAD_REVOCATION_ACTIONS,
+            startup_quote_test: false,
             api_versions: DEFAULT_API_VERSIONS.to_string(),
             contact_ip: DEFAULT_CONTACT_IP.to_string(),
             contact_port: DEFAULT_CONTACT_PORT,
@@ -282,8 +281,6 @@ impl Default for AgentConfig {
             ima_ml_path: "default".to_string(),
             ip: DEFAULT_IP.to_string(),
             keylime_dir: DEFAULT_KEYLIME_DIR.to_string(),
-            uds_socket: DEFAULT_UDS_SOCKET.to_string(),
-            enable_network_listener: DEFAULT_ENABLE_NETWORK_LISTENER,
             measuredboot_ml_path: "default".to_string(),
             payload_script: DEFAULT_PAYLOAD_SCRIPT.to_string(),
             port: DEFAULT_PORT,
@@ -414,14 +411,6 @@ pub(crate) fn config_translate_keywords(
         &config.payload_key,
         keylime_dir,
         DEFAULT_PAYLOAD_KEY,
-        false,
-    );
-
-    let uds_socket = config_get_file_path(
-        "uds_socket",
-        &config.uds_socket,
-        Path::new("/"),
-        DEFAULT_UDS_SOCKET,
         false,
     );
 
@@ -625,8 +614,6 @@ pub(crate) fn config_translate_keywords(
         payload_key,
         trusted_client_ca,
         uuid,
-        uds_socket,
-        enable_network_listener: config.enable_network_listener,
         ..config.clone()
     })
 }

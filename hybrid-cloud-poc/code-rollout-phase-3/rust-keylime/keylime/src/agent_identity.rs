@@ -74,10 +74,7 @@ impl<'a> AgentIdentityBuilder<'a> {
     /// # Arguments:
     ///
     /// * api_versions (Vec<&'a str>): The enabled API versions
-    pub fn enabled_api_versions(
-        mut self,
-        api_versions: Vec<&'a str>,
-    ) -> Self {
+    pub fn enabled_api_versions(mut self, api_versions: Vec<&'a str>) -> Self {
         self.enabled_api_versions = Some(api_versions);
         self
     }
@@ -209,9 +206,7 @@ impl<'a> AgentIdentityBuilder<'a> {
     }
 
     /// Generate the AgentIdentity object using the previously set options
-    pub async fn build(
-        mut self,
-    ) -> Result<AgentIdentity<'a>, AgentIdentityBuilderError> {
+    pub async fn build(mut self) -> Result<AgentIdentity<'a>, AgentIdentityBuilderError> {
         // Check that required fields were set and take from the builder
         let Some(ak_pub) = self.ak_pub else {
             return Err(AgentIdentityBuilderError::AKPubNotSet);
@@ -234,32 +229,22 @@ impl<'a> AgentIdentityBuilder<'a> {
         };
 
         let mtls_cert = match self.mtls_cert.take() {
-            Some(cert) => Some(
-                x509_to_pem(&cert)
-                    .map_err(AgentIdentityBuilderError::CertConvert)?,
-            ),
+            Some(cert) => Some(x509_to_pem(&cert).map_err(AgentIdentityBuilderError::CertConvert)?),
             None => Some("disabled".to_string()),
         };
 
         let idevid_cert = match self.idevid_cert.take() {
-            Some(cert) => Some(
-                x509_to_der(&cert)
-                    .map_err(AgentIdentityBuilderError::CertConvert)?,
-            ),
+            Some(cert) => Some(x509_to_der(&cert).map_err(AgentIdentityBuilderError::CertConvert)?),
             None => None,
         };
 
         let iak_cert = match self.iak_cert.take() {
-            Some(cert) => Some(
-                x509_to_der(&cert)
-                    .map_err(AgentIdentityBuilderError::CertConvert)?,
-            ),
+            Some(cert) => Some(x509_to_der(&cert).map_err(AgentIdentityBuilderError::CertConvert)?),
             None => None,
         };
 
         // Take the enabled_api_versions
-        let Some(enabled_api_versions) = self.enabled_api_versions.take()
-        else {
+        let Some(enabled_api_versions) = self.enabled_api_versions.take() else {
             return Err(AgentIdentityBuilderError::EnabledAPIVersionsNotSet);
         };
 
@@ -318,8 +303,7 @@ mod test {
 
         for to_skip in required.iter() {
             // Add all required fields but the one to skip
-            let to_add: Vec<&str> =
-                required.iter().filter(|&x| x != to_skip).copied().collect();
+            let to_add: Vec<&str> = required.iter().filter(|&x| x != to_skip).copied().collect();
             let mut builder = AgentIdentityBuilder::new();
 
             if to_add.contains(&"ak_pub") {

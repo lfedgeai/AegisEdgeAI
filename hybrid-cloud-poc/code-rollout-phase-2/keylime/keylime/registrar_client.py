@@ -45,7 +45,11 @@ def check_mandatory_fields(results: Dict[str, Any]) -> bool:
 
 
 def getData(
-    registrar_ip: str, registrar_port: str, agent_id: str, tls_context: Optional[ssl.SSLContext]
+    registrar_ip: str,
+    registrar_port: str,
+    agent_id: str,
+    tls_context: Optional[ssl.SSLContext],
+    allow_insecure_http: bool = False,
 ) -> Optional[RegistrarData]:
     """
     Get the agent data from the registrar.
@@ -54,13 +58,17 @@ def getData(
 
     :returns: JSON structure containing the agent data
     """
-    # make absolutely sure you don't ask for data that contains AIK keys unauthenticated
-    if not tls_context:
+    tls_enabled = tls_context is not None
+    if not tls_enabled and not allow_insecure_http:
         raise Exception("It is unsafe to use this interface to query AIKs without server-authenticated TLS.")
+    if not tls_enabled and allow_insecure_http:
+        logger.warning("Registrar query is running over HTTP without TLS (test mode only).")
 
     response = None
     try:
-        client = RequestsClient(f"{bracketize_ipv6(registrar_ip)}:{registrar_port}", True, tls_context=tls_context)
+        client = RequestsClient(
+            f"{bracketize_ipv6(registrar_ip)}:{registrar_port}", tls_enabled, tls_context=tls_context
+        )
         response = client.get(f"/v{API_VERSION}/agents/{agent_id}")
         response_body = response.json()
 
@@ -145,7 +153,8 @@ def doRegistrarList(
 
     :returns: The request response body
     """
-    client = RequestsClient(f"{bracketize_ipv6(registrar_ip)}:{registrar_port}", True, tls_context=tls_context)
+    tls_enabled = tls_context is not None
+    client = RequestsClient(f"{bracketize_ipv6(registrar_ip)}:{registrar_port}", tls_enabled, tls_context=tls_context)
     response = client.get(f"/v{API_VERSION}/agents/")
     response_body: Dict[str, Any] = response.json()
 

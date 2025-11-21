@@ -83,9 +83,7 @@ impl<'a> FillerFromHardware<'a> {
         }
     }
 
-    fn get_attestation_request_final(
-        &mut self,
-    ) -> structures::AttestationRequest {
+    fn get_attestation_request_final(&mut self) -> structures::AttestationRequest {
         let config = keylime::config::get_config();
 
         // Get all supported hash algorithms from the TPM
@@ -104,23 +102,18 @@ impl<'a> FillerFromHardware<'a> {
 
         for algorithm_str in supported_algorithms {
             // Convert string to HashAlgorithm enum
-            if let Ok(algorithm) =
-                HashAlgorithm::try_from(algorithm_str.as_str())
-            {
-                let banks =
-                    tpmc_ref.pcr_banks(algorithm).unwrap_or_else(|_| {
-                        error!("Failed to get PCR banks for {algorithm:?}");
-                        vec![]
-                    });
+            if let Ok(algorithm) = HashAlgorithm::try_from(algorithm_str.as_str()) {
+                let banks = tpmc_ref.pcr_banks(algorithm).unwrap_or_else(|_| {
+                    error!("Failed to get PCR banks for {algorithm:?}");
+                    vec![]
+                });
 
                 pcr_banks_builder = match algorithm {
                     HashAlgorithm::Sha1 => pcr_banks_builder.sha1(banks),
                     HashAlgorithm::Sha256 => pcr_banks_builder.sha256(banks),
                     HashAlgorithm::Sha384 => pcr_banks_builder.sha384(banks),
                     HashAlgorithm::Sha512 => pcr_banks_builder.sha512(banks),
-                    HashAlgorithm::Sm3_256 => {
-                        pcr_banks_builder.sm3_256(banks)
-                    }
+                    HashAlgorithm::Sm3_256 => pcr_banks_builder.sm3_256(banks),
                 };
             } else {
                 error!("Unsupported hash algorithm: {algorithm_str}");
@@ -148,28 +141,31 @@ impl<'a> FillerFromHardware<'a> {
                             evidence_type: "tpm_quote".to_string(),
                             capabilities: structures::Capabilities {
                                 component_version: "2.0".to_string(),
-                                hash_algorithms: self.tpm_context_info.get_supported_hash_algorithms().expect(
-                                    "Failed to get supported hash algorithms"
-                                ),
-                                signature_schemes: self.tpm_context_info.get_supported_signing_schemes().expect(
-                                    "Failed to get supported signing schemes"
-                                ),
+                                hash_algorithms: self
+                                    .tpm_context_info
+                                    .get_supported_hash_algorithms()
+                                    .expect("Failed to get supported hash algorithms"),
+                                signature_schemes: self
+                                    .tpm_context_info
+                                    .get_supported_signing_schemes()
+                                    .expect("Failed to get supported signing schemes"),
                                 available_subjects: pcr_banks_builder.build(),
-                                certification_keys: vec![
-                                    self.tpm_context_info.get_ak_certification_data().expect(
-                                        "Failed to get AK certification data"
-                                    ),
-                                ],
+                                certification_keys: vec![self
+                                    .tpm_context_info
+                                    .get_ak_certification_data()
+                                    .expect("Failed to get AK certification data")],
                             },
                         },
                         structures::EvidenceSupported::EvidenceLog {
                             evidence_type: "uefi_log".to_string(),
                             capabilities: structures::LogCapabilities {
-                                evidence_version: Some(config.uefi_logs_evidence_version().to_string()),
+                                evidence_version: Some(
+                                    config.uefi_logs_evidence_version().to_string(),
+                                ),
                                 entry_count: uefi_count,
                                 supports_partial_access: false,
                                 appendable: false,
-                                formats: vec!["application/octet-stream".to_string()]
+                                formats: vec!["application/octet-stream".to_string()],
                             },
                         },
                         structures::EvidenceSupported::EvidenceLog {
@@ -194,9 +190,7 @@ impl<'a> FillerFromHardware<'a> {
     // TODO: Change this function to use the session request appropriately
     // TODO: This is expected to be used once the PoP authentication is implemented
     #[allow(dead_code)]
-    pub fn get_session_request_final(
-        &mut self,
-    ) -> structures::SessionRequest {
+    pub fn get_session_request_final(&mut self) -> structures::SessionRequest {
         structures::SessionRequest {
             data: structures::SessionRequestData {
                 data_type: "session".to_string(),
@@ -217,24 +211,25 @@ impl<'a> FillerFromHardware<'a> {
         config: &crate::attestation::NegotiationConfig<'_>,
     ) -> structures::EvidenceHandlingRequest {
         // Parse the negotiation response and prepare evidence requests
-        let evidence_requests = match crate::response_handler::prepare_evidence_requests_from_response(
-            &response_info.body,
-            config.ima_log_path.map(|path| path.to_string()),
-            config.uefi_log_path.map(|path| path.to_string()),
-        ) {
-            Ok(requests) => requests,
-            Err(e) => {
-                error!("Failed to parse evidence requests from response: {e}");
-                return structures::EvidenceHandlingRequest {
-                    data: structures::EvidenceHandlingRequestData {
-                        data_type: "error".to_string(),
-                        attributes: structures::EvidenceHandlingRequestAttributes {
-                            evidence_collected: vec![],
+        let evidence_requests =
+            match crate::response_handler::prepare_evidence_requests_from_response(
+                &response_info.body,
+                config.ima_log_path.map(|path| path.to_string()),
+                config.uefi_log_path.map(|path| path.to_string()),
+            ) {
+                Ok(requests) => requests,
+                Err(e) => {
+                    error!("Failed to parse evidence requests from response: {e}");
+                    return structures::EvidenceHandlingRequest {
+                        data: structures::EvidenceHandlingRequestData {
+                            data_type: "error".to_string(),
+                            attributes: structures::EvidenceHandlingRequestAttributes {
+                                evidence_collected: vec![],
+                            },
                         },
-                    },
-                };
-            }
-        };
+                    };
+                }
+            };
 
         let evidence_results = match self
             .tpm_context_info
@@ -247,28 +242,24 @@ impl<'a> FillerFromHardware<'a> {
                 return structures::EvidenceHandlingRequest {
                     data: structures::EvidenceHandlingRequestData {
                         data_type: "error".to_string(),
-                        attributes:
-                            structures::EvidenceHandlingRequestAttributes {
-                                evidence_collected: vec![],
-                            },
+                        attributes: structures::EvidenceHandlingRequestAttributes {
+                            evidence_collected: vec![],
+                        },
                     },
                 };
             }
         };
 
         // Convert evidence results to the expected format
-        let evidence_collected: Vec<structures::EvidenceCollected> =
-            evidence_results
-                .into_iter()
-                .map(|evidence| evidence.into())
-                .collect();
+        let evidence_collected: Vec<structures::EvidenceCollected> = evidence_results
+            .into_iter()
+            .map(|evidence| evidence.into())
+            .collect();
 
         structures::EvidenceHandlingRequest {
             data: structures::EvidenceHandlingRequestData {
                 data_type: "attestation".to_string(),
-                attributes: structures::EvidenceHandlingRequestAttributes {
-                    evidence_collected,
-                },
+                attributes: structures::EvidenceHandlingRequestAttributes { evidence_collected },
             },
         }
     }
@@ -335,14 +326,13 @@ mod tests {
     #[tokio::test]
     async fn test_attestation_request_final() {
         let _mutex = testing::lock_tests().await;
-        let context_info_result = context_info::ContextInfo::new_from_str(
-            context_info::AlgorithmConfigurationString {
+        let context_info_result =
+            context_info::ContextInfo::new_from_str(context_info::AlgorithmConfigurationString {
                 tpm_encryption_alg: "rsa".to_string(),
                 tpm_hash_alg: "sha256".to_string(),
                 tpm_signing_alg: "rsassa".to_string(),
                 agent_data_path: "".to_string(),
-            },
-        );
+            });
 
         // Skip test if TPM access is not available
         let mut context_info = match context_info_result {
@@ -364,14 +354,13 @@ mod tests {
     #[tokio::test]
     async fn test_filler_from_hardware_get_attestation_request() {
         let _mutex = testing::lock_tests().await;
-        let context_info_result = context_info::ContextInfo::new_from_str(
-            context_info::AlgorithmConfigurationString {
+        let context_info_result =
+            context_info::ContextInfo::new_from_str(context_info::AlgorithmConfigurationString {
                 tpm_encryption_alg: "rsa".to_string(),
                 tpm_hash_alg: "sha256".to_string(),
                 tpm_signing_alg: "rsassa".to_string(),
                 agent_data_path: "".to_string(),
-            },
-        );
+            });
 
         let mut context_info = match context_info_result {
             Ok(ctx) => ctx,
@@ -397,10 +386,8 @@ mod tests {
             matches!(e, structures::EvidenceSupported::Certification { evidence_type, .. } if evidence_type == "tpm_quote")
         }).expect("tpm_quote evidence not found");
 
-        if let structures::EvidenceSupported::Certification {
-            capabilities,
-            ..
-        } = tpm_quote_evidence
+        if let structures::EvidenceSupported::Certification { capabilities, .. } =
+            tpm_quote_evidence
         {
             assert!(
                 !capabilities.hash_algorithms.is_empty(),
@@ -436,14 +423,13 @@ mod tests {
     async fn test_session_request() {
         use keylime::context_info;
         let _mutex = testing::lock_tests().await;
-        let context_info_result = context_info::ContextInfo::new_from_str(
-            context_info::AlgorithmConfigurationString {
+        let context_info_result =
+            context_info::ContextInfo::new_from_str(context_info::AlgorithmConfigurationString {
                 tpm_encryption_alg: "rsa".to_string(),
                 tpm_hash_alg: "sha256".to_string(),
                 tpm_signing_alg: "rsassa".to_string(),
                 agent_data_path: "".to_string(),
-            },
-        );
+            });
 
         // Skip test if TPM access is not available
         let mut context_info = match context_info_result {
@@ -466,14 +452,13 @@ mod tests {
     async fn test_failing_evidence_handling_request() {
         use std::collections::HashMap;
         let _mutex = testing::lock_tests().await;
-        let context_info_result = context_info::ContextInfo::new_from_str(
-            context_info::AlgorithmConfigurationString {
+        let context_info_result =
+            context_info::ContextInfo::new_from_str(context_info::AlgorithmConfigurationString {
                 tpm_encryption_alg: "rsa".to_string(),
                 tpm_hash_alg: "sha256".to_string(),
                 tpm_signing_alg: "rsassa".to_string(),
                 agent_data_path: "".to_string(),
-            },
-        );
+            });
 
         // Skip test if TPM access is not available
         let mut context_info = match context_info_result {
@@ -555,14 +540,13 @@ mod tests {
     #[tokio::test]
     async fn test_get_filler_request_with_tpm() {
         let _mutex = testing::lock_tests().await;
-        let context_info_result = context_info::ContextInfo::new_from_str(
-            context_info::AlgorithmConfigurationString {
+        let context_info_result =
+            context_info::ContextInfo::new_from_str(context_info::AlgorithmConfigurationString {
                 tpm_encryption_alg: "rsa".to_string(),
                 tpm_hash_alg: "sha256".to_string(),
                 tpm_signing_alg: "rsassa".to_string(),
                 agent_data_path: "".to_string(),
-            },
-        );
+            });
 
         if let Ok(mut ctx) = context_info_result {
             {
@@ -637,14 +621,13 @@ mod tests {
         use keylime::config::{get_testing_config, TestConfigGuard};
 
         let _mutex = testing::lock_tests().await;
-        let context_info_result = context_info::ContextInfo::new_from_str(
-            context_info::AlgorithmConfigurationString {
+        let context_info_result =
+            context_info::ContextInfo::new_from_str(context_info::AlgorithmConfigurationString {
                 tpm_encryption_alg: "rsa".to_string(),
                 tpm_hash_alg: "sha256".to_string(),
                 tpm_signing_alg: "rsassa".to_string(),
                 agent_data_path: "".to_string(),
-            },
-        );
+            });
 
         if let Ok(mut ctx) = context_info_result {
             // Create a temporary directory for testing
@@ -656,8 +639,7 @@ mod tests {
                 "measuredboot_ml_path".to_string(),
                 "/path/to/non/existent/log".to_string(),
             );
-            let test_config =
-                get_testing_config(temp_dir.path(), Some(overrides));
+            let test_config = get_testing_config(temp_dir.path(), Some(overrides));
 
             // Create guard that will automatically clear override when dropped
             let _guard = TestConfigGuard::new(test_config);
@@ -672,23 +654,21 @@ mod tests {
     #[tokio::test]
     async fn test_get_evidence_handling_request_final_with_parsing_error() {
         let _mutex = testing::lock_tests().await;
-        let context_info_result = context_info::ContextInfo::new_from_str(
-            context_info::AlgorithmConfigurationString {
+        let context_info_result =
+            context_info::ContextInfo::new_from_str(context_info::AlgorithmConfigurationString {
                 tpm_encryption_alg: "rsa".to_string(),
                 tpm_hash_alg: "sha256".to_string(),
                 tpm_signing_alg: "rsassa".to_string(),
                 agent_data_path: "".to_string(),
-            },
-        );
+            });
 
         if let Ok(mut ctx) = context_info_result {
             let mut filler = FillerFromHardware::new(&mut ctx);
-            let malformed_response =
-                crate::attestation::ResponseInformation {
-                    status_code: reqwest::StatusCode::CREATED,
-                    headers: reqwest::header::HeaderMap::new(),
-                    body: "this is not valid json".to_string(),
-                };
+            let malformed_response = crate::attestation::ResponseInformation {
+                status_code: reqwest::StatusCode::CREATED,
+                headers: reqwest::header::HeaderMap::new(),
+                body: "this is not valid json".to_string(),
+            };
             let dummy_config = crate::attestation::NegotiationConfig {
                 avoid_tpm: true,
                 url: "",
@@ -706,10 +686,7 @@ mod tests {
             };
 
             let result = filler
-                .get_evidence_handling_request_final(
-                    &malformed_response,
-                    &dummy_config,
-                )
+                .get_evidence_handling_request_final(&malformed_response, &dummy_config)
                 .await;
 
             assert_eq!(result.data.data_type, "error");
@@ -721,14 +698,13 @@ mod tests {
     #[tokio::test]
     async fn test_uefi_log_capabilities_flags() {
         let _mutex = testing::lock_tests().await;
-        let context_info_result = context_info::ContextInfo::new_from_str(
-            context_info::AlgorithmConfigurationString {
+        let context_info_result =
+            context_info::ContextInfo::new_from_str(context_info::AlgorithmConfigurationString {
                 tpm_encryption_alg: "rsa".to_string(),
                 tpm_hash_alg: "sha256".to_string(),
                 tpm_signing_alg: "rsassa".to_string(),
                 agent_data_path: "".to_string(),
-            },
-        );
+            });
 
         let mut context_info = match context_info_result {
             Ok(ctx) => ctx,
@@ -745,11 +721,7 @@ mod tests {
             matches!(e, structures::EvidenceSupported::EvidenceLog { evidence_type, .. } if evidence_type == "uefi_log")
         }).expect("uefi_log evidence not found");
 
-        if let structures::EvidenceSupported::EvidenceLog {
-            capabilities,
-            ..
-        } = uefi_log_evidence
-        {
+        if let structures::EvidenceSupported::EvidenceLog { capabilities, .. } = uefi_log_evidence {
             assert!(
                 !capabilities.supports_partial_access,
                 "UEFI log supports_partial_access should be false"

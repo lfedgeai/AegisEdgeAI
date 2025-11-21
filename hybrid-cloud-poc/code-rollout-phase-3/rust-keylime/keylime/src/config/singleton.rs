@@ -45,17 +45,14 @@ pub fn get_config() -> &'static AgentConfig {
         if let Ok(guard) = mutex.lock() {
             if let Some(ref testing_config) = *guard {
                 // If there's a testing override, we need to use Box::leak to get a static reference
-                let leaked_config =
-                    Box::leak(Box::new(testing_config.clone()));
+                let leaked_config = Box::leak(Box::new(testing_config.clone()));
                 return leaked_config;
             }
         }
     }
 
     // Use normal singleton - AgentConfig::new() already handles testing overrides
-    GLOBAL_CONFIG.get_or_init(|| {
-        AgentConfig::new().expect("Failed to load configuration")
-    })
+    GLOBAL_CONFIG.get_or_init(|| AgentConfig::new().expect("Failed to load configuration"))
 }
 
 /// Check if configuration has been initialized

@@ -123,10 +123,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// # Arguments:
     ///
     /// * iak_password (&str): The IAK password
-    pub fn iak_password(
-        mut self,
-        iak_password: &'a str,
-    ) -> DeviceIDBuilder<'a> {
+    pub fn iak_password(mut self, iak_password: &'a str) -> DeviceIDBuilder<'a> {
         self.iak_password = Some(iak_password);
         self
     }
@@ -149,10 +146,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// # Arguments:
     ///
     /// * template(&str): The name of the default template to use.
-    pub fn iak_default_template(
-        mut self,
-        template: &'a str,
-    ) -> DeviceIDBuilder<'a> {
+    pub fn iak_default_template(mut self, template: &'a str) -> DeviceIDBuilder<'a> {
         self.iak_default_template = Some(template);
         self
     }
@@ -195,10 +189,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// # Arguments:
     ///
     /// * idevid_handle (&str): The IDevID handle
-    pub fn idevid_handle(
-        mut self,
-        idevid_handle: &'a str,
-    ) -> DeviceIDBuilder<'a> {
+    pub fn idevid_handle(mut self, idevid_handle: &'a str) -> DeviceIDBuilder<'a> {
         self.idevid_handle = Some(idevid_handle);
         self
     }
@@ -208,10 +199,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// # Arguments:
     ///
     /// * idevid_password (&str): The password to use for the IDevID
-    pub fn idevid_password(
-        mut self,
-        idevid_password: &'a str,
-    ) -> DeviceIDBuilder<'a> {
+    pub fn idevid_password(mut self, idevid_password: &'a str) -> DeviceIDBuilder<'a> {
         self.idevid_password = Some(idevid_password);
         self
     }
@@ -234,10 +222,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// # Arguments:
     ///
     /// * template(&str): The name of the default template to use.
-    pub fn idevid_default_template(
-        mut self,
-        template: &'a str,
-    ) -> DeviceIDBuilder<'a> {
+    pub fn idevid_default_template(mut self, template: &'a str) -> DeviceIDBuilder<'a> {
         self.idevid_default_template = Some(template);
         self
     }
@@ -250,10 +235,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// # Arguments:
     ///
     /// * template(&str): The template name to use.
-    pub fn idevid_template(
-        mut self,
-        template: &'a str,
-    ) -> DeviceIDBuilder<'a> {
+    pub fn idevid_template(mut self, template: &'a str) -> DeviceIDBuilder<'a> {
         self.idevid_template = Some(template);
         self
     }
@@ -263,10 +245,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// # Arguments:
     ///
     /// * idevid_asym_alg (&str): The template Asymmetric algorithm to use for the IDevID template
-    pub fn idevid_asym_alg(
-        mut self,
-        asym_alg: &'a str,
-    ) -> DeviceIDBuilder<'a> {
+    pub fn idevid_asym_alg(mut self, asym_alg: &'a str) -> DeviceIDBuilder<'a> {
         self.idevid_asym_alg = Some(asym_alg);
         self
     }
@@ -276,10 +255,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// # Arguments:
     ///
     /// * idevid_hash_alg (&str): The Hash algorithm to use for the IDevID template
-    pub fn idevid_hash_alg(
-        mut self,
-        hash_alg: &'a str,
-    ) -> DeviceIDBuilder<'a> {
+    pub fn idevid_hash_alg(mut self, hash_alg: &'a str) -> DeviceIDBuilder<'a> {
         self.idevid_hash_alg = Some(hash_alg);
         self
     }
@@ -290,8 +266,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// Otherwise, construct the template from the provided algorithms
     fn get_iak_template(
         &mut self,
-    ) -> Result<(AsymmetricAlgorithm, HashingAlgorithm), DeviceIDBuilderError>
-    {
+    ) -> Result<(AsymmetricAlgorithm, HashingAlgorithm), DeviceIDBuilderError> {
         let iak_cert = self.get_iak_cert()?;
 
         // If the IAK cert is set, get the template based on it
@@ -303,9 +278,7 @@ impl<'a> DeviceIDBuilder<'a> {
                 if let Some(default) = self.iak_default_template {
                     default.trim().to_string()
                 } else {
-                    return Err(
-                        DeviceIDBuilderError::IAKDefaultTemplateNotSet,
-                    );
+                    return Err(DeviceIDBuilderError::IAKDefaultTemplateNotSet);
                 }
             }
         };
@@ -324,8 +297,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// Otherwise, construct the template from the provided algorithms
     fn get_idevid_template(
         &mut self,
-    ) -> Result<(AsymmetricAlgorithm, HashingAlgorithm), DeviceIDBuilderError>
-    {
+    ) -> Result<(AsymmetricAlgorithm, HashingAlgorithm), DeviceIDBuilderError> {
         let idevid_cert = self.get_idevid_cert()?;
 
         // If the IAK cert is set, get the template based on it
@@ -337,9 +309,7 @@ impl<'a> DeviceIDBuilder<'a> {
                 if let Some(default) = self.idevid_default_template {
                     default.trim().to_string()
                 } else {
-                    return Err(
-                        DeviceIDBuilderError::IDevIDDefaultTemplateNotSet,
-                    );
+                    return Err(DeviceIDBuilderError::IDevIDDefaultTemplateNotSet);
                 }
             }
         };
@@ -358,10 +328,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// If there is a configured IAK password, add the password to the handle
     ///
     /// If the handle is empty, recreate the IAK using the provided algorithms
-    fn get_iak(
-        &mut self,
-        tpm_ctx: &mut tpm::Context,
-    ) -> Result<IAKResult, DeviceIDBuilderError> {
+    fn get_iak(&mut self, tpm_ctx: &mut tpm::Context) -> Result<IAKResult, DeviceIDBuilderError> {
         let (asym_alg, hash_alg) = self.get_iak_template()?;
         match self.iak_handle {
             Some(handle) => {
@@ -415,9 +382,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// Get the IAK certificate
     /// If the iak_cert is not set, try to load the certificate from the iak_cert_path and cache
     /// the loaded certificate
-    fn get_iak_cert(
-        &mut self,
-    ) -> Result<Option<&X509>, DeviceIDBuilderError> {
+    fn get_iak_cert(&mut self) -> Result<Option<&X509>, DeviceIDBuilderError> {
         match self.iak_cert {
             Some(ref cert) => Ok(Some(cert)),
             None => match &self.iak_cert_path {
@@ -428,10 +393,14 @@ impl<'a> DeviceIDBuilder<'a> {
                             );
                         Ok(None)
                     } else {
-                        self.iak_cert = Some(crypto::load_x509(Path::new(path.trim())).map_err(|e| {
-                                debug!("Could not load IAK certificate from {path}: {e}");
-                                e
-                            }).map_err(DeviceIDBuilderError::CertLoad)?);
+                        self.iak_cert = Some(
+                            crypto::load_x509(Path::new(path.trim()))
+                                .map_err(|e| {
+                                    debug!("Could not load IAK certificate from {path}: {e}");
+                                    e
+                                })
+                                .map_err(DeviceIDBuilderError::CertLoad)?,
+                        );
                         if let Some(ref cert) = &self.iak_cert {
                             Ok(Some(cert))
                         } else {
@@ -447,9 +416,7 @@ impl<'a> DeviceIDBuilder<'a> {
     /// Get the IDevID certificate
     ///
     /// If the idevid_cert is not set, try to load the certificate from the idevid_cert_path and cache the loaded certificate
-    fn get_idevid_cert(
-        &mut self,
-    ) -> Result<Option<&X509>, DeviceIDBuilderError> {
+    fn get_idevid_cert(&mut self) -> Result<Option<&X509>, DeviceIDBuilderError> {
         match self.idevid_cert {
             Some(ref cert) => Ok(Some(cert)),
             None => match self.idevid_cert_path {
@@ -460,10 +427,14 @@ impl<'a> DeviceIDBuilder<'a> {
                             );
                         Ok(None)
                     } else {
-                        self.idevid_cert = Some(crypto::load_x509(Path::new(path.trim())).map_err(|e| {
-                                debug!("Could not load IAK certificate from {path}: {e}");
-                                e
-                            }).map_err(DeviceIDBuilderError::CertLoad)?);
+                        self.idevid_cert = Some(
+                            crypto::load_x509(Path::new(path.trim()))
+                                .map_err(|e| {
+                                    debug!("Could not load IAK certificate from {path}: {e}");
+                                    e
+                                })
+                                .map_err(DeviceIDBuilderError::CertLoad)?,
+                        );
                         if let Some(ref cert) = self.idevid_cert {
                             Ok(Some(cert))
                         } else {
@@ -477,10 +448,7 @@ impl<'a> DeviceIDBuilder<'a> {
     }
 
     /// Generate the DeviceID object using the previously set options
-    pub fn build(
-        mut self,
-        tpm_ctx: &mut tpm::Context,
-    ) -> Result<DeviceID, DeviceIDBuilderError> {
+    pub fn build(mut self, tpm_ctx: &mut tpm::Context) -> Result<DeviceID, DeviceIDBuilderError> {
         let idevid = self.get_idevid(tpm_ctx)?;
 
         // Flush the IDevID handle to free TPM memory
@@ -590,11 +558,7 @@ mod tests {
                 let mut tpm_ctx = tpm::Context::new().unwrap(); //#[allow_ci]
                 let result = DeviceIDBuilder::new()
                     .iak_handle("")
-                    .iak_cert_path(
-                        iak_cert
-                            .to_str()
-                            .expect("Failed to get str for IAK cert"),
-                    )
+                    .iak_cert_path(iak_cert.to_str().expect("Failed to get str for IAK cert"))
                     .iak_password("")
                     .iak_default_template("")
                     .iak_template("")

@@ -11,7 +11,7 @@ uuid = test-verifier-uuid-12345
 
 # Registrar configuration (not needed for Phase 2 testing, but required)
 registrar_ip = 127.0.0.1
-registrar_port = 8891
+registrar_port = 8890
 
 # TLS configuration - use existing TLS directory (certificates already generated)
 # Using specific directory allows us to set trusted_client_ca = all to disable client cert requirement
@@ -43,8 +43,8 @@ unified_identity_default_gpu_status = healthy
 unified_identity_default_gpu_utilization = 15.0
 unified_identity_default_gpu_memory = 10240
 
-# Disable agent mTLS for testing (not recommended for production)
-enable_agent_mtls = False
+# Enable agent mTLS so the verifier can mutually authenticate with rust-keylime agent
+enable_agent_mtls = True
 
 # Auto-migrate database
 auto_migrate_db = True

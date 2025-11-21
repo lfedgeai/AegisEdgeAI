@@ -109,23 +109,20 @@ mod tests {
         let mut ima_file = File::open(tf.path()).unwrap(); //#[allow_ci]
 
         // Request the 2nd entry, which is available
-        let (ml, nth_entry, num_entries) =
-            ima_ml.read(&mut ima_file, 2).unwrap(); //#[allow_ci]
+        let (ml, nth_entry, num_entries) = ima_ml.read(&mut ima_file, 2).unwrap(); //#[allow_ci]
         assert_eq!(num_entries, 3);
         assert_eq!(nth_entry, 2);
         assert_eq!(ml.find("2-entry").unwrap(), 0); //#[allow_ci]
 
         // Request the 3rd entry, which is not available yet, thus we get an empty list
-        let (ml, nth_entry, num_entries) =
-            ima_ml.read(&mut ima_file, 3).unwrap(); //#[allow_ci]
+        let (ml, nth_entry, num_entries) = ima_ml.read(&mut ima_file, 3).unwrap(); //#[allow_ci]
         assert_eq!(num_entries, 3);
         assert_eq!(nth_entry, 3);
         assert_eq!(ml.len(), 0); //#[allow_ci]
 
         // Request the 4th entry, which is beyond the next entry; since this is wrong,
         // we expect the entire list now.
-        let (ml, nth_entry, num_entries) =
-            ima_ml.read(&mut ima_file, 4).unwrap(); //#[allow_ci]
+        let (ml, nth_entry, num_entries) = ima_ml.read(&mut ima_file, 4).unwrap(); //#[allow_ci]
         assert_eq!(num_entries, 3);
         assert_eq!(nth_entry, 0);
         assert_eq!(ml.find("0-entry").unwrap(), 0); //#[allow_ci]

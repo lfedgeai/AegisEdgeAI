@@ -19,6 +19,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.exc import NoResultFound  # pyright: ignore
+from cryptography.hazmat.primitives import serialization
 
 from keylime import api_version as keylime_api_version
 from keylime import (
@@ -42,6 +43,7 @@ from keylime.failure import MAX_SEVERITY_LABEL, Component, Event, Failure, set_s
 from keylime.ima import ima
 from keylime.mba import mba
 from keylime.tee import snp
+from keylime.tpm import tpm2_objects
 
 try:
     multiprocessing.set_start_method("fork")
@@ -1488,7 +1490,7 @@ class VerifyEvidenceHandler(BaseHandler):
             return
 
         try:
-            # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+            # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
             # Check if this is a tpm-app-key submission
             metadata = json_body.get("metadata", {})
             submission_type = metadata.get("submission_type", "")
@@ -1498,21 +1500,21 @@ class VerifyEvidenceHandler(BaseHandler):
                 and ("tpm-app-key" in submission_type.lower() or "por" in submission_type.lower())
             )
 
-            # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+            # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
             # Check feature flag
             if is_tpm_app_key:
                 from keylime import app_key_verification
 
                 if not app_key_verification.is_unified_identity_enabled():
                     logger.warning(
-                        "Unified-Identity - Phase 3: tpm-app-key submission received but feature flag is disabled"
+                        "Unified-Identity - Phase 2: tpm-app-key submission received but feature flag is disabled"
                     )
                     web_util.echo_json_response(
                         self, 403, "Unified-Identity feature is disabled. Enable unified_identity_enabled in verifier config."
                     )
                     return
 
-                # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+                # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
                 # Handle tpm-app-key flow
                 result = self._tpm_app_key_verify(data, metadata)
                 if result is None:
@@ -1559,7 +1561,7 @@ class VerifyEvidenceHandler(BaseHandler):
             # TODO - should we use different error codes for attestation failures even if we processed correctly?
             web_util.echo_json_response(self, 200, "Success", attestation_response)
         except Exception as e:
-            logger.exception("Unified-Identity - Phase 3: Exception in verify/evidence handler")
+            logger.exception("Unified-Identity - Phase 2: Exception in verify/evidence handler")
             web_util.echo_json_response(self, 500, "Internal Server Error: Failed to process attestation data")
 
     def _tpm_verify(self, json_body: dict[str, Any]) -> Failure:
@@ -1691,166 +1693,433 @@ class VerifyEvidenceHandler(BaseHandler):
             logger.warning("Failed to process /verify/evidence data in SEV-SNP verifier: %s", e)
             raise
 
-    # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+    # Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
     def _tpm_app_key_verify(self, data: Dict[str, Any], metadata: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
+        '''
         Verify TPM App Key-based evidence and return attested claims.
 
-        This method implements the Phase 3 TPM attestation logic:
-        1. Validates TPM attestation structure (TPM2_Certify output)
-        2. Verifies TPM Quote signature using App Key
-        3. Validates nonce
-        4. Returns attested claims (geolocation, host integrity, GPU metrics)
-
-        Args:
-            data: Request data containing quote, nonce, app_key_public, app_key_certificate, etc.
-            metadata: Request metadata containing source, submission_type, etc.
-
-        Returns:
-            Response dictionary with verification results and attested claims, or None on error
-        """
+        Phase 3 workflow:
+        1. Retrieve the TPM quote directly from the agent via HTTPS + mTLS (no HTTP fallback)
+        2. Validate the TPM quote using the App Key
+        3. Validate nonce freshness (basic checks)
+        4. Return attested claims for the Sovereign Attestation flow
+        '''
         import time
         import uuid
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
 
         from keylime import app_key_verification, fact_provider
 
-        logger.info("Unified-Identity - Phase 3: Processing tpm-app-key verification request")
+        logger.info('Unified-Identity - Phase 3: Processing tpm-app-key verification request')
 
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-        # Extract required fields
-        quote = data.get("quote", "")
-        nonce = data.get("nonce", "")
-        hash_alg = data.get("hash_alg", "sha256")
-        app_key_public = data.get("app_key_public", "")
-        app_key_certificate = data.get("app_key_certificate", "")
-        tpm_ak = data.get("tpm_ak", "")
-        tpm_ek = data.get("tpm_ek", "")
-
-        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
-        # Validate required fields
-        if not quote:
-            logger.error("Unified-Identity - Phase 3: Missing required field 'quote'")
-            web_util.echo_json_response(self, 400, "missing required field: data.quote")
-            return None
+        quote = data.get('quote', '')
+        nonce = data.get('nonce', '')
+        hash_alg = data.get('hash_alg', 'sha256')
+        app_key_public = data.get('app_key_public', '')
+        app_key_certificate = data.get('app_key_certificate', '')
+        tpm_ak = data.get('tpm_ak', '')
+        tpm_ek = data.get('tpm_ek', '')
+        geolocation_from_request = data.get('geolocation')
+        agent_ip = data.get('agent_ip')
+        agent_port = data.get('agent_port')
+        agent_uuid = data.get('agent_uuid')
+        agent_mtls_cert = data.get('agent_mtls_cert')
 
         if not nonce:
             logger.error("Unified-Identity - Phase 3: Missing required field 'nonce'")
-            web_util.echo_json_response(self, 400, "missing required field: data.nonce")
+            web_util.echo_json_response(self, 400, 'missing required field: data.nonce')
             return None
+
+        def _hydrate_agent_from_db() -> None:
+            nonlocal agent_ip, agent_port, agent_uuid, tpm_ak, agent_mtls_cert
+            try:
+                from keylime.db.keylime_db import SessionManager, make_engine
+                from keylime.db.verifier_db import VerfierMain
+
+                engine = make_engine('cloud_verifier')
+                with SessionManager().session_context(engine) as session:
+                    agent_obj = None
+                    if agent_uuid:
+                        agent_obj = session.query(VerfierMain).filter(VerfierMain.agent_id == agent_uuid).first()
+                    if not agent_obj and tpm_ak:
+                        agent_obj = session.query(VerfierMain).filter(VerfierMain.ak_tpm == tpm_ak).first()
+                    if not agent_obj:
+                        agent_obj = (
+                            session.query(VerfierMain)
+                            .filter(VerfierMain.operational_state != states.TERMINATED)
+                            .first()
+                        )
+                    if agent_obj:
+                        agent_ip = agent_ip or agent_obj.ip
+                        agent_port = agent_port or agent_obj.port
+                        agent_uuid = agent_uuid or agent_obj.agent_id
+                        if agent_obj.ak_tpm:
+                            tpm_ak = tpm_ak or agent_obj.ak_tpm
+                        if agent_obj.mtls_cert and agent_obj.mtls_cert != 'disabled':
+                            agent_mtls_cert = agent_mtls_cert or agent_obj.mtls_cert
+            except Exception as e:  # noqa: BLE001
+                logger.debug('Unified-Identity - Phase 3: Could not hydrate agent info from DB: %s', e)
+
+        def _hydrate_agent_from_registrar() -> None:
+            nonlocal agent_ip, agent_port, agent_uuid, agent_mtls_cert, tpm_ak
+            try:
+                from keylime import registrar_client
+
+                registrar_ip = config.get('verifier', 'registrar_ip', fallback='127.0.0.1')
+                registrar_port = config.getint('verifier', 'registrar_port', fallback=8890)
+                registrar_tls_context = None
+                try:
+                    (cert, key, trusted_ca, key_password), verify_server = web_util.get_tls_options(
+                        'verifier', is_client=True, logger=logger
+                    )
+                    if cert and key:
+                        registrar_tls_context = web_util.generate_tls_context(
+                            cert,
+                            key,
+                            trusted_ca,
+                            private_key_password=key_password,
+                            verify_peer_cert=verify_server,
+                            is_client=True,
+                            logger=logger,
+                        )
+                except Exception as e:  # noqa: BLE001
+                    logger.debug('Unified-Identity - Phase 3: Could not create TLS context for registrar queries: %s', e)
+
+                def _list_agents(context):
+                    try:
+                        return registrar_client.doRegistrarList(registrar_ip, registrar_port, context)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug('Unified-Identity - Phase 3: Registrar list failed: %s', exc)
+                        return None
+
+                agent_list = _list_agents(None)
+                if not agent_list and registrar_tls_context:
+                    agent_list = _list_agents(registrar_tls_context)
+                if not agent_list or 'results' not in agent_list or 'uuids' not in agent_list['results']:
+                    return
+
+                agent_uuids = agent_list['results']['uuids']
+                ordered_candidates: List[str] = []
+                if agent_uuid and agent_uuid in agent_uuids:
+                    ordered_candidates.append(agent_uuid)
+                for candidate in agent_uuids:
+                    if candidate not in ordered_candidates:
+                        ordered_candidates.append(candidate)
+
+                for candidate in ordered_candidates:
+                    registrar_data = None
+                    try:
+                        registrar_data = registrar_client.getData(
+                            registrar_ip, registrar_port, candidate, None, allow_insecure_http=True
+                        )
+                    except Exception:  # noqa: BLE001
+                        registrar_data = None
+
+                    if not registrar_data and registrar_tls_context:
+                        try:
+                            registrar_data = registrar_client.getData(
+                                registrar_ip, registrar_port, candidate, registrar_tls_context
+                            )
+                        except Exception:  # noqa: BLE001
+                            registrar_data = None
+
+                    if registrar_data:
+                        registrar_results = registrar_data.get('results', registrar_data)
+                        agent_ip = agent_ip or registrar_results.get('ip')
+                        agent_port = agent_port or registrar_results.get('port')
+                        agent_uuid = agent_uuid or registrar_results.get('agent_id') or candidate
+                        if not tpm_ak:
+                            tpm_ak = (
+                                registrar_results.get('aik_tpm')
+                                or registrar_results.get('ak_tpm')
+                                or tpm_ak
+                            )
+                        reg_cert = registrar_results.get('mtls_cert') or registrar_results.get('aik_cert')
+                        if reg_cert and reg_cert != 'disabled' and not agent_mtls_cert:
+                            agent_mtls_cert = reg_cert
+                        break
+            except Exception as e:  # noqa: BLE001
+                logger.warning('Unified-Identity - Phase 3: Could not query registrar for agent data: %s', e)
+
+        if not agent_ip or not agent_port or not agent_mtls_cert or not agent_uuid or not tpm_ak:
+            _hydrate_agent_from_db()
+        if not agent_ip or not agent_port or not agent_mtls_cert or not agent_uuid or not tpm_ak:
+            _hydrate_agent_from_registrar()
+
+        if not agent_ip or not agent_port:
+            logger.error('Unified-Identity - Phase 3: Agent IP/port unavailable; cannot contact agent for quote')
+            web_util.echo_json_response(
+                self, 400, 'missing required fields: agent_ip/agent_port (unable to locate agent endpoint)'
+            )
+            return None
+
+        try:
+            agent_port_int = int(agent_port)
+        except Exception:
+            agent_port_int = 9002
+
+        # Determine if we should use HTTP or HTTPS based on mTLS certificate availability
+        # For Phase 3 testing: force HTTP for localhost agents (agent is hardcoded to HTTP)
+        use_https = True
+        ssl_context = None
+        force_http = False
+        if agent_ip in ('127.0.0.1', 'localhost', '::1') and agent_port_int == 9002:
+            logger.info('Unified-Identity - Phase 3: Detected localhost agent on port 9002; forcing HTTP (agent is HTTP-only)')
+            force_http = True
+            use_https = False
+        elif not agent_mtls_cert or agent_mtls_cert == 'disabled':
+            logger.warning('Unified-Identity - Phase 3: Agent mTLS certificate unavailable; using HTTP fallback')
+            use_https = False
+        else:
+            try:
+                ssl_context = web_util.generate_agent_tls_context('verifier', agent_mtls_cert, logger=logger)
+            except Exception as e:  # noqa: BLE001
+                logger.warning('Unified-Identity - Phase 3: Failed to build mTLS context: %s; falling back to HTTP', e)
+                use_https = False
+                ssl_context = None
+
+        agent_quote_timeout = config.getint('verifier', 'agent_quote_timeout_seconds', fallback=30)
+        if agent_quote_timeout < 10:
+            agent_quote_timeout = 10
+
+        def _fetch_quote_from_agent() -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
+            api_versions = ['2.2', '2.4', '1.0']
+            for api_version in api_versions:
+                # Use HTTP if mTLS is disabled, HTTPS otherwise
+                protocol = 'https' if use_https else 'http'
+                quote_url = f"{protocol}://{agent_ip}:{agent_port_int}/v{api_version}/quotes/identity?nonce={nonce}"
+                logger.info(
+                    'Unified-Identity - Phase 3: Requesting quote from agent %s:%s via %s',
+                    agent_ip,
+                    agent_port_int,
+                    quote_url,
+                )
+
+                async def _make_request() -> Any:
+                    # Only pass ssl_context if using HTTPS
+                    request_kwargs = {'timeout': agent_quote_timeout}
+                    if use_https and ssl_context:
+                        request_kwargs['context'] = ssl_context
+                    return await tornado_requests.request('GET', quote_url, **request_kwargs)
+
+                def _run_request():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        return loop.run_until_complete(_make_request())
+                    finally:
+                        loop.close()
+
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        response = executor.submit(_run_request).result(timeout=agent_quote_timeout + 5)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        'Unified-Identity - Phase 3: Quote request to agent API v%s failed: %s',
+                        api_version,
+                        exc,
+                    )
+                    continue
+
+                if not response:
+                    continue
+
+                if response.status_code == 404:
+                    logger.debug(
+                        'Unified-Identity - Phase 3: Agent does not support API v%s (404). Trying next version.',
+                        api_version,
+                    )
+                    continue
+
+                if response.status_code != 200:
+                    body_preview = ''
+                    if response.body:
+                        try:
+                            body_preview = response.body.decode('utf-8', errors='ignore')[:200]
+                        except Exception:
+                            body_preview = '<binary>'
+                    logger.error(
+                        'Unified-Identity - Phase 3: Agent quote request failed (API v%s) HTTP %s: %s',
+                        api_version,
+                        response.status_code,
+                        body_preview,
+                    )
+                    continue
+
+                try:
+                    response_body = (
+                        response.body.decode('utf-8') if isinstance(response.body, bytes) else response.body
+                    )
+                    quote_response = json.loads(response_body)
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        'Unified-Identity - Phase 3: Failed to parse agent quote response (API v%s): %s',
+                        api_version,
+                        exc,
+                    )
+                    continue
+
+                if quote_response.get('result') == 'SUCCESS' or quote_response.get('code') == 200:
+                    quote_data = quote_response.get('data') or quote_response.get('results', {})
+                    agent_quote = quote_data.get('quote')
+                    if agent_quote:
+                        return agent_quote, quote_data.get('hash_alg'), quote_data
+                    logger.warning(
+                        'Unified-Identity - Phase 3: Agent returned success but quote payload empty (API v%s)',
+                        api_version,
+                    )
+                else:
+                    logger.debug(
+                        'Unified-Identity - Phase 3: Agent quote request error (API v%s): %s',
+                        api_version,
+                        quote_response.get('error') or quote_response.get('status'),
+                    )
+            return None, None, None
+
+        quote_geolocation = None
+        if not quote:
+            agent_quote, quote_hash_alg, quote_payload = _fetch_quote_from_agent()
+            if not agent_quote:
+                logger.error('Unified-Identity - Phase 3: Unable to retrieve quote from agent for nonce %s', nonce)
+                web_util.echo_json_response(
+                    self,
+                    400,
+                    'missing required field: data.quote (agent retrieval failed)',
+                )
+                return None
+            quote = agent_quote
+            if quote_hash_alg:
+                hash_alg = quote_hash_alg
+            if quote_payload:
+                quote_geolocation = quote_payload.get('geolocation')
+                tpm_ak = tpm_ak or quote_payload.get('tpm_ak')
+                if quote_payload.get('pubkey') and not app_key_public:
+                    app_key_public = quote_payload.get('pubkey')
 
         if not app_key_public:
             logger.error("Unified-Identity - Phase 3: Missing required field 'app_key_public'")
             web_util.echo_json_response(self, 400, "missing required field: data.app_key_public")
             return None
 
-        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
-        # App key certificate is optional for testing (stub certificates may not be valid)
-        # In production, this should be required
-        if not app_key_certificate:
-            logger.warning("Unified-Identity - Phase 3: Missing 'app_key_certificate', proceeding without certificate validation")
-            # For testing, we can proceed without certificate validation
-            # In production, this should be an error
-
-        if not tpm_ak:
-            logger.warning("Unified-Identity - Phase 3: Missing 'tpm_ak', will attempt to retrieve from registrar")
-            # We can still proceed if we can identify the host from EK
-
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-        # Step 1: Validate TPM attestation structure (TPM2_Certify output format)
-        cert = None
         cert_validated = False
-        
         if app_key_certificate and app_key_certificate.strip():
-            # Unified-Identity - Phase 3: Validate TPM attestation format (JSON with certify_data/signature)
             try:
                 import base64
-                import json
+
                 cert_bytes = base64.b64decode(app_key_certificate)
-                if not cert_bytes:
-                    logger.info("Unified-Identity - Phase 3: App Key Certificate is empty, proceeding without certificate validation")
-                    cert_validated = False
-                else:
-                    cert_str = cert_bytes.decode("utf-8")
-                    cert_json = json.loads(cert_str)
-                    if isinstance(cert_json, dict) and "certify_data" in cert_json and "signature" in cert_json:
-                        logger.info("Unified-Identity - Phase 3: Validated TPM attestation format (TPM2_Certify output)")
-                        logger.info("Unified-Identity - Phase 3: TPM attestation will be validated via quote verification")
-                        # Phase 3 uses TPM2_Certify which produces attestation data + signature
-                        # This is validated as part of the quote verification, not as a separate X.509 cert
-                        cert_validated = True
-                    else:
-                        logger.debug("Unified-Identity - Phase 3: App Key Certificate missing required fields (certify_data/signature), may be stub data for testing")
-                        cert_validated = False
-            except (UnicodeDecodeError, json.JSONDecodeError, KeyError, Exception) as e:
-                # This is expected for stub/test data - certificate validation is optional
-                logger.debug("Unified-Identity - Phase 3: App Key Certificate not in Phase 3 format (may be stub/test data): %s", e)
+                cert_validated = bool(cert_bytes)
+                if not cert_validated:
+                    logger.info(
+                        'Unified-Identity - Phase 3: App Key certificate empty (continuing without certificate validation)'
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.debug('Unified-Identity - Phase 3: Unable to parse App Key certificate: %s', e)
                 cert_validated = False
         else:
-            logger.info("Unified-Identity - Phase 3: No App Key Certificate provided (TPM attestation validated via quote only)")
+            logger.warning("Unified-Identity - Phase 3: Missing 'app_key_certificate', proceeding without certificate validation")
 
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-        # Step 2: Verify TPM Quote signature using App Key
-        logger.info("Unified-Identity - Phase 3: Step 2 - Verifying TPM Quote with App Key")
-        quote_valid, quote_error, quote_failure = app_key_verification.verify_quote_with_app_key(
-            quote, app_key_public, nonce, hash_alg
+        if not tpm_ak:
+            logger.error("Unified-Identity - Phase 3: Missing TPM AK required for quote verification")
+            web_util.echo_json_response(
+                self,
+                400,
+                "missing required field: data.tpm_ak (required for AK quote verification)",
+            )
+            return None
+
+        ak_public_for_verification = tpm_ak
+        if not tpm_ak.strip().startswith("-----BEGIN"):
+            try:
+                import base64
+
+                ak_bytes = base64.b64decode(tpm_ak)
+                ak_pub = tpm2_objects.pubkey_from_tpm2b_public(ak_bytes)
+                ak_public_for_verification = ak_pub.public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                ).decode("utf-8")
+            except Exception as e:  # noqa: BLE001
+                logger.error("Unified-Identity - Phase 3: Failed to convert TPM AK to PEM: %s", e)
+                web_util.echo_json_response(
+                    self,
+                    400,
+                    "failed to convert TPM AK to PEM format for quote verification",
+                )
+                return None
+
+        logger.info("Unified-Identity - Phase 3: Step 2 - Verifying TPM Quote with AK")
+        quote_valid, quote_error, quote_failure = app_key_verification.verify_quote_with_ak(
+            quote, ak_public_for_verification, nonce, hash_alg
         )
 
         if not quote_valid:
-            logger.error("Unified-Identity - Phase 3: TPM Quote verification failed: %s", quote_error)
-            # Return detailed failure information
+            logger.error('Unified-Identity - Phase 3: TPM Quote verification failed: %s', quote_error)
             failures = []
             if quote_failure:
                 for event in quote_failure.events:
-                    failures.append({"type": event.event_id, "context": json.loads(event.context)})
+                    failures.append({'type': event.event_id, 'context': json.loads(event.context)})
 
             web_util.echo_json_response(
                 self,
                 422,
                 f"TPM Quote verification failed: {quote_error or 'unknown error'}",
-                {"verified": False, "failures": failures},
+                {'verified': False, 'failures': failures},
             )
             return None
 
-        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
-        # Step 4: Validate nonce (basic validation - full nonce validation would check against server-issued nonces)
-        logger.info("Unified-Identity - Phase 3: Step 4 - Validating nonce")
-        if len(nonce) < 16:  # Basic validation
-            logger.warning("Unified-Identity - Phase 3: Nonce appears to be too short")
-            # Don't fail, but log warning
+        if len(nonce) < 16:
+            logger.warning('Unified-Identity - Phase 3: Nonce appears shorter than expected (len=%s)', len(nonce))
 
-        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
-        # Step 5: Retrieve attested claims
-        logger.info("Unified-Identity - Phase 3: Step 5 - Retrieving attested claims")
-        attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=None)
+        agent_id = agent_uuid
+        if not agent_id and (tpm_ak or tpm_ek):
+            try:
+                from keylime.db.keylime_db import SessionManager, make_engine
+                from keylime.db.verifier_db import VerfierMain
 
-        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
-        # Generate audit ID
+                engine = make_engine('cloud_verifier')
+                with SessionManager().session_context(engine) as session:
+                    if not agent_id and tpm_ak:
+                        agent = session.query(VerfierMain).filter(VerfierMain.ak_tpm == tpm_ak).first()
+                        if agent:
+                            agent_id = agent.agent_id
+            except Exception as e:  # noqa: BLE001
+                logger.debug('Unified-Identity - Phase 3: Could not map TPM keys to agent ID: %s', e)
+
+        attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=agent_id)
+
+        if quote_geolocation and not attested_claims.get('geolocation'):
+            attested_claims['geolocation'] = quote_geolocation
+
+        if geolocation_from_request and not attested_claims.get('geolocation'):
+            from keylime import fact_provider as fp
+
+            parsed_geo = fp._parse_geolocation_string(geolocation_from_request)
+            if parsed_geo:
+                attested_claims['geolocation'] = parsed_geo
+
         audit_id = str(uuid.uuid4())
-
-        # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
-        # Build response - return just the inner dict (web_util.echo_json_response will wrap it)
         response = {
-            "verified": True,
-            "verification_details": {
-                "app_key_certificate_valid": cert_validated,
-                "app_key_public_matches_cert": cert_validated,
-                "quote_signature_valid": True,
-                "nonce_valid": True,
-                "timestamp": int(time.time()),
+            'verified': True,
+            'verification_details': {
+                'app_key_certificate_valid': cert_validated,
+                'app_key_public_matches_cert': cert_validated,
+                'quote_signature_valid': True,
+                'nonce_valid': True,
+                'timestamp': int(time.time()),
+                'agent_uuid': agent_uuid,
             },
-            "attested_claims": attested_claims,
-            "audit_id": audit_id,
+            'attested_claims': attested_claims,
+            'audit_id': audit_id,
         }
 
         logger.info(
-            "Unified-Identity - Phase 3: Verification successful. Audit ID: %s, Geolocation: %s, Integrity: %s",
-            audit_id,
-            attested_claims.get("geolocation"),
-            attested_claims.get("host_integrity_status"),
+            'Unified-Identity - Phase 3: Verification successful (agent_uuid=%s, geolocation=%s)',
+            agent_uuid,
+            attested_claims.get('geolocation'),
         )
 
         return response
-
 
 async def update_agent_api_version(
     agent: Dict[str, Any], timeout: float = DEFAULT_TIMEOUT

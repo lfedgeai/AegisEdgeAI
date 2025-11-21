@@ -1,6 +1,5 @@
 use crate::{
-    hostname_parser::HostnameParsingError, ip_parser::IpParsingError,
-    list_parser::ListParsingError,
+    hostname_parser::HostnameParsingError, ip_parser::IpParsingError, list_parser::ListParsingError,
 };
 use config::ConfigError;
 use thiserror::Error;
@@ -41,9 +40,7 @@ pub enum KeylimeConfigError {
     IpParsing(#[from] IpParsingError),
 
     // Unsupported type in configuration
-    #[error(
-        "Unsupported type conversion from serde_json::Value to config::Value"
-    )]
+    #[error("Unsupported type conversion from serde_json::Value to config::Value")]
     JsonConversion,
 
     // List parsing error
@@ -51,9 +48,7 @@ pub enum KeylimeConfigError {
     ListParsing(#[from] ListParsingError),
 
     // Missing directory set in keylime_dir configuration option
-    #[error(
-        "Missing directory {path} set in 'revocation_actions_dir' configuration option"
-    )]
+    #[error("Missing directory {path} set in 'revocation_actions_dir' configuration option")]
     MissingActionsDir {
         path: String,
         source: std::io::Error,
@@ -64,9 +59,7 @@ pub enum KeylimeConfigError {
     MissingEnvConfigFile { file: String },
 
     // Missing directory set in keylime_dir configuration option
-    #[error(
-        "Missing directory {path} set in 'keylime_dir' configuration option"
-    )]
+    #[error("Missing directory {path} set in 'keylime_dir' configuration option")]
     MissingKeylimeDir {
         path: String,
         source: std::io::Error,

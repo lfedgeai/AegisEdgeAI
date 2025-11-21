@@ -35,9 +35,7 @@ impl GetErrorInput for VersionParsingError {
     fn input(&self) -> String {
         match self {
             VersionParsingError::MalformedVersion { input } => input.into(),
-            VersionParsingError::ParseError { input, source: _ } => {
-                input.into()
-            }
+            VersionParsingError::ParseError { input, source: _ } => input.into(),
         }
     }
 }
@@ -52,9 +50,7 @@ where
     }
 }
 
-#[derive(
-    Clone, Debug, Deserialize, Eq, PartialEq, PartialOrd, Ord, Serialize,
-)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 pub struct Version {
     major: u32,
     minor: u32,
@@ -73,17 +69,13 @@ impl FromStr for Version {
         let mut parts = input.split('.');
         match (parts.next(), parts.next()) {
             (Some(major), Some(minor)) => Ok(Version {
-                major: major.parse().map_err(|e| {
-                    VersionParsingError::ParseError {
-                        input: input.to_string(),
-                        source: e,
-                    }
+                major: major.parse().map_err(|e| VersionParsingError::ParseError {
+                    input: input.to_string(),
+                    source: e,
                 })?,
-                minor: minor.parse().map_err(|e| {
-                    VersionParsingError::ParseError {
-                        input: input.to_string(),
-                        source: e,
-                    }
+                minor: minor.parse().map_err(|e| VersionParsingError::ParseError {
+                    input: input.to_string(),
+                    source: e,
                 })?,
             }),
             _ => Err(VersionParsingError::MalformedVersion {

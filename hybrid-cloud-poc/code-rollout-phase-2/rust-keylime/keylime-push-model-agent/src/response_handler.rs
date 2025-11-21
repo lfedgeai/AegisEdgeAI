@@ -1,18 +1,12 @@
 use anyhow::{anyhow, Result};
-use keylime::structures::{
-    AttestationResponse, ChosenParameters, EvidenceRequest,
-};
+use keylime::structures::{AttestationResponse, ChosenParameters, EvidenceRequest};
 use log::warn;
 use std::collections::HashMap;
 
-pub fn process_negotiation_response(
-    response_body: &str,
-) -> Result<Vec<EvidenceRequest>> {
-    let verifier_response: AttestationResponse =
-        serde_json::from_str(response_body)?;
+pub fn process_negotiation_response(response_body: &str) -> Result<Vec<EvidenceRequest>> {
+    let verifier_response: AttestationResponse = serde_json::from_str(response_body)?;
 
-    let evidence_requests =
-        &verifier_response.data.attributes.evidence_requested;
+    let evidence_requests = &verifier_response.data.attributes.evidence_requested;
 
     let mut result_requests = Vec::new();
 
@@ -23,18 +17,9 @@ pub fn process_negotiation_response(
                     &evidence_request.chosen_parameters
                 {
                     result_requests.push(EvidenceRequest::TpmQuote {
-                        challenge: params_box
-                            .challenge
-                            .clone()
-                            .unwrap_or_default(),
-                        signature_scheme: params_box
-                            .signature_scheme
-                            .clone()
-                            .unwrap_or_default(),
-                        hash_algorithm: params_box
-                            .hash_algorithm
-                            .clone()
-                            .unwrap_or_default(),
+                        challenge: params_box.challenge.clone().unwrap_or_default(),
+                        signature_scheme: params_box.signature_scheme.clone().unwrap_or_default(),
+                        hash_algorithm: params_box.hash_algorithm.clone().unwrap_or_default(),
                         selected_subjects: params_box
                             .selected_subjects
                             .as_ref()
@@ -47,13 +32,12 @@ pub fn process_negotiation_response(
                 }
             }
             "ima_log" => {
-                let (starting_offset, entry_count) =
-                    match &evidence_request.chosen_parameters {
-                        Some(ChosenParameters::Offset(offset)) => {
-                            (offset.starting_offset, offset.entry_count)
-                        }
-                        _ => (None, None),
-                    };
+                let (starting_offset, entry_count) = match &evidence_request.chosen_parameters {
+                    Some(ChosenParameters::Offset(offset)) => {
+                        (offset.starting_offset, offset.entry_count)
+                    }
+                    _ => (None, None),
+                };
 
                 result_requests.push(EvidenceRequest::ImaLog {
                     starting_offset,
@@ -64,7 +48,7 @@ pub fn process_negotiation_response(
             }
             "uefi_log" => {
                 result_requests.push(EvidenceRequest::UefiLog {
-                    format: None, // TODO: Extract format from chosen_parameters if available
+                    format: None,   // TODO: Extract format from chosen_parameters if available
                     log_path: None, // Will be set later by the caller
                 });
             }
@@ -92,11 +76,7 @@ pub fn prepare_evidence_requests_from_response(
     let mut evidence_requests = process_negotiation_response(response_body)?;
 
     // Set log paths
-    set_evidence_log_paths(
-        &mut evidence_requests,
-        ima_log_path,
-        uefi_log_path,
-    );
+    set_evidence_log_paths(&mut evidence_requests, ima_log_path, uefi_log_path);
 
     Ok(evidence_requests)
 }
@@ -369,20 +349,15 @@ mod tests {
     #[test]
     fn test_process_negotiation_response_invalid_cases() {
         // No evidence requests at all should fail
-        let result =
-            process_negotiation_response(INVALID_RESPONSE_NO_EVIDENCE);
+        let result = process_negotiation_response(INVALID_RESPONSE_NO_EVIDENCE);
         assert!(result.is_err());
 
         // Only unknown evidence types should fail
-        let result = process_negotiation_response(
-            INVALID_RESPONSE_UNKNOWN_EVIDENCE_ONLY,
-        );
+        let result = process_negotiation_response(INVALID_RESPONSE_UNKNOWN_EVIDENCE_ONLY);
         assert!(result.is_err());
 
         // Invalid TPM quote parameters should fail
-        let result = process_negotiation_response(
-            INVALID_RESPONSE_INVALID_TPM_QUOTE_PARAMETERS,
-        );
+        let result = process_negotiation_response(INVALID_RESPONSE_INVALID_TPM_QUOTE_PARAMETERS);
         assert!(result.is_err());
     }
 
@@ -416,16 +391,10 @@ mod tests {
         for request in &evidence_requests {
             match request {
                 EvidenceRequest::ImaLog { log_path, .. } => {
-                    assert_eq!(
-                        log_path.as_ref().unwrap(),
-                        "/path/to/ima.log"
-                    );
+                    assert_eq!(log_path.as_ref().unwrap(), "/path/to/ima.log");
                 }
                 EvidenceRequest::UefiLog { log_path, .. } => {
-                    assert_eq!(
-                        log_path.as_ref().unwrap(),
-                        "/path/to/uefi.log"
-                    );
+                    assert_eq!(log_path.as_ref().unwrap(), "/path/to/uefi.log");
                 }
                 _ => {}
             }

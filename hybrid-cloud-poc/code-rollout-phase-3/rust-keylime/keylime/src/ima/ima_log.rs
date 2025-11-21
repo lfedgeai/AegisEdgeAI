@@ -10,9 +10,7 @@ pub struct ImaLog {
 impl ImaLog {
     pub fn new(log_path: &str) -> Result<Self> {
         let contents = fs::read_to_string(log_path).map_err(|e| {
-            KeylimeError::Other(format!(
-                "Unable to parse IMA file {log_path}: {e:?}"
-            ))
+            KeylimeError::Other(format!("Unable to parse IMA file {log_path}: {e:?}"))
         })?;
         let entries = contents
             .lines()
@@ -28,11 +26,7 @@ impl ImaLog {
     pub fn entry_count(&self) -> usize {
         self.entries.len()
     }
-    pub fn get_entries(
-        &self,
-        offset: usize,
-        entry_count: Option<usize>,
-    ) -> Vec<String> {
+    pub fn get_entries(&self, offset: usize, entry_count: Option<usize>) -> Vec<String> {
         if offset >= self.entries.len() {
             return Vec::new();
         }
@@ -45,11 +39,7 @@ impl ImaLog {
             .map(|entry| entry.raw_line.clone())
             .collect()
     }
-    pub fn get_entries_as_string(
-        &self,
-        offset: usize,
-        entry_count: Option<usize>,
-    ) -> String {
+    pub fn get_entries_as_string(&self, offset: usize, entry_count: Option<usize>) -> String {
         let entries = self.get_entries(offset, entry_count);
         let mut result = entries.join("\n");
         if !result.is_empty() {
@@ -116,12 +106,10 @@ mod tests {
     #[test]
     fn test_get_all_entries_as_string() {
         let log_path = "test-data/ima_log.txt";
-        let ima_log =
-            ImaLog::new(log_path).expect("Failed to create ImaLog from file");
-        let original_content = fs::read_to_string(log_path)
-            .expect("Failed to read original log file");
-        let result_string =
-            ima_log.get_entries_as_string(0, Some(ima_log.entry_count()));
+        let ima_log = ImaLog::new(log_path).expect("Failed to create ImaLog from file");
+        let original_content =
+            fs::read_to_string(log_path).expect("Failed to read original log file");
+        let result_string = ima_log.get_entries_as_string(0, Some(ima_log.entry_count()));
         assert_eq!(result_string, original_content);
     }
 }

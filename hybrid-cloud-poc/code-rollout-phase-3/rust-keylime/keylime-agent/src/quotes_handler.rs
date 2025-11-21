@@ -2,11 +2,11 @@
 // Copyright 2021 Keylime Authors
 
 use crate::crypto;
-use crate::geolocation;
 use crate::serialization::serialize_maybe_base64;
 use crate::{tpm, Error as KeylimeError, QuoteData};
 use actix_web::{http, web, HttpRequest, HttpResponse, Responder};
 use base64::{engine::general_purpose, Engine as _};
+use hex;
 use keylime::{
     json_wrapper::JsonWrapper,
     quote::{Integ, KeylimeQuote},
@@ -34,7 +34,10 @@ async fn identity(
 ) -> impl Responder {
     // nonce can only be in alphanumerical format
     if !param.nonce.chars().all(char::is_alphanumeric) {
-        warn!("Get quote returning 400 response. Parameters should be strictly alphanumeric: {}", param.nonce);
+        warn!(
+            "Get quote returning 400 response. Parameters should be strictly alphanumeric: {}",
+            param.nonce
+        );
         return HttpResponse::BadRequest().json(JsonWrapper::error(
             400,
             format!(
@@ -44,15 +47,21 @@ async fn identity(
         ));
     }
 
-    if param.nonce.len() > tpm::MAX_NONCE_SIZE {
-        warn!("Get quote returning 400 response. Nonce is too long (max size {}): {}",
-              tpm::MAX_NONCE_SIZE,
-              param.nonce.len()
+    // Note: param.nonce is a hex string, so its length in characters is 2x the byte length
+    // We'll validate the decoded byte length after decoding
+    // For now, check that hex string length is reasonable (max 64 hex chars = 32 bytes)
+    if param.nonce.len() > tpm::MAX_NONCE_SIZE * 2 {
+        warn!(
+            "Get quote returning 400 response. Nonce hex string is too long (max {} hex chars for {} bytes): {}",
+            tpm::MAX_NONCE_SIZE * 2,
+            tpm::MAX_NONCE_SIZE,
+            param.nonce.len()
         );
         return HttpResponse::BadRequest().json(JsonWrapper::error(
             400,
             format!(
-                "Nonce is too long (max size {}): {}",
+                "Nonce hex string is too long (max {} hex chars for {} bytes): {}",
+                tpm::MAX_NONCE_SIZE * 2,
                 tpm::MAX_NONCE_SIZE,
                 param.nonce
             ),
@@ -61,31 +70,44 @@ async fn identity(
 
     debug!("Calling Identity Quote with nonce: {}", param.nonce);
 
+    // Decode hex nonce string to bytes
+    // The nonce comes from the HTTP query parameter as a hex string (e.g., "a1d071f5...")
+    // We need to decode it to bytes, not treat it as ASCII
+    let nonce_bytes = match hex::decode(&param.nonce) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            warn!("Invalid hex nonce format: {} (error: {})", param.nonce, e);
+            return HttpResponse::BadRequest().json(JsonWrapper::error(
+                400,
+                format!("Invalid hex nonce format: {}", e),
+            ));
+        }
+    };
+
+    // Validate nonce size (TPM supports up to 32 bytes for SHA-256)
+    if nonce_bytes.len() > tpm::MAX_NONCE_SIZE {
+        warn!(
+            "Nonce too long after hex decode: {} bytes (max: {})",
+            nonce_bytes.len(),
+            tpm::MAX_NONCE_SIZE
+        );
+        return HttpResponse::BadRequest().json(JsonWrapper::error(
+            400,
+            format!(
+                "Nonce too long: {} bytes (max: {})",
+                nonce_bytes.len(),
+                tpm::MAX_NONCE_SIZE
+            ),
+        ));
+    }
+
     // must unwrap here due to lock mechanism
     // https://github.com/rust-lang-nursery/failure/issues/192
     let mut context = data.tpmcontext.lock().unwrap(); //#[allow_ci]
 
-    // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-    // Extend geolocation into PCR 17 for TPM-bound attestation
-    let mut quote_mask = 0u32;
-    let mut geolocation_str: Option<String> = None;
-    if geolocation::is_unified_identity_enabled() {
-        match geolocation::extend_geolocation_into_pcr(&mut *context, param.nonce.as_bytes(), data.hash_alg) {
-            Ok(geo) => {
-                // Include PCR 17 in the quote mask (bit 17 = 0x20000)
-                quote_mask |= 0x20000;
-                geolocation_str = Some(geo);
-                info!("Unified-Identity - Phase 3: Geolocation extended into PCR 17, included in quote mask");
-            }
-            Err(e) => {
-                warn!("Unified-Identity - Phase 3: Failed to extend geolocation into PCR 17: {:?}, continuing without geolocation attestation", e);
-            }
-        }
-    }
-
     let tpm_quote = match context.quote(
-        param.nonce.as_bytes(),
-        quote_mask,
+        &nonce_bytes,
+        0,
         &data.payload_pub_key,
         data.ak_handle,
         data.hash_alg,
@@ -94,12 +116,10 @@ async fn identity(
         Ok(quote) => quote,
         Err(e) => {
             debug!("Unable to retrieve quote: {e:?}");
-            return HttpResponse::InternalServerError().json(
-                JsonWrapper::error(
-                    500,
-                    "Unable to retrieve quote".to_string(),
-                ),
-            );
+            return HttpResponse::InternalServerError().json(JsonWrapper::error(
+                500,
+                "Unable to retrieve quote".to_string(),
+            ));
         }
     };
 
@@ -108,7 +128,6 @@ async fn identity(
         hash_alg: data.hash_alg.to_string(),
         enc_alg: data.enc_alg.to_string(),
         sign_alg: data.sign_alg.to_string(),
-        geolocation: geolocation_str.clone(),
         ..Default::default()
     };
 
@@ -116,12 +135,10 @@ async fn identity(
         Ok(pubkey) => quote.pubkey = Some(pubkey),
         Err(e) => {
             debug!("Unable to retrieve public key for quote: {e:?}");
-            return HttpResponse::InternalServerError().json(
-                JsonWrapper::error(
-                    500,
-                    "Unable to retrieve quote".to_string(),
-                ),
-            );
+            return HttpResponse::InternalServerError().json(JsonWrapper::error(
+                500,
+                "Unable to retrieve quote".to_string(),
+            ));
         }
     }
 
@@ -142,7 +159,10 @@ async fn integrity(
 ) -> impl Responder {
     // nonce, mask can only be in alphanumerical format
     if !param.nonce.chars().all(char::is_alphanumeric) {
-        warn!("Get quote returning 400 response. Parameters should be strictly alphanumeric: {}", param.nonce);
+        warn!(
+            "Get quote returning 400 response. Parameters should be strictly alphanumeric: {}",
+            param.nonce
+        );
         return HttpResponse::BadRequest().json(JsonWrapper::error(
             400,
             format!("nonce should be strictly alphanumeric: {}", param.nonce),
@@ -150,31 +170,34 @@ async fn integrity(
     }
 
     if !param.mask.chars().all(char::is_alphanumeric) {
-        warn!("Get quote returning 400 response. Parameters should be strictly alphanumeric: {}", param.mask);
+        warn!(
+            "Get quote returning 400 response. Parameters should be strictly alphanumeric: {}",
+            param.mask
+        );
         return HttpResponse::BadRequest().json(JsonWrapper::error(
             400,
             format!("mask should be strictly alphanumeric: {}", param.mask),
         ));
     }
 
-    let mask =
-        match u32::from_str_radix(param.mask.trim_start_matches("0x"), 16) {
-            Ok(mask) => mask,
-            Err(e) => {
-                return HttpResponse::BadRequest().json(JsonWrapper::error(
-                    400,
-                    format!(
-                        "mask should be a hex encoded 32-bit integer: {}",
-                        param.mask
-                    ),
-                ));
-            }
-        };
+    let mask = match u32::from_str_radix(param.mask.trim_start_matches("0x"), 16) {
+        Ok(mask) => mask,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(JsonWrapper::error(
+                400,
+                format!(
+                    "mask should be a hex encoded 32-bit integer: {}",
+                    param.mask
+                ),
+            ));
+        }
+    };
 
     if param.nonce.len() > tpm::MAX_NONCE_SIZE {
-        warn!("Get quote returning 400 response. Nonce is too long (max size {}): {}",
-              tpm::MAX_NONCE_SIZE,
-              param.nonce.len()
+        warn!(
+            "Get quote returning 400 response. Nonce is too long (max size {}): {}",
+            tpm::MAX_NONCE_SIZE,
+            param.nonce.len()
         );
         return HttpResponse::BadRequest().json(JsonWrapper::error(
             400,
@@ -189,17 +212,14 @@ async fn integrity(
     // If partial="0", include the public key in the quote
     let pubkey = match &param.partial[..] {
         "0" => {
-            let pubkey = match crypto::pkey_pub_to_pem(&data.payload_pub_key)
-            {
+            let pubkey = match crypto::pkey_pub_to_pem(&data.payload_pub_key) {
                 Ok(pubkey) => pubkey,
                 Err(e) => {
                     debug!("Unable to retrieve public key: {e:?}");
-                    return HttpResponse::InternalServerError().json(
-                        JsonWrapper::error(
-                            500,
-                            "Unable to retrieve public key".to_string(),
-                        ),
-                    );
+                    return HttpResponse::InternalServerError().json(JsonWrapper::error(
+                        500,
+                        "Unable to retrieve public key".to_string(),
+                    ));
                 }
             };
             Some(pubkey)
@@ -209,8 +229,7 @@ async fn integrity(
             warn!("Get quote returning 400 response. uri must contain key 'partial' and value '0' or '1'");
             return HttpResponse::BadRequest().json(JsonWrapper::error(
                 400,
-                "uri must contain key 'partial' and value '0' or '1'"
-                    .to_string(),
+                "uri must contain key 'partial' and value '0' or '1'".to_string(),
             ));
         }
     };
@@ -231,28 +250,10 @@ async fn integrity(
     // https://github.com/rust-lang-nursery/failure/issues/192
     let mut context = data.tpmcontext.lock().unwrap(); //#[allow_ci]
 
-    // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-    // Extend geolocation into PCR 17 for TPM-bound attestation
-    let mut quote_mask = mask;
-    let mut geolocation_str: Option<String> = None;
-    if geolocation::is_unified_identity_enabled() {
-        match geolocation::extend_geolocation_into_pcr(&mut *context, param.nonce.as_bytes(), data.hash_alg) {
-            Ok(geo) => {
-                // Include PCR 17 in the quote mask (bit 17 = 0x20000)
-                quote_mask |= 0x20000;
-                geolocation_str = Some(geo);
-                info!("Unified-Identity - Phase 3: Geolocation extended into PCR 17, included in integrity quote mask");
-            }
-            Err(e) => {
-                warn!("Unified-Identity - Phase 3: Failed to extend geolocation into PCR 17: {:?}, continuing without geolocation attestation", e);
-            }
-        }
-    }
-
     // Generate the ID quote.
     let tpm_quote = match context.quote(
         param.nonce.as_bytes(),
-        quote_mask,
+        mask,
         &data.payload_pub_key,
         data.ak_handle,
         data.hash_alg,
@@ -261,12 +262,10 @@ async fn integrity(
         Ok(tpm_quote) => tpm_quote,
         Err(e) => {
             debug!("Unable to retrieve quote: {e:?}");
-            return HttpResponse::InternalServerError().json(
-                JsonWrapper::error(
-                    500,
-                    "Unable to retrieve quote".to_string(),
-                ),
-            );
+            return HttpResponse::InternalServerError().json(JsonWrapper::error(
+                500,
+                "Unable to retrieve quote".to_string(),
+            ));
         }
     };
 
@@ -275,7 +274,6 @@ async fn integrity(
         hash_alg: data.hash_alg.to_string(),
         enc_alg: data.enc_alg.to_string(),
         sign_alg: data.sign_alg.to_string(),
-        geolocation: geolocation_str.clone(),
         ..Default::default()
     };
 
@@ -288,12 +286,10 @@ async fn integrity(
                 let mut f = measuredboot_ml_file.lock().unwrap(); //#[allow_ci]
                 if let Err(e) = f.rewind() {
                     debug!("Failed to rewind measured boot file: {e:?}");
-                    return HttpResponse::InternalServerError().json(
-                        JsonWrapper::error(
-                            500,
-                            "Unable to retrieve quote".to_string(),
-                        ),
-                    );
+                    return HttpResponse::InternalServerError().json(JsonWrapper::error(
+                        500,
+                        "Unable to retrieve quote".to_string(),
+                    ));
                 }
                 mb_measurement_list = match f.read_to_end(&mut ml) {
                     Ok(_) => Some(general_purpose::STANDARD.encode(ml)),
@@ -306,12 +302,10 @@ async fn integrity(
         }
         Err(e) => {
             debug!("Unable to check PCR mask: {e:?}");
-            return HttpResponse::InternalServerError().json(
-                JsonWrapper::error(
-                    500,
-                    "Unable to retrieve quote".to_string(),
-                ),
-            );
+            return HttpResponse::InternalServerError().json(JsonWrapper::error(
+                500,
+                "Unable to retrieve quote".to_string(),
+            ));
         }
         _ => (),
     }
@@ -324,17 +318,13 @@ async fn integrity(
                 &mut ima_file.lock().unwrap(), //#[allow_ci]
                 nth_entry,
             ) {
-                Ok(result) => {
-                    (Some(result.0), Some(result.1), Some(result.2))
-                }
+                Ok(result) => (Some(result.0), Some(result.1), Some(result.2)),
                 Err(e) => {
                     debug!("Unable to read measurement list: {e:?}");
-                    return HttpResponse::InternalServerError().json(
-                        JsonWrapper::error(
-                            500,
-                            "Unable to retrieve quote".to_string(),
-                        ),
-                    );
+                    return HttpResponse::InternalServerError().json(JsonWrapper::error(
+                        500,
+                        "Unable to retrieve quote".to_string(),
+                    ));
                 }
             }
         } else {
@@ -365,8 +355,7 @@ async fn quotes_default(req: HttpRequest) -> impl Responder {
         http::Method::GET => {
             error = 400;
             message = "URI not supported, only /identity and /integrity are supported for GET in /quotes/ interface";
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, message));
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, message));
         }
         _ => {
             error = 405;
@@ -421,8 +410,7 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
 
-        let result: JsonWrapper<KeylimeQuote> =
-            test::read_body_json(resp).await;
+        let result: JsonWrapper<KeylimeQuote> = test::read_body_json(resp).await;
         assert_eq!(result.results.hash_alg.as_str(), "sha256");
         assert_eq!(result.results.enc_alg.as_str(), "rsa2048");
         assert_eq!(result.results.sign_alg.as_str(), "rsassa");
@@ -459,16 +447,13 @@ mod tests {
         .await;
 
         let req = test::TestRequest::get()
-            .uri(
-                "/vX.Y/quotes/integrity?nonce=1234567890ABCDEFHIJ&mask=0x408000&partial=0",
-            )
+            .uri("/vX.Y/quotes/integrity?nonce=1234567890ABCDEFHIJ&mask=0x408000&partial=0")
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
 
-        let result: JsonWrapper<KeylimeQuote> =
-            test::read_body_json(resp).await;
+        let result: JsonWrapper<KeylimeQuote> = test::read_body_json(resp).await;
         assert_eq!(result.results.hash_alg.as_str(), "sha256");
         assert_eq!(result.results.enc_alg.as_str(), "rsa2048");
         assert_eq!(result.results.sign_alg.as_str(), "rsassa");
@@ -521,16 +506,13 @@ mod tests {
         .await;
 
         let req = test::TestRequest::get()
-            .uri(
-                "/vX.Y/quotes/integrity?nonce=1234567890ABCDEFHIJ&mask=0x408000&partial=1",
-            )
+            .uri("/vX.Y/quotes/integrity?nonce=1234567890ABCDEFHIJ&mask=0x408000&partial=1")
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
 
-        let result: JsonWrapper<KeylimeQuote> =
-            test::read_body_json(resp).await;
+        let result: JsonWrapper<KeylimeQuote> = test::read_body_json(resp).await;
         assert_eq!(result.results.hash_alg.as_str(), "sha256");
         assert_eq!(result.results.enc_alg.as_str(), "rsa2048");
         assert_eq!(result.results.sign_alg.as_str(), "rsassa");
@@ -582,16 +564,13 @@ mod tests {
         .await;
 
         let req = test::TestRequest::get()
-            .uri(
-                "/vX.Y/quotes/integrity?nonce=1234567890ABCDEFHIJ&mask=0x408000&partial=0",
-            )
+            .uri("/vX.Y/quotes/integrity?nonce=1234567890ABCDEFHIJ&mask=0x408000&partial=0")
             .to_request();
 
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
 
-        let result: JsonWrapper<KeylimeQuote> =
-            test::read_body_json(resp).await;
+        let result: JsonWrapper<KeylimeQuote> = test::read_body_json(resp).await;
         assert!(result.results.ima_measurement_list.is_none());
         assert!(result.results.ima_measurement_list_entry.is_none());
 
@@ -601,10 +580,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_keys_default() {
-        let mut app = test::init_service(
-            App::new().service(web::resource("/").to(quotes_default)),
-        )
-        .await;
+        let mut app =
+            test::init_service(App::new().service(web::resource("/").to(quotes_default))).await;
 
         let req = test::TestRequest::get().uri("/").to_request();
 

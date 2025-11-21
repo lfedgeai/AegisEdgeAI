@@ -1,6 +1,4 @@
-use keylime::config::{
-    FileConfigBuilder, KeylimeConfigError, GLOBAL_CONFIG_OVERRIDE_ENV_VAR,
-};
+use keylime::config::{FileConfigBuilder, KeylimeConfigError, GLOBAL_CONFIG_OVERRIDE_ENV_VAR};
 
 use std::{
     env,
@@ -19,10 +17,9 @@ fn test_env_var_override() {
     let _mutex = TEST_MUTEX.get_or_init(|| Arc::new(Mutex::new(()))).lock();
     let dir = tempdir().expect("failed to create temp dir");
     let override_file_path = dir.path().join("override.toml");
-    let mut override_file = File::create(&override_file_path)
-        .expect("failed to create config file");
-    writeln!(override_file, "[agent]\nip = \"0.0.0.0\"")
-        .expect("failed to write on config file");
+    let mut override_file =
+        File::create(&override_file_path).expect("failed to create config file");
+    writeln!(override_file, "[agent]\nip = \"0.0.0.0\"").expect("failed to write on config file");
 
     // Set the environment variable for this test
     env::set_var(

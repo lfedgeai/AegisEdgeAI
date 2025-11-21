@@ -11,9 +11,8 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration, Utc};
 use keylime::structures::{
-    ProofOfPossession, SessionIdResponse, SessionRequest,
-    SessionRequestAttributes, SessionRequestData, SessionResponse,
-    SupportedAuthMethod,
+    ProofOfPossession, SessionIdResponse, SessionRequest, SessionRequestAttributes,
+    SessionRequestData, SessionResponse, SupportedAuthMethod,
 };
 use log::{debug, info, warn};
 use reqwest::{Client, Method, StatusCode};
@@ -117,10 +116,7 @@ impl AuthenticationClient {
     }
 
     /// Create a new authentication client with custom TPM operations
-    pub fn with_tpm_ops(
-        config: AuthConfig,
-        tpm_ops: Box<dyn TpmOperations>,
-    ) -> Result<Self> {
+    pub fn with_tpm_ops(config: AuthConfig, tpm_ops: Box<dyn TpmOperations>) -> Result<Self> {
         let timeout = std::time::Duration::from_millis(config.timeout_ms);
         let http_client = Client::builder()
             .timeout(timeout)
@@ -145,9 +141,7 @@ impl AuthenticationClient {
                 debug!("Using existing valid token");
                 return Ok(token.token.clone());
             } else {
-                debug!(
-                    "Token expired or expiring soon, need to re-authenticate"
-                );
+                debug!("Token expired or expiring soon, need to re-authenticate");
             }
         } else {
             debug!("No token available, need to authenticate");
@@ -206,10 +200,7 @@ impl AuthenticationClient {
                         ));
                     }
                     // Brief delay before retry
-                    tokio::time::sleep(std::time::Duration::from_millis(
-                        1000,
-                    ))
-                    .await;
+                    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                 }
             }
         }
@@ -229,8 +220,7 @@ impl AuthenticationClient {
 
         // Step 3: Submit proof and get token
         debug!("Step 3: Submitting proof and requesting token");
-        let auth_response =
-            self.submit_proof(challenge_response.data.id, proof).await?;
+        let auth_response = self.submit_proof(challenge_response.data.id, proof).await?;
 
         // Step 4: Store token
         debug!("Step 4: Processing authentication result");
@@ -292,13 +282,10 @@ impl AuthenticationClient {
         challenge_response: &SessionResponse,
     ) -> Result<ProofOfPossession> {
         if challenge_response.data.attributes.auth_requested.is_empty() {
-            return Err(anyhow!(
-                "No authentication methods requested by verifier"
-            ));
+            return Err(anyhow!("No authentication methods requested by verifier"));
         }
 
-        let auth_method =
-            &challenge_response.data.attributes.auth_requested[0];
+        let auth_method = &challenge_response.data.attributes.auth_requested[0];
         let challenge = &auth_method.parameters.challenge;
 
         debug!("Generating proof for challenge: {challenge}");
@@ -336,10 +323,7 @@ impl AuthenticationClient {
             }
         });
 
-        let url = format!(
-            "{}/sessions/{}",
-            self.config.verifier_base_url, session_id
-        );
+        let url = format!("{}/sessions/{}", self.config.verifier_base_url, session_id);
         debug!("Submitting proof to: {url}");
 
         let response = self
@@ -372,10 +356,7 @@ impl AuthenticationClient {
     }
 
     /// Step 4: Process authentication result and store token
-    async fn process_auth_result(
-        &self,
-        auth_response: SessionIdResponse,
-    ) -> Result<String> {
+    async fn process_auth_result(&self, auth_response: SessionIdResponse) -> Result<String> {
         let attributes = &auth_response.data.attributes;
 
         if attributes.evaluation != "success" {
@@ -385,9 +366,10 @@ impl AuthenticationClient {
             ));
         }
 
-        let token = attributes.token.as_ref().ok_or_else(|| {
-            anyhow!("Authentication succeeded but no token provided")
-        })?;
+        let token = attributes
+            .token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Authentication succeeded but no token provided"))?;
 
         let expires_at = attributes.token_expires_at.unwrap_or_else(|| {
             // Default to 1 hour if no expiration provided
@@ -448,9 +430,7 @@ mod tests {
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    async fn create_test_client(
-        mock_server_url: &str,
-    ) -> AuthenticationClient {
+    async fn create_test_client(mock_server_url: &str) -> AuthenticationClient {
         let config = AuthConfig {
             verifier_base_url: mock_server_url.to_string(),
             agent_id: "test-agent-123".to_string(),
@@ -471,26 +451,24 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/sessions"))
             .and(header("Content-Type", "application/vnd.api+json"))
-            .respond_with(ResponseTemplate::new(201).set_body_json(
-                serde_json::json!({
-                    "data": {
-                        "type": "session",
-                        "id": 1,
-                        "attributes": {
-                            "agent_id": "test-agent-123",
-                            "authentication_requested": [{
-                                "authentication_class": "pop",
-                                "authentication_type": "tpm_pop",
-                                "chosen_parameters": {
-                                    "challenge": "test-challenge-123"
-                                }
-                            }],
-                            "created_at": "2025-01-01T12:00:00Z",
-                            "challenges_expire_at": "2025-01-01T13:00:00Z"
-                        }
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "data": {
+                    "type": "session",
+                    "id": 1,
+                    "attributes": {
+                        "agent_id": "test-agent-123",
+                        "authentication_requested": [{
+                            "authentication_class": "pop",
+                            "authentication_type": "tpm_pop",
+                            "chosen_parameters": {
+                                "challenge": "test-challenge-123"
+                            }
+                        }],
+                        "created_at": "2025-01-01T12:00:00Z",
+                        "challenges_expire_at": "2025-01-01T13:00:00Z"
                     }
-                }),
-            ))
+                }
+            })))
             .mount(&mock_server)
             .await;
 
@@ -498,34 +476,32 @@ mod tests {
         Mock::given(method("PATCH"))
             .and(path("/sessions/1"))
             .and(header("Content-Type", "application/vnd.api+json"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({
-                    "data": {
-                        "type": "session",
-                        "id": 1,
-                        "attributes": {
-                            "agent_id": "test-agent-123",
-                            "evaluation": "success",
-                            "token": "test-token-456",
-                            "authentication": [{
-                                "authentication_class": "pop",
-                                "authentication_type": "tpm_pop",
-                                "chosen_parameters": {
-                                    "challenge": "test-challenge-123"
-                                },
-                                "data": {
-                                    "message": "mock_message",
-                                    "signature": "mock_signature"
-                                }
-                            }],
-                            "created_at": "2025-01-01T12:00:00Z",
-                            "challenges_expire_at": "2025-01-01T13:00:00Z",
-                            "response_received_at": "2025-01-01T12:00:01Z",
-                            "token_expires_at": "2030-01-01T18:00:00Z"
-                        }
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "type": "session",
+                    "id": 1,
+                    "attributes": {
+                        "agent_id": "test-agent-123",
+                        "evaluation": "success",
+                        "token": "test-token-456",
+                        "authentication": [{
+                            "authentication_class": "pop",
+                            "authentication_type": "tpm_pop",
+                            "chosen_parameters": {
+                                "challenge": "test-challenge-123"
+                            },
+                            "data": {
+                                "message": "mock_message",
+                                "signature": "mock_signature"
+                            }
+                        }],
+                        "created_at": "2025-01-01T12:00:00Z",
+                        "challenges_expire_at": "2025-01-01T13:00:00Z",
+                        "response_received_at": "2025-01-01T12:00:01Z",
+                        "token_expires_at": "2030-01-01T18:00:00Z"
                     }
-                }),
-            ))
+                }
+            })))
             .mount(&mock_server)
             .await;
 
@@ -550,58 +526,54 @@ mod tests {
         // Mock challenge request
         Mock::given(method("POST"))
             .and(path("/sessions"))
-            .respond_with(ResponseTemplate::new(201).set_body_json(
-                serde_json::json!({
-                    "data": {
-                        "type": "session",
-                        "id": 1,
-                        "attributes": {
-                            "agent_id": "test-agent-123",
-                            "authentication_requested": [{
-                                "authentication_class": "pop",
-                                "authentication_type": "tpm_pop",
-                                "chosen_parameters": {
-                                    "challenge": "test-challenge-123"
-                                }
-                            }],
-                            "created_at": "2025-01-01T12:00:00Z",
-                            "challenges_expire_at": "2025-01-01T13:00:00Z"
-                        }
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "data": {
+                    "type": "session",
+                    "id": 1,
+                    "attributes": {
+                        "agent_id": "test-agent-123",
+                        "authentication_requested": [{
+                            "authentication_class": "pop",
+                            "authentication_type": "tpm_pop",
+                            "chosen_parameters": {
+                                "challenge": "test-challenge-123"
+                            }
+                        }],
+                        "created_at": "2025-01-01T12:00:00Z",
+                        "challenges_expire_at": "2025-01-01T13:00:00Z"
                     }
-                }),
-            ))
+                }
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock proof submission failure
         Mock::given(method("PATCH"))
             .and(path("/sessions/1"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({
-                    "data": {
-                        "type": "session",
-                        "id": 1,
-                        "attributes": {
-                            "agent_id": "test-agent-123",
-                            "evaluation": "fail",
-                            "authentication": [{
-                                "authentication_class": "pop",
-                                "authentication_type": "tpm_pop",
-                                "chosen_parameters": {
-                                    "challenge": "test-challenge-123"
-                                },
-                                "data": {
-                                    "message": "mock_message",
-                                    "signature": "mock_signature"
-                                }
-                            }],
-                            "created_at": "2025-01-01T12:00:00Z",
-                            "challenges_expire_at": "2025-01-01T13:00:00Z",
-                            "response_received_at": "2025-01-01T12:00:01Z"
-                        }
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "type": "session",
+                    "id": 1,
+                    "attributes": {
+                        "agent_id": "test-agent-123",
+                        "evaluation": "fail",
+                        "authentication": [{
+                            "authentication_class": "pop",
+                            "authentication_type": "tpm_pop",
+                            "chosen_parameters": {
+                                "challenge": "test-challenge-123"
+                            },
+                            "data": {
+                                "message": "mock_message",
+                                "signature": "mock_signature"
+                            }
+                        }],
+                        "created_at": "2025-01-01T12:00:00Z",
+                        "challenges_expire_at": "2025-01-01T13:00:00Z",
+                        "response_received_at": "2025-01-01T12:00:01Z"
                     }
-                }),
-            ))
+                }
+            })))
             .mount(&mock_server)
             .await;
 
@@ -622,26 +594,24 @@ mod tests {
         // Mock challenge request
         Mock::given(method("POST"))
             .and(path("/sessions"))
-            .respond_with(ResponseTemplate::new(201).set_body_json(
-                serde_json::json!({
-                    "data": {
-                        "type": "session",
-                        "id": 1,
-                        "attributes": {
-                            "agent_id": "test-agent-123",
-                            "authentication_requested": [{
-                                "authentication_class": "pop",
-                                "authentication_type": "tpm_pop",
-                                "chosen_parameters": {
-                                    "challenge": "test-challenge-123"
-                                }
-                            }],
-                            "created_at": "2025-01-01T12:00:00Z",
-                            "challenges_expire_at": "2025-01-01T13:00:00Z"
-                        }
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "data": {
+                    "type": "session",
+                    "id": 1,
+                    "attributes": {
+                        "agent_id": "test-agent-123",
+                        "authentication_requested": [{
+                            "authentication_class": "pop",
+                            "authentication_type": "tpm_pop",
+                            "chosen_parameters": {
+                                "challenge": "test-challenge-123"
+                            }
+                        }],
+                        "created_at": "2025-01-01T12:00:00Z",
+                        "challenges_expire_at": "2025-01-01T13:00:00Z"
                     }
-                }),
-            ))
+                }
+            })))
             .expect(1..) // May be called multiple times
             .mount(&mock_server)
             .await;
@@ -649,35 +619,33 @@ mod tests {
         // Mock proof submission with short expiration
         Mock::given(method("PATCH"))
             .and(path("/sessions/1"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({
-                    "data": {
-                        "type": "session",
-                        "id": 1,
-                        "attributes": {
-                            "agent_id": "test-agent-123",
-                            "evaluation": "success",
-                            "token": "short-lived-token",
-                            "authentication": [{
-                                "authentication_class": "pop",
-                                "authentication_type": "tpm_pop",
-                                "chosen_parameters": {
-                                    "challenge": "test-challenge-123"
-                                },
-                                "data": {
-                                    "message": "mock_message",
-                                    "signature": "mock_signature"
-                                }
-                            }],
-                            "created_at": "2025-01-01T12:00:00Z",
-                            "challenges_expire_at": "2025-01-01T13:00:00Z",
-                            "response_received_at": "2025-01-01T12:00:01Z",
-                            // Token expires in 1 minute (less than 5 minute buffer)
-                            "token_expires_at": "2025-01-01T12:01:00Z"
-                        }
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "type": "session",
+                    "id": 1,
+                    "attributes": {
+                        "agent_id": "test-agent-123",
+                        "evaluation": "success",
+                        "token": "short-lived-token",
+                        "authentication": [{
+                            "authentication_class": "pop",
+                            "authentication_type": "tpm_pop",
+                            "chosen_parameters": {
+                                "challenge": "test-challenge-123"
+                            },
+                            "data": {
+                                "message": "mock_message",
+                                "signature": "mock_signature"
+                            }
+                        }],
+                        "created_at": "2025-01-01T12:00:00Z",
+                        "challenges_expire_at": "2025-01-01T13:00:00Z",
+                        "response_received_at": "2025-01-01T12:00:01Z",
+                        // Token expires in 1 minute (less than 5 minute buffer)
+                        "token_expires_at": "2025-01-01T12:01:00Z"
                     }
-                }),
-            ))
+                }
+            })))
             .expect(1..) // May be called multiple times
             .mount(&mock_server)
             .await;

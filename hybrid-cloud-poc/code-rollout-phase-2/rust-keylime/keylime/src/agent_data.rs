@@ -15,6 +15,8 @@ pub struct AgentData {
     ak_public: Vec<u8>,
     ak_private: Vec<u8>,
     ek_hash: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ak_persistent_handle: Option<u32>, // Persistent handle for AK (e.g., 0x8101000A)
 }
 
 impl AgentData {
@@ -33,6 +35,7 @@ impl AgentData {
             ak_public,
             ak_private,
             ek_hash,
+            ak_persistent_handle: None,
         })
     }
 
@@ -55,12 +58,7 @@ impl AgentData {
         Ok(tpm::AKResult { public, private })
     }
 
-    pub fn valid(
-        &self,
-        hash_alg: HashAlgorithm,
-        sign_alg: SignAlgorithm,
-        ek_hash: &[u8],
-    ) -> bool {
+    pub fn valid(&self, hash_alg: HashAlgorithm, sign_alg: SignAlgorithm, ek_hash: &[u8]) -> bool {
         hash_alg == self.ak_hash_alg
             && sign_alg == self.ak_sign_alg
             && ek_hash.to_vec() == self.ek_hash
@@ -77,30 +75,24 @@ mod test {
     async fn test_agent_data() -> Result<()> {
         let _mutex = tpm::testing::lock_tests().await;
 
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let config = config::get_testing_config(tempdir.path(), None);
 
         let mut ctx = tpm::Context::new().unwrap(); //#[allow_ci]
 
-        let tpm_encryption_alg = EncryptionAlgorithm::try_from(
-            config.tpm_encryption_alg.as_str(),
-        )?;
+        let tpm_encryption_alg = EncryptionAlgorithm::try_from(config.tpm_encryption_alg.as_str())?;
 
-        let tpm_hash_alg =
-            HashAlgorithm::try_from(config.tpm_hash_alg.as_str())
-                .expect("Failed to get hash algorithm");
+        let tpm_hash_alg = HashAlgorithm::try_from(config.tpm_hash_alg.as_str())
+            .expect("Failed to get hash algorithm");
 
-        let tpm_signing_alg =
-            SignAlgorithm::try_from(config.tpm_signing_alg.as_str())
-                .expect("Failed to get signing algorithm");
+        let tpm_signing_alg = SignAlgorithm::try_from(config.tpm_signing_alg.as_str())
+            .expect("Failed to get signing algorithm");
 
         let ek_result = ctx
             .create_ek(tpm_encryption_alg, None)
             .expect("Failed to create EK");
 
-        let ek_hash = hash_ek::hash_ek_pubkey(ek_result.public)
-            .expect("Failed to get pubkey");
+        let ek_hash = hash_ek::hash_ek_pubkey(ek_result.public).expect("Failed to get pubkey");
 
         let ak = ctx.create_ak(
             ek_result.key_handle,
@@ -109,12 +101,8 @@ mod test {
             tpm_signing_alg,
         )?;
 
-        let agent_data_test = AgentData::create(
-            tpm_hash_alg,
-            tpm_signing_alg,
-            &ak,
-            ek_hash.as_bytes(),
-        )?;
+        let agent_data_test =
+            AgentData::create(tpm_hash_alg, tpm_signing_alg, &ak, ek_hash.as_bytes())?;
 
         let valid = AgentData::valid(
             &agent_data_test,
@@ -136,15 +124,13 @@ mod test {
     #[tokio::test]
     async fn test_hash() -> Result<()> {
         let _mutex = tpm::testing::lock_tests().await;
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let config = config::get_testing_config(tempdir.path(), None);
 
         let mut ctx = tpm::Context::new().unwrap(); //#[allow_ci]
 
-        let tpm_encryption_alg =
-            EncryptionAlgorithm::try_from(config.tpm_encryption_alg.as_str())
-                .expect("Failed to get encryption algorithm");
+        let tpm_encryption_alg = EncryptionAlgorithm::try_from(config.tpm_encryption_alg.as_str())
+            .expect("Failed to get encryption algorithm");
 
         let ek_result = ctx
             .create_ek(tpm_encryption_alg, None)

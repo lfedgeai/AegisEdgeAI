@@ -78,8 +78,7 @@ impl TryFrom<JsonValue> for EvidenceData {
     fn try_from(value: JsonValue) -> Result<Self, Self::Error> {
         if let Some(subject_data) = value.get("subject_data") {
             if subject_data.is_string() {
-                let subject_data =
-                    subject_data.as_str().ok_or("Incorrect Subject Data")?;
+                let subject_data = subject_data.as_str().ok_or("Incorrect Subject Data")?;
                 let message = value
                     .get("message")
                     .ok_or_else(|| "Missing message field".to_string())?
@@ -117,9 +116,7 @@ impl TryFrom<JsonValue> for EvidenceData {
                     Some(
                         entries
                             .as_str()
-                            .ok_or_else(|| {
-                                "Invalid entries field".to_string()
-                            })?
+                            .ok_or_else(|| "Invalid entries field".to_string())?
                             .to_string(),
                     )
                 };
@@ -224,8 +221,7 @@ impl From<EvidenceData> for EvidenceCollected {
             },
             EvidenceData::ImaLog { entries, meta, .. } => {
                 // Count the number of entries (lines)
-                let entry_count =
-                    entries.as_ref().map_or(0, |e| e.lines().count());
+                let entry_count = entries.as_ref().map_or(0, |e| e.lines().count());
                 EvidenceCollected {
                     evidence_class: "log".to_string(),
                     evidence_type: "ima_log".to_string(),
@@ -492,8 +488,7 @@ mod tests {
         }
     }
 }"#;
-        let deserialized: EvidenceHandlingRequest =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let deserialized: EvidenceHandlingRequest = serde_json::from_str(json).unwrap(); //#[allow_ci]
 
         assert_eq!(deserialized.data.data_type, "attestation");
         assert_eq!(deserialized.data.attributes.evidence_collected.len(), 3);
@@ -529,10 +524,7 @@ mod tests {
         if let EvidenceData::UefiLog { entries, .. } =
             &deserialized.data.attributes.evidence_collected[1].data
         {
-            assert_eq!(
-                entries,
-                &Some("uefi_log_entries_deserialized".to_string())
-            );
+            assert_eq!(entries, &Some("uefi_log_entries_deserialized".to_string()));
         } else {
             panic!("Expected UefiLog"); //#[allow_ci]
         }
@@ -551,10 +543,7 @@ mod tests {
         } = &deserialized.data.attributes.evidence_collected[2].data
         {
             assert_eq!(*entry_count, 96);
-            assert_eq!(
-                entries,
-                &Some("ima_log_entries_deserialized".to_string())
-            );
+            assert_eq!(entries, &Some("ima_log_entries_deserialized".to_string()));
         } else {
             panic!("Expected ImaLog"); //#[allow_ci]
         }
@@ -581,9 +570,8 @@ mod tests {
         match serde_json::from_str::<EvidenceHandlingRequest>(json) {
             Ok(_) => panic!("Expected error"), //#[allow_ci]
             Err(e) => {
-                assert!(e
-                    .to_string()
-                    .contains("Failed to deserialize EvidenceData")); //#[allow_ci]
+                assert!(e.to_string().contains("Failed to deserialize EvidenceData"));
+                //#[allow_ci]
             }
         } //#[allow_ci]
     } // deserialize_evidence_handling_request_wrong_evidence_data
@@ -1354,8 +1342,7 @@ mod tests {
     }
   }
 }"#;
-        let deserialized: EvidenceHandlingResponse =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let deserialized: EvidenceHandlingResponse = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(deserialized.data.data_type, "attestation");
         assert_eq!(deserialized.data.attributes.evidence.len(), 3);
         assert_eq!(
@@ -1397,15 +1384,11 @@ mod tests {
                 capabilities.available_subjects.sha256,
                 Some(vec![0x04, 0x05, 0x06])
             );
-            let some_certification_keys =
-                capabilities.certification_keys.first();
+            let some_certification_keys = capabilities.certification_keys.first();
             assert!(some_certification_keys.is_some());
             let certification_key = some_certification_keys.unwrap(); //#[allow_ci]
             assert_eq!(certification_key.key_class, "asymmetric");
-            assert_eq!(
-                certification_key.local_identifier,
-                "att_local_identifier"
-            );
+            assert_eq!(certification_key.local_identifier, "att_local_identifier");
             assert_eq!(certification_key.key_algorithm, "rsa");
             assert_eq!(certification_key.key_size, 2048);
             assert_eq!(certification_key.server_identifier, "ak");
@@ -1429,17 +1412,10 @@ mod tests {
                     Some(vec![0x04, 0x05, 0x06])
                 );
                 assert_eq!(params.hash_algorithm, Some("sha384".to_string()));
-                assert_eq!(
-                    params.signature_scheme,
-                    Some("rsassa".to_string())
-                );
-                let certification_key =
-                    params.certification_key.as_ref().unwrap(); //#[allow_ci]
+                assert_eq!(params.signature_scheme, Some("rsassa".to_string()));
+                let certification_key = params.certification_key.as_ref().unwrap(); //#[allow_ci]
                 assert_eq!(certification_key.key_class, "asymmetric");
-                assert_eq!(
-                    certification_key.local_identifier,
-                    "att_local_identifier"
-                );
+                assert_eq!(certification_key.local_identifier, "att_local_identifier");
                 assert_eq!(certification_key.key_algorithm, "rsa");
                 assert_eq!(certification_key
                         .public,
@@ -1464,16 +1440,14 @@ mod tests {
             panic!("Expected UefiLog"); //#[allow_ci]
         }
         assert!(deserialized.data.attributes.system_info.is_none());
-        let evidence_received_at =
-            deserialized.data.attributes.evidence_received_at;
+        let evidence_received_at = deserialized.data.attributes.evidence_received_at;
         assert!(evidence_received_at.is_some());
         let evidence_received_at_utc = evidence_received_at.unwrap(); //#[allow_ci]
         assert_eq!(
             evidence_received_at_utc.to_string(),
             "2025-08-07 12:05:17.228706 UTC"
         );
-        let capabilities_received_at =
-            deserialized.data.attributes.capabilities_received_at;
+        let capabilities_received_at = deserialized.data.attributes.capabilities_received_at;
         assert!(capabilities_received_at.is_some());
         let capabilities_received_at_utc = deserialized
             .data
@@ -1484,8 +1458,7 @@ mod tests {
             capabilities_received_at_utc.to_string(),
             "2025-08-07 11:52:17.228706 UTC"
         );
-        let challenges_expire_at =
-            deserialized.data.attributes.challenges_expire_at;
+        let challenges_expire_at = deserialized.data.attributes.challenges_expire_at;
         assert!(challenges_expire_at.is_some());
         let challenges_expire_at_utc = challenges_expire_at.unwrap(); //#[allow_ci]
         assert_eq!(
@@ -1512,8 +1485,7 @@ mod tests {
         }
     }
 }"#;
-        let deserialized: EvidenceHandlingRequest =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let deserialized: EvidenceHandlingRequest = serde_json::from_str(json).unwrap(); //#[allow_ci]
 
         assert_eq!(deserialized.data.data_type, "attestation");
         assert_eq!(deserialized.data.attributes.evidence_collected.len(), 1);
@@ -1553,8 +1525,7 @@ mod tests {
         }
     }
 }"#;
-        let deserialized: EvidenceHandlingRequest =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let deserialized: EvidenceHandlingRequest = serde_json::from_str(json).unwrap(); //#[allow_ci]
 
         assert_eq!(deserialized.data.data_type, "attestation");
         assert_eq!(deserialized.data.attributes.evidence_collected.len(), 1);

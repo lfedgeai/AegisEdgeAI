@@ -1,11 +1,11 @@
 use crate::{
-    agent_handler, config, errors_handler, keys_handler,
+    agent_handler, config, delegated_certification_handler, errors_handler, keys_handler,
     notifications_handler, quotes_handler, QuoteData,
 };
 use actix_web::{http, web, HttpRequest, HttpResponse, Responder, Scope};
 use keylime::{
-    config::SUPPORTED_API_VERSIONS, json_wrapper::JsonWrapper,
-    list_parser::parse_list, version::KeylimeVersion,
+    config::SUPPORTED_API_VERSIONS, json_wrapper::JsonWrapper, list_parser::parse_list,
+    version::KeylimeVersion,
 };
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -18,10 +18,7 @@ pub enum APIError {
 }
 
 /// This is the handler for the GET request for the API version
-pub async fn version(
-    req: HttpRequest,
-    quote_data: web::Data<QuoteData<'_>>,
-) -> impl Responder {
+pub async fn version(req: HttpRequest, quote_data: web::Data<QuoteData<'_>>) -> impl Responder {
     info!(
         "GET invoked from {:?} with uri {}",
         req.connection_info().peer_addr().unwrap(), //#[allow_ci]
@@ -30,11 +27,9 @@ pub async fn version(
 
     // The response reports the latest supported version or error
     match quote_data.api_versions.last() {
-        Some(version) => {
-            HttpResponse::Ok().json(JsonWrapper::success(KeylimeVersion {
-                supported_version: version.clone(),
-            }))
-        }
+        Some(version) => HttpResponse::Ok().json(JsonWrapper::success(KeylimeVersion {
+            supported_version: version.clone(),
+        })),
         None => HttpResponse::InternalServerError()
             .json(JsonWrapper::error(500, "Misconfigured API version")),
     }
@@ -49,17 +44,13 @@ async fn api_default(req: HttpRequest) -> impl Responder {
     match req.head().method {
         http::Method::GET => {
             error = 400;
-            message =
-                "Not Implemented: Use /agent, /keys, or /quotes interfaces";
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, message));
+            message = "Not Implemented: Use /agent, /keys, or /quotes interfaces";
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, message));
         }
         http::Method::POST => {
             error = 400;
-            message =
-                "Not Implemented: Use /keys or /notifications interfaces";
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, message));
+            message = "Not Implemented: Use /keys or /notifications interfaces";
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, message));
         }
         _ => {
             error = 405;
@@ -88,41 +79,36 @@ async fn api_default(req: HttpRequest) -> impl Responder {
 /// Version 2.1 is the base API version
 fn configure_api_v2_1(cfg: &mut web::ServiceConfig) {
     _ = cfg
+        .service(web::scope("/keys").configure(keys_handler::configure_keys_endpoints))
         .service(
-            web::scope("/keys")
-                .configure(keys_handler::configure_keys_endpoints),
+            web::scope("/notifications")
+                .configure(notifications_handler::configure_notifications_endpoints),
         )
-        .service(web::scope("/notifications").configure(
-            notifications_handler::configure_notifications_endpoints,
-        ))
-        .service(
-            web::scope("/quotes")
-                .configure(quotes_handler::configure_quotes_endpoints),
-        )
+        .service(web::scope("/quotes").configure(quotes_handler::configure_quotes_endpoints))
         .default_service(web::to(api_default))
 }
 
 /// Configure the endpoints supported by API version 2.2
 ///
-/// The version 2.2 added the /agent/info endpoint
+/// The version 2.2 added the /agent/info endpoint and /delegated_certification endpoint
 fn configure_api_v2_2(cfg: &mut web::ServiceConfig) {
     // Configure the endpoints shared with version 2.1
     configure_api_v2_1(cfg);
 
     // Configure added endpoints
-    _ = cfg.service(
-        web::scope("/agent")
-            .configure(agent_handler::configure_agent_endpoints),
-    )
+    _ = cfg
+        .service(web::scope("/agent").configure(agent_handler::configure_agent_endpoints))
+        .service(
+            web::scope("/delegated_certification")
+                .configure(delegated_certification_handler::configure_delegated_certification_endpoints),
+        )
 }
 
 /// Get a scope configured for the given API version
 pub(crate) fn get_api_scope(version: &str) -> Result<Scope, APIError> {
     match version {
-        "2.1" => Ok(web::scope(format!("v{version}").as_ref())
-            .configure(configure_api_v2_1)),
-        "2.2" => Ok(web::scope(format!("v{version}").as_ref())
-            .configure(configure_api_v2_2)),
+        "2.1" => Ok(web::scope(format!("v{version}").as_ref()).configure(configure_api_v2_1)),
+        "2.2" => Ok(web::scope(format!("v{version}").as_ref()).configure(configure_api_v2_2)),
         _ => Err(APIError::UnsupportedVersion(version.into())),
     }
 }
@@ -154,10 +140,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_api_default() {
-        let mut app = test::init_service(
-            App::new().service(web::resource("/").to(api_default)),
-        )
-        .await;
+        let mut app =
+            test::init_service(App::new().service(web::resource("/").to(api_default))).await;
 
         let req = test::TestRequest::get().uri("/").to_request();
 
@@ -218,8 +202,7 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
 
-        let body: JsonWrapper<KeylimeVersion> =
-            test::read_body_json(resp).await;
+        let body: JsonWrapper<KeylimeVersion> = test::read_body_json(resp).await;
         assert_eq!(
             Some(body.results.supported_version),
             SUPPORTED_API_VERSIONS.last().map(|x| x.to_string())
@@ -251,8 +234,7 @@ mod tests {
         assert!(resp.status().is_success());
 
         // Check that the returned version is the version from the configuration
-        let body: JsonWrapper<KeylimeVersion> =
-            test::read_body_json(resp).await;
+        let body: JsonWrapper<KeylimeVersion> = test::read_body_json(resp).await;
         assert_eq!(
             body.results.supported_version,
             SUPPORTED_API_VERSIONS[0].to_string(),

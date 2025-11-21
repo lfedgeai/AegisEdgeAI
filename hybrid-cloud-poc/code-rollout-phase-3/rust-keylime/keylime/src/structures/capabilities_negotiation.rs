@@ -286,7 +286,7 @@ impl From<ChosenParameters> for JsonValue {
     fn from(params: ChosenParameters) -> Self {
         match params {
             ChosenParameters::Parameters(params) => to_value(params).unwrap(), //#[allow_ci]
-            ChosenParameters::Offset(offset) => to_value(offset).unwrap(), //#[allow_ci]
+            ChosenParameters::Offset(offset) => to_value(offset).unwrap(),     //#[allow_ci]
         }
     }
 }
@@ -413,9 +413,7 @@ mod tests {
                                 entry_count: 20,
                                 supports_partial_access: false,
                                 appendable: false,
-                                formats: vec![
-                                    "application/octet-stream".to_string()
-                                ],
+                                formats: vec!["application/octet-stream".to_string()],
                             },
                         },
                         EvidenceSupported::EvidenceLog {
@@ -665,8 +663,7 @@ mod tests {
         let request: AttestationRequest = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(request.data.type_, "attestation");
         let attestation_data = &request.data.attributes; //#[allow_ci]
-        let some_evidence_supported =
-            attestation_data.evidence_supported.first();
+        let some_evidence_supported = attestation_data.evidence_supported.first();
         assert!(some_evidence_supported.is_some());
         let evidence_supported = some_evidence_supported.unwrap(); //#[allow_ci]
         match evidence_supported {
@@ -678,25 +675,15 @@ mod tests {
                 assert_eq!(capabilities.component_version, "2.0");
                 assert_eq!(capabilities.hash_algorithms[0], "sha3_512");
                 assert_eq!(capabilities.signature_schemes[0], "rsassa");
-                assert!(
-                    capabilities.available_subjects.sha1
-                        == Some(vec![0x01, 0x02, 0x03])
-                );
-                assert!(
-                    capabilities.available_subjects.sha256
-                        == Some(vec![0x04, 0x05, 0x06])
-                );
+                assert!(capabilities.available_subjects.sha1 == Some(vec![0x01, 0x02, 0x03]));
+                assert!(capabilities.available_subjects.sha256 == Some(vec![0x04, 0x05, 0x06]));
                 assert!(capabilities.available_subjects.sha384.is_none());
                 assert!(capabilities.available_subjects.sha512.is_none());
-                let some_certification_keys =
-                    capabilities.certification_keys.first();
+                let some_certification_keys = capabilities.certification_keys.first();
                 assert!(some_certification_keys.is_some());
                 let certification_key = some_certification_keys.unwrap(); //#[allow_ci]
                 assert_eq!(certification_key.key_class, "asymmetric");
-                assert_eq!(
-                    certification_key.local_identifier,
-                    "att_local_identifier"
-                );
+                assert_eq!(certification_key.local_identifier, "att_local_identifier");
                 assert_eq!(certification_key.key_algorithm, "rsa");
                 assert_eq!(certification_key.key_size, 2048);
                 assert_eq!(certification_key.server_identifier, "ak");
@@ -704,8 +691,7 @@ mod tests {
             }
             _ => panic!("Expected Certification"), //#[allow_ci]
         }
-        let some_evidence_supported =
-            attestation_data.evidence_supported.get(1);
+        let some_evidence_supported = attestation_data.evidence_supported.get(1);
         assert!(some_evidence_supported.is_some());
         let evidence_supported = some_evidence_supported.unwrap(); //#[allow_ci]
         match evidence_supported {
@@ -722,15 +708,11 @@ mod tests {
                 assert_eq!(capabilities.entry_count, 20);
                 assert!(!capabilities.supports_partial_access);
                 assert!(!capabilities.appendable);
-                assert_eq!(
-                    capabilities.formats[0],
-                    "application/octet-stream"
-                );
+                assert_eq!(capabilities.formats[0], "application/octet-stream");
             }
             _ => panic!("Expected Log"), //#[allow_ci]
         }
-        let some_evidence_supported =
-            attestation_data.evidence_supported.get(2);
+        let some_evidence_supported = attestation_data.evidence_supported.get(2);
         assert!(some_evidence_supported.is_some());
         let evidence_supported = some_evidence_supported.unwrap(); //#[allow_ci]
         match evidence_supported {
@@ -769,8 +751,7 @@ mod tests {
         let request: AttestationRequest = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(request.data.type_, "attestation");
         let attestation_data = &request.data.attributes; //#[allow_ci]
-        let some_evidence_supported =
-            attestation_data.evidence_supported.first();
+        let some_evidence_supported = attestation_data.evidence_supported.first();
         assert!(some_evidence_supported.is_none());
         assert_eq!(
             request.data.attributes.system_info.boot_time.to_string(),
@@ -1075,8 +1056,7 @@ mod tests {
                 }
             }
         }"#;
-        let response: AttestationResponse =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let response: AttestationResponse = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(response.data.type_, "attestation");
         assert_eq!(response.data.attributes.stage, "awaiting_evidence");
         assert_eq!(
@@ -1087,10 +1067,9 @@ mod tests {
             response.data.attributes.evidence_requested[0].evidence_type,
             "tpm_quote"
         );
-        let some_chosen_parameters =
-            response.data.attributes.evidence_requested[0]
-                .chosen_parameters
-                .as_ref();
+        let some_chosen_parameters = response.data.attributes.evidence_requested[0]
+            .chosen_parameters
+            .as_ref();
         assert!(some_chosen_parameters.is_some());
         let chosen_parameters = some_chosen_parameters.unwrap(); //#[allow_ci]
         match chosen_parameters {
@@ -1113,12 +1092,8 @@ mod tests {
                     None
                 );
                 assert_eq!(params.hash_algorithm, Some("sha384".to_string()));
-                assert_eq!(
-                    params.signature_scheme,
-                    Some("rsassa".to_string())
-                );
-                let certification_key =
-                    params.certification_key.as_ref().unwrap(); //#[allow_ci]
+                assert_eq!(params.signature_scheme, Some("rsassa".to_string()));
+                let certification_key = params.certification_key.as_ref().unwrap(); //#[allow_ci]
                 assert_eq!(certification_key.key_class, "asymmetric");
                 assert_eq!(certification_key.local_identifier, "local_id");
                 assert_eq!(certification_key.key_algorithm, "rsa");
@@ -1145,10 +1120,9 @@ mod tests {
             response.data.attributes.evidence_requested[2].evidence_type,
             "ima_log"
         );
-        let some_chosen_parameters =
-            response.data.attributes.evidence_requested[2]
-                .chosen_parameters
-                .as_ref();
+        let some_chosen_parameters = response.data.attributes.evidence_requested[2]
+            .chosen_parameters
+            .as_ref();
         assert!(some_chosen_parameters.is_some());
         let chosen_parameters = some_chosen_parameters.unwrap(); //#[allow_ci]
         match chosen_parameters {
@@ -1177,8 +1151,7 @@ mod tests {
                 }
             }
         }"#;
-        let response: AttestationResponse =
-            serde_json::from_str(json).unwrap(); //#[allow_ci]
+        let response: AttestationResponse = serde_json::from_str(json).unwrap(); //#[allow_ci]
         assert_eq!(response.data.type_, "attestation");
         assert_eq!(response.data.attributes.stage, "awaiting_evidence");
         assert_eq!(
@@ -1189,10 +1162,9 @@ mod tests {
             response.data.attributes.evidence_requested[0].evidence_type,
             "tpm_quote"
         );
-        let some_chosen_parameters =
-            response.data.attributes.evidence_requested[0]
-                .chosen_parameters
-                .as_ref();
+        let some_chosen_parameters = response.data.attributes.evidence_requested[0]
+            .chosen_parameters
+            .as_ref();
         assert!(some_chosen_parameters.is_none());
 
         let json = r#"

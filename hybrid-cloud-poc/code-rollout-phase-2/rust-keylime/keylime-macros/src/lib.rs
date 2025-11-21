@@ -33,16 +33,10 @@ impl Parse for TransformAttribute {
 
         // Ensure the identifiers are what we expect.
         if parsed.using_kw != "using" {
-            return Err(syn::Error::new(
-                parsed.using_kw.span(),
-                "expected `using`",
-            ));
+            return Err(syn::Error::new(parsed.using_kw.span(), "expected `using`"));
         }
         if parsed.error_kw != "error" {
-            return Err(syn::Error::new(
-                parsed.error_kw.span(),
-                "expected `error`",
-            ));
+            return Err(syn::Error::new(parsed.error_kw.span(), "expected `error`"));
         }
 
         Ok(parsed)
@@ -87,12 +81,9 @@ fn has_copy_attribute(attrs: &[Attribute]) -> bool {
 }
 
 /// Helper function to find and parse our `#[transform(...)]` attribute from a field's attributes.
-fn get_transform_attribute(
-    attrs: &[Attribute],
-) -> syn::Result<Option<TransformAttribute>> {
+fn get_transform_attribute(attrs: &[Attribute]) -> syn::Result<Option<TransformAttribute>> {
     // Find an attribute where the path is the identifier "transform".
-    if let Some(attr) = attrs.iter().find(|a| a.path().is_ident("transform"))
-    {
+    if let Some(attr) = attrs.iter().find(|a| a.path().is_ident("transform")) {
         let parsed_attr = attr.parse_args::<TransformAttribute>()?;
         Ok(Some(parsed_attr))
     } else {
@@ -182,10 +173,7 @@ fn get_transform_attribute(
 ///   the field value. Should be used only for fields of Copy types
 /// - `#[transform(using = parser_fn, error = ReturnType)]`: An optional field-level attribute to specify
 ///   a custom transforming function for a field.
-pub fn define_view_trait(
-    attr: TokenStream,
-    item: TokenStream,
-) -> TokenStream {
+pub fn define_view_trait(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the `for_struct = "SomeStruct"`
     let metas = parse_macro_input!(attr with syn::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated);
     let main_struct_ident = if let Some(Meta::NameValue(nv)) = metas.first() {
@@ -232,8 +220,7 @@ pub fn define_view_trait(
 
     // Derive the trait name using the "Trait" suffix
     let view_name = &view_struct.ident;
-    let trait_ident =
-        Ident::new(&format!("{view_name}Trait"), view_name.span());
+    let trait_ident = Ident::new(&format!("{view_name}Trait"), view_name.span());
 
     let named_fields = match &mut view_struct.fields {
         Fields::Named(f) => &mut f.named,
@@ -267,9 +254,10 @@ pub fn define_view_trait(
                 // The success type `ty` comes from the field definition itself
                 let return_type = quote! { Result<#ty, #error_type> };
 
-                trait_methods
-                    .push(quote! { fn #name(&self) -> #return_type; });
-                impl_methods.push(quote! { fn #name(&self) -> #return_type { #transform_fn(&self.#name) } });
+                trait_methods.push(quote! { fn #name(&self) -> #return_type; });
+                impl_methods.push(
+                    quote! { fn #name(&self) -> #return_type { #transform_fn(&self.#name) } },
+                );
             }
             // Case 2: No attribute found, use the default logic.
             Ok(None) => {
@@ -277,21 +265,15 @@ pub fn define_view_trait(
                 if is_known_copy_type(ty) || has_copy_attribute(&f.attrs) {
                     // Generate a getter that returns by value.
                     trait_methods.push(quote! { fn #name(&self) -> #ty; });
-                    impl_methods.push(
-                        quote! { fn #name(&self) -> #ty { self.#name } },
-                    );
+                    impl_methods.push(quote! { fn #name(&self) -> #ty { self.#name } });
                 } else if is_string(ty) {
                     // Check if the target type is `String` and return `&str` if it is
                     trait_methods.push(quote! { fn #name(&self) -> &str; });
-                    impl_methods.push(
-                        quote! { fn #name(&self) -> &str { &self.#name } },
-                    );
+                    impl_methods.push(quote! { fn #name(&self) -> &str { &self.#name } });
                 } else {
                     // Default behavior: return a reference to the field.
                     trait_methods.push(quote! { fn #name(&self) -> &#ty; });
-                    impl_methods.push(
-                        quote! { fn #name(&self) -> &#ty { &self.#name } },
-                    );
+                    impl_methods.push(quote! { fn #name(&self) -> &#ty { &self.#name } });
                 }
             }
             // Case 3: Attribute was malformed.

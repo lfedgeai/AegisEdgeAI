@@ -25,10 +25,7 @@ impl EnvConfig {
         // Return an EnvConfig containing the collected environment variables in a format that
         // allows it to be used as a Source for AgentConfig
         Ok(EnvConfig {
-            map: Map::from([(
-                "agent".to_string(),
-                Value::from(env_source.collect()?),
-            )]),
+            map: Map::from([("agent".to_string(), Value::from(env_source.collect()?))]),
         })
     }
 }
@@ -59,8 +56,7 @@ mod test {
     #[test]
     fn test_env_config_as_source() {
         // Get the configuration using a temporary directory as `keylime_dir`
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let default = get_testing_config(tempdir.path(), None);
 
         let env_config = EnvConfig::new().unwrap(); //#[allow_ci]
@@ -169,8 +165,7 @@ mod test {
         ]);
 
         // Get the configuration using a temporary directory as `keylime_dir`
-        let tempdir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let tempdir = tempfile::tempdir().expect("failed to create temporary dir");
         let default = get_testing_config(tempdir.path(), None);
 
         // For possible variable
@@ -184,11 +179,7 @@ mod test {
             let env_config = EnvConfig {
                 map: Map::from([(
                     "agent".to_string(),
-                    Value::from(
-                        env_source
-                            .collect()
-                            .expect("failed to collect env options"),
-                    ),
+                    Value::from(env_source.collect().expect("failed to collect env options")),
                 )]),
             };
 

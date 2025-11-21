@@ -15,9 +15,7 @@ pub enum OverrideError {
 }
 
 //TODO Temporary
-fn override_default_api_versions(
-    _input: &str,
-) -> Result<Vec<&str>, OverrideError> {
+fn override_default_api_versions(_input: &str) -> Result<Vec<&str>, OverrideError> {
     warn!("Overriding default API versions for push model");
     Ok(DEFAULT_PUSH_API_VERSIONS.into())
 }

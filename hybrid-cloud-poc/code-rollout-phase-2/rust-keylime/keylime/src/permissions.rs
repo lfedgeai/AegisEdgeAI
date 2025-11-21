@@ -44,9 +44,7 @@ pub enum PermissionError {
     },
 
     /// Invalid parameter error
-    #[error(
-        "Invalid parameter format: {value} cannot be parsed as 'user:group'"
-    )]
+    #[error("Invalid parameter format: {value} cannot be parsed as 'user:group'")]
     InvalidInput { value: String },
 
     /// Not enough permission
@@ -123,9 +121,7 @@ impl TryFrom<&str> for UserIds {
             }
             unsafe { *p }
         } else {
-            return Err(PermissionError::CStringConversion(
-                group.to_string(),
-            ));
+            return Err(PermissionError::CStringConversion(group.to_string()));
         };
 
         // Get uid from user name
@@ -191,8 +187,7 @@ pub fn run_as(user_group: &str) -> Result<(), PermissionError> {
     }
 
     // Set supplementary groups
-    if unsafe { libc::setgroups(ngroups as usize, sup_groups.as_ptr()) } != 0
-    {
+    if unsafe { libc::setgroups(ngroups as usize, sup_groups.as_ptr()) } != 0 {
         let e = io::Error::last_os_error();
         return Err(PermissionError::SetGroups(e));
     }
@@ -222,10 +217,7 @@ pub fn chown(user_group: &str, path: &Path) -> Result<(), PermissionError> {
 
     // change directory owner
     let c_path = CString::new(path.as_os_str().as_bytes())?;
-    if unsafe {
-        libc::chown(c_path.as_ptr(), ids.passwd.pw_uid, ids.group.gr_gid)
-    } != 0
-    {
+    if unsafe { libc::chown(c_path.as_ptr(), ids.passwd.pw_uid, ids.group.gr_gid) } != 0 {
         error!("Failed to change file {} owner.", path.display());
         return Err(PermissionError::ChOwn(path.display().to_string()));
     }
@@ -269,8 +261,7 @@ mod test {
     fn test_chown() {
         // Only test chown when running as root
         if get_euid() == 0 {
-            let temp_dir = tempfile::tempdir()
-                .expect("failed to create temporary directory");
+            let temp_dir = tempfile::tempdir().expect("failed to create temporary directory");
             let p = temp_dir.path().join("testfile.txt");
             let mut f = File::create(&p).expect("failed to create file");
             f.write_all(b"test content\n")
@@ -282,8 +273,7 @@ mod test {
 
     #[test]
     fn test_set_mode() {
-        let temp_dir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let temp_dir = tempfile::tempdir().expect("failed to create temporary directory");
         let p = temp_dir.path().join("testfile.txt");
         let mut f = File::create(&p).expect("failed to create file");
         f.write_all(b"test content\n")

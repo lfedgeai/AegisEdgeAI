@@ -116,12 +116,8 @@ pub(crate) fn run_action(
     work_dir: &Path,
 ) -> Result<Output> {
     // Lookup for command and get command line
-    let (command, is_python, is_payload) = lookup_action(
-        payload_dir,
-        actions_dir,
-        action,
-        allow_payload_actions,
-    )?;
+    let (command, is_python, is_payload) =
+        lookup_action(payload_dir, actions_dir, action, allow_payload_actions)?;
 
     info!("Executing revocation action {action}");
 
@@ -203,8 +199,7 @@ fn run_revocation_actions(
     let action_file = unzipped.join("action_list");
 
     if action_file.exists() {
-        action_data = fs::read_to_string(&action_file)
-            .expect("unable to read action_list");
+        action_data = fs::read_to_string(&action_file).expect("unable to read action_list");
 
         let file_actions = parse_list(&action_data)?;
 
@@ -229,9 +224,7 @@ fn run_revocation_actions(
                     outputs.push(output);
                 }
                 Err(e) => {
-                    let msg = format!(
-                        "error executing revocation script {action}: {e:?}"
-                    );
+                    let msg = format!("error executing revocation script {action}: {e:?}");
                     error!("{msg}");
                     return Err(Error::Script(
                         action.to_string(),
@@ -261,19 +254,13 @@ fn process_revocation(
     let cert_key = crypto::x509_get_pubkey(revocation_cert)?;
 
     // Verify the message and signature with our key
-    let mut verified = crypto::asym_verify(
-        &cert_key,
-        &revocation.msg,
-        &revocation.signature,
-    )?;
+    let mut verified = crypto::asym_verify(&cert_key, &revocation.msg, &revocation.signature)?;
 
     if verified {
         let msg = revocation.msg.as_str();
         let msg_payload: Value = serde_json::from_str(msg)?;
 
-        debug!(
-            "Revocation signature validated for revocation: {msg_payload}"
-        );
+        debug!("Revocation signature validated for revocation: {msg_payload}");
 
         let outputs = run_revocation_actions(
             msg_payload,
@@ -337,27 +324,26 @@ fn listen_zmq(
                             Ok(r) => {
                                 match r {
                                     Ok(raw_body) => {
-                                        if let Ok(r) = serde_json::from_str(
-                                            raw_body.as_ref(),
-                                        ) {
-                                            match revocation_tx.send(RevocationMessage::Revocation(r)).await {
-                                            Ok(_) => {
-                                                debug!("Sent Revocation message to revocation worker");
+                                        if let Ok(r) = serde_json::from_str(raw_body.as_ref()) {
+                                            match revocation_tx
+                                                .send(RevocationMessage::Revocation(r))
+                                                .await
+                                            {
+                                                Ok(_) => {
+                                                    debug!("Sent Revocation message to revocation worker");
+                                                }
+                                                Err(e) => {
+                                                    warn!("Failed to send Revocation message to revocation worker");
+                                                    continue;
+                                                }
                                             }
-                                            Err(e) => {
-                                                warn!("Failed to send Revocation message to revocation worker");
-                                                continue;
-                                            }
-                                        }
                                         } else {
                                             warn!("JSON decode error on 0mq message");
                                             continue;
                                         };
                                     }
                                     Err(_) => {
-                                        warn!(
-                                            "Unable to read message from 0mq"
-                                        );
+                                        warn!("Unable to read message from 0mq");
                                         continue;
                                     }
                                 }
@@ -410,12 +396,7 @@ pub(crate) async fn zmq_worker(
                 }
                 let (tx, rx) = oneshot::channel::<String>();
                 shutdown_tx = Some(tx);
-                task = match listen_zmq(
-                    revocation_tx.clone(),
-                    ip.clone(),
-                    port,
-                    rx,
-                ) {
+                task = match listen_zmq(revocation_tx.clone(), ip.clone(), port, rx) {
                     Ok(t) => Some(t),
                     Err(e) => {
                         warn!("Failed to start ZeroMQ revocation listener worker");
@@ -480,14 +461,13 @@ pub(crate) async fn worker(
             RevocationMessage::PayloadDecrypted => {
                 // The payload worker will send this message after decrypting and optionally
                 // unzipping the payload
-                let cert_absolute_path =
-                    match revocation_cert_path.as_ref().canonicalize() {
-                        Ok(path) => path,
-                        Err(e) => {
-                            error!("Certicate not available");
-                            continue;
-                        }
-                    };
+                let cert_absolute_path = match revocation_cert_path.as_ref().canonicalize() {
+                    Ok(path) => path,
+                    Err(e) => {
+                        error!("Certicate not available");
+                        continue;
+                    }
+                };
 
                 info!(
                     "Loading the revocation certificate from {}",
@@ -496,8 +476,7 @@ pub(crate) async fn worker(
 
                 // If successful, use the certificate, otherwise ignore the error and continue
                 // without the certificate
-                revocation_cert =
-                    crypto::load_x509_pem(&cert_absolute_path).ok();
+                revocation_cert = crypto::load_x509_pem(&cert_absolute_path).ok();
             }
             RevocationMessage::Shutdown => {
                 revocation_rx.close();
@@ -523,21 +502,15 @@ mod tests {
     #[cfg(feature = "testing")]
     #[test]
     fn revocation_scripts_ok() {
-        let work_dir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let work_dir = tempfile::tempdir().expect("failed to create temporary directory");
         let test_config = get_testing_config(work_dir.path(), None);
-        let json_file = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/unzipped/test_ok.json"
-        );
+        let json_file = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unzipped/test_ok.json");
         let json_str = fs::read_to_string(json_file).unwrap(); //#[allow_ci]
         let json = serde_json::from_str(&json_str).unwrap(); //#[allow_ci]
-        let actions_dir =
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions/");
+        let actions_dir = &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions/");
         let tmpfs_dir = work_dir.path().join("tmpfs-dev"); //#[allow_ci]
         fs::create_dir(&tmpfs_dir).unwrap(); //#[allow_ci]
-        let unzipped_dir =
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/unzipped");
+        let unzipped_dir = &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/unzipped");
         symlink(unzipped_dir, tmpfs_dir.join("unzipped")).unwrap(); //#[allow_ci]
         let outputs = run_revocation_actions(
             json,
@@ -564,21 +537,15 @@ mod tests {
     #[cfg(feature = "testing")]
     #[test]
     fn revocation_scripts_err() {
-        let work_dir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let work_dir = tempfile::tempdir().expect("failed to create temporary directory");
         let test_config = get_testing_config(work_dir.path(), None);
-        let json_file = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/unzipped/test_err.json"
-        );
+        let json_file = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unzipped/test_err.json");
         let json_str = fs::read_to_string(json_file).unwrap(); //#[allow_ci]
         let json = serde_json::from_str(&json_str).unwrap(); //#[allow_ci]
-        let actions_dir =
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions/");
+        let actions_dir = &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions/");
         let tmpfs_dir = work_dir.path().join("tmpfs-dev"); //#[allow_ci]
         fs::create_dir(&tmpfs_dir).unwrap(); //#[allow_ci]
-        let unzipped_dir =
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/unzipped");
+        let unzipped_dir = &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/unzipped");
         symlink(unzipped_dir, tmpfs_dir.join("unzipped")).unwrap(); //#[allow_ci]
         let outputs = run_revocation_actions(
             json,
@@ -594,13 +561,9 @@ mod tests {
     #[cfg(feature = "testing")]
     #[test]
     fn revocation_scripts_from_config() {
-        let work_dir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let work_dir = tempfile::tempdir().expect("failed to create temporary directory");
         let test_config = get_testing_config(work_dir.path(), None);
-        let json_file = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/unzipped/test_ok.json"
-        );
+        let json_file = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unzipped/test_ok.json");
         cfg_if::cfg_if! {
             if #[cfg(feature = "legacy-python-actions")] {
                 let revocation_actions = "local_action_hello, local_action_payload, local_action_stand_alone.py, local_action_rev_script1.py";
@@ -610,12 +573,10 @@ mod tests {
         }
         let json_str = fs::read_to_string(json_file).unwrap(); //#[allow_ci]
         let json = serde_json::from_str(&json_str).unwrap(); //#[allow_ci]
-        let actions_dir =
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions/");
+        let actions_dir = &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions/");
         let tmpfs_dir = work_dir.path().join("tmpfs-dev"); //#[allow_ci]
         fs::create_dir(&tmpfs_dir).unwrap(); //#[allow_ci]
-        let unzipped_dir =
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/unzipped");
+        let unzipped_dir = &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/unzipped");
         symlink(unzipped_dir, tmpfs_dir.join("unzipped")).unwrap(); //#[allow_ci]
         let outputs = run_revocation_actions(
             json,
@@ -724,12 +685,10 @@ mod tests {
         );
 
         // Test that disallowing payload works
-        let expected: Result<(String, bool)> =
-            Err(Error::Io(std::io::Error::new(
-                ErrorKind::NotFound,
-                "Could not find action local_action_payload_shell.sh"
-                    .to_string(),
-            )));
+        let expected: Result<(String, bool)> = Err(Error::Io(std::io::Error::new(
+            ErrorKind::NotFound,
+            "Could not find action local_action_payload_shell.sh".to_string(),
+        )));
 
         assert!(matches!(
             lookup_action(
@@ -742,11 +701,10 @@ mod tests {
         ));
 
         // Test non-existent action
-        let expected: Result<(String, bool)> =
-            Err(Error::Io(std::io::Error::new(
-                ErrorKind::NotFound,
-                "Could not find action local_action_non_existent".to_string(),
-            )));
+        let expected: Result<(String, bool)> = Err(Error::Io(std::io::Error::new(
+            ErrorKind::NotFound,
+            "Could not find action local_action_non_existent".to_string(),
+        )));
 
         assert!(matches!(
             lookup_action(
@@ -762,27 +720,22 @@ mod tests {
     #[cfg(feature = "testing")]
     #[test]
     fn test_process_revocation() {
-        let work_dir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let work_dir = tempfile::tempdir().expect("failed to create temporary directory");
         let test_config = get_testing_config(work_dir.path(), None);
 
-        let sig_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("test-data/revocation.sig");
+        let sig_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data/revocation.sig");
         let signature = fs::read_to_string(sig_path).unwrap(); //#[allow_ci]
 
-        let message_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("test-data/test_ok.json");
+        let message_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data/test_ok.json");
         let msg = fs::read_to_string(message_path).unwrap(); //#[allow_ci]
 
         let revocation = Revocation { msg, signature };
 
-        let cert_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("test-data/test-cert.pem");
+        let cert_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data/test-cert.pem");
 
         let cert = crypto::load_x509_pem(&cert_path).unwrap(); //#[allow_ci]
 
-        let actions_dir =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions");
+        let actions_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/actions");
 
         let tmpfs_dir = work_dir.path().join("tmpfs-dev");
 

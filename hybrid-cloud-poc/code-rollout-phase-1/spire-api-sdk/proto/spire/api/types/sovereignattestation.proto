@@ -22,6 +22,9 @@ message SovereignAttestation {
 
     // Optional workload code hash used as an additional selector/assertion.
     string workload_code_hash = 5;
+
+    // Unified-Identity - Phase 3: rust-keylime agent UUID for delegated certification correlation.
+    string keylime_agent_uuid = 6;
 }
 
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)

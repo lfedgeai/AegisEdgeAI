@@ -33,9 +33,7 @@ impl SymmKey {
             return Err(SymmKeyError::XorIncompatibleSizes);
         }
         let mut outbuf = vec![0u8; my_bytes.len()];
-        for (out, (x, y)) in
-            outbuf.iter_mut().zip(my_bytes.iter().zip(other_bytes))
-        {
+        for (out, (x, y)) in outbuf.iter_mut().zip(my_bytes.iter().zip(other_bytes)) {
             *out = x ^ y;
         }
         Ok(Self { bytes: outbuf })
@@ -53,9 +51,7 @@ impl TryFrom<&[u8]> for SymmKey {
 
     fn try_from(v: &[u8]) -> std::result::Result<Self, SymmKeyError> {
         match v.len() {
-            AES_128_KEY_LEN | AES_256_KEY_LEN => {
-                Ok(SymmKey { bytes: v.to_vec() })
-            }
+            AES_128_KEY_LEN | AES_256_KEY_LEN => Ok(SymmKey { bytes: v.to_vec() }),
             other => Err(SymmKeyError::InvalidKeySize(other)),
         }
     }
@@ -87,25 +83,21 @@ mod tests {
         let a: [u8; AES_128_KEY_LEN] = [0xA0; AES_128_KEY_LEN];
         let b: [u8; AES_128_KEY_LEN] = [0x0A; AES_128_KEY_LEN];
         let axb: [u8; AES_128_KEY_LEN] = [0xAA; AES_128_KEY_LEN];
-        let r_128 =
-            SymmKey::try_from(axb.as_ref()).expect("failed to convert");
+        let r_128 = SymmKey::try_from(axb.as_ref()).expect("failed to convert");
 
         // Input for 256 bits keys
         let c: [u8; AES_256_KEY_LEN] = [0xA0; AES_256_KEY_LEN];
         let d: [u8; AES_256_KEY_LEN] = [0x0A; AES_256_KEY_LEN];
         let cxd: [u8; AES_256_KEY_LEN] = [0xAA; AES_256_KEY_LEN];
-        let r_256 =
-            SymmKey::try_from(cxd.as_ref()).expect("failed to convert");
+        let r_256 = SymmKey::try_from(cxd.as_ref()).expect("failed to convert");
 
         // Test for each set of inputs
         for (i, j, expected) in [
             (a.as_ref(), b.as_ref(), &r_128),
             (c.as_ref(), d.as_ref(), &r_256),
         ] {
-            let k_i =
-                SymmKey::try_from(i).expect("failed to get key from slice");
-            let k_j =
-                SymmKey::try_from(j).expect("failed to get key from slice");
+            let k_i = SymmKey::try_from(i).expect("failed to get key from slice");
+            let k_j = SymmKey::try_from(j).expect("failed to get key from slice");
             let result = k_i.xor(&k_j);
             assert!(result.is_ok());
 

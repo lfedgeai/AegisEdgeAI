@@ -3,18 +3,14 @@
 use glob;
 
 use thiserror::Error;
-use tss_esapi::{
-    constants::response_code::Tss2ResponseCodeKind, Error::Tss2Error,
-};
+use tss_esapi::{constants::response_code::Tss2ResponseCodeKind, Error::Tss2Error};
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("HttpServer error: {0}")]
     ActixWeb(#[from] actix_web::Error),
     #[error("Failed to build Agent Identity")]
-    AgentIdentityBuilder(
-        #[from] crate::agent_identity::AgentIdentityBuilderError,
-    ),
+    AgentIdentityBuilder(#[from] crate::agent_identity::AgentIdentityBuilderError),
     #[error("TSS2 Error: {err:?}, kind: {kind:?}, {message}")]
     Tss2 {
         err: tss_esapi::Error,
@@ -43,9 +39,7 @@ pub enum Error {
     #[error("RegistrarClient error")]
     RegistrarClient(#[from] crate::registrar_client::RegistrarClientError),
     #[error("RegistrarClientBuilder error")]
-    RegistrarClientBuilder(
-        #[from] crate::registrar_client::RegistrarClientBuilderError,
-    ),
+    RegistrarClientBuilder(#[from] crate::registrar_client::RegistrarClientBuilderError),
     #[error("Serialization/deserialization error: {0}")]
     Serde(#[from] serde_json::Error),
     #[error("Permission error")]
@@ -109,9 +103,7 @@ pub enum Error {
     #[error("Zip error: {0}")]
     Zip(#[from] zip::result::ZipError),
     #[error("Certificate generation error")]
-    CertificateGeneration(
-        #[from] crate::crypto::x509::CertificateBuilderError,
-    ),
+    CertificateGeneration(#[from] crate::crypto::x509::CertificateBuilderError),
     #[error("UEFI Log parser error: {0}")]
     UEFILog(String),
     #[error("{0}")]
@@ -184,10 +176,7 @@ mod tests {
     #[test]
     fn test_error_conversion() {
         let err = Error::Conversion("Test conversion error".to_string());
-        assert_eq!(
-            format!("{err}"),
-            "Conversion error: Test conversion error"
-        );
+        assert_eq!(format!("{err}"), "Conversion error: Test conversion error");
     }
 
     #[test]
@@ -198,11 +187,7 @@ mod tests {
 
     #[test]
     fn test_error_script() {
-        let err = Error::Script(
-            "TestScript".to_string(),
-            Some(1),
-            "Test error".to_string(),
-        );
+        let err = Error::Script("TestScript".to_string(), Some(1), "Test error".to_string());
         assert_eq!(
             format!("{err}"),
             "Error executing script TestScript: Some(1), Test error"
@@ -260,16 +245,14 @@ mod tests {
             stdout: b"This is standard output".to_vec(),
             stderr: b"".to_vec(),
         };
-        let result: std::result::Result<Error, Error> =
-            Error::try_from(successful_output);
+        let result: std::result::Result<Error, Error> = Error::try_from(successful_output);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_from_tss_esapi_other_error() {
         use tss_esapi::WrapperErrorKind;
-        let original_tss_error =
-            tss_esapi::Error::WrapperError(WrapperErrorKind::WrongParamSize);
+        let original_tss_error = tss_esapi::Error::WrapperError(WrapperErrorKind::WrongParamSize);
         let converted_error: Error = original_tss_error.into();
         if let Error::Tss2 { err, kind, message } = converted_error {
             assert_eq!(format!("{err:?}"), format!("{original_tss_error:?}"));
@@ -286,9 +269,8 @@ mod tests {
 
         let unwrapped_err = result.unwrap_err();
         if let Error::Other(msg) = unwrapped_err {
-            let expected_msg = format!(
-                "cannot get execution status code for Error type {non_execution_error}"
-            );
+            let expected_msg =
+                format!("cannot get execution status code for Error type {non_execution_error}");
             assert_eq!(msg, expected_msg);
         }
     }
@@ -300,18 +282,14 @@ mod tests {
         assert!(result.is_err());
         let unwrapped_err = result.unwrap_err();
         if let Error::Other(msg) = unwrapped_err {
-            let expected_msg = format!(
-                "cannot get stderr for Error type {non_execution_error}"
-            );
+            let expected_msg = format!("cannot get stderr for Error type {non_execution_error}");
             assert_eq!(msg, expected_msg);
         }
     }
 
     #[test]
     fn test_display_permission() {
-        let err: Error =
-            crate::permissions::PermissionError::NotRoot("file".to_string())
-                .into();
+        let err: Error = crate::permissions::PermissionError::NotRoot("file".to_string()).into();
         assert_eq!(format!("{err}"), "Permission error");
     }
 
@@ -374,10 +352,7 @@ mod tests {
         let parse_err = "".parse::<i32>().unwrap_err();
         let err: Error = parse_err.into();
         if let Error::NumParse(e) = err {
-            assert_eq!(
-                format!("{e}"),
-                "cannot parse integer from empty string"
-            );
+            assert_eq!(format!("{e}"), "cannot parse integer from empty string");
         } else {
             panic!("Expected Error::NumParse, got {err:?}"); //#[allow_ci]
         }
@@ -388,10 +363,7 @@ mod tests {
         let parse_err = "truee".parse::<bool>().unwrap_err();
         let err: Error = parse_err.into();
         if let Error::ParseBool(e) = err {
-            assert_eq!(
-                format!("{e}"),
-                "provided string was not `true` or `false`"
-            );
+            assert_eq!(format!("{e}"), "provided string was not `true` or `false`");
         } else {
             panic!("Expected Error::ParseBool, got {err:?}"); //#[allow_ci]
         }
@@ -417,8 +389,7 @@ mod tests {
         let err: Error = nul_err.into();
         if let Error::Nul(e) = err {
             let msg = format!("{e}");
-            assert!(msg
-                .contains("nul byte found in provided data at position: 1"));
+            assert!(msg.contains("nul byte found in provided data at position: 1"));
         } else {
             panic!("Expected Error::Nul, got {err:?}"); //#[allow_ci]
         }
@@ -451,8 +422,7 @@ mod tests {
             stderr: vec![0xff, 0xff, 0xff],
         };
 
-        let result: std::result::Result<Error, Error> =
-            Error::try_from(invalid_output);
+        let result: std::result::Result<Error, Error> = Error::try_from(invalid_output);
         assert!(result.is_err());
 
         let err = result.unwrap_err();
@@ -466,13 +436,11 @@ mod tests {
 
     #[test]
     fn test_stderr_execution_error() -> Result<()> {
-        let execution_err =
-            Error::Execution(Some(1), "Process stderr output".to_string());
+        let execution_err = Error::Execution(Some(1), "Process stderr output".to_string());
         let stderr_output = execution_err.stderr()?;
         assert_eq!(stderr_output, "Process stderr output");
 
-        let execution_err_none =
-            Error::Execution(None, "Process stderr output 2".to_string());
+        let execution_err_none = Error::Execution(None, "Process stderr output 2".to_string());
         let stderr_output_none = execution_err_none.stderr()?;
         assert_eq!(stderr_output_none, "Process stderr output 2");
 
@@ -482,8 +450,7 @@ mod tests {
     #[test]
     fn test_display_configuration_error() {
         use crate::config::KeylimeConfigError;
-        let cfg_err =
-            KeylimeConfigError::Generic("Generic config test".to_string());
+        let cfg_err = KeylimeConfigError::Generic("Generic config test".to_string());
         let err = Error::Configuration(cfg_err);
         assert_eq!(format!("{err}"), "Configuration error");
     }
@@ -499,8 +466,7 @@ mod tests {
     #[test]
     fn test_display_hostname_parser_error() {
         use crate::hostname_parser::HostnameParsingError;
-        let hn_err =
-            HostnameParsingError::InvalidInput(("-Invalid").to_string());
+        let hn_err = HostnameParsingError::InvalidInput(("-Invalid").to_string());
         let err = Error::HostnameParser(hn_err);
         assert_eq!(format!("{err}"), "Failed to parse hostname");
     }
@@ -508,9 +474,7 @@ mod tests {
     #[test]
     fn test_display_crypto_error() {
         use crate::crypto::CryptoError;
-        let crypto_source = CryptoError::Base64DecodeError(
-            base64::DecodeError::InvalidByte(0, 0),
-        );
+        let crypto_source = CryptoError::Base64DecodeError(base64::DecodeError::InvalidByte(0, 0));
         let err = Error::Crypto(crypto_source);
         // El Display envuelve
         assert_eq!(format!("{err}"), "Crypto error: failed to decode base64");
@@ -519,15 +483,10 @@ mod tests {
     #[test]
     fn test_from_configuration_error() {
         use crate::config;
-        let cfg_err = config::KeylimeConfigError::Generic(
-            "Another config test".to_string(),
-        );
+        let cfg_err = config::KeylimeConfigError::Generic("Another config test".to_string());
         let err: Error = cfg_err.into();
         if let Error::Configuration(e) = err {
-            assert_eq!(
-                format!("{e}"),
-                "Configuration error: Another config test"
-            );
+            assert_eq!(format!("{e}"), "Configuration error: Another config test");
         } else {
             panic!("Expected Error::Configuration, got {err:?}"); //#[allow_ci]
         }
@@ -564,8 +523,7 @@ mod tests {
 
     #[test]
     fn test_actix_web_error() {
-        let actix_err =
-            actix_web::Error::from(std::io::Error::other("Actix web error"));
+        let actix_err = actix_web::Error::from(std::io::Error::other("Actix web error"));
         let err: Error = actix_err.into();
         assert_eq!(format!("{err}"), "HttpServer error: Actix web error");
     }
@@ -608,8 +566,7 @@ mod tests {
 
     #[test]
     fn test_invalid_ip_error() {
-        let parse_err =
-            "111.222.333.444".parse::<std::net::IpAddr>().unwrap_err();
+        let parse_err = "111.222.333.444".parse::<std::net::IpAddr>().unwrap_err();
         let err: Error = parse_err.into();
         if let Error::InvalidIP(e) = err {
             assert_eq!(format!("{e}"), "invalid IP address syntax");
@@ -618,8 +575,7 @@ mod tests {
 
     #[test]
     fn test_display_uuid_error() {
-        let uuid_source_err =
-            uuid::Uuid::parse_str("not-a-uuid").unwrap_err();
+        let uuid_source_err = uuid::Uuid::parse_str("not-a-uuid").unwrap_err();
         let err = Error::Uuid(uuid_source_err);
         let expected_prefix = "UUID error";
         let formatted_err = format!("{err}");
@@ -631,8 +587,7 @@ mod tests {
 
     #[test]
     fn test_from_uuid_error() {
-        let uuid_source_err =
-            uuid::Uuid::parse_str("Z-invalid-uuid").unwrap_err();
+        let uuid_source_err = uuid::Uuid::parse_str("Z-invalid-uuid").unwrap_err();
         let err: Error = uuid_source_err.into();
 
         if let Error::Uuid(e) = err {

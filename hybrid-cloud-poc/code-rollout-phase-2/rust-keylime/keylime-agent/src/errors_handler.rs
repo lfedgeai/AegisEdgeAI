@@ -30,19 +30,13 @@ pub(crate) async fn app_default(
     match req.head().method {
         http::Method::GET => {
             error = 400;
-            message = format!(
-                "Not Implemented: Use {api_versions} or /version interfaces"
-            );
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, &message));
+            message = format!("Not Implemented: Use {api_versions} or /version interfaces");
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, &message));
         }
         http::Method::POST => {
             error = 400;
-            message = format!(
-                "Not Implemented: Use {api_versions} or /version interfaces"
-            );
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, &message));
+            message = format!("Not Implemented: Use {api_versions} or /version interfaces");
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, &message));
         }
         _ => {
             error = 405;
@@ -77,20 +71,14 @@ pub(crate) async fn version_not_supported(
     HttpResponse::BadRequest().json(JsonWrapper::error(400, message))
 }
 
-pub(crate) fn json_parser_error(
-    err: JsonPayloadError,
-    req: &HttpRequest,
-) -> Error {
+pub(crate) fn json_parser_error(err: JsonPayloadError, req: &HttpRequest) -> Error {
     warn!("{} returning 400 response. {}", req.head().method, err);
 
     let resp = HttpResponse::BadRequest().json(JsonWrapper::error(400, &err));
     InternalError::from_response(err, resp).into()
 }
 
-pub(crate) fn query_parser_error(
-    err: QueryPayloadError,
-    req: &HttpRequest,
-) -> Error {
+pub(crate) fn query_parser_error(err: QueryPayloadError, req: &HttpRequest) -> Error {
     warn!("{} returning 400 response. {}", req.head().method, err);
 
     let resp = HttpResponse::BadRequest().json(JsonWrapper::error(400, &err));
@@ -118,11 +106,10 @@ pub(crate) fn wrap_404<B>(
         status.canonical_reason().unwrap_or("Not Found")
     );
 
-    let response =
-        HttpResponse::build(res.status()).json(JsonWrapper::error(
-            status.as_u16(),
-            status.canonical_reason().unwrap_or("Not Found"),
-        ));
+    let response = HttpResponse::build(res.status()).json(JsonWrapper::error(
+        status.as_u16(),
+        status.canonical_reason().unwrap_or("Not Found"),
+    ));
 
     Ok(ErrorHandlerResponse::Response(dev::ServiceResponse::new(
         res.into_parts().0,
@@ -142,10 +129,7 @@ mod tests {
     async fn test_default(resource: Resource, allow: &str) {
         let (fixture, mutex) = QuoteData::fixture().await.unwrap(); //#[allow_ci]
         let quotedata = web::Data::new(fixture);
-        let mut app = test::init_service(
-            App::new().app_data(quotedata).service(resource),
-        )
-        .await;
+        let mut app = test::init_service(App::new().app_data(quotedata).service(resource)).await;
 
         if allow.contains("GET") {
             let req = test::TestRequest::get().uri("/").to_request();
@@ -220,10 +204,7 @@ mod tests {
         HttpResponse::Ok().await
     }
 
-    async fn dummy_with_path(
-        req: HttpRequest,
-        path: web::Path<DummyPathParam>,
-    ) -> impl Responder {
+    async fn dummy_with_path(req: HttpRequest, path: web::Path<DummyPathParam>) -> impl Responder {
         HttpResponse::Ok().await
     }
 
@@ -231,32 +212,17 @@ mod tests {
     async fn test_parsing_error() {
         let mut app = test::init_service(
             App::new()
-                .wrap(
-                    ErrorHandlers::new()
-                        .handler(http::StatusCode::NOT_FOUND, wrap_404),
-                )
-                .app_data(
-                    web::JsonConfig::default()
-                        .error_handler(json_parser_error),
-                )
-                .app_data(
-                    web::QueryConfig::default()
-                        .error_handler(query_parser_error),
-                )
-                .app_data(
-                    web::PathConfig::default()
-                        .error_handler(path_parser_error),
-                )
-                .service(
-                    web::resource("/v2.2/ok").route(web::get().to(dummy)),
-                )
+                .wrap(ErrorHandlers::new().handler(http::StatusCode::NOT_FOUND, wrap_404))
+                .app_data(web::JsonConfig::default().error_handler(json_parser_error))
+                .app_data(web::QueryConfig::default().error_handler(query_parser_error))
+                .app_data(web::PathConfig::default().error_handler(path_parser_error))
+                .service(web::resource("/v2.2/ok").route(web::get().to(dummy)))
                 .service(
                     web::resource("/v2.2/ok/{number}/{string}")
                         .route(web::get().to(dummy_with_path)),
                 )
                 .service(
-                    web::resource(r"/v{major:\d+}.{minor:\d+}{tail}*")
-                        .to(version_not_supported),
+                    web::resource(r"/v{major:\d+}.{minor:\d+}{tail}*").to(version_not_supported),
                 ),
         )
         .await;

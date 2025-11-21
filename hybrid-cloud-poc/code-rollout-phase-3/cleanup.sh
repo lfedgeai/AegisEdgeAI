@@ -56,13 +56,16 @@ stop_all_instances_and_cleanup() {
     # Stop Keylime processes
     echo "     Stopping Keylime Verifier and Registrar..."
     pkill -f "keylime_verifier" >/dev/null 2>&1 || true
+    pkill -f "keylime\.cmd\.verifier" >/dev/null 2>&1 || true
     pkill -f "keylime_registrar" >/dev/null 2>&1 || true
+    pkill -f "keylime\.cmd\.registrar" >/dev/null 2>&1 || true
     pkill -f "python.*keylime" >/dev/null 2>&1 || true
     
     # Stop rust-keylime Agent
     echo "     Stopping rust-keylime Agent..."
     pkill -f "keylime_agent" >/dev/null 2>&1 || true
     pkill -f "rust-keylime" >/dev/null 2>&1 || true
+    pkill -f "target/release/keylime_agent" >/dev/null 2>&1 || true
     
     # Stop TPM Plugin Server
     echo "     Stopping TPM Plugin Server..."
@@ -101,21 +104,54 @@ stop_all_instances_and_cleanup() {
     pkill -f "tpm2-abrmd" >/dev/null 2>&1 || true
     pkill -f "swtpm" >/dev/null 2>&1 || true
     
-    # Clear TPM state to avoid NV_Read errors
-    echo "     Clearing TPM state..."
+    # Clear and initialize TPM state
+    echo "     Clearing and initializing TPM state..."
     if [ -c /dev/tpm0 ] || [ -c /dev/tpmrm0 ]; then
-        # Try to clear TPM using tpm2_clear (requires authorization)
-        # This will reset NV indices and clear TPM state
-        if command -v tpm2_clear >/dev/null 2>&1; then
+        # Ensure tpm2-abrmd is running for TPM operations (if using tpmrm0)
+        if [ -c /dev/tpmrm0 ]; then
+            if ! pgrep -x tpm2-abrmd >/dev/null 2>&1; then
+                echo "       Starting tpm2-abrmd for TPM operations..."
+                if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet tpm2-abrmd 2>/dev/null; then
+                    sudo systemctl start tpm2-abrmd 2>/dev/null || true
+                    sleep 2
+                elif command -v tpm2-abrmd >/dev/null 2>&1; then
+                    tpm2-abrmd --tcti=device 2>/dev/null &
+                    sleep 2
+                fi
+            fi
+        fi
+        
+        if command -v tpm2_clear >/dev/null 2>&1 && command -v tpm2_startup >/dev/null 2>&1; then
             # Use tpmrm0 if available (resource manager), otherwise tpm0
             TPM_DEVICE="/dev/tpmrm0"
             if [ ! -c "$TPM_DEVICE" ]; then
                 TPM_DEVICE="/dev/tpm0"
             fi
-            # Try to clear TPM (may fail if not authorized, but that's okay)
-            TCTI="device:${TPM_DEVICE}" tpm2_clear -c 2>/dev/null || \
-            TCTI="device:${TPM_DEVICE}" tpm2_startup -c 2>/dev/null || true
-            echo "     TPM cleared/reset"
+            # Clear TPM state (resets TPM to clean state, fixes quote hang issues)
+            # This is safe and doesn't require platform authorization on most systems
+            echo "       Clearing TPM..."
+            if timeout 10 env TCTI="device:${TPM_DEVICE}" tpm2_clear 2>/dev/null; then
+                echo "       ✓ TPM cleared"
+            else
+                echo "       ⚠ TPM clear failed or timed out (continuing anyway)"
+            fi
+            # Initialize TPM after clear
+            if TCTI="device:${TPM_DEVICE}" tpm2_startup -c 2>/dev/null; then
+                echo "       ✓ TPM initialized"
+            else
+                echo "       ⚠ TPM initialization skipped"
+            fi
+        elif command -v tpm2_startup >/dev/null 2>&1; then
+            # Fallback to just startup if clear is not available
+            TPM_DEVICE="/dev/tpmrm0"
+            if [ ! -c "$TPM_DEVICE" ]; then
+                TPM_DEVICE="/dev/tpm0"
+            fi
+            if TCTI="device:${TPM_DEVICE}" tpm2_startup -c 2>/dev/null; then
+                echo "     TPM initialized (clear not available)"
+            else
+                echo "     TPM initialization skipped"
+            fi
         fi
     fi
     
@@ -165,23 +201,35 @@ stop_all_instances_and_cleanup() {
     rm -rf /tmp/spire-agent 2>/dev/null || true
     rm -rf /tmp/spire-data 2>/dev/null || true
     
-    # Clean up Keylime databases
+    # Clean up Keylime databases and persistent data
+    echo "     Removing Keylime databases and persistent data..."
     if [ -n "${KEYLIME_DIR:-}" ] && [ -d "${KEYLIME_DIR}" ]; then
-        echo "     Removing Keylime databases..."
         rm -f "${KEYLIME_DIR}/verifier.db" 2>/dev/null || true
         rm -f "${KEYLIME_DIR}/verifier.sqlite" 2>/dev/null || true
+        rm -f "${KEYLIME_DIR}/cv_data.sqlite" 2>/dev/null || true
         rm -f "${KEYLIME_DIR}"/*.db 2>/dev/null || true
         rm -f "${KEYLIME_DIR}"/*.sqlite 2>/dev/null || true
-        rm -f /tmp/keylime/reg_data.sqlite 2>/dev/null || true
     fi
+    # Clean up /tmp/keylime directory (contains registrar database)
+    rm -rf /tmp/keylime 2>/dev/null || true
+    # Clean up any Keylime data in user home directory
+    rm -rf "$HOME/.keylime" 2>/dev/null || true
+    rm -rf "$HOME/.local/share/keylime" 2>/dev/null || true
+    # Clean up any Keylime data in /var/lib/keylime (if accessible)
+    sudo rm -rf /var/lib/keylime 2>/dev/null || true
     
     # Clean up Phase 3 TPM data
     echo "     Removing Phase 3 TPM data..."
     rm -rf /tmp/phase3-demo-tpm 2>/dev/null || true
     rm -rf "$HOME/.spire/data/agent/tpm-plugin" 2>/dev/null || true
+    rm -rf "$HOME/.spire" 2>/dev/null || true
     rm -rf /tmp/spire-data/tpm-plugin 2>/dev/null || true
     rm -rf /tmp/tpm-plugin-* 2>/dev/null || true
     rm -rf /tmp/rust-keylime-data 2>/dev/null || true
+    # Clean up any TPM plugin state files
+    rm -f /tmp/tpm-plugin*.pid 2>/dev/null || true
+    rm -f /tmp/tpm-plugin*.log 2>/dev/null || true
+    rm -f /tmp/tpm-plugin*.sock 2>/dev/null || true
     
     # Clean up rust-keylime agent directory (after ensuring tmpfs is unmounted)
     echo "     Removing rust-keylime agent data directory..."
@@ -222,11 +270,15 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
     rm -f /tmp/spire-server.log 2>/dev/null || true
     rm -f /tmp/spire-agent.log 2>/dev/null || true
+    rm -f /tmp/spire-agent-test.log 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
     rm -f /tmp/bundle.pem 2>/dev/null || true
     rm -f /tmp/phase3_complete_workflow_logs.txt 2>/dev/null || true
+    rm -f /tmp/phase3_*.log 2>/dev/null || true
+    rm -f /tmp/test_phase3_*.log 2>/dev/null || true
     # Clean up temporary config files
     rm -f /tmp/keylime-agent-*.conf 2>/dev/null || true
+    rm -f /tmp/*.conf.tmp 2>/dev/null || true
     
     # Step 5: Clean up sockets
     echo "  5. Removing socket files..."
@@ -236,6 +288,8 @@ stop_all_instances_and_cleanup() {
     rm -f "$HOME/.keylime/run/keylime-agent-certify.sock" 2>/dev/null || true
     rm -f /tmp/keylime-agent.sock 2>/dev/null || true
     rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
+    # Clean up any other socket files
+    find /tmp -name "*.sock" -type s 2>/dev/null | grep -E "(keylime|spire|tpm)" | xargs rm -f 2>/dev/null || true
     rm -rf /tmp/spire-server 2>/dev/null || true
     rm -rf /tmp/spire-agent 2>/dev/null || true
     

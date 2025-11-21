@@ -105,22 +105,13 @@ fn try_combine_keys(
 
             // Computes HMAC over agent UUID with provided key (payload decryption key) and
             // checks that this matches the provided auth_tag.
-            if crypto::verify_hmac(
-                symm_key.as_ref(),
-                uuid,
-                ukey.auth_tag.as_ref(),
-            )
-            .is_ok()
-            {
-                info!(
-                    "Successfully derived symmetric payload decryption key"
-                );
+            if crypto::verify_hmac(symm_key.as_ref(), uuid, ukey.auth_tag.as_ref()).is_ok() {
+                info!("Successfully derived symmetric payload decryption key");
 
-                let payload =
-                    ukey.payload.as_ref().map(|encrypted_payload| Payload {
-                        symm_key: symm_key.clone(),
-                        encrypted_payload: encrypted_payload.clone(),
-                    });
+                let payload = ukey.payload.as_ref().map(|encrypted_payload| Payload {
+                    symm_key: symm_key.clone(),
+                    encrypted_payload: encrypted_payload.clone(),
+                });
 
                 ukeys.clear();
                 vkeys.clear();
@@ -149,8 +140,8 @@ async fn u_key(
         Ok(k) => k,
         Err(e) => {
             warn!(
-                    "POST u_key returning 400 response. Invalid base64 encoding in encrypted_key: {e}"
-                );
+                "POST u_key returning 400 response. Invalid base64 encoding in encrypted_key: {e}"
+            );
             return HttpResponse::BadRequest().json(JsonWrapper::error(
                 400,
                 format!("Invalid base64 encoding in encrypted_key: {e}"),
@@ -165,11 +156,8 @@ async fn u_key(
     // Reference:
     // https://github.com/keylime/keylime/blob/f3c31b411dd3dd971fd9d614a39a150655c6797c/ \
     // keylime/crypto.py#L118
-    let decrypted_key = match crypto::rsa_oaep_decrypt(
-        &quote_data.payload_priv_key,
-        &encrypted_key,
-    )
-    .map_err(Error::from)
+    let decrypted_key = match crypto::rsa_oaep_decrypt(&quote_data.payload_priv_key, &encrypted_key)
+        .map_err(Error::from)
     {
         Ok(k) => k,
         Err(e) => {
@@ -207,16 +195,12 @@ async fn u_key(
         Ok(t) => t,
         Err(e) => {
             warn!("POST u_key returning 400 response: {e}");
-            return HttpResponse::BadRequest()
-                .json(JsonWrapper::error(400, e));
+            return HttpResponse::BadRequest().json(JsonWrapper::error(400, e));
         }
     };
 
     let payload = match &body.payload {
-        Some(data) => match general_purpose::STANDARD
-            .decode(data)
-            .map_err(Error::from)
-        {
+        Some(data) => match general_purpose::STANDARD.decode(data).map_err(Error::from) {
             Ok(d) => Some(d.into()),
             Err(e) => {
                 warn!("POST u_key returning 400 response. Invalid base64 encoding in payload: {e}");
@@ -262,7 +246,9 @@ async fn v_key(
     {
         Ok(k) => k,
         Err(e) => {
-            warn!("POST v_key returning 400 response. Invalid base64 encoding in encrypted_key: {e}");
+            warn!(
+                "POST v_key returning 400 response. Invalid base64 encoding in encrypted_key: {e}"
+            );
             return HttpResponse::BadRequest().json(JsonWrapper::error(
                 400,
                 format!("Invalid base64 encoding in encrypted_key: {e}"),
@@ -277,11 +263,8 @@ async fn v_key(
     // Reference:
     // https://github.com/keylime/keylime/blob/f3c31b411dd3dd971fd9d614a39a150655c6797c/ \
     // keylime/crypto.py#L118
-    let decrypted_key = match crypto::rsa_oaep_decrypt(
-        &quote_data.payload_priv_key,
-        &encrypted_key,
-    )
-    .map_err(Error::from)
+    let decrypted_key = match crypto::rsa_oaep_decrypt(&quote_data.payload_priv_key, &encrypted_key)
+        .map_err(Error::from)
     {
         Ok(k) => k,
         Err(e) => {
@@ -319,10 +302,7 @@ async fn v_key(
     HttpResponse::Ok().json(JsonWrapper::success(()))
 }
 
-async fn pubkey(
-    req: HttpRequest,
-    data: web::Data<QuoteData<'_>>,
-) -> impl Responder {
+async fn pubkey(req: HttpRequest, data: web::Data<QuoteData<'_>>) -> impl Responder {
     match crypto::pkey_pub_to_pem(&data.payload_pub_key) {
         Ok(pubkey) => {
             let response = JsonWrapper::success(KeylimePubkey { pubkey });
@@ -347,9 +327,7 @@ async fn get_symm_key(
 
     debug!("Sending GetSymmKey message to keys worker");
 
-    if let Err(e) =
-        keys_tx.send((KeyMessage::GetSymmKey, Some(resp_tx))).await
-    {
+    if let Err(e) = keys_tx.send((KeyMessage::GetSymmKey, Some(resp_tx))).await {
         return Err(Error::Sender(format!(
             "Failed to send GetSymmKey message: {e}"
         )));
@@ -374,11 +352,8 @@ async fn verify(
     data: web::Data<QuoteData<'_>>,
 ) -> impl Responder {
     if param.challenge.is_empty() {
-        warn!(
-            "GET key challenge returning 400 response. No challenge provided"
-        );
-        return HttpResponse::BadRequest()
-            .json(JsonWrapper::error(400, "No challenge provided."));
+        warn!("GET key challenge returning 400 response. No challenge provided");
+        return HttpResponse::BadRequest().json(JsonWrapper::error(400, "No challenge provided."));
     }
 
     if !param.challenge.chars().all(char::is_alphanumeric) {
@@ -398,10 +373,8 @@ async fn verify(
             Some(k) => k,
             None => {
                 warn!("GET key challenge returning 400 response. Bootstrap key not available");
-                return HttpResponse::BadRequest().json(JsonWrapper::error(
-                    400,
-                    "Bootstrap key not yet available.",
-                ));
+                return HttpResponse::BadRequest()
+                    .json(JsonWrapper::error(400, "Bootstrap key not yet available."));
             }
         };
 
@@ -429,16 +402,12 @@ async fn verify(
     }
 }
 
-async fn request_run_payload(
-    payloads_tx: Sender<PayloadMessage>,
-    payload: Payload,
-) -> Result<()> {
+async fn request_run_payload(payloads_tx: Sender<PayloadMessage>, payload: Payload) -> Result<()> {
     let m = PayloadMessage::RunPayload(payload);
     if let Err(e) = payloads_tx.send(m).await {
         warn!("Failed to send RunPayload message to payloads worker");
         return Err(Error::Sender(
-            "Failed to send RunPayload message to payloads worker"
-                .to_string(),
+            "Failed to send RunPayload message to payloads worker".to_string(),
         ));
     }
     debug!("Sent RunPayload message to payloads worker");
@@ -456,13 +425,9 @@ async fn process_keys(
         Some((key, p)) => {
             if run_payload {
                 if let Some(payload) = p {
-                    match request_run_payload(payloads_tx.clone(), payload)
-                        .await
-                    {
+                    match request_run_payload(payloads_tx.clone(), payload).await {
                         Ok(_) => {
-                            debug!(
-                                "Sent RunPayload message to payloads worker"
-                            );
+                            debug!("Sent RunPayload message to payloads worker");
                         }
                         Err(e) => {
                             warn!("{e}");
@@ -482,10 +447,7 @@ async fn process_keys(
 pub(crate) async fn worker(
     run_payload: bool,
     uuid: String,
-    mut keys_rx: Receiver<(
-        KeyMessage,
-        Option<oneshot::Sender<SymmKeyMessage>>,
-    )>,
+    mut keys_rx: Receiver<(KeyMessage, Option<oneshot::Sender<SymmKeyMessage>>)>,
     mut payloads_tx: Sender<PayloadMessage>,
 ) -> Result<()> {
     let mut ukeys: Vec<UKey> = Vec::new();
@@ -499,9 +461,7 @@ pub(crate) async fn worker(
         match message {
             KeyMessage::GetSymmKey => {
                 if let Some(r) = resp_tx {
-                    if let Err(e) =
-                        r.send(SymmKeyMessage::SymmKey(symm_key.clone()))
-                    {
+                    if let Err(e) = r.send(SymmKeyMessage::SymmKey(symm_key.clone())) {
                         debug!("Failed to send SymmKey message");
                     }
                 } else {
@@ -558,14 +518,13 @@ async fn keys_default(req: HttpRequest) -> impl Responder {
         http::Method::GET => {
             error = 400;
             message = "URI not supported, only /pubkey and /verify are supported for GET in /keys interface";
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, message));
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, message));
         }
         http::Method::POST => {
             error = 400;
-            message = "URI not supported, only /ukey and /vkey are supported for POST in /keys interface";
-            response = HttpResponse::BadRequest()
-                .json(JsonWrapper::error(error, message));
+            message =
+                "URI not supported, only /ukey and /vkey are supported for POST in /keys interface";
+            response = HttpResponse::BadRequest().json(JsonWrapper::error(error, message));
         }
         _ => {
             error = 405;
@@ -603,9 +562,7 @@ pub(crate) fn configure_keys_endpoints(cfg: &mut web::ServiceConfig) {
 mod tests {
     use super::*;
     #[cfg(feature = "testing")]
-    use crate::crypto::testing::{
-        encrypt_aead, pkey_pub_from_pem, rsa_oaep_encrypt,
-    };
+    use crate::crypto::testing::{encrypt_aead, pkey_pub_from_pem, rsa_oaep_encrypt};
     use crate::{
         crypto::{compute_hmac, AES_128_KEY_LEN, AES_256_KEY_LEN},
         payloads,
@@ -671,10 +628,8 @@ mod tests {
     ) -> (KeylimeUKey, KeylimeVKey, SymmKey) {
         let (ukey, vkey, k) = prepare_keys(key_len, payload, uuid);
 
-        let encrypted_u =
-            rsa_oaep_encrypt(pubkey, ukey.decrypted_key.as_ref()).unwrap(); //#[allow_ci]
-        let encrypted_v =
-            rsa_oaep_encrypt(pubkey, vkey.decrypted_key.as_ref()).unwrap(); //#[allow_ci]
+        let encrypted_u = rsa_oaep_encrypt(pubkey, ukey.decrypted_key.as_ref()).unwrap(); //#[allow_ci]
+        let encrypted_v = rsa_oaep_encrypt(pubkey, vkey.decrypted_key.as_ref()).unwrap(); //#[allow_ci]
         let encoded_auth_tag = hex::encode(ukey.auth_tag.as_ref());
 
         let enc_u = KeylimeUKey {
@@ -702,8 +657,7 @@ mod tests {
         ukeys.push(u);
         vkeys.push(v);
 
-        let result =
-            try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
+        let result = try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
         assert!(result.is_some());
 
         // Check the keys list are emptied after a successful combination
@@ -716,14 +670,12 @@ mod tests {
 
         // Check that missing ukeys, vkeys, or auth_tag makes it to return None
         ukeys.push(u);
-        let result =
-            try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
+        let result = try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
         assert!(result.is_none());
 
         // Check that failed auth_tag_verification returns None
         vkeys.push(v2);
-        let result =
-            try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
+        let result = try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
         assert!(result.is_none());
 
         // Check that the keys vecs are untouched
@@ -731,8 +683,7 @@ mod tests {
         assert!(vkeys.len() == 1);
 
         ukeys.push(u3);
-        let result =
-            try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
+        let result = try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
         assert!(result.is_none());
 
         // Check that the keys vecs are untouched
@@ -741,8 +692,7 @@ mod tests {
 
         // Check finally matching the keys
         ukeys.push(u2);
-        let result =
-            try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
+        let result = try_combine_keys(&mut ukeys, &mut vkeys, uuid.as_bytes());
         assert!(result.is_some());
         // Check the keys list are emptied after a successful combination
         assert!(ukeys.is_empty());
@@ -779,8 +729,7 @@ mod tests {
             Some(data.as_bytes().into()),
             uuid.to_string(),
         );
-        let (mut payload_tx, mut payload_rx) =
-            mpsc::channel::<PayloadMessage>(1);
+        let (mut payload_tx, mut payload_rx) = mpsc::channel::<PayloadMessage>(1);
         let arbiter = Arbiter::new();
 
         let k_clone = k.clone();
@@ -814,14 +763,7 @@ mod tests {
         assert!(ukeys.len() == 2);
 
         vkeys.push(v);
-        let result = process_keys(
-            &mut ukeys,
-            &mut vkeys,
-            uuid.to_string(),
-            payload_tx,
-            true,
-        )
-        .await;
+        let result = process_keys(&mut ukeys, &mut vkeys, uuid.to_string(), payload_tx, true).await;
         assert!(result.is_some());
         if let Some(key) = result {
             assert!(key == k);
@@ -830,10 +772,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_keys_default() {
-        let mut app = test::init_service(
-            App::new().service(web::resource("/").to(keys_default)),
-        )
-        .await;
+        let mut app =
+            test::init_service(App::new().service(web::resource("/").to(keys_default))).await;
 
         let req = test::TestRequest::get().uri("/").to_request();
 
@@ -885,18 +825,14 @@ mod tests {
 
         let (mut fixture, mutex) = QuoteData::fixture().await.unwrap(); //#[allow_ci]
 
-        fixture.secure_mount =
-            PathBuf::from(&temp_workdir.path().join("tmpfs-dev"));
+        fixture.secure_mount = PathBuf::from(&temp_workdir.path().join("tmpfs-dev"));
         fs::create_dir(&fixture.secure_mount).unwrap(); //#[allow_ci]
 
         // Replace the channels on the fixture with some local ones
-        let (mut payload_tx, mut payload_rx) =
-            mpsc::channel::<PayloadMessage>(1);
+        let (mut payload_tx, mut payload_rx) = mpsc::channel::<PayloadMessage>(1);
 
-        let (mut keys_tx, mut keys_rx) = mpsc::channel::<(
-            KeyMessage,
-            Option<oneshot::Sender<SymmKeyMessage>>,
-        )>(1);
+        let (mut keys_tx, mut keys_rx) =
+            mpsc::channel::<(KeyMessage, Option<oneshot::Sender<SymmKeyMessage>>)>(1);
 
         fixture.payload_tx = payload_tx.clone();
         fixture.keys_tx = keys_tx.clone();
@@ -949,14 +885,9 @@ mod tests {
                         payload_rx.close();
                     }
                     PayloadMessage::RunPayload(run_payload) => {
-                        assert!(
-                            run_payload.symm_key.as_ref() == k_clone.as_ref()
-                        );
+                        assert!(run_payload.symm_key.as_ref() == k_clone.as_ref());
                         if let Some(ref p) = p_clone {
-                            assert!(
-                                run_payload.encrypted_payload.as_ref()
-                                    == p.as_slice()
-                            );
+                            assert!(run_payload.encrypted_payload.as_ref() == p.as_slice());
                         }
                     }
                 }
@@ -967,8 +898,7 @@ mod tests {
             }
         })));
 
-        let encrypted_key =
-            rsa_oaep_encrypt(&quotedata.payload_pub_key, u.as_ref()).unwrap(); //#[allow_ci]
+        let encrypted_key = rsa_oaep_encrypt(&quotedata.payload_pub_key, u.as_ref()).unwrap(); //#[allow_ci]
 
         let ukey = KeylimeUKey {
             encrypted_key: general_purpose::STANDARD.encode(&encrypted_key),
@@ -984,8 +914,7 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
 
-        let encrypted_key =
-            rsa_oaep_encrypt(&quotedata.payload_pub_key, v.as_ref()).unwrap(); //#[allow_ci]
+        let encrypted_key = rsa_oaep_encrypt(&quotedata.payload_pub_key, v.as_ref()).unwrap(); //#[allow_ci]
 
         let vkey = KeylimeVKey {
             encrypted_key: general_purpose::STANDARD.encode(&encrypted_key),
@@ -1016,24 +945,21 @@ mod tests {
 
         // Test verify which calculates an HMAC on the challenge using the combined key as key
         let challenge = "1234567890ABCDEFGHIJ";
-        let expected =
-            compute_hmac(k.as_ref(), challenge.as_bytes()).unwrap(); //#[allow_ci]
+        let expected = compute_hmac(k.as_ref(), challenge.as_bytes()).unwrap(); //#[allow_ci]
         let req = test::TestRequest::get()
             .uri(format!("/vX.Y/keys/verify?challenge={challenge}").as_ref())
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
 
-        let result: JsonWrapper<KeylimeHMAC> =
-            test::read_body_json(resp).await;
+        let result: JsonWrapper<KeylimeHMAC> = test::read_body_json(resp).await;
         let response_hmac = hex::decode(&result.results.hmac).unwrap(); //#[allow_ci]
 
         assert_eq!(&response_hmac, &expected);
 
         // Test that sending part of a new key will not affect the current key until both parts are
         // received
-        let (new_u, new_v, new_k) =
-            prepare_encrypted_keys(key_len, None, uuid, &pubkey);
+        let (new_u, new_v, new_k) = prepare_encrypted_keys(key_len, None, uuid, &pubkey);
         let req = test::TestRequest::post()
             .uri("/vX.Y/keys/ukey")
             .set_json(&new_u)
@@ -1106,8 +1032,7 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
 
-        let result: JsonWrapper<KeylimePubkey> =
-            test::read_body_json(resp).await;
+        let result: JsonWrapper<KeylimePubkey> = test::read_body_json(resp).await;
         assert!(pkey_pub_from_pem(&result.results.pubkey)
             .unwrap() //#[allow_ci]
             .public_eq(&quotedata.payload_pub_key));

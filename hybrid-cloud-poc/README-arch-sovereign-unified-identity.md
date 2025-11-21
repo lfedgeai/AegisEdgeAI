@@ -40,9 +40,10 @@ The following diagram shows the component relationships and clarifies the distin
 │              TPM Plugin Server (Python Process)                   │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │  - Generates App Key on startup (Step 3)                  │  │
-│  │  - Generates TPM Quotes (Step 4)                          │  │
-│  │  - Automatically triggers delegated certification (Step 5) │  │
+│  │  - Provides App Key public and context via /get-app-key  │  │
+│  │  - Requests App Key certificate via delegated cert (Step 4)│  │
 │  │  - Uses tpm2-tools for TPM operations                     │  │
+│  │  - Note: Quote generation removed (handled by Keylime)     │  │
 │  │  - Location: tpm-plugin/tpm_plugin_server.py              │  │
 │  └───────────────┬───────────────────────────────────────────┘  │
 └───────────────────┼───────────────────────────────────────────────┘
@@ -276,9 +277,9 @@ message AttestAgentResponse {
 
 ---
 
-#### Step 4: Generate TPM Quote with Nonce
+#### Step 4: Get App Key and Request Certificate
 
-**Component:** SPIRE Agent → SPIRE TPM Plugin
+**Component:** SPIRE Agent → SPIRE TPM Plugin → rust-keylime Agent
 
 **Status:** 🆕 New (Phase 3)
 
@@ -289,103 +290,53 @@ message AttestAgentResponse {
 **Port/Path:** UDS socket (default: `/tmp/spire-data/tpm-plugin/tpm-plugin.sock`)
 
 **Action:**
-- TPM Plugin generates a TPM Quote using the stored App Key (from Step 3)
-- **Nonce from Step 2 (SPIRE Server) is embedded in the quote's `extraData` field**
-- The nonce is converted from hex string to bytes and placed in `TPMS_ATTEST.extraData`
-- Quote format: `r<base64-message>:<base64-signature>:<base64-pcrs>`
-- **Automatically triggers Step 5 (Delegated Certification)** after quote generation
+- SPIRE Agent requests App Key public key and context from TPM Plugin
+- SPIRE Agent requests App Key certificate from TPM Plugin (which forwards to rust-keylime Agent)
+- TPM Plugin uses the stored App Key public key and context (from Step 3)
+- TPM Plugin forwards certificate request to rust-keylime Agent over UDS
+- rust-keylime Agent uses the host's TPM AK (Attestation Key) to certify the App Key
+- Returns a base64-encoded certificate containing TPM2_Certify output
 
-**Request Format (JSON over UDS):**
+**Request Format 1: Get App Key (JSON over UDS):**
 ```json
-POST /generate-quote
+POST /get-app-key
 Content-Type: application/json
 
-{
-  "nonce": "<hex-nonce-from-spire-server>",
-  "pcr_list": "sha256:0,1,2,3,4,5,6,7",
-  "work_dir": "/tmp/spire-data/tpm-plugin"
-}
+{}
 ```
 
-**Response Format (JSON):**
+**Response Format 1: Get App Key (JSON):**
 ```json
 {
   "status": "success",
-  "quote": "r<base64-message>:<base64-signature>:<base64-pcrs>",
   "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-  "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l..."
+  "app_key_context": "0x8101000B"  // or file path
 }
 ```
 
-**Note:** The `app_key_public` field is **required** and must be included in the response. It is used by the SPIRE Agent to build the `SovereignAttestation` and is required by the Keylime Verifier for verification.
-
-**Note:** The `app_key_context` is not required in the request since it is automatically retrieved from the stored App Key context (generated in Step 3). The TPM Plugin uses the stored App Key public key and context for quote generation.
-
-**Nonce Embedding:**
-- The hex-encoded nonce from SPIRE Server is converted to bytes
-- Embedded in `TPMS_ATTEST.extraData` field of the TPM Quote
-- Used by Keylime Verifier to verify quote freshness
-
-**Automatic Delegated Certification:**
-- After generating the quote, the TPM Plugin automatically calls Step 5 (Delegated Certification)
-- Uses the stored App Key public key and context to request certification from the Keylime Agent
-- The certificate is included in the response alongside the quote
-
-**Code Location:**
-- Client: `pkg/agent/tpmplugin/tpm_plugin_gateway.go::GenerateQuote()` → `generateQuoteHTTP()`
-- Server: `tpm-plugin/tpm_plugin_server.py::handle_generate_quote()`
-
----
-
-#### Step 5: Request App Key Certificate (Delegated Certification) - Automatic
-
-**Component:** SPIRE TPM Plugin → Keylime Agent (Automatically triggered by Step 4)
-
-**Status:** 🆕 New (Phase 3)
-
-**Transport:** JSON over UDS (Phase 3)
-
-**Protocol:** JSON REST API
-
-**Port/Path:** UDS socket (default: `/tmp/keylime-agent.sock` or as configured)
-
-**Endpoints:**
-- SPIRE TPM Plugin → Keylime Agent: `POST /v2.2/delegated_certification/certify_app_key`
-
-**Authentication:** None (UDS-only communication, both components must be on the same physical host)
-
-**Security Note:** UDS (UNIX Domain Socket) communication ensures that both the SPIRE TPM Plugin and rust-keylime Agent must be running on the same physical host. This prevents remote routing of connections that could occur with TCP/IP (localhost:port). The rust-keylime Agent's network listener is disabled by default (`enable_network_listener = false`) to enforce UDS-only communication for the delegated certification interface.
-
-**Action:**
-- **Automatically triggered by Step 4** after TPM Quote generation
-- TPM Plugin uses the stored App Key public key and context (from Step 3)
-- TPM Plugin server forwards the request to Keylime Agent over UDS
-- Keylime Agent uses the host's TPM AK (Attestation Key) to certify the App Key
-- Returns a base64-encoded certificate containing TPM2_Certify output
-- Certificate is included in Step 4's response to the SPIRE Agent
-
-**Note:** This step is **not called directly by the SPIRE Agent**. It is automatically executed by the TPM Plugin as part of Step 4's quote generation flow. The SPIRE Agent receives the certificate as part of Step 4's response.
-
-**Request Format (SPIRE TPM Plugin → Keylime Agent, JSON over UDS):**
+**Request Format 2: Request Certificate (JSON over UDS):**
 ```json
-POST /v2.2/delegated_certification/certify_app_key
+POST /request-certificate
 Content-Type: application/json
 
 {
-  "api_version": "v1",
-  "command": "certify_app_key",
   "app_key_public": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----",
-  "app_key_context_path": "/tmp/spire-data/tpm-plugin/app.ctx"  // or persistent handle like "0x8101000B"
+  "app_key_context_path": "0x8101000B",  // or file path
+  "endpoint": "unix:///tmp/keylime-agent.sock"  // optional
 }
 ```
 
-**Response Format (Keylime Agent → SPIRE TPM Plugin, JSON):**
+**Response Format 2: Request Certificate (JSON):**
 ```json
 {
-  "result": "SUCCESS",
+  "status": "success",
   "app_key_certificate": "eyJhcHBfa2V5X3B1YmxpYyI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2l..."
 }
 ```
+
+**Note:** The `app_key_public` field is **required** and is used by the SPIRE Agent to build the `SovereignAttestation` and is required by the Keylime Verifier for verification.
+
+**Note:** The `app_key_context` is automatically retrieved from the stored App Key context (generated in Step 3). The TPM Plugin uses the stored App Key public key and context for certificate requests.
 
 **Certificate Format:**
 The certificate is a base64-encoded JSON structure containing TPM2_Certify output:
@@ -399,25 +350,100 @@ The certificate is a base64-encoded JSON structure containing TPM2_Certify outpu
 }
 ```
 
-**UDS Communication:**
-The protocol uses HTTP/1.1 over UDS (JSON REST API):
-- Content-Type: application/json
-- Request/Response format: Standard HTTP/1.1 over UDS
-
-**Error Responses:**
-- `400 Bad Request`: Invalid command or missing fields
-- `403 Forbidden`: Feature flag disabled (`UNIFIED_IDENTITY_ENABLED` not set)
-- `500 Internal Server Error`: TPM operation failed
+**Delegated Certification Flow:**
+- TPM Plugin forwards certificate request to rust-keylime Agent over UDS
+- rust-keylime Agent uses the host's TPM AK (Attestation Key) to certify the App Key
+- Certificate is returned to SPIRE Agent via TPM Plugin
 
 **Code Location:**
-- SPIRE Agent Gateway: `pkg/agent/tpmplugin/tpm_plugin_gateway.go::RequestCertificate()` → `requestCertificateHTTP()`
-- SPIRE TPM Plugin Server: `tpm-plugin/tpm_plugin_server.py::handle_request_certificate()`
-- SPIRE TPM Plugin Client: `tpm-plugin/delegated_certification.py::DelegatedCertificationClient::request_certificate()`
+- Client: `pkg/agent/tpmplugin/tpm_plugin_gateway.go::BuildSovereignAttestation()` → calls `/get-app-key` and `/request-certificate`
+- Server: `tpm-plugin/tpm_plugin_server.py::handle_get_app_key()` and `handle_request_certificate()`
+- Delegated Cert Client: `tpm-plugin/delegated_certification.py::DelegatedCertificationClient::request_certificate()`
 - Keylime Agent Server: `rust-keylime/keylime-agent/src/delegated_certification_handler.rs::certify_app_key()`
 
 ---
 
-#### Step 6: Keylime Agent Collects Host Attestation Data
+#### Step 5: Keylime Verifier Requests TPM AK Quote from rust-keylime Agent
+
+**Component:** Keylime Verifier → rust-keylime Agent
+
+**Status:** 🆕 New (Phase 3)
+
+**Transport:** HTTP over TCP/IP
+
+**Protocol:** JSON REST API
+
+**Port/Path:** HTTP endpoint (default: `http://<agent_ip>:9002`)
+
+**Endpoints:**
+- Keylime Verifier → rust-keylime Agent: `GET /v1.0/quotes/identity?nonce=<nonce>`
+
+**Action:**
+- Keylime Verifier requests TPM AK quote directly from rust-keylime Agent
+- rust-keylime Agent generates quote using TPM AK (Attestation Key)
+- Quote includes PCR 17 with geolocation data (extended during quote generation)
+- Nonce from SPIRE Server is embedded in the quote's `extraData` field
+- Quote format: Base64-encoded TPM quote structure
+
+**Request Format (HTTP GET):**
+```
+GET /v1.0/quotes/identity?nonce=<hex-nonce-from-spire-server>
+Host: <agent_ip>:9002
+```
+
+**Response Format (JSON):**
+```json
+{
+  "result": "SUCCESS",
+  "data": {
+    "quote": "<base64-encoded-tpm-quote>",
+    "hash_alg": "sha256",
+    "enc_alg": "sha256",
+    "sign_alg": "rsassa",
+    "geolocation": "Spain:Madrid:Madrid:40.4168:-3.7038",
+    "pubkey": "-----BEGIN PUBLIC KEY-----\n..."
+  }
+}
+```
+
+**Note:** The quote is generated by rust-keylime Agent using the TPM AK (not App Key). This ensures that geolocation detection logic in the rust-keylime Agent is properly utilized, as it extends geolocation into PCR 17 during quote generation.
+
+**Geolocation in PCR 17:**
+- rust-keylime Agent detects geolocation via sensors (GNSS, mobile sensor, etc.)
+- Geolocation is extended into PCR 17 during quote generation
+- Quote mask includes PCR 17 (bit 17 = 0x20000)
+- Geolocation string is returned in the quote response
+
+**Code Location:**
+- Verifier: `keylime/keylime/cloud_verifier_tornado.py::_tpm_app_key_verify()` → requests quote from agent
+- Agent: `rust-keylime/keylime-agent/src/quotes_handler.rs::identity()` → generates quote with PCR 17
+
+---
+
+#### Step 6: Keylime Verifier Validates App Key Certificate Using TPM AK from Database
+
+**Component:** Keylime Verifier (Internal)
+
+**Status:** 🆕 New (Phase 3)
+
+**Action:**
+- Keylime Verifier retrieves TPM AK from its own database
+- Uses stored TPM AK to verify App Key certificate signature
+- Certificate was signed by rust-keylime Agent using the host's TPM AK
+- Verifier validates that the certificate signature matches the stored TPM AK
+
+**TPM AK Lookup:**
+- Verifier looks up agent by IP/port (from request or agent database)
+- Retrieves `ak_tpm` field from `VerfierMain` table
+- Uses this stored TPM AK to verify the App Key certificate
+
+**Code Location:**
+- `keylime/keylime/cloud_verifier_tornado.py::_tpm_app_key_verify()` → looks up TPM AK from database
+- `keylime/keylime/app_key_verification.py::validate_app_key_certificate()` → verifies certificate signature
+
+---
+
+#### Step 7: Keylime Agent Collects Host Attestation Data
 
 **Component:** Keylime Agent (Internal)
 
@@ -539,6 +565,11 @@ message AgentX509SVIDParams {
 
 #### Step 10: SPIRE Server Verifies Host Attestation via Keylime Verifier
 
+**Note:** This step includes:
+- Step 5: Keylime Verifier requests TPM AK quote from rust-keylime Agent
+- Step 6: Keylime Verifier validates App Key certificate using TPM AK from database
+- Step 10a: Geolocation retrieval (integrated into quote request)
+
 **Note:** This step includes Step 10a (geolocation retrieval) as part of the verification process.
 
 **Component:** SPIRE Server → Keylime Verifier
@@ -562,8 +593,10 @@ message AgentX509SVIDParams {
 - SPIRE Server extracts `SovereignAttestation` from the request
 - Sends verification request to Keylime Verifier
 - Keylime Verifier:
-  - Validates App Key certificate (TPM2_Certify signature)
-  - Verifies TPM Quote signature using App Key
+  - **Retrieves TPM AK from its own database** (using agent IP/port or other identifiers)
+  - **Validates App Key certificate using TPM AK from database** (verifies TPM2_Certify signature)
+  - Requests TPM AK quote from rust-keylime Agent (Step 5)
+  - Verifies TPM Quote signature using TPM AK (from database)
   - **Extracts nonce from quote's `extraData` field and validates it matches the nonce from Step 2**
   - **Verifies PCR 17 contains geolocation hash (TPM-attested geolocation)**
   - Retrieves attested claims (geolocation, host integrity, GPU metrics) via fact provider

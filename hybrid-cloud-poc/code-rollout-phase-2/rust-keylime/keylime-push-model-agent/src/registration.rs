@@ -1,19 +1,14 @@
 use keylime::{
-    agent_registration::{
-        AgentRegistration, AgentRegistrationConfig, RetryConfig,
-    },
+    agent_registration::{AgentRegistration, AgentRegistrationConfig, RetryConfig},
     cert,
     config::PushModelConfigTrait,
     context_info,
     error::Result,
 };
 
-pub async fn check_registration(
-    context_info: Option<context_info::ContextInfo>,
-) -> Result<()> {
+pub async fn check_registration(context_info: Option<context_info::ContextInfo>) -> Result<()> {
     if context_info.is_some() {
-        crate::registration::register_agent(&mut context_info.unwrap())
-            .await?;
+        crate::registration::register_agent(&mut context_info.unwrap()).await?;
     }
     Ok(())
 }
@@ -28,20 +23,14 @@ fn get_retry_config() -> Option<RetryConfig> {
         None
     } else {
         Some(RetryConfig {
-            max_retries: config
-                .exponential_backoff_max_retries()
-                .unwrap_or(0),
-            initial_delay_ms: config
-                .exponential_backoff_initial_delay()
-                .unwrap_or(0),
+            max_retries: config.exponential_backoff_max_retries().unwrap_or(0),
+            initial_delay_ms: config.exponential_backoff_initial_delay().unwrap_or(0),
             max_delay_ms: *config.exponential_backoff_max_delay(),
         })
     }
 }
 
-pub async fn register_agent(
-    context_info: &mut context_info::ContextInfo,
-) -> Result<()> {
+pub async fn register_agent(context_info: &mut context_info::ContextInfo) -> Result<()> {
     let config = keylime::config::get_config();
 
     let ac = AgentRegistrationConfig {

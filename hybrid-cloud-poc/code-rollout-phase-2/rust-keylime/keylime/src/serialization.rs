@@ -2,27 +2,20 @@ use base64::{engine::general_purpose, Engine as _};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct WrappedBase64Encoded(
-    #[serde(deserialize_with = "deserialize_as_base64")] Vec<u8>,
-);
+struct WrappedBase64Encoded(#[serde(deserialize_with = "deserialize_as_base64")] Vec<u8>);
 
 pub fn is_empty(buf: &[u8]) -> bool {
     buf.is_empty()
 }
 
-pub fn serialize_as_base64<S>(
-    bytes: &[u8],
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_as_base64<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     serializer.serialize_str(&general_purpose::STANDARD.encode(bytes))
 }
 
-pub fn deserialize_as_base64<'de, D>(
-    deserializer: D,
-) -> Result<Vec<u8>, D::Error>
+pub fn deserialize_as_base64<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -33,39 +26,27 @@ where
     })
 }
 
-pub fn serialize_maybe_base64<S>(
-    value: &Option<Vec<u8>>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_maybe_base64<S>(value: &Option<Vec<u8>>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     match *value {
-        Some(ref value) => {
-            serializer.serialize_str(&general_purpose::STANDARD.encode(value))
-        }
+        Some(ref value) => serializer.serialize_str(&general_purpose::STANDARD.encode(value)),
         None => serializer.serialize_none(),
     }
 }
 
-pub fn serialize_option_base64<S>(
-    value: &Option<&[u8]>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_option_base64<S>(value: &Option<&[u8]>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     match *value {
-        Some(value) => {
-            serializer.serialize_str(&general_purpose::STANDARD.encode(value))
-        }
+        Some(value) => serializer.serialize_str(&general_purpose::STANDARD.encode(value)),
         None => serializer.serialize_none(),
     }
 }
 
-pub fn deserialize_maybe_base64<'de, D>(
-    deserializer: D,
-) -> Result<Option<Vec<u8>>, D::Error>
+pub fn deserialize_maybe_base64<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -122,18 +103,11 @@ mod test {
 
         assert_eq!(serialized, "{\"maybe_base64\":\"dGVzdA==\",\"as_base64\":\"dGVzdA==\",\"option_base64\":\"dGVzdA==\"}");
 
-        let deserialized: TestResponse =
-            serde_json::from_str(&serialized).unwrap(); //#[allow_ci]
+        let deserialized: TestResponse = serde_json::from_str(&serialized).unwrap(); //#[allow_ci]
 
-        assert_eq!(
-            deserialized.maybe_base64,
-            Some("test".as_bytes().to_vec())
-        );
+        assert_eq!(deserialized.maybe_base64, Some("test".as_bytes().to_vec()));
         assert_eq!(deserialized.as_base64, Some("test".as_bytes().to_vec()));
-        assert_eq!(
-            deserialized.option_base64,
-            Some("test".as_bytes().to_vec())
-        );
+        assert_eq!(deserialized.option_base64, Some("test".as_bytes().to_vec()));
 
         let maybe_base64: Option<Vec<u8>> = Some("test".as_bytes().to_vec());
         let options_missing = TestStruct {
@@ -147,13 +121,9 @@ mod test {
         // Expect the None and empty fields to be skipped
         assert_eq!(serialized, "{\"maybe_base64\":\"dGVzdA==\"}");
 
-        let deserialized: TestResponse =
-            serde_json::from_str(&serialized).unwrap(); //#[allow_ci]
+        let deserialized: TestResponse = serde_json::from_str(&serialized).unwrap(); //#[allow_ci]
 
-        assert_eq!(
-            deserialized.maybe_base64,
-            Some("test".as_bytes().to_vec())
-        );
+        assert_eq!(deserialized.maybe_base64, Some("test".as_bytes().to_vec()));
         assert_eq!(deserialized.as_base64, None);
         assert_eq!(deserialized.option_base64, None);
     }

@@ -34,10 +34,7 @@ impl Digest {
     pub fn new(algorithm: HashAlgorithm, value: &[u8]) -> Result<Self> {
         let digest: MessageDigest = algorithm.into();
         if value.len() != digest.size() {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "invalid digest value",
-            ));
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid digest value"));
         }
         let mut v = Vec::with_capacity(digest.size());
         v.extend_from_slice(value);
@@ -81,24 +78,16 @@ impl TryFrom<&str> for Digest {
         if tokens.len() == 1 {
             Ok(Digest {
                 algorithm: HashAlgorithm::Sha1,
-                value: hex::decode(tokens[0]).map_err(|_| {
-                    Error::new(
-                        ErrorKind::InvalidInput,
-                        "invalid hex encoding",
-                    )
-                })?,
+                value: hex::decode(tokens[0])
+                    .map_err(|_| Error::new(ErrorKind::InvalidInput, "invalid hex encoding"))?,
             })
         } else {
             Ok(Digest {
-                algorithm: tokens[0].try_into().map_err(|_| {
-                    Error::new(ErrorKind::InvalidInput, "invalid algorithm")
-                })?,
-                value: hex::decode(tokens[1]).map_err(|_| {
-                    Error::new(
-                        ErrorKind::InvalidInput,
-                        "invalid hex encoding",
-                    )
-                })?,
+                algorithm: tokens[0]
+                    .try_into()
+                    .map_err(|_| Error::new(ErrorKind::InvalidInput, "invalid algorithm"))?,
+                value: hex::decode(tokens[1])
+                    .map_err(|_| Error::new(ErrorKind::InvalidInput, "invalid hex encoding"))?,
             })
         }
     }
@@ -171,22 +160,15 @@ impl TryFrom<&str> for Signature {
     type Error = std::io::Error;
 
     fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        let value = hex::decode(value).map_err(|_| {
-            Error::new(ErrorKind::InvalidInput, "invalid hex encoding")
-        })?;
+        let value = hex::decode(value)
+            .map_err(|_| Error::new(ErrorKind::InvalidInput, "invalid hex encoding"))?;
         // basic checks on signature
         if value.len() < 9 {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "invalid signature",
-            ));
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid signature"));
         }
         let sig_size = u16::from_be_bytes(value[7..9].try_into().unwrap()); //#[allow_ci]
         if (sig_size as usize) + 9 != value.len() {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "invalid signature",
-            ));
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid signature"));
         }
         Ok(Self { value })
     }
@@ -209,9 +191,8 @@ impl TryFrom<&str> for Buffer {
 
     fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
         Ok(Self {
-            value: hex::decode(value).map_err(|_| {
-                Error::new(ErrorKind::InvalidInput, "invalid hex encoding")
-            })?,
+            value: hex::decode(value)
+                .map_err(|_| Error::new(ErrorKind::InvalidInput, "invalid hex encoding"))?,
         })
     }
 }
@@ -408,9 +389,8 @@ impl TryFrom<&str> for Entry {
 
         let template_hash = Digest {
             algorithm: HashAlgorithm::Sha1,
-            value: hex::decode(tokens[1]).map_err(|_| {
-                Error::new(ErrorKind::InvalidInput, "invalid hex encoding")
-            })?,
+            value: hex::decode(tokens[1])
+                .map_err(|_| Error::new(ErrorKind::InvalidInput, "invalid hex encoding"))?,
         };
         let mode = tokens[2];
         let event = tokens[3];
@@ -501,7 +481,10 @@ mod tests {
     fn test_parse_ima_sig_missing() {
         let entry: Entry = "10 5426cf3031a43f5bfca183d79950698a95a728f6 ima-sig sha256:f1125b940480d20ad841d26d5ea253edc0704b5ec1548c891edf212cb1a9365e /lib/modules/5.4.48-openpower1/kernel/drivers/usb/common/usb-common.ko "
             .try_into().expect("unable to parse ima-sig template without signature");
-        assert_eq!(entry.event_data.path(), "/lib/modules/5.4.48-openpower1/kernel/drivers/usb/common/usb-common.ko");
+        assert_eq!(
+            entry.event_data.path(),
+            "/lib/modules/5.4.48-openpower1/kernel/drivers/usb/common/usb-common.ko"
+        );
         let mut buf = vec![];
         entry
             .event_data
@@ -531,15 +514,12 @@ mod tests {
 
     #[test]
     fn test_unrecognized_template() {
-        let result: Result<Entry> = "10 1234567890abcdef ima-unknown ima-unknown:1234567890abcdef /path/to/file"
-            .try_into();
+        let result: Result<Entry> =
+            "10 1234567890abcdef ima-unknown ima-unknown:1234567890abcdef /path/to/file".try_into();
         assert!(result.is_err());
         if let Err(e) = result {
             assert_eq!(e.kind(), ErrorKind::Other);
-            assert_eq!(
-                e.to_string(),
-                "unrecognized template \"ima-unknown\""
-            );
+            assert_eq!(e.to_string(), "unrecognized template \"ima-unknown\"");
         }
     }
 }

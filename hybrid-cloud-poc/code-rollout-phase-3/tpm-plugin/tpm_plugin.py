@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import socket
 import subprocess
 import tempfile
 from pathlib import Path
@@ -372,96 +373,6 @@ class TPMPlugin:
         
         logger.warning("Unified-Identity - Phase 3: get_app_key_context() returning None - no context file or handle found")
         return None
-    
-    def generate_quote(self, nonce: str, pcr_list: Union[str, list] = "sha256:0,1") -> Tuple[bool, Optional[str], Optional[Dict]]:
-        """
-        Generate a TPM Quote using the App Key.
-        
-        Args:
-            nonce: Challenge nonce from SPIRE Server
-            pcr_list: PCR selection (default: sha256:0,1)
-            
-        Returns:
-            Tuple of (success, base64_encoded_quote, quote_metadata)
-        """
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-        if not is_unified_identity_enabled():
-            logger.error("Unified-Identity - Phase 3: Feature flag disabled, cannot generate quote")
-            return (False, None, None)
-        
-        logger.info("Unified-Identity - Phase 3: Generating TPM Quote with nonce")
-        
-        # Validate nonce
-        if not nonce or len(nonce) < 16:
-            logger.error("Unified-Identity - Phase 3: Invalid nonce provided")
-            return (False, None, None)
-        
-        # Convert nonce to hex if needed
-        if len(nonce) % 2 == 0 and all(c in '0123456789abcdefABCDEF' for c in nonce):
-            nonce_hex = nonce
-        else:
-            nonce_hex = nonce.encode('utf-8').hex()
-        
-        quote_msg = self.work_dir / "quote.msg"
-        quote_sig = self.work_dir / "quote.sig"
-        quote_pcrs = self.work_dir / "quote.pcrs"
-        
-        # Flush contexts
-        self._run_tpm_command(["tpm2", "flushcontext", "-t"], check=False)
-        
-        # Generate quote using App Key
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-        # Ensure pcr_list is a string (handle both string and list inputs)
-        logger.debug("Unified-Identity - Phase 3: Generating quote with App Key at handle %s", self.app_handle)
-        try:
-            pcr_selection = self._normalize_pcr_selection(pcr_list)
-        except ValueError as exc:
-            logger.error("Unified-Identity - Phase 3: Invalid PCR selection: %s", exc)
-            return (False, None, None)
-
-        success, stdout, stderr = self._run_tpm_command(
-            ["tpm2_quote", "-c", self.app_handle, "-l", pcr_selection,
-             "-m", str(quote_msg), "-s", str(quote_sig), "-o", str(quote_pcrs),
-             "-q", nonce_hex, "-g", "sha256"]
-        )
-        
-        if not success:
-            logger.error("Unified-Identity - Phase 3: Failed to generate quote: %s", stderr)
-            return (False, None, None)
-        
-        # Read quote files and encode
-        try:
-            with open(quote_msg, 'rb') as f:
-                quote_msg_data = f.read()
-            with open(quote_sig, 'rb') as f:
-                quote_sig_data = f.read()
-            with open(quote_pcrs, 'rb') as f:
-                quote_pcrs_data = f.read()
-            
-            # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-            # Format quote for Phase 2 compatibility
-            # Phase 2 expects format: rTPM_QUOTE:TPM_SIG:TPM_PCRS
-            # Where each component is base64-encoded
-            quote_msg_b64 = base64.b64encode(quote_msg_data).decode('utf-8')
-            quote_sig_b64 = base64.b64encode(quote_sig_data).decode('utf-8')
-            quote_pcrs_b64 = base64.b64encode(quote_pcrs_data).decode('utf-8')
-            
-            # Combine in Phase 2 expected format: r<message>:<signature>:<pcrs>
-            quote_formatted = f"r{quote_msg_b64}:{quote_sig_b64}:{quote_pcrs_b64}"
-            
-            metadata = {
-                "nonce": nonce,
-                "pcr_list": pcr_list,
-                "hash_alg": "sha256",
-                "format": "phase2_compatible"
-            }
-            
-            logger.info("Unified-Identity - Phase 3: TPM Quote generated successfully (Phase 2 compatible format)")
-            return (True, quote_formatted, metadata)
-            
-        except Exception as e:
-            logger.error("Unified-Identity - Phase 3: Failed to encode quote: %s", e)
-            return (False, None, None)
     
     def get_app_key_context(self) -> Optional[str]:
         """

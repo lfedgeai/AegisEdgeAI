@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2025 Keylime Authors
 
-use crate::attestation::{
-    AttestationClient, NegotiationConfig, ResponseInformation,
-};
+use crate::attestation::{AttestationClient, NegotiationConfig, ResponseInformation};
 #[cfg(not(all(test, feature = "testing")))]
 use crate::registration;
 #[cfg(test)]
@@ -41,8 +39,7 @@ impl<'a> StateMachine<'a> {
         attestation_interval_seconds: u64,
     ) -> Self {
         let initial_state = State::Unregistered;
-        let measurement_interval =
-            Duration::from_secs(attestation_interval_seconds);
+        let measurement_interval = Duration::from_secs(attestation_interval_seconds);
 
         Self {
             state: initial_state,
@@ -55,8 +52,7 @@ impl<'a> StateMachine<'a> {
 
     pub async fn run(&mut self) {
         loop {
-            let current_state =
-                std::mem::replace(&mut self.state, State::Unregistered);
+            let current_state = std::mem::replace(&mut self.state, State::Unregistered);
 
             match current_state {
                 State::Unregistered => {
@@ -77,7 +73,10 @@ impl<'a> StateMachine<'a> {
                 }
                 State::RegistrationFailed(e) => {
                     error!("Registration failed: {e:?}");
-                    debug!("Resetting state to Unregistered and retrying after a delay ({:?})", self.measurement_interval);
+                    debug!(
+                        "Resetting state to Unregistered and retrying after a delay ({:?})",
+                        self.measurement_interval
+                    );
                     // Add a delay before retrying registration to avoid spamming.
                     time::sleep(self.measurement_interval).await;
                     self.state = State::Unregistered;
@@ -93,9 +92,7 @@ impl<'a> StateMachine<'a> {
                     self.state = State::Negotiating(ctx_info);
                 }
                 State::Failed(e) => {
-                    error!(
-                        "Unrecoverable error: {e:?}. Exiting state machine."
-                    );
+                    error!("Unrecoverable error: {e:?}. Exiting state machine.");
                     self.state = State::Failed(e);
                     break; // Exit the loop on terminal failure
                 }
@@ -104,22 +101,18 @@ impl<'a> StateMachine<'a> {
     }
 
     async fn register(&mut self) {
-        let res =
-            registration::check_registration(self.context_info.clone()).await;
+        let res = registration::check_registration(self.context_info.clone()).await;
 
         match res {
             Ok(()) => {
                 if let Some(ctx) = &self.context_info {
                     self.state = State::Registered(ctx.clone());
                 } else {
-                    self.state =
-                        State::Failed(anyhow!("Could not get context info"));
+                    self.state = State::Failed(anyhow!("Could not get context info"));
                 }
             }
             Err(e) => {
-                self.state = State::RegistrationFailed(anyhow!(
-                    "Registration failed: {e:?}"
-                ));
+                self.state = State::RegistrationFailed(anyhow!("Registration failed: {e:?}"));
             }
         }
     }
@@ -144,35 +137,23 @@ impl<'a> StateMachine<'a> {
                 } else {
                     // Treat negotiation failure as a retryable attestation error
                     self.state = State::AttestationFailed(
-                        anyhow!(
-                            "Negotiation failed with status code: {}",
-                            neg.status_code
-                        ),
+                        anyhow!("Negotiation failed with status code: {}", neg.status_code),
                         ctx_info,
                     );
                 }
             }
             Err(e) => {
                 // Treat negotiation failure as a retryable attestation error
-                self.state = State::AttestationFailed(
-                    anyhow!("Negotiation failed: {e:?}"),
-                    ctx_info,
-                );
+                self.state =
+                    State::AttestationFailed(anyhow!("Negotiation failed: {e:?}"), ctx_info);
             }
         }
     }
 
-    async fn attest(
-        &mut self,
-        ctx_info: ContextInfo,
-        neg_response: ResponseInformation,
-    ) {
+    async fn attest(&mut self, ctx_info: ContextInfo, neg_response: ResponseInformation) {
         let evidence_response = self
             .attestation_client
-            .handle_evidence_submission(
-                neg_response.clone(),
-                &self.negotiation_config,
-            )
+            .handle_evidence_submission(neg_response.clone(), &self.negotiation_config)
             .await;
 
         match evidence_response {
@@ -181,8 +162,7 @@ impl<'a> StateMachine<'a> {
                     info!("SUCCESS! Evidence accepted by the Verifier.");
 
                     // Extract seconds_to_next_attestation from verifier response.
-                    let next_interval =
-                        self.extract_next_attestation_interval(&res.body);
+                    let next_interval = self.extract_next_attestation_interval(&res.body);
 
                     info!(
                         "Waiting {} seconds before next attestation...",
@@ -209,10 +189,8 @@ impl<'a> StateMachine<'a> {
             }
             Err(e) => {
                 // This is now a retryable error
-                self.state = State::AttestationFailed(
-                    anyhow!("Attestation failed: {e:?}"),
-                    ctx_info,
-                );
+                self.state =
+                    State::AttestationFailed(anyhow!("Attestation failed: {e:?}"), ctx_info);
             }
         }
     }
@@ -220,14 +198,8 @@ impl<'a> StateMachine<'a> {
     /// Extracts the seconds_to_next_attestation field from the verifier response body.
     /// The field is expected to be in the "meta" object at the top level.
     /// If the field is not present or cannot be parsed, falls back to the default interval.
-    fn extract_next_attestation_interval(
-        &self,
-        response_body: &str,
-    ) -> Duration {
-        match serde_json::from_str::<
-            keylime::structures::EvidenceHandlingResponse,
-        >(response_body)
-        {
+    fn extract_next_attestation_interval(&self, response_body: &str) -> Duration {
+        match serde_json::from_str::<keylime::structures::EvidenceHandlingResponse>(response_body) {
             Ok(response) => {
                 if let Some(meta) = &response.meta {
                     if let Some(seconds) = meta.seconds_to_next_attestation {
@@ -263,16 +235,13 @@ mod registration {
     use keylime::context_info::ContextInfo;
     use std::sync::{Arc, Mutex, OnceLock};
 
-    static MOCK_RESULT: OnceLock<Arc<Mutex<Result<(), String>>>> =
-        OnceLock::new();
+    static MOCK_RESULT: OnceLock<Arc<Mutex<Result<(), String>>>> = OnceLock::new();
 
     fn get_mock_result() -> &'static Arc<Mutex<Result<(), String>>> {
         MOCK_RESULT.get_or_init(|| Arc::new(Mutex::new(Ok(()))))
     }
 
-    pub async fn check_registration(
-        _context_info: Option<ContextInfo>,
-    ) -> anyhow::Result<()> {
+    pub async fn check_registration(_context_info: Option<ContextInfo>) -> anyhow::Result<()> {
         let result = get_mock_result().lock().unwrap().clone();
         result.map_err(|e| anyhow!(e))
     }
@@ -300,17 +269,12 @@ mod tpm_tests {
 
     #[derive(Clone)]
     struct MockAttestationClient {
-        negotiation_response:
-            Arc<Mutex<Result<ResponseInformation, anyhow::Error>>>,
-        evidence_response:
-            Arc<Mutex<Result<ResponseInformation, anyhow::Error>>>,
+        negotiation_response: Arc<Mutex<Result<ResponseInformation, anyhow::Error>>>,
+        evidence_response: Arc<Mutex<Result<ResponseInformation, anyhow::Error>>>,
     }
 
     impl MockAttestationClient {
-        fn set_negotiation_response(
-            &self,
-            response: Result<ResponseInformation, anyhow::Error>,
-        ) {
+        fn set_negotiation_response(&self, response: Result<ResponseInformation, anyhow::Error>) {
             *self.negotiation_response.lock().unwrap() = response;
         }
 
@@ -326,10 +290,7 @@ mod tpm_tests {
                 .map_err(|e| anyhow!(e.to_string()))
         }
 
-        fn set_evidence_response(
-            &self,
-            response: Result<ResponseInformation, anyhow::Error>,
-        ) {
+        fn set_evidence_response(&self, response: Result<ResponseInformation, anyhow::Error>) {
             *self.evidence_response.lock().unwrap() = response;
         }
 
@@ -351,18 +312,14 @@ mod tpm_tests {
     impl Default for MockAttestationClient {
         fn default() -> Self {
             Self {
-                negotiation_response: Arc::new(Mutex::new(Ok(
-                    ResponseInformation {
-                        status_code: StatusCode::CREATED,
-                        ..Default::default()
-                    },
-                ))),
-                evidence_response: Arc::new(Mutex::new(Ok(
-                    ResponseInformation {
-                        status_code: StatusCode::ACCEPTED,
-                        ..Default::default()
-                    },
-                ))),
+                negotiation_response: Arc::new(Mutex::new(Ok(ResponseInformation {
+                    status_code: StatusCode::CREATED,
+                    ..Default::default()
+                }))),
+                evidence_response: Arc::new(Mutex::new(Ok(ResponseInformation {
+                    status_code: StatusCode::ACCEPTED,
+                    ..Default::default()
+                }))),
             }
         }
     }
@@ -405,15 +362,12 @@ mod tpm_tests {
         let client = AttestationClient::new(neg_config).unwrap();
 
         // Create context with proper error handling to avoid TPM resource leaks
-        let context_info = match ContextInfo::new(
-            keylime::context_info::AlgorithmConfiguration {
-                tpm_encryption_alg:
-                    keylime::algorithms::EncryptionAlgorithm::Rsa2048,
-                tpm_hash_alg: keylime::algorithms::HashAlgorithm::Sha256,
-                tpm_signing_alg: keylime::algorithms::SignAlgorithm::RsaSsa,
-                agent_data_path: "".to_string(),
-            },
-        ) {
+        let context_info = match ContextInfo::new(keylime::context_info::AlgorithmConfiguration {
+            tpm_encryption_alg: keylime::algorithms::EncryptionAlgorithm::Rsa2048,
+            tpm_hash_alg: keylime::algorithms::HashAlgorithm::Sha256,
+            tpm_signing_alg: keylime::algorithms::SignAlgorithm::RsaSsa,
+            agent_data_path: "".to_string(),
+        }) {
             Ok(ctx) => ctx,
             Err(e) => {
                 // Log the error but don't panic to avoid leaving TPM objects behind
@@ -445,29 +399,19 @@ mod tpm_tests {
     #[tokio::test]
     async fn test_negotiate_success_transition() {
         let _mutex = testing::lock_tests().await;
-        let neg_config = create_tpm_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
+        let neg_config = create_tpm_test_config("http://localhost", 5000, 3, 1000, Some(30000));
         let (mut sm, _guard) = create_test_state_machine(&neg_config);
         let mut context_info = sm.context_info.clone().unwrap();
         sm.state = State::Registered(context_info.clone());
 
         let mock_client = MockAttestationClient::default();
-        let neg_response =
-            mock_client.send_negotiation(&sm.negotiation_config).await;
+        let neg_response = mock_client.send_negotiation(&sm.negotiation_config).await;
 
         match neg_response {
             Ok(neg) if neg.status_code == reqwest::StatusCode::CREATED => {
                 sm.state = State::Attesting(context_info.clone(), neg);
             }
-            Ok(neg) => {
-                sm.state =
-                    State::Failed(anyhow!("Bad status: {}", neg.status_code))
-            }
+            Ok(neg) => sm.state = State::Failed(anyhow!("Bad status: {}", neg.status_code)),
             Err(e) => sm.state = State::Failed(e),
         }
 
@@ -478,13 +422,7 @@ mod tpm_tests {
     #[tokio::test]
     async fn test_negotiate_failure_on_bad_status() {
         let _mutex = testing::lock_tests().await;
-        let neg_config = create_tpm_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
+        let neg_config = create_tpm_test_config("http://localhost", 5000, 3, 1000, Some(30000));
         let (mut sm, _guard) = create_test_state_machine(&neg_config);
         let mut context_info = sm.context_info.clone().unwrap();
         sm.state = State::Registered(context_info.clone());
@@ -495,16 +433,12 @@ mod tpm_tests {
             ..Default::default()
         }));
 
-        let neg_response =
-            mock_client.send_negotiation(&sm.negotiation_config).await;
+        let neg_response = mock_client.send_negotiation(&sm.negotiation_config).await;
         match neg_response {
             Ok(neg) if neg.status_code == StatusCode::CREATED => {
                 sm.state = State::Attesting(context_info.clone(), neg);
             }
-            Ok(neg) => {
-                sm.state =
-                    State::Failed(anyhow!("Bad status: {}", neg.status_code))
-            }
+            Ok(neg) => sm.state = State::Failed(anyhow!("Bad status: {}", neg.status_code)),
             Err(e) => sm.state = State::Failed(e),
         }
 
@@ -515,27 +449,15 @@ mod tpm_tests {
     #[tokio::test]
     async fn test_attest_success_transition() {
         let _mutex = testing::lock_tests().await;
-        let neg_config = create_tpm_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
+        let neg_config = create_tpm_test_config("http://localhost", 5000, 3, 1000, Some(30000));
         let (mut sm, _guard) = create_test_state_machine(&neg_config);
         let mut context_info = sm.context_info.clone().unwrap();
-        sm.state = State::Attesting(
-            context_info.clone(),
-            ResponseInformation::default(),
-        );
+        sm.state = State::Attesting(context_info.clone(), ResponseInformation::default());
 
         // Test that a successful attestation response would transition back to Negotiating
         let mock_client = MockAttestationClient::default(); // Default is ACCEPTED
         let evidence_response = mock_client
-            .handle_evidence_submission(
-                ResponseInformation::default(),
-                &sm.negotiation_config,
-            )
+            .handle_evidence_submission(ResponseInformation::default(), &sm.negotiation_config)
             .await;
 
         // Verify the response is successful
@@ -554,19 +476,10 @@ mod tpm_tests {
     #[tokio::test]
     async fn test_attest_failure_on_bad_status() {
         let _mutex = testing::lock_tests().await;
-        let neg_config = create_tpm_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
+        let neg_config = create_tpm_test_config("http://localhost", 5000, 3, 1000, Some(30000));
         let (mut sm, _guard) = create_test_state_machine(&neg_config);
         let mut context_info = sm.context_info.clone().unwrap();
-        sm.state = State::Attesting(
-            context_info.clone(),
-            ResponseInformation::default(),
-        );
+        sm.state = State::Attesting(context_info.clone(), ResponseInformation::default());
 
         let mock_client = MockAttestationClient::default();
         mock_client.set_evidence_response(Ok(ResponseInformation {
@@ -575,10 +488,7 @@ mod tpm_tests {
         }));
 
         let evidence_response = mock_client
-            .handle_evidence_submission(
-                ResponseInformation::default(),
-                &sm.negotiation_config,
-            )
+            .handle_evidence_submission(ResponseInformation::default(), &sm.negotiation_config)
             .await;
 
         match evidence_response {
@@ -586,10 +496,7 @@ mod tpm_tests {
                 // This shouldn't happen in this test, but if it did, it would go to negotiation
                 sm.state = State::Negotiating(context_info.clone())
             }
-            Ok(res) => {
-                sm.state =
-                    State::Failed(anyhow!("Bad status {}", res.status_code))
-            }
+            Ok(res) => sm.state = State::Failed(anyhow!("Bad status {}", res.status_code)),
             Err(e) => sm.state = State::Failed(e),
         }
 
@@ -600,33 +507,23 @@ mod tpm_tests {
     #[tokio::test]
     async fn test_register_success_transition() {
         let _mutex = testing::lock_tests().await;
-        let neg_config = create_tpm_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
+        let neg_config = create_tpm_test_config("http://localhost", 5000, 3, 1000, Some(30000));
         let (mut sm, _guard) = create_test_state_machine(&neg_config);
         let mut context_info = sm.context_info.clone().unwrap();
 
         registration::set_mock_result(Ok(()));
-        let res =
-            registration::check_registration(Some(context_info.clone()))
-                .await;
+        let res = registration::check_registration(Some(context_info.clone())).await;
 
         match res {
             Ok(()) => {
                 if let Some(ctx) = &sm.context_info {
                     sm.state = State::Registered(ctx.clone());
                 } else {
-                    sm.state =
-                        State::Failed(anyhow!("Could not get context info"));
+                    sm.state = State::Failed(anyhow!("Could not get context info"));
                 }
             }
             Err(e) => {
-                sm.state =
-                    State::Failed(anyhow!("Registration failed: {e:?}"));
+                sm.state = State::Failed(anyhow!("Registration failed: {e:?}"));
             }
         }
         assert!(matches!(sm.get_current_state(), State::Registered(_)));
@@ -645,27 +542,21 @@ mod tpm_tests {
         // Create guard that will automatically clear override when dropped
         let _guard = keylime::config::TestConfigGuard::new(config);
 
-        let mut context_info =
-            ContextInfo::new(keylime::context_info::AlgorithmConfiguration {
-                tpm_encryption_alg:
-                    keylime::algorithms::EncryptionAlgorithm::Rsa2048,
-                tpm_hash_alg: keylime::algorithms::HashAlgorithm::Sha256,
-                tpm_signing_alg: keylime::algorithms::SignAlgorithm::RsaSsa,
-                agent_data_path: "".to_string(),
-            })
-            .expect("This test requires TPM access with proper permissions");
-        let _ = registration::check_registration(Some(context_info.clone()))
-            .await;
+        let mut context_info = ContextInfo::new(keylime::context_info::AlgorithmConfiguration {
+            tpm_encryption_alg: keylime::algorithms::EncryptionAlgorithm::Rsa2048,
+            tpm_hash_alg: keylime::algorithms::HashAlgorithm::Sha256,
+            tpm_signing_alg: keylime::algorithms::SignAlgorithm::RsaSsa,
+            agent_data_path: "".to_string(),
+        })
+        .expect("This test requires TPM access with proper permissions");
+        let _ = registration::check_registration(Some(context_info.clone())).await;
 
         let mock_server = MockServer::start().await;
 
         Mock::given(method("POST"))
             .respond_with(
                 ResponseTemplate::new(201)
-                    .insert_header(
-                        "Location",
-                        "/v3.0/agents/agent1/attestations/0",
-                    )
+                    .insert_header("Location", "/v3.0/agents/agent1/attestations/0")
                     .set_body_json(serde_json::json!({
                         "data": {
                             "type": "attestation",
@@ -681,21 +572,12 @@ mod tpm_tests {
 
         Mock::given(method("PATCH"))
             .and(path("/v3.0/agents/agent1/attestations/0"))
-            .respond_with(
-                ResponseTemplate::new(202)
-                    .set_body_string("Evidence accepted"),
-            )
+            .respond_with(ResponseTemplate::new(202).set_body_string("Evidence accepted"))
             .mount(&mock_server)
             .await;
 
         let mock_server_url = mock_server.uri().clone();
-        let neg_config = create_tpm_test_config(
-            mock_server_url.as_str(),
-            5000,
-            3,
-            100,
-            None,
-        );
+        let neg_config = create_tpm_test_config(mock_server_url.as_str(), 5000, 3, 100, None);
 
         let attestation_client = AttestationClient::new(&neg_config).unwrap();
 
@@ -751,15 +633,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_machine_creation_without_context_info() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let state_machine = StateMachine::new(
             attestation_client,
@@ -778,15 +653,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_debug_trait() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let state_machine = StateMachine::new(
             attestation_client,
@@ -801,15 +669,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_register_without_context_info() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let mut state_machine = StateMachine::new(
             attestation_client,
@@ -837,15 +698,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_machine_initial_state_without_context() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let state_machine = StateMachine::new(
             attestation_client,
@@ -863,15 +717,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_machine_context_info_storage_none() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let state_machine = StateMachine::new(
             attestation_client,
@@ -886,15 +733,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_machine_config_references() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let state_machine = StateMachine::new(
             attestation_client,
@@ -913,15 +753,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_machine_failed_state_construction() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let mut state_machine = StateMachine::new(
             attestation_client,
@@ -944,15 +777,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_machine_error_state_handling() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let mut state_machine = StateMachine::new(
             attestation_client,
@@ -976,10 +802,8 @@ mod tests {
     #[actix_rt::test]
     async fn test_state_machine_with_different_config_values() {
         // Test with different configuration values.
-        let test_config1 =
-            create_test_config("http://localhost", 1000, 5, 500, Some(10000));
-        let attestation_client1 =
-            AttestationClient::new(&test_config1).unwrap();
+        let test_config1 = create_test_config("http://localhost", 1000, 5, 500, Some(10000));
+        let attestation_client1 = AttestationClient::new(&test_config1).unwrap();
         let state_machine1 = StateMachine::new(
             attestation_client1,
             test_config1,
@@ -991,10 +815,8 @@ mod tests {
             State::Unregistered
         ));
 
-        let test_config2 =
-            create_test_config("http://localhost", 2000, 10, 1000, None);
-        let attestation_client2 =
-            AttestationClient::new(&test_config2).unwrap();
+        let test_config2 = create_test_config("http://localhost", 2000, 10, 1000, None);
+        let attestation_client2 = AttestationClient::new(&test_config2).unwrap();
         let state_machine2 = StateMachine::new(
             attestation_client2,
             test_config2,
@@ -1009,15 +831,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_machine_avoid_tpm_configuration() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let state_machine = StateMachine::new(
             attestation_client,
@@ -1036,15 +851,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_state_machine_error_debug_formatting() {
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let mut state_machine = StateMachine::new(
             attestation_client,
@@ -1066,17 +874,9 @@ mod tests {
     #[cfg(feature = "testing")]
     async fn test_extract_next_attestation_interval_with_valid_field() {
         let tmpdir = tempfile::tempdir().expect("failed to create tmpdir");
-        let _config =
-            keylime::config::get_testing_config(tmpdir.path(), None);
-        let test_config = create_test_config(
-            "http://localhost",
-            5000,
-            3,
-            1000,
-            Some(30000),
-        );
-        let attestation_client =
-            AttestationClient::new(&test_config).unwrap();
+        let _config = keylime::config::get_testing_config(tmpdir.path(), None);
+        let test_config = create_test_config("http://localhost", 5000, 3, 1000, Some(30000));
+        let attestation_client = AttestationClient::new(&test_config).unwrap();
 
         let state_machine = StateMachine::new(
             attestation_client,
@@ -1101,8 +901,7 @@ mod tests {
                 "seconds_to_next_attestation": 120
             }
         }"#;
-        let interval =
-            state_machine.extract_next_attestation_interval(response_body);
+        let interval = state_machine.extract_next_attestation_interval(response_body);
         assert_eq!(interval.as_secs(), 120);
 
         // Test without the meta object (should use default).
@@ -1118,8 +917,7 @@ mod tests {
                 }
             }
         }"#;
-        let interval =
-            state_machine.extract_next_attestation_interval(response_body);
+        let interval = state_machine.extract_next_attestation_interval(response_body);
         assert_eq!(interval.as_secs(), DEFAULT_ATTESTATION_INTERVAL_SECONDS);
 
         // Test with meta object but without the field (should use default).
@@ -1138,21 +936,17 @@ mod tests {
                 "other_field": "value"
             }
         }"#;
-        let interval =
-            state_machine.extract_next_attestation_interval(response_body);
+        let interval = state_machine.extract_next_attestation_interval(response_body);
         assert_eq!(interval.as_secs(), DEFAULT_ATTESTATION_INTERVAL_SECONDS);
 
         // Test with invalid JSON (should use default).
         let response_body = "invalid json";
-        let interval =
-            state_machine.extract_next_attestation_interval(response_body);
+        let interval = state_machine.extract_next_attestation_interval(response_body);
         assert_eq!(interval.as_secs(), DEFAULT_ATTESTATION_INTERVAL_SECONDS);
 
         // Test with valid JSON but wrong structure (should use default).
-        let response_body =
-            r#"{"meta": {"seconds_to_next_attestation": 150}}"#;
-        let interval =
-            state_machine.extract_next_attestation_interval(response_body);
+        let response_body = r#"{"meta": {"seconds_to_next_attestation": 150}}"#;
+        let interval = state_machine.extract_next_attestation_interval(response_body);
         assert_eq!(interval.as_secs(), DEFAULT_ATTESTATION_INTERVAL_SECONDS);
 
         // Test with the full response structure example.
@@ -1171,8 +965,7 @@ mod tests {
                 "seconds_to_next_attestation": 90
             }
         }"#;
-        let interval =
-            state_machine.extract_next_attestation_interval(response_body);
+        let interval = state_machine.extract_next_attestation_interval(response_body);
         assert_eq!(interval.as_secs(), 90);
     }
 }

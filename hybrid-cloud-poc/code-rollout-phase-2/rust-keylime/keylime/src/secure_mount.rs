@@ -43,7 +43,10 @@ pub fn check_mount(secure_dir: &Path) -> Result<bool> {
                     // The file system type is the first element after the separator
                     if let Some(fs_type) = iter.next() {
                         if fs_type == "tmpfs" {
-                            debug!("Secure store location {} already mounted on tmpfs", secure_dir.display());
+                            debug!(
+                                "Secure store location {} already mounted on tmpfs",
+                                secure_dir.display()
+                            );
                             return Ok(true);
                         } else {
                             let message = format!("Secure storage location {secure_dir} already mounted on wrong file system type: {fs_type}. Unmount to continue.", secure_dir = secure_dir.display(), fs_type = fs_type);
@@ -51,20 +54,20 @@ pub fn check_mount(secure_dir: &Path) -> Result<bool> {
                             return Err(Error::SecureMount(message));
                         }
                     } else {
-                        let message = "Mount information parsing error: missing file system type".to_string();
+                        let message =
+                            "Mount information parsing error: missing file system type".to_string();
                         error!("Secure mount error: {message}");
                         return Err(Error::SecureMount(message));
                     }
                 } else {
-                    let message = "Separator field not found. Information line cannot be parsed".to_string();
+                    let message =
+                        "Separator field not found. Information line cannot be parsed".to_string();
                     error!("Secure mount error: {message}");
                     return Err(Error::SecureMount(message));
                 }
             }
         } else {
-            let message =
-                "Mount information parsing error: not enough elements"
-                    .to_string();
+            let message = "Mount information parsing error: not enough elements".to_string();
             error!("Secure mount error: {message}");
             return Err(Error::SecureMount(message));
         }
@@ -91,16 +94,12 @@ pub fn mount(work_dir: &Path, secure_size: &str) -> Result<PathBuf> {
         // directory permission is set to 448.
         if !secure_dir_path.exists() {
             fs::create_dir(&secure_dir_path).map_err(|e| {
-                Error::SecureMount(format!(
-                    "unable to create secure dir path: {e:?}"
-                ))
+                Error::SecureMount(format!("unable to create secure dir path: {e:?}"))
             })?;
 
             info!("Directory {secure_dir_path:?} created.");
             let metadata = fs::metadata(&secure_dir_path).map_err(|e| {
-                Error::SecureMount(format!(
-                    "unable to get metadata for secure dir path: {e:?}"
-                ))
+                Error::SecureMount(format!("unable to get metadata for secure dir path: {e:?}"))
             })?;
             metadata.permissions().set_mode(0o750); // decimal 488
         }

@@ -13,38 +13,24 @@ pub struct CertificateConfig {
     pub server_key_password: String,
 }
 
-pub fn cert_from_server_key(
-    config: &CertificateConfig,
-) -> Result<(X509, PKey<Public>)> {
+pub fn cert_from_server_key(config: &CertificateConfig) -> Result<(X509, PKey<Public>)> {
     let cert: X509;
     let (mtls_pub, mtls_priv) = match config.server_key.as_ref() {
         "" => {
-            debug!(
-                "The server_key option was not set in the configuration file"
-            );
+            debug!("The server_key option was not set in the configuration file");
             debug!("Generating new key pair");
             crypto::rsa_generate_pair(2048)?
         }
         path => {
             let key_path = Path::new(&path);
             if key_path.exists() {
-                debug!(
-                    "Loading existing key pair from {}",
-                    key_path.display()
-                );
-                crypto::load_key_pair(
-                    key_path,
-                    Some(&config.server_key_password),
-                )?
+                debug!("Loading existing key pair from {}", key_path.display());
+                crypto::load_key_pair(key_path, Some(&config.server_key_password))?
             } else {
                 debug!("Generating new key pair");
                 let (public, private) = crypto::rsa_generate_pair(2048)?;
                 // Write the generated key to the file
-                crypto::write_key_pair(
-                    &private,
-                    key_path,
-                    Some(&config.server_key_password),
-                )?;
+                crypto::write_key_pair(&private, key_path, Some(&config.server_key_password))?;
                 (public, private)
             }
         }
@@ -91,8 +77,7 @@ mod tests {
 
     #[test]
     fn test_cert_from_server_key() {
-        let temp_dir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let temp_dir = tempfile::tempdir().expect("failed to create temporary dir");
         let cert_path = temp_dir.path().join("test_cert.pem");
         let key_path = temp_dir.path().join("test_key.pem");
         let config = CertificateConfig {
@@ -109,8 +94,7 @@ mod tests {
 
     #[test]
     fn test_cert_no_server_key() {
-        let temp_dir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let temp_dir = tempfile::tempdir().expect("failed to create temporary dir");
         let cert_path = temp_dir.path().join("test_cert.pem");
         let config = CertificateConfig {
             agent_uuid: "test-uuid".to_string(),
@@ -126,8 +110,7 @@ mod tests {
 
     #[test]
     fn test_cert_no_server_cert() {
-        let temp_dir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let temp_dir = tempfile::tempdir().expect("failed to create temporary dir");
         let key_path = temp_dir.path().join("test_key.pem");
         let config = CertificateConfig {
             agent_uuid: "test-uuid".to_string(),
@@ -157,8 +140,7 @@ mod tests {
 
     #[test]
     fn test_cert_correct_server_key_path() {
-        let temp_dir =
-            tempfile::tempdir().expect("failed to create temporary dir");
+        let temp_dir = tempfile::tempdir().expect("failed to create temporary dir");
         let cert_path = temp_dir.path().join("test_cert.pem");
         let key_path = temp_dir.path().join("test_key.pem");
         let config = CertificateConfig {

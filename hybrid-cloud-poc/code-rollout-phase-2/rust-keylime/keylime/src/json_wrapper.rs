@@ -80,8 +80,7 @@ mod test {
             "status": "Testing JsonWrapper error",
             "results": {},
         });
-        let j =
-            JsonWrapper::error(400, "Testing JsonWrapper error".to_string());
+        let j = JsonWrapper::error(400, "Testing JsonWrapper error".to_string());
         assert_eq!(j.to_string(), expected.to_string());
     }
 }

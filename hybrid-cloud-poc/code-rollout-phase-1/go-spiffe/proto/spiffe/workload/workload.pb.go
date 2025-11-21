@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v3.12.4
-// source: proto/spiffe/workload/workload.proto
+// source: go-spiffe/proto/spiffe/workload/workload.proto
 
 package workload
 
@@ -58,11 +58,11 @@ func (x AttestedClaims_HostIntegrity) String() string {
 }
 
 func (AttestedClaims_HostIntegrity) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_spiffe_workload_workload_proto_enumTypes[0].Descriptor()
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_enumTypes[0].Descriptor()
 }
 
 func (AttestedClaims_HostIntegrity) Type() protoreflect.EnumType {
-	return &file_proto_spiffe_workload_workload_proto_enumTypes[0]
+	return &file_go_spiffe_proto_spiffe_workload_workload_proto_enumTypes[0]
 }
 
 func (x AttestedClaims_HostIntegrity) Number() protoreflect.EnumNumber {
@@ -71,7 +71,7 @@ func (x AttestedClaims_HostIntegrity) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AttestedClaims_HostIntegrity.Descriptor instead.
 func (AttestedClaims_HostIntegrity) EnumDescriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{1, 0}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{1, 0}
 }
 
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
@@ -91,13 +91,15 @@ type SovereignAttestation struct {
 	ChallengeNonce string `protobuf:"bytes,4,opt,name=challenge_nonce,json=challengeNonce,proto3" json:"challenge_nonce,omitempty"`
 	// Optional workload code hash used as an additional selector/assertion.
 	WorkloadCodeHash string `protobuf:"bytes,5,opt,name=workload_code_hash,json=workloadCodeHash,proto3" json:"workload_code_hash,omitempty"`
+	// Unified-Identity - Phase 3: rust-keylime agent UUID for delegated certification correlation.
+	KeylimeAgentUuid string `protobuf:"bytes,6,opt,name=keylime_agent_uuid,json=keylimeAgentUuid,proto3" json:"keylime_agent_uuid,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SovereignAttestation) Reset() {
 	*x = SovereignAttestation{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[0]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -109,7 +111,7 @@ func (x *SovereignAttestation) String() string {
 func (*SovereignAttestation) ProtoMessage() {}
 
 func (x *SovereignAttestation) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[0]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -122,7 +124,7 @@ func (x *SovereignAttestation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SovereignAttestation.ProtoReflect.Descriptor instead.
 func (*SovereignAttestation) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{0}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *SovereignAttestation) GetTpmSignedAttestation() string {
@@ -160,6 +162,13 @@ func (x *SovereignAttestation) GetWorkloadCodeHash() string {
 	return ""
 }
 
+func (x *SovereignAttestation) GetKeylimeAgentUuid() string {
+	if x != nil {
+		return x.KeylimeAgentUuid
+	}
+	return ""
+}
+
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // AttestedClaims contains verified facts from Keylime about the host.
 type AttestedClaims struct {
@@ -173,7 +182,7 @@ type AttestedClaims struct {
 
 func (x *AttestedClaims) Reset() {
 	*x = AttestedClaims{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[1]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -185,7 +194,7 @@ func (x *AttestedClaims) String() string {
 func (*AttestedClaims) ProtoMessage() {}
 
 func (x *AttestedClaims) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[1]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -198,7 +207,7 @@ func (x *AttestedClaims) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttestedClaims.ProtoReflect.Descriptor instead.
 func (*AttestedClaims) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{1}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *AttestedClaims) GetGeolocation() string {
@@ -236,7 +245,7 @@ type X509SVIDRequest struct {
 
 func (x *X509SVIDRequest) Reset() {
 	*x = X509SVIDRequest{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[2]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -248,7 +257,7 @@ func (x *X509SVIDRequest) String() string {
 func (*X509SVIDRequest) ProtoMessage() {}
 
 func (x *X509SVIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[2]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -261,7 +270,7 @@ func (x *X509SVIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use X509SVIDRequest.ProtoReflect.Descriptor instead.
 func (*X509SVIDRequest) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{2}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *X509SVIDRequest) GetSovereignAttestation() *SovereignAttestation {
@@ -296,7 +305,7 @@ type X509SVIDResponse struct {
 
 func (x *X509SVIDResponse) Reset() {
 	*x = X509SVIDResponse{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[3]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -308,7 +317,7 @@ func (x *X509SVIDResponse) String() string {
 func (*X509SVIDResponse) ProtoMessage() {}
 
 func (x *X509SVIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[3]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -321,7 +330,7 @@ func (x *X509SVIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use X509SVIDResponse.ProtoReflect.Descriptor instead.
 func (*X509SVIDResponse) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{3}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *X509SVIDResponse) GetSvids() []*X509SVID {
@@ -376,7 +385,7 @@ type X509SVID struct {
 
 func (x *X509SVID) Reset() {
 	*x = X509SVID{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[4]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -388,7 +397,7 @@ func (x *X509SVID) String() string {
 func (*X509SVID) ProtoMessage() {}
 
 func (x *X509SVID) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[4]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -401,7 +410,7 @@ func (x *X509SVID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use X509SVID.ProtoReflect.Descriptor instead.
 func (*X509SVID) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{4}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *X509SVID) GetSpiffeId() string {
@@ -449,7 +458,7 @@ type X509BundlesRequest struct {
 
 func (x *X509BundlesRequest) Reset() {
 	*x = X509BundlesRequest{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[5]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +470,7 @@ func (x *X509BundlesRequest) String() string {
 func (*X509BundlesRequest) ProtoMessage() {}
 
 func (x *X509BundlesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[5]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +483,7 @@ func (x *X509BundlesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use X509BundlesRequest.ProtoReflect.Descriptor instead.
 func (*X509BundlesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{5}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{5}
 }
 
 // The X509BundlesResponse message carries a set of global CRLs and a map of
@@ -493,7 +502,7 @@ type X509BundlesResponse struct {
 
 func (x *X509BundlesResponse) Reset() {
 	*x = X509BundlesResponse{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[6]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -505,7 +514,7 @@ func (x *X509BundlesResponse) String() string {
 func (*X509BundlesResponse) ProtoMessage() {}
 
 func (x *X509BundlesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[6]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -518,7 +527,7 @@ func (x *X509BundlesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use X509BundlesResponse.ProtoReflect.Descriptor instead.
 func (*X509BundlesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{6}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *X509BundlesResponse) GetCrl() [][]byte {
@@ -548,7 +557,7 @@ type JWTSVIDRequest struct {
 
 func (x *JWTSVIDRequest) Reset() {
 	*x = JWTSVIDRequest{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[7]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -560,7 +569,7 @@ func (x *JWTSVIDRequest) String() string {
 func (*JWTSVIDRequest) ProtoMessage() {}
 
 func (x *JWTSVIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[7]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -573,7 +582,7 @@ func (x *JWTSVIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JWTSVIDRequest.ProtoReflect.Descriptor instead.
 func (*JWTSVIDRequest) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{7}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *JWTSVIDRequest) GetAudience() []string {
@@ -601,7 +610,7 @@ type JWTSVIDResponse struct {
 
 func (x *JWTSVIDResponse) Reset() {
 	*x = JWTSVIDResponse{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[8]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -613,7 +622,7 @@ func (x *JWTSVIDResponse) String() string {
 func (*JWTSVIDResponse) ProtoMessage() {}
 
 func (x *JWTSVIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[8]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -626,7 +635,7 @@ func (x *JWTSVIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JWTSVIDResponse.ProtoReflect.Descriptor instead.
 func (*JWTSVIDResponse) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{8}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *JWTSVIDResponse) GetSvids() []*JWTSVID {
@@ -654,7 +663,7 @@ type JWTSVID struct {
 
 func (x *JWTSVID) Reset() {
 	*x = JWTSVID{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[9]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -666,7 +675,7 @@ func (x *JWTSVID) String() string {
 func (*JWTSVID) ProtoMessage() {}
 
 func (x *JWTSVID) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[9]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -679,7 +688,7 @@ func (x *JWTSVID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JWTSVID.ProtoReflect.Descriptor instead.
 func (*JWTSVID) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{9}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *JWTSVID) GetSpiffeId() string {
@@ -713,7 +722,7 @@ type JWTBundlesRequest struct {
 
 func (x *JWTBundlesRequest) Reset() {
 	*x = JWTBundlesRequest{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[10]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -725,7 +734,7 @@ func (x *JWTBundlesRequest) String() string {
 func (*JWTBundlesRequest) ProtoMessage() {}
 
 func (x *JWTBundlesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[10]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -738,7 +747,7 @@ func (x *JWTBundlesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JWTBundlesRequest.ProtoReflect.Descriptor instead.
 func (*JWTBundlesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{10}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{10}
 }
 
 // The JWTBundlesReponse conveys JWT bundles.
@@ -753,7 +762,7 @@ type JWTBundlesResponse struct {
 
 func (x *JWTBundlesResponse) Reset() {
 	*x = JWTBundlesResponse{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[11]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -765,7 +774,7 @@ func (x *JWTBundlesResponse) String() string {
 func (*JWTBundlesResponse) ProtoMessage() {}
 
 func (x *JWTBundlesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[11]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -778,7 +787,7 @@ func (x *JWTBundlesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JWTBundlesResponse.ProtoReflect.Descriptor instead.
 func (*JWTBundlesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{11}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *JWTBundlesResponse) GetBundles() map[string][]byte {
@@ -805,7 +814,7 @@ type ValidateJWTSVIDRequest struct {
 
 func (x *ValidateJWTSVIDRequest) Reset() {
 	*x = ValidateJWTSVIDRequest{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[12]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -817,7 +826,7 @@ func (x *ValidateJWTSVIDRequest) String() string {
 func (*ValidateJWTSVIDRequest) ProtoMessage() {}
 
 func (x *ValidateJWTSVIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[12]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -830,7 +839,7 @@ func (x *ValidateJWTSVIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateJWTSVIDRequest.ProtoReflect.Descriptor instead.
 func (*ValidateJWTSVIDRequest) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{12}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ValidateJWTSVIDRequest) GetAudience() string {
@@ -861,7 +870,7 @@ type ValidateJWTSVIDResponse struct {
 
 func (x *ValidateJWTSVIDResponse) Reset() {
 	*x = ValidateJWTSVIDResponse{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[13]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -873,7 +882,7 @@ func (x *ValidateJWTSVIDResponse) String() string {
 func (*ValidateJWTSVIDResponse) ProtoMessage() {}
 
 func (x *ValidateJWTSVIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[13]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -886,7 +895,7 @@ func (x *ValidateJWTSVIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateJWTSVIDResponse.ProtoReflect.Descriptor instead.
 func (*ValidateJWTSVIDResponse) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{13}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ValidateJWTSVIDResponse) GetSpiffeId() string {
@@ -914,7 +923,7 @@ type AttestedClaims_GpuMetrics struct {
 
 func (x *AttestedClaims_GpuMetrics) Reset() {
 	*x = AttestedClaims_GpuMetrics{}
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[14]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -926,7 +935,7 @@ func (x *AttestedClaims_GpuMetrics) String() string {
 func (*AttestedClaims_GpuMetrics) ProtoMessage() {}
 
 func (x *AttestedClaims_GpuMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_spiffe_workload_workload_proto_msgTypes[14]
+	mi := &file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -939,7 +948,7 @@ func (x *AttestedClaims_GpuMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttestedClaims_GpuMetrics.ProtoReflect.Descriptor instead.
 func (*AttestedClaims_GpuMetrics) Descriptor() ([]byte, []int) {
-	return file_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{1, 0}
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP(), []int{1, 0}
 }
 
 func (x *AttestedClaims_GpuMetrics) GetStatus() string {
@@ -963,17 +972,18 @@ func (x *AttestedClaims_GpuMetrics) GetMemoryMb() int64 {
 	return 0
 }
 
-var File_proto_spiffe_workload_workload_proto protoreflect.FileDescriptor
+var File_go_spiffe_proto_spiffe_workload_workload_proto protoreflect.FileDescriptor
 
-const file_proto_spiffe_workload_workload_proto_rawDesc = "" +
+const file_go_spiffe_proto_spiffe_workload_workload_proto_rawDesc = "" +
 	"\n" +
-	"$proto/spiffe/workload/workload.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xf9\x01\n" +
+	".go-spiffe/proto/spiffe/workload/workload.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xa7\x02\n" +
 	"\x14SovereignAttestation\x124\n" +
 	"\x16tpm_signed_attestation\x18\x01 \x01(\tR\x14tpmSignedAttestation\x12$\n" +
 	"\x0eapp_key_public\x18\x02 \x01(\tR\fappKeyPublic\x12.\n" +
 	"\x13app_key_certificate\x18\x03 \x01(\fR\x11appKeyCertificate\x12'\n" +
 	"\x0fchallenge_nonce\x18\x04 \x01(\tR\x0echallengeNonce\x12,\n" +
-	"\x12workload_code_hash\x18\x05 \x01(\tR\x10workloadCodeHash\"\x9c\x03\n" +
+	"\x12workload_code_hash\x18\x05 \x01(\tR\x10workloadCodeHash\x12,\n" +
+	"\x12keylime_agent_uuid\x18\x06 \x01(\tR\x10keylimeAgentUuid\"\x9c\x03\n" +
 	"\x0eAttestedClaims\x12 \n" +
 	"\vgeolocation\x18\x01 \x01(\tR\vgeolocation\x12Q\n" +
 	"\x15host_integrity_status\x18\x02 \x01(\x0e2\x1d.AttestedClaims.HostIntegrityR\x13hostIntegrityStatus\x12H\n" +
@@ -1041,20 +1051,20 @@ const file_proto_spiffe_workload_workload_proto_rawDesc = "" +
 	"\x0fValidateJWTSVID\x12\x17.ValidateJWTSVIDRequest\x1a\x18.ValidateJWTSVIDResponseB?Z=github.com/spiffe/go-spiffe/v2/proto/spiffe/workload;workloadb\x06proto3"
 
 var (
-	file_proto_spiffe_workload_workload_proto_rawDescOnce sync.Once
-	file_proto_spiffe_workload_workload_proto_rawDescData []byte
+	file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescOnce sync.Once
+	file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescData []byte
 )
 
-func file_proto_spiffe_workload_workload_proto_rawDescGZIP() []byte {
-	file_proto_spiffe_workload_workload_proto_rawDescOnce.Do(func() {
-		file_proto_spiffe_workload_workload_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_spiffe_workload_workload_proto_rawDesc), len(file_proto_spiffe_workload_workload_proto_rawDesc)))
+func file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescGZIP() []byte {
+	file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescOnce.Do(func() {
+		file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_go_spiffe_proto_spiffe_workload_workload_proto_rawDesc), len(file_go_spiffe_proto_spiffe_workload_workload_proto_rawDesc)))
 	})
-	return file_proto_spiffe_workload_workload_proto_rawDescData
+	return file_go_spiffe_proto_spiffe_workload_workload_proto_rawDescData
 }
 
-var file_proto_spiffe_workload_workload_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_spiffe_workload_workload_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
-var file_proto_spiffe_workload_workload_proto_goTypes = []any{
+var file_go_spiffe_proto_spiffe_workload_workload_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_go_spiffe_proto_spiffe_workload_workload_proto_goTypes = []any{
 	(AttestedClaims_HostIntegrity)(0), // 0: AttestedClaims.HostIntegrity
 	(*SovereignAttestation)(nil),      // 1: SovereignAttestation
 	(*AttestedClaims)(nil),            // 2: AttestedClaims
@@ -1076,7 +1086,7 @@ var file_proto_spiffe_workload_workload_proto_goTypes = []any{
 	nil,                               // 18: JWTBundlesResponse.BundlesEntry
 	(*_struct.Struct)(nil),            // 19: google.protobuf.Struct
 }
-var file_proto_spiffe_workload_workload_proto_depIdxs = []int32{
+var file_go_spiffe_proto_spiffe_workload_workload_proto_depIdxs = []int32{
 	0,  // 0: AttestedClaims.host_integrity_status:type_name -> AttestedClaims.HostIntegrity
 	15, // 1: AttestedClaims.gpu_metrics_health:type_name -> AttestedClaims.GpuMetrics
 	1,  // 2: X509SVIDRequest.sovereign_attestation:type_name -> SovereignAttestation
@@ -1104,27 +1114,27 @@ var file_proto_spiffe_workload_workload_proto_depIdxs = []int32{
 	0,  // [0:10] is the sub-list for field type_name
 }
 
-func init() { file_proto_spiffe_workload_workload_proto_init() }
-func file_proto_spiffe_workload_workload_proto_init() {
-	if File_proto_spiffe_workload_workload_proto != nil {
+func init() { file_go_spiffe_proto_spiffe_workload_workload_proto_init() }
+func file_go_spiffe_proto_spiffe_workload_workload_proto_init() {
+	if File_go_spiffe_proto_spiffe_workload_workload_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_spiffe_workload_workload_proto_rawDesc), len(file_proto_spiffe_workload_workload_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_go_spiffe_proto_spiffe_workload_workload_proto_rawDesc), len(file_go_spiffe_proto_spiffe_workload_workload_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_proto_spiffe_workload_workload_proto_goTypes,
-		DependencyIndexes: file_proto_spiffe_workload_workload_proto_depIdxs,
-		EnumInfos:         file_proto_spiffe_workload_workload_proto_enumTypes,
-		MessageInfos:      file_proto_spiffe_workload_workload_proto_msgTypes,
+		GoTypes:           file_go_spiffe_proto_spiffe_workload_workload_proto_goTypes,
+		DependencyIndexes: file_go_spiffe_proto_spiffe_workload_workload_proto_depIdxs,
+		EnumInfos:         file_go_spiffe_proto_spiffe_workload_workload_proto_enumTypes,
+		MessageInfos:      file_go_spiffe_proto_spiffe_workload_workload_proto_msgTypes,
 	}.Build()
-	File_proto_spiffe_workload_workload_proto = out.File
-	file_proto_spiffe_workload_workload_proto_goTypes = nil
-	file_proto_spiffe_workload_workload_proto_depIdxs = nil
+	File_go_spiffe_proto_spiffe_workload_workload_proto = out.File
+	file_go_spiffe_proto_spiffe_workload_workload_proto_goTypes = nil
+	file_go_spiffe_proto_spiffe_workload_workload_proto_depIdxs = nil
 }

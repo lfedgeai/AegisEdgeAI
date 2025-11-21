@@ -8,9 +8,7 @@ use thiserror::Error;
 use tss_esapi::{
     abstraction::AsymmetricAlgorithmSelection,
     interface_types::{
-        algorithm::{
-            AsymmetricAlgorithm, HashingAlgorithm, SignatureSchemeAlgorithm,
-        },
+        algorithm::{AsymmetricAlgorithm, HashingAlgorithm, SignatureSchemeAlgorithm},
         ecc::EccCurve,
         key_bits::RsaKeyBits,
     },
@@ -39,9 +37,7 @@ pub enum HashAlgorithm {
     Sm3_256,
 }
 
-pub fn hash_to_hashing_algorithm(
-    hash_algorithm: HashAlgorithm,
-) -> HashingAlgorithm {
+pub fn hash_to_hashing_algorithm(hash_algorithm: HashAlgorithm) -> HashingAlgorithm {
     match hash_algorithm {
         HashAlgorithm::Sha1 => HashingAlgorithm::Sha1,
         HashAlgorithm::Sha256 => HashingAlgorithm::Sha256,
@@ -51,20 +47,28 @@ pub fn hash_to_hashing_algorithm(
     }
 }
 
-impl TryFrom<tss_esapi::interface_types::algorithm::HashingAlgorithm>
-    for HashAlgorithm
-{
+impl TryFrom<tss_esapi::interface_types::algorithm::HashingAlgorithm> for HashAlgorithm {
     type Error = AlgorithmError;
 
     fn try_from(
         tss_alg: tss_esapi::interface_types::algorithm::HashingAlgorithm,
     ) -> Result<Self, Self::Error> {
         match tss_alg {
-            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sha1 => Ok(HashAlgorithm::Sha1),
-            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sha256 => Ok(HashAlgorithm::Sha256),
-            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sha384 => Ok(HashAlgorithm::Sha384),
-            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sha512 => Ok(HashAlgorithm::Sha512),
-            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sm3_256 => Ok(HashAlgorithm::Sm3_256),
+            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sha1 => {
+                Ok(HashAlgorithm::Sha1)
+            }
+            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sha256 => {
+                Ok(HashAlgorithm::Sha256)
+            }
+            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sha384 => {
+                Ok(HashAlgorithm::Sha384)
+            }
+            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sha512 => {
+                Ok(HashAlgorithm::Sha512)
+            }
+            tss_esapi::interface_types::algorithm::HashingAlgorithm::Sm3_256 => {
+                Ok(HashAlgorithm::Sm3_256)
+            }
             _ => Err(AlgorithmError::UnsupportedHashingAlgorithm(format!(
                 "Unable to convert tss-esapi HashingAlgorithm: {tss_alg:?}"
             ))),
@@ -82,9 +86,7 @@ impl TryFrom<&str> for HashAlgorithm {
             "sha384" => Ok(HashAlgorithm::Sha384),
             "sha512" => Ok(HashAlgorithm::Sha512),
             "sm3_256" => Ok(HashAlgorithm::Sm3_256),
-            _ => {
-                Err(AlgorithmError::UnsupportedHashingAlgorithm(value.into()))
-            }
+            _ => Err(AlgorithmError::UnsupportedHashingAlgorithm(value.into())),
         }
     }
 }
@@ -185,9 +187,7 @@ pub fn get_key_size(tpm_encryption_alg: &EncryptionAlgorithm) -> usize {
     }
 }
 
-pub fn get_key_algorithm_family(
-    tpm_encryption_alg: &EncryptionAlgorithm,
-) -> &'static str {
+pub fn get_key_algorithm_family(tpm_encryption_alg: &EncryptionAlgorithm) -> &'static str {
     match tpm_encryption_alg {
         EncryptionAlgorithm::Rsa1024
         | EncryptionAlgorithm::Rsa2048
@@ -222,36 +222,16 @@ impl From<EncryptionAlgorithm> for AsymmetricAlgorithm {
 impl From<EncryptionAlgorithm> for AsymmetricAlgorithmSelection {
     fn from(enc_alg: EncryptionAlgorithm) -> Self {
         match enc_alg {
-            EncryptionAlgorithm::Rsa1024 => {
-                AsymmetricAlgorithmSelection::Rsa(RsaKeyBits::Rsa1024)
-            }
-            EncryptionAlgorithm::Rsa2048 => {
-                AsymmetricAlgorithmSelection::Rsa(RsaKeyBits::Rsa2048)
-            }
-            EncryptionAlgorithm::Rsa3072 => {
-                AsymmetricAlgorithmSelection::Rsa(RsaKeyBits::Rsa3072)
-            }
-            EncryptionAlgorithm::Rsa4096 => {
-                AsymmetricAlgorithmSelection::Rsa(RsaKeyBits::Rsa4096)
-            }
-            EncryptionAlgorithm::Ecc192 => {
-                AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP192)
-            }
-            EncryptionAlgorithm::Ecc224 => {
-                AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP224)
-            }
-            EncryptionAlgorithm::Ecc256 => {
-                AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP256)
-            }
-            EncryptionAlgorithm::Ecc384 => {
-                AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP384)
-            }
-            EncryptionAlgorithm::Ecc521 => {
-                AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP521)
-            }
-            EncryptionAlgorithm::EccSm2 => {
-                AsymmetricAlgorithmSelection::Ecc(EccCurve::Sm2P256)
-            }
+            EncryptionAlgorithm::Rsa1024 => AsymmetricAlgorithmSelection::Rsa(RsaKeyBits::Rsa1024),
+            EncryptionAlgorithm::Rsa2048 => AsymmetricAlgorithmSelection::Rsa(RsaKeyBits::Rsa2048),
+            EncryptionAlgorithm::Rsa3072 => AsymmetricAlgorithmSelection::Rsa(RsaKeyBits::Rsa3072),
+            EncryptionAlgorithm::Rsa4096 => AsymmetricAlgorithmSelection::Rsa(RsaKeyBits::Rsa4096),
+            EncryptionAlgorithm::Ecc192 => AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP192),
+            EncryptionAlgorithm::Ecc224 => AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP224),
+            EncryptionAlgorithm::Ecc256 => AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP256),
+            EncryptionAlgorithm::Ecc384 => AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP384),
+            EncryptionAlgorithm::Ecc521 => AsymmetricAlgorithmSelection::Ecc(EccCurve::NistP521),
+            EncryptionAlgorithm::EccSm2 => AsymmetricAlgorithmSelection::Ecc(EccCurve::Sm2P256),
         }
     }
 }
@@ -280,9 +260,7 @@ impl TryFrom<&str> for EncryptionAlgorithm {
             "ecc_nist_p521" => Ok(EncryptionAlgorithm::Ecc521),
             "ecc_sm2" => Ok(EncryptionAlgorithm::EccSm2),
             "ecc_sm2_p256" => Ok(EncryptionAlgorithm::EccSm2),
-            _ => Err(AlgorithmError::UnsupportedEncryptionAlgorithm(
-                value.into(),
-            )),
+            _ => Err(AlgorithmError::UnsupportedEncryptionAlgorithm(value.into())),
         }
     }
 }
@@ -315,19 +293,14 @@ pub enum SignAlgorithm {
 }
 
 impl SignAlgorithm {
-    pub fn to_signature_scheme(
-        self,
-        hash_alg: HashAlgorithm,
-    ) -> SignatureScheme {
+    pub fn to_signature_scheme(self, hash_alg: HashAlgorithm) -> SignatureScheme {
         let hash_scheme = HashScheme::new(hash_alg.into());
         match self {
             SignAlgorithm::RsaSsa => SignatureScheme::RsaSsa { hash_scheme },
             SignAlgorithm::RsaPss => SignatureScheme::RsaPss { hash_scheme },
             SignAlgorithm::EcDsa => SignatureScheme::EcDsa { hash_scheme },
             //            SignAlgorithm::EcDaa => SignatureScheme::EcDaa{/*TODO*/},
-            SignAlgorithm::EcSchnorr => {
-                SignatureScheme::EcSchnorr { hash_scheme }
-            }
+            SignAlgorithm::EcSchnorr => SignatureScheme::EcSchnorr { hash_scheme },
         }
     }
 }
@@ -354,9 +327,7 @@ impl TryFrom<&str> for SignAlgorithm {
             "ecdsa" => Ok(SignAlgorithm::EcDsa),
             //            "ecdaa" => Ok(SignAlgorithm::EcDaa),
             "ecschnorr" => Ok(SignAlgorithm::EcSchnorr),
-            _ => {
-                Err(AlgorithmError::UnsupportedSigningAlgorithm(value.into()))
-            }
+            _ => Err(AlgorithmError::UnsupportedSigningAlgorithm(value.into())),
         }
     }
 }
@@ -495,10 +466,7 @@ mod tests {
         ];
         for (alg, expected_size) in algorithms {
             let key_size = get_key_size(&alg);
-            assert_eq!(
-                key_size, expected_size,
-                "Key size mismatch for {alg}"
-            );
+            assert_eq!(key_size, expected_size, "Key size mismatch for {alg}");
         }
     } // test_get_key_size
 

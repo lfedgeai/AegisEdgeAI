@@ -1,8 +1,5 @@
 use crate::resilient_client::ResilientClient;
-use crate::{
-    agent_identity::AgentIdentity, agent_registration::RetryConfig,
-    serialization::*,
-};
+use crate::{agent_identity::AgentIdentity, agent_registration::RetryConfig, serialization::*};
 use log::*;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -110,9 +107,7 @@ impl RegistrarClientBuilder {
     }
 
     /// Get the registrar API version from the Registrar '/version' endpoint
-    async fn get_registrar_api_version(
-        &mut self,
-    ) -> Result<String, RegistrarClientBuilderError> {
+    async fn get_registrar_api_version(&mut self) -> Result<String, RegistrarClientBuilderError> {
         let Some(ref registrar_ip) = self.registrar_address else {
             return Err(RegistrarClientBuilderError::RegistrarIPNotSet);
         };
@@ -158,18 +153,14 @@ impl RegistrarClientBuilder {
 
         let resp: Response<KeylimeRegistrarVersion> = resp.json().await?;
 
-        self.registrar_current_api_version =
-            Some(resp.results.current_version.clone());
-        self.registrar_supported_api_versions =
-            Some(resp.results.supported_versions);
+        self.registrar_current_api_version = Some(resp.results.current_version.clone());
+        self.registrar_supported_api_versions = Some(resp.results.supported_versions);
 
         Ok(resp.results.current_version)
     }
 
     /// Generate the RegistrarClient object using the previously set options
-    pub async fn build(
-        &mut self,
-    ) -> Result<RegistrarClient, RegistrarClientBuilderError> {
+    pub async fn build(&mut self) -> Result<RegistrarClient, RegistrarClientBuilderError> {
         let Some(registrar_ip) = self.registrar_address.clone() else {
             return Err(RegistrarClientBuilderError::RegistrarIPNotSet);
         };
@@ -180,34 +171,28 @@ impl RegistrarClientBuilder {
 
         // Get the registrar API version. If it was caused by an error in the request, set the
         // version as UNKNOWN_API_VERSION, otherwise abort the build process
-        let registrar_api_version =
-            match self.get_registrar_api_version().await {
-                Ok(version) => version,
-                Err(e) => match e {
-                    RegistrarClientBuilderError::RegistrarNoVersion => {
-                        UNKNOWN_API_VERSION.to_string()
-                    }
-                    _ => {
-                        return Err(e);
-                    }
-                },
-            };
+        let registrar_api_version = match self.get_registrar_api_version().await {
+            Ok(version) => version,
+            Err(e) => match e {
+                RegistrarClientBuilderError::RegistrarNoVersion => UNKNOWN_API_VERSION.to_string(),
+                _ => {
+                    return Err(e);
+                }
+            },
+        };
 
-        let resilient_client =
-            self.retry_config.as_ref().map(|retry_config| {
-                ResilientClient::new(
-                    None,
-                    Duration::from_millis(retry_config.initial_delay_ms),
-                    retry_config.max_retries,
-                    &[StatusCode::OK],
-                    retry_config.max_delay_ms.map(Duration::from_millis),
-                )
-            });
+        let resilient_client = self.retry_config.as_ref().map(|retry_config| {
+            ResilientClient::new(
+                None,
+                Duration::from_millis(retry_config.initial_delay_ms),
+                retry_config.max_retries,
+                &[StatusCode::OK],
+                retry_config.max_delay_ms.map(Duration::from_millis),
+            )
+        });
 
-        let supported_versions = self.registrar_supported_api_versions.clone();
-        info!("RegistrarClient::build: api_version = '{}', supported_api_versions = {:?}", registrar_api_version, supported_versions);
         Ok(RegistrarClient {
-            supported_api_versions: supported_versions,
+            supported_api_versions: self.registrar_supported_api_versions.clone(),
             api_version: registrar_api_version,
             registrar_ip,
             registrar_port,
@@ -356,25 +341,16 @@ impl RegistrarClient {
         let registrar_port = &self.registrar_port;
         let uuid = &ai.uuid;
 
-        let addr = format!(
-            "http://{registrar_ip}:{registrar_port}/v{api_version}/agents/{uuid}",
-        );
+        let addr = format!("http://{registrar_ip}:{registrar_port}/v{api_version}/agents/{uuid}",);
 
-        eprintln!("[DEBUG] try_register_agent: Preparing registration request to {}", &addr);
         info!(
             "Requesting agent registration from {} for {}",
             &addr, &ai.uuid
         );
-        eprintln!("[DEBUG] try_register_agent: Registration data prepared, sending POST request...");
 
         let resp = match self.resilient_client {
             Some(ref client) => client
-                .get_json_request_from_struct(
-                    reqwest::Method::POST,
-                    &addr,
-                    &data,
-                    None,
-                )
+                .get_json_request_from_struct(reqwest::Method::POST, &addr, &data, None)
                 .map_err(RegistrarClientError::Serde)?
                 .send()
                 .await
@@ -427,16 +403,9 @@ impl RegistrarClient {
         &mut self,
         ai: &AgentIdentity<'_>,
     ) -> Result<Vec<u8>, RegistrarClientError> {
-        debug!(
-            "register_agent: current API version = '{}', agent enabled = {:?}",
-            self.api_version, ai.enabled_api_versions
-        );
         // The current Registrar API version is enabled and should work
         if ai.enabled_api_versions.contains(&self.api_version.as_ref()) {
-            debug!("Current API version '{}' is in agent's enabled list, attempting registration", self.api_version);
             return self.try_register_agent(ai, &self.api_version).await;
-        } else {
-            debug!("Current API version '{}' is NOT in agent's enabled list {:?}, will try other versions", self.api_version, ai.enabled_api_versions);
         }
 
         // In case the registrar does not support the '/version' endpoint, try the enabled API
@@ -460,60 +429,36 @@ impl RegistrarClient {
         } else {
             // The current Registrar API version is not enabled.
             // Find the latest enabled version that is supported
-            info!("Current API version '{}' is not in enabled list, checking supported versions. supported_api_versions = {:?}", self.api_version, self.supported_api_versions);
             if let Some(ref supported) = self.supported_api_versions {
-                info!(
+                debug!(
                     "Checking API version compatibility: agent enabled = {:?}, registrar supported = {:?}",
                     ai.enabled_api_versions, supported
                 );
                 for api_version in ai.enabled_api_versions.iter().rev() {
                     let api_version_str = api_version.trim();
-                    info!(
+                    debug!(
                         "Checking if registrar supports agent version '{}' (trimmed from '{}')",
                         api_version_str, api_version
                     );
                     // Trim whitespace from both sides for comparison
-                    eprintln!("[DEBUG] Comparing agent version '{}' (trimmed: '{}') against registrar supported versions: {:?}", api_version, api_version_str, supported);
-                    let version_matches = supported.iter().any(|s| {
-                        let s_trimmed = s.trim();
-                        let matches = s_trimmed == api_version_str;
-                        eprintln!("[DEBUG]   Comparing '{}' (trimmed: '{}') == '{}' -> {}", s, s_trimmed, api_version_str, matches);
-                        matches
-                    });
-                    eprintln!("[DEBUG] Version '{}' matches: {}", api_version_str, version_matches);
+                    let version_matches = supported.iter().any(|s| s.trim() == api_version_str);
                     if version_matches {
-                        eprintln!("[DEBUG] Found compatible API version: {}, attempting registration...", api_version_str);
-                        info!("Found compatible API version: {}", api_version_str);
+                        debug!("Found compatible API version: {}", api_version_str);
                         // Found a compatible API version, it should work
-                        eprintln!("[DEBUG] Calling try_register_agent with version: {}", api_version_str);
-                        let r =
-                            self.try_register_agent(ai, api_version).await;
-                        eprintln!("[DEBUG] try_register_agent result: {:?}", r);
+                        let r = self.try_register_agent(ai, api_version).await;
 
                         // If successful, cache the API version for future requests
                         if r.is_ok() {
                             self.api_version = api_version_str.to_string();
                             return r;
                         } else {
-                            // Check if the error is specifically an API incompatibility error
-                            // If so, continue to next version. Otherwise, return the actual error.
-                            if let Err(RegistrarClientError::IncompatibleAPI { .. }) = r {
-                                warn!(
-                                    "Registration attempt with API version {} failed due to API incompatibility: {:?}",
-                                    api_version_str, r
-                                );
-                                // Continue to next version
-                            } else {
-                                // This is a different error (TPM, network, etc.) - return it immediately
-                                warn!(
-                                    "Registration attempt with API version {} failed with non-API error: {:?}",
-                                    api_version_str, r
-                                );
-                                return r;
-                            }
+                            warn!(
+                                "Registration attempt with API version {} failed: {:?}",
+                                api_version_str, r
+                            );
                         }
                     } else {
-                        info!(
+                        debug!(
                             "API version '{}' not found in registrar supported list",
                             api_version_str
                         );
@@ -524,10 +469,7 @@ impl RegistrarClient {
                     "No compatible API version found. Agent enabled: {:?}, Registrar supported: {:?}",
                     ai.enabled_api_versions, supported
                 );
-                Err(self.incompatible(
-                    ai.enabled_api_versions.join(", "),
-                    supported.join(", "),
-                ))
+                Err(self.incompatible(ai.enabled_api_versions.join(", "), supported.join(", ")))
             } else {
                 Err(RegistrarClientError::Inconsistent(
                     self.api_version.to_string(),
@@ -548,17 +490,14 @@ impl RegistrarClient {
         let registrar_port = &self.registrar_port;
         let uuid = &ai.uuid;
 
-        let addr = format!(
-            "http://{registrar_ip}:{registrar_port}/v{api_version}/agents/{uuid}",
-        );
+        let addr = format!("http://{registrar_ip}:{registrar_port}/v{api_version}/agents/{uuid}",);
 
         info!(
             "Requesting agent activation from {} for {}",
             &addr, &ai.uuid
         );
 
-        let resp =
-            reqwest::Client::new().put(&addr).json(&data).send().await?;
+        let resp = reqwest::Client::new().put(&addr).json(&data).send().await?;
 
         if !resp.status().is_success() {
             return Err(RegistrarClientError::Activation {
@@ -607,8 +546,7 @@ impl RegistrarClient {
             // Assume the list of enabled versions is ordered from the oldest to the newest
             for api_version in ai.enabled_api_versions.iter().rev() {
                 info!("Trying to register agent using API version {api_version}");
-                let r =
-                    self.try_activate_agent(auth_tag, ai, api_version).await;
+                let r = self.try_activate_agent(auth_tag, ai, api_version).await;
 
                 // If successful, cache the API version for future requests
                 if r.is_ok() {
@@ -633,11 +571,12 @@ impl RegistrarClient {
                     // Trim whitespace from both sides for comparison
                     let version_matches = supported.iter().any(|s| s.trim() == api_version_str);
                     if version_matches {
-                        debug!("Found compatible API version for activation: {}", api_version_str);
+                        debug!(
+                            "Found compatible API version for activation: {}",
+                            api_version_str
+                        );
                         // Found a compatible API version, it should work
-                        let r = self
-                            .try_activate_agent(auth_tag, ai, api_version)
-                            .await;
+                        let r = self.try_activate_agent(auth_tag, ai, api_version).await;
 
                         // If successful, cache the API version for future requests
                         if r.is_ok() {
@@ -656,10 +595,7 @@ impl RegistrarClient {
                     "No compatible API version found for activation. Agent enabled: {:?}, Registrar supported: {:?}",
                     ai.enabled_api_versions, supported
                 );
-                Err(self.incompatible(
-                    ai.enabled_api_versions.join(", "),
-                    supported.join(", "),
-                ))
+                Err(self.incompatible(ai.enabled_api_versions.join(", "), supported.join(", ")))
             } else {
                 Err(RegistrarClientError::Inconsistent(
                     self.api_version.to_string(),
@@ -703,9 +639,7 @@ mod tests {
 
         let mock = Mock::given(method("GET"))
             .and(path("/version"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(api_response),
-            );
+            .respond_with(ResponseTemplate::new(200).set_body_json(api_response));
         mock_server.register(mock).await;
 
         let uri = mock_server.uri();
@@ -839,9 +773,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(response));
         mock_server.register(mock).await;
 
-        let mock = Mock::given(method("GET")).respond_with(
-            ResponseTemplate::new(200).set_body_json(api_response),
-        );
+        let mock = Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(api_response));
         mock_server.register(mock).await;
 
         let uri = mock_server.uri();
@@ -912,9 +845,7 @@ mod tests {
 
         let mock = Mock::given(method("GET"))
             .and(path("/version"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(api_response),
-            );
+            .respond_with(ResponseTemplate::new(200).set_body_json(api_response));
         mock_server.register(mock).await;
 
         let uri = mock_server.uri();
@@ -1027,9 +958,7 @@ mod tests {
 
         let mock = Mock::given(method("GET"))
             .and(path("/version"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(api_response),
-            );
+            .respond_with(ResponseTemplate::new(200).set_body_json(api_response));
         mock_server.register(mock).await;
 
         let uri = mock_server.uri();
@@ -1073,8 +1002,7 @@ mod tests {
 
         // The build process should work, but the registration should fail
         assert!(response.is_ok(), "error: {response:?}");
-        let mut registrar_client =
-            response.expect("failed to build Registrar Client");
+        let mut registrar_client = response.expect("failed to build Registrar Client");
         let response = registrar_client.register_agent(&ai).await;
         assert!(response.is_err());
     }
@@ -1105,9 +1033,7 @@ mod tests {
 
         let mock = Mock::given(method("GET"))
             .and(path("/version"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(api_response),
-            );
+            .respond_with(ResponseTemplate::new(200).set_body_json(api_response));
         mock_server.register(mock).await;
 
         let uri = mock_server.uri();
@@ -1217,9 +1143,7 @@ mod tests {
 
         let mock = Mock::given(method("GET"))
             .and(path("/version"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(api_response),
-            );
+            .respond_with(ResponseTemplate::new(200).set_body_json(api_response));
         mock_server.register(mock).await;
 
         let uri = mock_server.uri();
@@ -1283,9 +1207,7 @@ mod tests {
 
         let mock = Mock::given(method("GET"))
             .and(path("/version"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(api_response),
-            );
+            .respond_with(ResponseTemplate::new(200).set_body_json(api_response));
         mock_server.register(mock).await;
 
         let uri = mock_server.uri();
@@ -1320,8 +1242,7 @@ mod tests {
         // The build process should work, but the activation should fail as
         // there is no compatible API version
         assert!(response.is_ok(), "error: {response:?}");
-        let mut registrar_client =
-            response.expect("failed to build Registrar Client");
+        let mut registrar_client = response.expect("failed to build Registrar Client");
         let response = registrar_client.activate_agent(&ai, "tag").await;
         assert!(response.is_err());
     }
@@ -1371,8 +1292,7 @@ mod tests {
 
         for to_skip in required.iter() {
             // Add all required fields but the one to skip
-            let to_add: Vec<&str> =
-                required.iter().filter(|&x| x != to_skip).copied().collect();
+            let to_add: Vec<&str> = required.iter().filter(|&x| x != to_skip).copied().collect();
             let mut builder = RegistrarClientBuilder::new();
 
             if to_add.contains(&"registrar_address") {

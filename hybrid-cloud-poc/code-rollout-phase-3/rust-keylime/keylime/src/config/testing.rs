@@ -14,9 +14,7 @@ use std::{
 };
 
 // Global storage for testing configuration override
-pub(crate) static TESTING_CONFIG_OVERRIDE: OnceLock<
-    Mutex<Option<AgentConfig>>,
-> = OnceLock::new();
+pub(crate) static TESTING_CONFIG_OVERRIDE: OnceLock<Mutex<Option<AgentConfig>>> = OnceLock::new();
 
 /// Create a configuration based on a temporary directory
 ///
@@ -52,10 +50,7 @@ pub fn get_testing_config(
 ///
 /// * `config`: Mutable reference to the AgentConfig to modify
 /// * `overrides`: HashMap of configuration option names to values to override
-fn apply_config_overrides(
-    config: &mut AgentConfig,
-    overrides: HashMap<String, String>,
-) {
+fn apply_config_overrides(config: &mut AgentConfig, overrides: HashMap<String, String>) {
     use crate::config::{
         DEFAULT_CONTACT_PORT, DEFAULT_PORT, DEFAULT_REGISTRAR_PORT,
         DEFAULT_REVOCATION_NOTIFICATION_PORT,
@@ -82,9 +77,7 @@ fn apply_config_overrides(
             }
             "iak_cert" => config.iak_cert = value,
             "iak_handle" => config.iak_handle = value,
-            "iak_idevid_asymmetric_alg" => {
-                config.iak_idevid_asymmetric_alg = value
-            }
+            "iak_idevid_asymmetric_alg" => config.iak_idevid_asymmetric_alg = value,
             "iak_idevid_name_alg" => config.iak_idevid_name_alg = value,
             "iak_idevid_template" => config.iak_idevid_template = value,
             "iak_password" => config.iak_password = value,
@@ -97,8 +90,7 @@ fn apply_config_overrides(
             }
             "registrar_ip" => config.registrar_ip = value,
             "registrar_port" => {
-                config.registrar_port =
-                    value.parse().unwrap_or(DEFAULT_REGISTRAR_PORT);
+                config.registrar_port = value.parse().unwrap_or(DEFAULT_REGISTRAR_PORT);
             }
             "run_as" => config.run_as = value,
             "tpm_encryption_alg" => config.tpm_encryption_alg = value,
@@ -110,25 +102,21 @@ fn apply_config_overrides(
             "version" => config.version = value,
             // Pull attestation options
             "allow_payload_revocation_actions" => {
-                config.allow_payload_revocation_actions =
-                    value.parse().unwrap_or(false);
+                config.allow_payload_revocation_actions = value.parse().unwrap_or(false);
             }
             "contact_ip" => config.contact_ip = value,
             "contact_port" => {
-                config.contact_port =
-                    value.parse().unwrap_or(DEFAULT_CONTACT_PORT);
+                config.contact_port = value.parse().unwrap_or(DEFAULT_CONTACT_PORT);
             }
             "dec_payload_file" => config.dec_payload_file = value,
             "enable_agent_mtls" => {
                 config.enable_agent_mtls = value.parse().unwrap_or(true);
             }
             "enable_insecure_payload" => {
-                config.enable_insecure_payload =
-                    value.parse().unwrap_or(false);
+                config.enable_insecure_payload = value.parse().unwrap_or(false);
             }
             "enable_revocation_notifications" => {
-                config.enable_revocation_notifications =
-                    value.parse().unwrap_or(false);
+                config.enable_revocation_notifications = value.parse().unwrap_or(false);
             }
             "enc_keyname" => config.enc_keyname = value,
             "extract_payload_zip" => {
@@ -138,9 +126,7 @@ fn apply_config_overrides(
             "revocation_actions" => config.revocation_actions = value,
             "revocation_actions_dir" => config.revocation_actions_dir = value,
             "revocation_cert" => config.revocation_cert = value,
-            "revocation_notification_ip" => {
-                config.revocation_notification_ip = value
-            }
+            "revocation_notification_ip" => config.revocation_notification_ip = value,
             "revocation_notification_port" => {
                 config.revocation_notification_port = value
                     .parse()
@@ -158,9 +144,7 @@ fn apply_config_overrides(
             }
             "ima_ml_count_file" => config.ima_ml_count_file = value,
             "registrar_api_versions" => config.registrar_api_versions = value,
-            "uefi_logs_evidence_version" => {
-                config.uefi_logs_evidence_version = value
-            }
+            "uefi_logs_evidence_version" => config.uefi_logs_evidence_version = value,
             "verifier_url" => config.verifier_url = value,
             _ => {
                 log::warn!("Unknown configuration override key: {key}");
@@ -259,8 +243,7 @@ mod tests {
 
     #[test]
     fn test_get_testing_config() {
-        let dir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let dir = tempfile::tempdir().expect("failed to create temporary directory");
 
         // Get the config and check that the value is correct
         let config = get_testing_config(dir.path(), None);
@@ -269,14 +252,12 @@ mod tests {
 
     #[test]
     fn test_get_testing_config_with_overrides() {
-        let dir = tempfile::tempdir()
-            .expect("failed to create temporary directory");
+        let dir = tempfile::tempdir().expect("failed to create temporary directory");
 
         let mut overrides = HashMap::new();
         overrides.insert("ip".to_string(), "192.168.1.100".to_string());
         overrides.insert("port".to_string(), "9999".to_string());
-        overrides
-            .insert("ima_ml_path".to_string(), "/custom/path".to_string());
+        overrides.insert("ima_ml_path".to_string(), "/custom/path".to_string());
 
         let config = get_testing_config(dir.path(), Some(overrides));
 
@@ -348,8 +329,7 @@ mod tests {
             // Verify override is active within the scope
             let retrieved = get_testing_config_override();
             assert!(retrieved.is_some());
-            let retrieved_config =
-                retrieved.expect("config should be available");
+            let retrieved_config = retrieved.expect("config should be available");
             assert_eq!(retrieved_config.ip, "guard.example.com");
             assert_eq!(retrieved_config.port, 54321);
         } // Guard goes out of scope here, should automatically clear

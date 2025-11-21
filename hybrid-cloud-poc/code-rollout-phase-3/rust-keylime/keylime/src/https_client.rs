@@ -24,35 +24,27 @@ pub fn get_https_client(args: &ClientArgs) -> Result<reqwest::Client> {
         // Get CA certificate from file
         let mut buf = Vec::new();
         File::open(args.ca_certificate.clone())
-            .context(format!(
-                "Failed to open '{}' file",
-                args.ca_certificate
-            ))?
+            .context(format!("Failed to open '{}' file", args.ca_certificate))?
             .read_to_end(&mut buf)
             .context(format!(
                 "Failed to read '{}' to the end",
                 args.ca_certificate
             ))?;
-        let ca_cert =
-            reqwest::Certificate::from_pem(&buf).context(format!(
-                "Failed to parse certificate from PEM file '{}'",
-                args.ca_certificate
-            ))?;
+        let ca_cert = reqwest::Certificate::from_pem(&buf).context(format!(
+            "Failed to parse certificate from PEM file '{}'",
+            args.ca_certificate
+        ))?;
 
         // Get client key and certificate from files
         let cert = fs::read(args.certificate.clone()).context(format!(
             "Failed to read client certificate from file '{}'",
             args.certificate
         ))?;
-        let key = fs::read(args.key.clone()).context(format!(
-            "Failed to read key from file '{}'",
-            args.key
-        ))?;
-        let identity = reqwest::Identity::from_pkcs8_pem(&cert, &key)
-            .context(format!(
+        let key = fs::read(args.key.clone())
+            .context(format!("Failed to read key from file '{}'", args.key))?;
+        let identity = reqwest::Identity::from_pkcs8_pem(&cert, &key).context(format!(
             "Failed to add client identity from certificate '{}' and key '{}'",
-            args.certificate,
-            args.key
+            args.certificate, args.key
         ))?;
 
         builder = builder

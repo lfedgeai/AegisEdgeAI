@@ -76,9 +76,10 @@ def get_attested_claims(
     Retrieve attested claims (geolocation, host integrity, GPU metrics) for a host.
 
     Facts are retrieved from:
-    1. Verifier database (if agent is registered)
-    2. Configuration-based defaults
-    3. Simple fact store (for testing)
+    1. Verifier database (if agent is registered with verifier and has metadata)
+    2. Simple fact store (using host identifier derived from TPM EK/AK)
+
+    If no facts are available, returns an empty dictionary.
 
     Args:
         tpm_ek: TPM Endorsement Key (optional, for host identification)
@@ -86,30 +87,18 @@ def get_attested_claims(
         agent_id: Agent ID (optional, if host is registered)
 
     Returns:
-        Dictionary containing attested claims:
+        Dictionary containing attested claims (may be empty if no facts available):
         {
-            "geolocation": str,
-            "host_integrity_status": str,
+            "geolocation": str (optional),
+            "host_integrity_status": str (optional),
             "gpu_metrics_health": {
-                "status": str,
-                "utilization_pct": float,
-                "memory_mb": int
+                "status": str (optional),
+                "utilization_pct": float (optional),
+                "memory_mb": int (optional)
             }
         }
     """
     logger.info("Unified-Identity - Phase 3: Retrieving attested claims")
-
-    # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
-    # Default values (can be overridden by configuration or database)
-    default_geolocation = config.get(
-        "verifier", "unified_identity_default_geolocation", fallback="Spain: N40.4168, W3.7038"
-    )
-    default_integrity = config.get(
-        "verifier", "unified_identity_default_integrity", fallback="passed_all_checks"
-    )
-    default_gpu_status = config.get("verifier", "unified_identity_default_gpu_status", fallback="healthy")
-    default_gpu_utilization = config.getfloat("verifier", "unified_identity_default_gpu_utilization", fallback=15.0)
-    default_gpu_memory = config.getint("verifier", "unified_identity_default_gpu_memory", fallback=10240)
 
     # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
     # Try to retrieve facts from verifier database if agent_id is provided
@@ -129,34 +118,29 @@ def get_attested_claims(
 
                             metadata = json.loads(agent.meta_data) if isinstance(agent.meta_data, str) else agent.meta_data
                             if isinstance(metadata, dict):
-                                geolocation = metadata.get("geolocation", default_geolocation)
-                                integrity = metadata.get("host_integrity_status", default_integrity)
-                                gpu_metrics = metadata.get("gpu_metrics_health", {})
-                                if isinstance(gpu_metrics, dict):
-                                    gpu_status = gpu_metrics.get("status", default_gpu_status)
-                                    gpu_utilization = gpu_metrics.get("utilization_pct", default_gpu_utilization)
-                                    gpu_memory = gpu_metrics.get("memory_mb", default_gpu_memory)
-                                else:
-                                    gpu_status = default_gpu_status
-                                    gpu_utilization = default_gpu_utilization
-                                    gpu_memory = default_gpu_memory
+                                # Only return facts that are actually present in metadata
+                                facts = {}
+                                if "geolocation" in metadata:
+                                    facts["geolocation"] = metadata["geolocation"]
+                                if "host_integrity_status" in metadata:
+                                    facts["host_integrity_status"] = metadata["host_integrity_status"]
+                                if "gpu_metrics_health" in metadata:
+                                    gpu_metrics = metadata["gpu_metrics_health"]
+                                    if isinstance(gpu_metrics, dict):
+                                        facts["gpu_metrics_health"] = {
+                                            "status": gpu_metrics.get("status"),
+                                            "utilization_pct": gpu_metrics.get("utilization_pct"),
+                                            "memory_mb": gpu_metrics.get("memory_mb"),
+                                        }
 
                                 logger.info(
                                     "Unified-Identity - Phase 3: Retrieved facts from agent metadata for agent %s",
                                     agent_id,
                                 )
-                                return {
-                                    "geolocation": geolocation,
-                                    "host_integrity_status": integrity,
-                                    "gpu_metrics_health": {
-                                        "status": gpu_status,
-                                        "utilization_pct": float(gpu_utilization),
-                                        "memory_mb": int(gpu_memory),
-                                    },
-                                }
+                                return facts
                         except Exception as e:
                             logger.warning(
-                                "Unified-Identity - Phase 3: Failed to parse agent metadata, using defaults: %s", e
+                                "Unified-Identity - Phase 3: Failed to parse agent metadata: %s", e
                             )
         except Exception as e:
             logger.warning("Unified-Identity - Phase 3: Failed to retrieve facts from database: %s", e)
@@ -179,17 +163,9 @@ def get_attested_claims(
             return facts
 
     # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
-    # Return default facts
-    logger.info("Unified-Identity - Phase 3: Using default facts")
-    return {
-        "geolocation": default_geolocation,
-        "host_integrity_status": default_integrity,
-        "gpu_metrics_health": {
-            "status": default_gpu_status,
-            "utilization_pct": float(default_gpu_utilization),
-            "memory_mb": int(default_gpu_memory),
-        },
-    }
+    # No facts available - return empty dict
+    logger.info("Unified-Identity - Phase 3: No attested claims available (agent not registered with verifier or no fact store entry)")
+    return {}
 
 
 # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)

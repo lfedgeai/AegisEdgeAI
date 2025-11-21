@@ -14,13 +14,9 @@ pub fn get_boot_time() -> Result<DateTime<Utc>> {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
                 let timestamp = parts[1].parse::<i64>()?;
-                let boot_datetime = DateTime::from_timestamp(timestamp, 0)
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "Invalid or out-of-range Unix timestamp: {}",
-                            timestamp
-                        )
-                    })?;
+                let boot_datetime = DateTime::from_timestamp(timestamp, 0).ok_or_else(|| {
+                    anyhow!("Invalid or out-of-range Unix timestamp: {}", timestamp)
+                })?;
 
                 return Ok(boot_datetime);
             }
