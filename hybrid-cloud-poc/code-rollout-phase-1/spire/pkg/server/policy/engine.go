@@ -12,10 +12,7 @@ import (
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // PolicyConfig holds configuration for policy evaluation
 type PolicyConfig struct {
-	AllowedGeolocations []string // Allowed geolocation patterns (e.g., "Spain:*", "Germany:Berlin")
-	RequireIntegrity    bool     // Require host integrity to be PASSED_ALL_CHECKS
-	MaxGPUUtilization   float64  // Maximum GPU utilization percentage (0-100)
-	MinGPUMemoryMB      int64    // Minimum GPU memory in MB
+	AllowedGeolocations []string // Allowed geolocation patterns (e.g., "mobile:12d1:1433", "gnss:*")
 	Logger              logrus.FieldLogger
 }
 
@@ -29,13 +26,7 @@ type PolicyResult struct {
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // AttestedClaims represents verified facts from Keylime
 type AttestedClaims struct {
-	Geolocation         string
-	HostIntegrityStatus string
-	GPUMetricsHealth    struct {
-		Status        string
-		UtilizationPct float64
-		MemoryMB      int64
-	}
+	Geolocation string
 }
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -60,11 +51,7 @@ func NewEngine(config PolicyConfig) *Engine {
 // Evaluate checks if the AttestedClaims meet the policy requirements
 func (e *Engine) Evaluate(claims *AttestedClaims) (*PolicyResult, error) {
 	e.config.Logger.WithFields(logrus.Fields{
-		"geolocation":   claims.Geolocation,
-		"integrity":     claims.HostIntegrityStatus,
-		"gpu_status":    claims.GPUMetricsHealth.Status,
-		"gpu_util":      claims.GPUMetricsHealth.UtilizationPct,
-		"gpu_memory_mb": claims.GPUMetricsHealth.MemoryMB,
+		"geolocation": claims.Geolocation,
 	}).Info("Unified-Identity - Phase 3: Evaluating AttestedClaims against policy")
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -85,43 +72,6 @@ func (e *Engine) Evaluate(claims *AttestedClaims) (*PolicyResult, error) {
 			return &PolicyResult{
 				Allowed: false,
 				Reason:  fmt.Sprintf("geolocation %s not in allowed list", claims.Geolocation),
-			}, nil
-		}
-	}
-
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Check host integrity
-	if e.config.RequireIntegrity {
-		if claims.HostIntegrityStatus != "passed_all_checks" {
-			e.config.Logger.WithField("integrity", claims.HostIntegrityStatus).
-				Warn("Unified-Identity - Phase 3: Host integrity policy violation")
-			return &PolicyResult{
-				Allowed: false,
-				Reason:  fmt.Sprintf("host integrity status is %s, required passed_all_checks", claims.HostIntegrityStatus),
-			}, nil
-		}
-	}
-
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Check GPU metrics
-	if e.config.MaxGPUUtilization > 0 {
-		if claims.GPUMetricsHealth.UtilizationPct > e.config.MaxGPUUtilization {
-			e.config.Logger.WithField("utilization", claims.GPUMetricsHealth.UtilizationPct).
-				Warn("Unified-Identity - Phase 3: GPU utilization policy violation")
-			return &PolicyResult{
-				Allowed: false,
-				Reason:  fmt.Sprintf("GPU utilization %.2f%% exceeds maximum %.2f%%", claims.GPUMetricsHealth.UtilizationPct, e.config.MaxGPUUtilization),
-			}, nil
-		}
-	}
-
-	if e.config.MinGPUMemoryMB > 0 {
-		if claims.GPUMetricsHealth.MemoryMB < e.config.MinGPUMemoryMB {
-			e.config.Logger.WithField("memory_mb", claims.GPUMetricsHealth.MemoryMB).
-				Warn("Unified-Identity - Phase 3: GPU memory policy violation")
-			return &PolicyResult{
-				Allowed: false,
-				Reason:  fmt.Sprintf("GPU memory %d MB is below minimum %d MB", claims.GPUMetricsHealth.MemoryMB, e.config.MinGPUMemoryMB),
 			}, nil
 		}
 	}
@@ -165,29 +115,13 @@ func (e *Engine) matchesGeolocation(geolocation, pattern string) bool {
 // ConvertKeylimeAttestedClaims converts Keylime AttestedClaims to policy AttestedClaims
 func ConvertKeylimeAttestedClaims(keylimeClaims *KeylimeAttestedClaims) *AttestedClaims {
 	return &AttestedClaims{
-		Geolocation:         keylimeClaims.Geolocation,
-		HostIntegrityStatus: keylimeClaims.HostIntegrityStatus,
-		GPUMetricsHealth: struct {
-			Status        string
-			UtilizationPct float64
-			MemoryMB      int64
-		}{
-			Status:        keylimeClaims.GPUMetricsHealth.Status,
-			UtilizationPct: keylimeClaims.GPUMetricsHealth.UtilizationPct,
-			MemoryMB:      keylimeClaims.GPUMetricsHealth.MemoryMB,
-		},
+		Geolocation: keylimeClaims.Geolocation,
 	}
 }
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // KeylimeAttestedClaims represents the AttestedClaims from Keylime client
 type KeylimeAttestedClaims struct {
-	Geolocation         string
-	HostIntegrityStatus string
-	GPUMetricsHealth    struct {
-		Status        string
-		UtilizationPct float64
-		MemoryMB      int64
-	}
+	Geolocation string
 }
 

@@ -1992,7 +1992,15 @@ class VerifyEvidenceHandler(BaseHandler):
             if quote_hash_alg:
                 hash_alg = quote_hash_alg
             if quote_payload:
-                quote_geolocation = quote_payload.get('geolocation')
+                # Unified-Identity - Phase 3: Extract geolocation from quote payload
+                # Structure: { "geolocation": { "type": "mobile"|"gnss", "sensor_id": "...", "value": "..." } }
+                # value is optional for mobile, mandatory for gnss
+                quote_geolocation_obj = quote_payload.get('geolocation')
+                if quote_geolocation_obj and isinstance(quote_geolocation_obj, dict):
+                    quote_geolocation = quote_geolocation_obj
+                else:
+                    # Fallback: check for old format (string)
+                    quote_geolocation = quote_payload.get('geolocation')
                 tpm_ak = tpm_ak or quote_payload.get('tpm_ak')
                 if quote_payload.get('pubkey') and not app_key_public:
                     app_key_public = quote_payload.get('pubkey')
@@ -2088,8 +2096,29 @@ class VerifyEvidenceHandler(BaseHandler):
 
         attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=agent_id)
 
-        if quote_geolocation and not attested_claims.get('geolocation'):
+        # Unified-Identity - Phase 3: Add geolocation from quote payload
+        # Structure: { "type": "mobile"|"gnss", "sensor_id": "...", "value": "..." }
+        # value is optional for mobile, mandatory for gnss
+        # SPIRE Server expects geolocation as an object (dict), not a JSON string
+        if quote_geolocation and isinstance(quote_geolocation, dict):
+            # Use geolocation from quote payload (detected by rust-keylime agent) as object
             attested_claims['geolocation'] = quote_geolocation
+        elif quote_geolocation and not attested_claims.get('geolocation'):
+            # Fallback: if quote_geolocation is a string, try to parse it or use as-is
+            if isinstance(quote_geolocation, str):
+                # Try to parse as JSON first
+                try:
+                    parsed_geo = json.loads(quote_geolocation)
+                    if isinstance(parsed_geo, dict):
+                        attested_claims['geolocation'] = parsed_geo
+                    else:
+                        # If not a dict, skip (invalid format)
+                        logger.warning('Unified-Identity - Phase 3: Geolocation string is not a valid JSON object')
+                except (json.JSONDecodeError, TypeError):
+                    # Not valid JSON, skip (SPIRE expects object format)
+                    logger.warning('Unified-Identity - Phase 3: Geolocation string is not valid JSON, skipping')
+            else:
+                attested_claims['geolocation'] = quote_geolocation
 
         if geolocation_from_request and not attested_claims.get('geolocation'):
             from keylime import fact_provider as fp

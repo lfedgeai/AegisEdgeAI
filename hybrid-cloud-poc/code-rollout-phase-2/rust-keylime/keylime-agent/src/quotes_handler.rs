@@ -9,19 +9,116 @@ use base64::{engine::general_purpose, Engine as _};
 use hex;
 use keylime::{
     json_wrapper::JsonWrapper,
-    quote::{Integ, KeylimeQuote},
+    quote::{Geolocation, Integ, KeylimeQuote},
 };
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{read, read_to_string},
     io::{Read, Seek},
+    process::Command,
 };
 use tss_esapi::structures::PcrSlot;
 
 #[derive(Deserialize)]
 pub struct Ident {
     nonce: String,
+}
+
+/// Unified-Identity - Phase 3: Detect geolocation sensor
+/// Returns Geolocation struct with type, sensor_id, and optional value
+/// - Mobile: Detects USB device ID 12d1:1433 (Huawei Mobile), value is optional
+/// - GNSS: Detects GNSS/GPS devices, value is mandatory (coordinates, accuracy, etc.)
+fn detect_geolocation_sensor() -> Option<Geolocation> {
+    // First, try to detect mobile sensor via USB device ID
+    match Command::new("lsusb").output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                // Check for Huawei Mobile device ID 12d1:1433
+                if line.contains("12d1:1433") || line.contains("HUAWEI Mobile") {
+                    info!("Unified-Identity - Phase 3: Mobile sensor detected via USB ID 12d1:1433");
+                    // Extract USB device ID from line (format: Bus XXX Device XXX: ID 12d1:1433 ...)
+                    let sensor_id = if let Some(id_start) = line.find("ID ") {
+                        let id_part = &line[id_start + 3..];
+                        if let Some(id_end) = id_part.find(' ') {
+                            id_part[..id_end].to_string()
+                        } else {
+                            id_part.to_string()
+                        }
+                    } else {
+                        "12d1:1433".to_string()
+                    };
+                    
+                    return Some(Geolocation {
+                        r#type: Some("mobile".to_string()),
+                        sensor_id: Some(sensor_id),
+                        value: None, // Optional for mobile
+                    });
+                }
+            }
+        }
+        Err(e) => {
+            debug!("Unified-Identity - Phase 3: Failed to run lsusb: {}", e);
+        }
+    }
+    
+    // Try to detect GNSS/GPS device
+    // Check for common GNSS device paths or GPS-related devices
+    let gnss_paths = [
+        "/dev/ttyUSB0",
+        "/dev/ttyACM0",
+        "/dev/gps",
+        "/dev/gps0",
+    ];
+    
+    for path in &gnss_paths {
+        if std::path::Path::new(path).exists() {
+            info!("Unified-Identity - Phase 3: GNSS device detected at {}", path);
+            // For GNSS, value should be mandatory but we'll set it to empty for now
+            // The actual GNSS coordinates should be read from the device
+            return Some(Geolocation {
+                r#type: Some("gnss".to_string()),
+                sensor_id: Some(path.to_string()),
+                value: Some("".to_string()), // Mandatory for gnss, should be populated with actual coordinates
+            });
+        }
+    }
+    
+    // Check for GPS devices via lsusb (common GPS USB dongles)
+    match Command::new("lsusb").output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let line_lower = line.to_lowercase();
+                if line_lower.contains("gps") || line_lower.contains("gnss") || line_lower.contains("nmea") {
+                    info!("Unified-Identity - Phase 3: GNSS device detected via USB: {}", line);
+                    // Extract USB device ID
+                    let sensor_id = if let Some(id_start) = line.find("ID ") {
+                        let id_part = &line[id_start + 3..];
+                        if let Some(id_end) = id_part.find(' ') {
+                            id_part[..id_end].to_string()
+                        } else {
+                            id_part.to_string()
+                        }
+                    } else {
+                        "unknown".to_string()
+                    };
+                    
+                    return Some(Geolocation {
+                        r#type: Some("gnss".to_string()),
+                        sensor_id: Some(sensor_id),
+                        value: Some("".to_string()), // Mandatory for gnss, should be populated with actual coordinates
+                    });
+                }
+            }
+        }
+        Err(e) => {
+            debug!("Unified-Identity - Phase 3: Failed to detect GNSS via lsusb: {}", e);
+        }
+    }
+    
+    None
 }
 
 // This is a Quote request from the tenant, which does not check
@@ -123,11 +220,15 @@ async fn identity(
         }
     };
 
+    // Unified-Identity - Phase 3: Detect geolocation sensor
+    let geolocation = detect_geolocation_sensor();
+
     let mut quote = KeylimeQuote {
         quote: tpm_quote,
         hash_alg: data.hash_alg.to_string(),
         enc_alg: data.enc_alg.to_string(),
         sign_alg: data.sign_alg.to_string(),
+        geolocation,
         ..Default::default()
     };
 

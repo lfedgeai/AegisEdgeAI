@@ -93,8 +93,19 @@ func convertUnifiedJSONToAttestedClaims(data map[string]any) *types.AttestedClai
 
 	if geoRaw, ok := data["grc.geolocation"]; ok {
 		if geoMap, ok := geoRaw.(map[string]any); ok {
-			if rawVal, ok := geoMap["raw"].(string); ok {
-				claims.Geolocation = rawVal
+			// Build Geolocation object from map
+			geo := &types.Geolocation{}
+			if typeVal, ok := geoMap["type"].(string); ok {
+				geo.Type = typeVal
+			}
+			if sensorIdVal, ok := geoMap["sensor_id"].(string); ok {
+				geo.SensorId = sensorIdVal
+			}
+			if valueVal, ok := geoMap["value"].(string); ok {
+				geo.Value = valueVal
+			}
+			if geo.Type != "" || geo.SensorId != "" {
+				claims.Geolocation = geo
 			}
 		}
 	}
@@ -103,31 +114,20 @@ func convertUnifiedJSONToAttestedClaims(data map[string]any) *types.AttestedClai
 		if tpmMap, ok := tpmRaw.(map[string]any); ok {
 			if verifiedRaw, ok := tpmMap["verified-claims"]; ok {
 				if verifiedMap, ok := verifiedRaw.(map[string]any); ok {
-					if geo, ok := verifiedMap["geolocation"].(string); ok && claims.Geolocation == "" {
-						claims.Geolocation = geo
-					}
-					if integrity, ok := verifiedMap["host_integrity_status"].(string); ok {
-						switch integrity {
-						case types.AttestedClaims_PASSED_ALL_CHECKS.String():
-							claims.HostIntegrityStatus = types.AttestedClaims_PASSED_ALL_CHECKS
-						case types.AttestedClaims_FAILED.String():
-							claims.HostIntegrityStatus = types.AttestedClaims_FAILED
-						case types.AttestedClaims_PARTIAL.String():
-							claims.HostIntegrityStatus = types.AttestedClaims_PARTIAL
+					if geoMap, ok := verifiedMap["geolocation"].(map[string]any); ok && claims.Geolocation == nil {
+						// Build Geolocation object from verified claims
+						geo := &types.Geolocation{}
+						if typeVal, ok := geoMap["type"].(string); ok {
+							geo.Type = typeVal
 						}
-					}
-					if gpuRaw, ok := verifiedMap["gpu_metrics_health"]; ok {
-						if gpuMap, ok := gpuRaw.(map[string]any); ok {
-							claims.GpuMetricsHealth = &types.AttestedClaims_GpuMetrics{}
-							if status, ok := gpuMap["status"].(string); ok {
-								claims.GpuMetricsHealth.Status = status
-							}
-							if util, ok := gpuMap["utilization_pct"].(float64); ok {
-								claims.GpuMetricsHealth.UtilizationPct = util
-							}
-							if mem, ok := gpuMap["memory_mb"].(float64); ok {
-								claims.GpuMetricsHealth.MemoryMb = int64(mem)
-							}
+						if sensorIdVal, ok := geoMap["sensor_id"].(string); ok {
+							geo.SensorId = sensorIdVal
+						}
+						if valueVal, ok := geoMap["value"].(string); ok {
+							geo.Value = valueVal
+						}
+						if geo.Type != "" || geo.SensorId != "" {
+							claims.Geolocation = geo
 						}
 					}
 				}

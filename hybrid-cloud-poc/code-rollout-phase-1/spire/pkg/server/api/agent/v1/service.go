@@ -401,11 +401,7 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 						log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Phase 3: Built agent unified identity claims")
 					}
 					log.WithFields(logrus.Fields{
-						"geolocation":   claims.Geolocation,
-						"integrity":     claims.HostIntegrityStatus.String(),
-						"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
-						"gpu_util_pct":  claims.GpuMetricsHealth.GetUtilizationPct(),
-						"gpu_memory_mb": claims.GpuMetricsHealth.GetMemoryMb(),
+						"geolocation": claims.Geolocation,
 					}).Info("Unified-Identity - Phase 3: AttestedClaims will be embedded in agent SVID certificate")
 				} else {
 					log.Warn("Unified-Identity - Phase 3: processSovereignAttestation returned nil claims")
@@ -550,9 +546,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 				log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Phase 3: Built agent unified identity claims (renew)")
 			}
 			log.WithFields(logrus.Fields{
-				"geolocation":   claims.Geolocation,
-				"integrity":     claims.HostIntegrityStatus.String(),
-				"gpu_status":    claims.GpuMetricsHealth.GetStatus(),
+				"geolocation": claims.Geolocation,
 			}).Info("Unified-Identity - Phase 3: AttestedClaims will be embedded in agent SVID certificate")
 		}
 	}
@@ -580,11 +574,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 	if len(attestedClaims) > 0 {
 		claim := attestedClaims[0]
 		log.WithFields(logrus.Fields{
-			"geolocation":   claim.Geolocation,
-			"integrity":     claim.HostIntegrityStatus.String(),
-			"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
-			"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
-			"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
+			"geolocation": claim.Geolocation,
 		}).Info("Unified-Identity - Phase 3: AttestedClaims attached to agent SVID")
 	}
 
@@ -630,25 +620,33 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 		return nil, fmt.Errorf("keylime verification failed: %w", err)
 	}
 
+	// Unified-Identity - Phase 3: Log geolocation object
+	geoLog := "none"
+	if keylimeClaims.Geolocation != nil {
+		geoLog = fmt.Sprintf("type=%s, sensor_id=%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID)
+		if keylimeClaims.Geolocation.Value != "" {
+			geoLog += fmt.Sprintf(", value=%s", keylimeClaims.Geolocation.Value)
+		}
+	}
+
 	log.WithFields(logrus.Fields{
-		"geolocation": keylimeClaims.Geolocation,
-		"integrity":   keylimeClaims.HostIntegrityStatus,
-		"gpu_status":  keylimeClaims.GPUMetricsHealth.Status,
+		"geolocation": geoLog,
 	}).Info("Unified-Identity - Phase 3: Received AttestedClaims from Keylime (agent)")
 
 	if s.policyEngine != nil {
+		// Convert Geolocation object to string for policy engine
+		policyGeoStr := ""
+		if keylimeClaims.Geolocation != nil {
+			// For policy matching, use a simple format: "type:sensor_id" or "type:sensor_id:value"
+			if keylimeClaims.Geolocation.Value != "" {
+				policyGeoStr = fmt.Sprintf("%s:%s:%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID, keylimeClaims.Geolocation.Value)
+			} else {
+				policyGeoStr = fmt.Sprintf("%s:%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID)
+			}
+		}
+
 		policyClaims := policy.ConvertKeylimeAttestedClaims(&policy.KeylimeAttestedClaims{
-			Geolocation:         keylimeClaims.Geolocation,
-			HostIntegrityStatus: keylimeClaims.HostIntegrityStatus,
-			GPUMetricsHealth: struct {
-				Status        string
-				UtilizationPct float64
-				MemoryMB      int64
-			}{
-				Status:        keylimeClaims.GPUMetricsHealth.Status,
-				UtilizationPct: keylimeClaims.GPUMetricsHealth.UtilizationPct,
-				MemoryMB:      keylimeClaims.GPUMetricsHealth.MemoryMB,
-			},
+			Geolocation: policyGeoStr,
 		})
 
 		policyResult, err := s.policyEngine.Evaluate(policyClaims)
@@ -664,24 +662,18 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 		log.Info("Unified-Identity - Phase 3: Policy evaluation passed for agent")
 	}
 
-	hostIntegrityStatus := types.AttestedClaims_HOST_INTEGRITY_UNSPECIFIED
-	switch keylimeClaims.HostIntegrityStatus {
-	case "passed_all_checks":
-		hostIntegrityStatus = types.AttestedClaims_PASSED_ALL_CHECKS
-	case "failed":
-		hostIntegrityStatus = types.AttestedClaims_FAILED
-	case "partial":
-		hostIntegrityStatus = types.AttestedClaims_PARTIAL
+	// Unified-Identity - Phase 3: Convert Geolocation object to protobuf Geolocation
+	var protoGeo *types.Geolocation
+	if keylimeClaims.Geolocation != nil {
+		protoGeo = &types.Geolocation{
+			Type:     keylimeClaims.Geolocation.Type,
+			SensorId: keylimeClaims.Geolocation.SensorID,
+			Value:    keylimeClaims.Geolocation.Value,
+		}
 	}
 
 	return &types.AttestedClaims{
-		Geolocation:         keylimeClaims.Geolocation,
-		HostIntegrityStatus: hostIntegrityStatus,
-		GpuMetricsHealth: &types.AttestedClaims_GpuMetrics{
-			Status:        keylimeClaims.GPUMetricsHealth.Status,
-			UtilizationPct: keylimeClaims.GPUMetricsHealth.UtilizationPct,
-			MemoryMb:      keylimeClaims.GPUMetricsHealth.MemoryMB,
-		},
+		Geolocation: protoGeo,
 	}, nil
 }
 

@@ -1,9 +1,8 @@
 """
 Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 
-This module provides attested facts (geolocation, host integrity, GPU metrics)
-for the Unified Identity flow. Facts are retrieved from the registrar
-or a simple fact store.
+This module provides attested facts (geolocation) for the Unified Identity flow.
+Facts are retrieved from the registrar or a simple fact store.
 """
 
 import hashlib
@@ -73,7 +72,7 @@ def get_attested_claims(
     agent_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Retrieve attested claims (geolocation, host integrity, GPU metrics) for a host.
+    Retrieve attested claims (geolocation) for a host.
 
     Facts are retrieved from:
     1. Verifier database (if agent is registered with verifier and has metadata)
@@ -89,13 +88,7 @@ def get_attested_claims(
     Returns:
         Dictionary containing attested claims (may be empty if no facts available):
         {
-            "geolocation": str (optional),
-            "host_integrity_status": str (optional),
-            "gpu_metrics_health": {
-                "status": str (optional),
-                "utilization_pct": float (optional),
-                "memory_mb": int (optional)
-            }
+            "geolocation": dict (optional) - {"type": "mobile|gnss", "sensor_id": "...", "value": "..."}
         }
     """
     logger.info("Unified-Identity - Phase 3: Retrieving attested claims")
@@ -122,16 +115,6 @@ def get_attested_claims(
                                 facts = {}
                                 if "geolocation" in metadata:
                                     facts["geolocation"] = metadata["geolocation"]
-                                if "host_integrity_status" in metadata:
-                                    facts["host_integrity_status"] = metadata["host_integrity_status"]
-                                if "gpu_metrics_health" in metadata:
-                                    gpu_metrics = metadata["gpu_metrics_health"]
-                                    if isinstance(gpu_metrics, dict):
-                                        facts["gpu_metrics_health"] = {
-                                            "status": gpu_metrics.get("status"),
-                                            "utilization_pct": gpu_metrics.get("utilization_pct"),
-                                            "memory_mb": gpu_metrics.get("memory_mb"),
-                                        }
 
                                 logger.info(
                                     "Unified-Identity - Phase 3: Retrieved facts from agent metadata for agent %s",

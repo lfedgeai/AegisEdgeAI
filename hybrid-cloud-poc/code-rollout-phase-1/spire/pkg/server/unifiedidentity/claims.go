@@ -61,11 +61,21 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 		// Structure geolocation according to federated-jwt.md schema
 		// Geolocation is NOT part of grc.tpm-attestation - it's a separate top-level claim
 		// Only include geolocation in agent SVIDs
-		if attestedClaims != nil && attestedClaims.Geolocation != "" {
-			geo := buildGeolocationClaim(attestedClaims.Geolocation, sovereignAttestation != nil)
-			if geo != nil {
-				claims["grc.geolocation"] = geo
+		// Geolocation is now a structured object (Geolocation message)
+		if attestedClaims != nil && attestedClaims.Geolocation != nil {
+			geoObj := map[string]any{
+				"type":      attestedClaims.Geolocation.Type,
+				"sensor_id": attestedClaims.Geolocation.SensorId,
 			}
+			if attestedClaims.Geolocation.Value != "" {
+				geoObj["value"] = attestedClaims.Geolocation.Value
+			}
+			// Add TPM attestation markers
+			if sovereignAttestation != nil {
+				geoObj["tpm-attested-location"] = true
+				geoObj["tpm-attested-pcr-index"] = 17 // PCR 17 is used for geolocation per rust-keylime agent
+			}
+			claims["grc.geolocation"] = geoObj
 		}
 
 		if len(tpm) > 0 {

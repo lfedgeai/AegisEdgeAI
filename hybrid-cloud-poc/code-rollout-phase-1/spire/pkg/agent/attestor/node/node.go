@@ -379,11 +379,7 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 		if claims := result.GetAttestedClaims(); len(claims) > 0 {
 			claim := claims[0]
 			ss.Log.WithFields(logrus.Fields{
-				"geolocation":   claim.Geolocation,
-				"integrity":     claim.HostIntegrityStatus.String(),
-				"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
-				"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
-				"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
+				"geolocation": claim.Geolocation,
 			}).Info("Unified-Identity - Phase 3: Received AttestedClaims during agent bootstrap")
 		}
 	}

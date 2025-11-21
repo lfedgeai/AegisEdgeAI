@@ -30,20 +30,14 @@ message SovereignAttestation {
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // AttestedClaims contains verified facts from Keylime about the host.
 message AttestedClaims {
-    message GpuMetrics {
-        string status = 1;        // 'healthy', 'degraded', 'failed'
-        double utilization_pct = 2; // 0..100
-        int64 memory_mb = 3;
-    }
+    Geolocation geolocation = 1;    // Geolocation object with type, sensor_id, and optional value
+}
 
-    string geolocation = 1;    // structured preferred; free-form fallback allowed
-    enum HostIntegrity { 
-        HOST_INTEGRITY_UNSPECIFIED = 0; 
-        PASSED_ALL_CHECKS = 1; 
-        FAILED = 2; 
-        PARTIAL = 3; 
-    }
-    HostIntegrity host_integrity_status = 2;
-    GpuMetrics gpu_metrics_health = 3;
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Geolocation represents geolocation sensor metadata
+message Geolocation {
+    string type = 1;        // "mobile" or "gnss"
+    string sensor_id = 2;   // Sensor identifier (e.g., USB ID "12d1:1433" for mobile)
+    string value = 3;       // Optional for mobile, mandatory for gnss (e.g., GNSS coordinates)
 }
 

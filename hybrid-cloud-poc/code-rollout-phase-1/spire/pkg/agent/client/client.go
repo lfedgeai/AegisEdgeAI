@@ -360,11 +360,7 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 	if len(resp.AttestedClaims) > 0 {
 		claim := resp.AttestedClaims[0]
 		c.c.Log.WithFields(logrus.Fields{
-			"geolocation":   claim.Geolocation,
-			"integrity":     claim.HostIntegrityStatus.String(),
-			"gpu_status":    claim.GpuMetricsHealth.GetStatus(),
-			"gpu_util_pct":  claim.GpuMetricsHealth.GetUtilizationPct(),
-			"gpu_memory_mb": claim.GpuMetricsHealth.GetMemoryMb(),
+			"geolocation": claim.Geolocation,
 		}).Info("Unified-Identity - Phase 3: Received AttestedClaims for agent SVID")
 	}
 

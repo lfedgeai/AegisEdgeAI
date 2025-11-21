@@ -37,15 +37,20 @@ type Config struct {
 }
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Geolocation represents geolocation sensor metadata
+// type: "mobile" or "gnss"
+// sensor_id: Sensor identifier (e.g., USB device ID for mobile, device path for GNSS)
+// value: Optional for mobile, mandatory for gnss (GNSS coordinates, accuracy, etc.)
+type Geolocation struct {
+	Type     string `json:"type"`      // "mobile" or "gnss"
+	SensorID string `json:"sensor_id"` // Sensor identifier
+	Value    string `json:"value"`     // Optional for mobile, mandatory for gnss
+}
+
+// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // AttestedClaims represents verified facts from Keylime
 type AttestedClaims struct {
-	Geolocation         string `json:"geolocation"`
-	HostIntegrityStatus string `json:"host_integrity_status"`
-	GPUMetricsHealth    struct {
-		Status         string  `json:"status"`
-		UtilizationPct float64 `json:"utilization_pct"`
-		MemoryMB       int64   `json:"memory_mb"`
-	} `json:"gpu_metrics_health"`
+	Geolocation *Geolocation `json:"geolocation,omitempty"` // Can be object or nil
 }
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -224,11 +229,16 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 		return nil, fmt.Errorf("verification failed (audit_id: %s)", verifyResp.Results.AuditID)
 	}
 
+	geoLog := "none"
+	if verifyResp.Results.AttestedClaims.Geolocation != nil {
+		geoLog = fmt.Sprintf("type=%s, sensor_id=%s", verifyResp.Results.AttestedClaims.Geolocation.Type, verifyResp.Results.AttestedClaims.Geolocation.SensorID)
+		if verifyResp.Results.AttestedClaims.Geolocation.Value != "" {
+			geoLog += fmt.Sprintf(", value=%s", verifyResp.Results.AttestedClaims.Geolocation.Value)
+		}
+	}
 	c.logger.WithFields(logrus.Fields{
 		"audit_id":    verifyResp.Results.AuditID,
-		"geolocation": verifyResp.Results.AttestedClaims.Geolocation,
-		"integrity":   verifyResp.Results.AttestedClaims.HostIntegrityStatus,
-		"gpu_status":  verifyResp.Results.AttestedClaims.GPUMetricsHealth.Status,
+		"geolocation": geoLog,
 	}).Info("Unified-Identity - Phase 3: Successfully received AttestedClaims from Keylime")
 
 	return &verifyResp.Results.AttestedClaims, nil

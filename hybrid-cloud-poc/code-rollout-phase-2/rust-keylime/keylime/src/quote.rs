@@ -8,6 +8,20 @@ pub struct Integ {
     pub ima_ml_entry: Option<String>,
 }
 
+/// Unified-Identity - Phase 3: Geolocation structure
+/// type: "mobile" or "gnss"
+/// sensor_id: Sensor identifier (e.g., USB device ID for mobile, device path for GNSS)
+/// value: Optional for mobile, mandatory for gnss (GNSS coordinates, accuracy, etc.)
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct Geolocation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>, // "mobile" or "gnss"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sensor_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>, // Optional for mobile, mandatory for gnss
+}
+
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct KeylimeQuote {
     pub quote: String, // 'r' + quote + sig + pcrblob
@@ -22,6 +36,9 @@ pub struct KeylimeQuote {
     pub mb_measurement_list: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ima_measurement_list_entry: Option<u64>,
+    // Unified-Identity - Phase 3: Geolocation sensor metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geolocation: Option<Geolocation>,
 }
 
 #[cfg(test)]
@@ -39,6 +56,7 @@ mod tests {
             ima_measurement_list: Some("example_ima_ml".to_string()),
             mb_measurement_list: None,
             ima_measurement_list_entry: Some(12345),
+            geolocation: None,
         };
 
         let serialized = serde_json::to_string(&quote).unwrap(); //#[allow_ci]
@@ -63,5 +81,30 @@ mod tests {
   "ima_measurement_list_entry": 12345
 }"#
         );
+    }
+
+    #[test]
+    fn test_geolocation_serialization() {
+        let geo = Geolocation {
+            r#type: Some("mobile".to_string()),
+            sensor_id: Some("12d1:1433".to_string()),
+            value: None,
+        };
+
+        let serialized = serde_json::to_string(&geo).unwrap(); //#[allow_ci]
+        assert!(serialized.contains("mobile"));
+        assert!(serialized.contains("12d1:1433"));
+        assert!(!serialized.contains("value")); // value should be omitted when None
+
+        let geo_gnss = Geolocation {
+            r#type: Some("gnss".to_string()),
+            sensor_id: Some("/dev/gps0".to_string()),
+            value: Some("N40.4168,W3.7038".to_string()),
+        };
+
+        let serialized_gnss = serde_json::to_string(&geo_gnss).unwrap(); //#[allow_ci]
+        assert!(serialized_gnss.contains("gnss"));
+        assert!(serialized_gnss.contains("/dev/gps0"));
+        assert!(serialized_gnss.contains("N40.4168,W3.7038"));
     }
 }

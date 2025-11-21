@@ -603,27 +603,35 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 		return nil, fmt.Errorf("keylime verification failed: %w", err)
 	}
 
+	// Unified-Identity - Phase 3: Log geolocation object
+	geoLog := "none"
+	if keylimeClaims.Geolocation != nil {
+		geoLog = fmt.Sprintf("type=%s, sensor_id=%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID)
+		if keylimeClaims.Geolocation.Value != "" {
+			geoLog += fmt.Sprintf(", value=%s", keylimeClaims.Geolocation.Value)
+		}
+	}
+
 	log.WithFields(logrus.Fields{
-		"geolocation":   keylimeClaims.Geolocation,
-		"integrity":     keylimeClaims.HostIntegrityStatus,
-		"gpu_status":   keylimeClaims.GPUMetricsHealth.Status,
+		"geolocation": geoLog,
 	}).Info("Unified-Identity - Phase 3: Received AttestedClaims from Keylime")
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Evaluate policy if policy engine is configured
 	if s.policyEngine != nil {
+		// Convert Geolocation object to string for policy engine
+		policyGeoStr := ""
+		if keylimeClaims.Geolocation != nil {
+			// For policy matching, use a simple format: "type:sensor_id" or "type:sensor_id:value"
+			if keylimeClaims.Geolocation.Value != "" {
+				policyGeoStr = fmt.Sprintf("%s:%s:%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID, keylimeClaims.Geolocation.Value)
+			} else {
+				policyGeoStr = fmt.Sprintf("%s:%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID)
+			}
+		}
+
 		policyClaims := policy.ConvertKeylimeAttestedClaims(&policy.KeylimeAttestedClaims{
-			Geolocation:         keylimeClaims.Geolocation,
-			HostIntegrityStatus: keylimeClaims.HostIntegrityStatus,
-			GPUMetricsHealth: struct {
-				Status        string
-				UtilizationPct float64
-				MemoryMB      int64
-			}{
-				Status:        keylimeClaims.GPUMetricsHealth.Status,
-				UtilizationPct: keylimeClaims.GPUMetricsHealth.UtilizationPct,
-				MemoryMB:      keylimeClaims.GPUMetricsHealth.MemoryMB,
-			},
+			Geolocation: policyGeoStr,
 		})
 
 		policyResult, err := s.policyEngine.Evaluate(policyClaims)
@@ -642,26 +650,18 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 		log.Info("Unified-Identity - Phase 3: Policy evaluation passed")
 	}
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Convert Keylime AttestedClaims to proto AttestedClaims
-	hostIntegrityStatus := types.AttestedClaims_HOST_INTEGRITY_UNSPECIFIED
-	switch keylimeClaims.HostIntegrityStatus {
-	case "passed_all_checks":
-		hostIntegrityStatus = types.AttestedClaims_PASSED_ALL_CHECKS
-	case "failed":
-		hostIntegrityStatus = types.AttestedClaims_FAILED
-	case "partial":
-		hostIntegrityStatus = types.AttestedClaims_PARTIAL
+	// Unified-Identity - Phase 3: Convert Geolocation object to protobuf Geolocation
+	var protoGeo *types.Geolocation
+	if keylimeClaims.Geolocation != nil {
+		protoGeo = &types.Geolocation{
+			Type:     keylimeClaims.Geolocation.Type,
+			SensorId: keylimeClaims.Geolocation.SensorID,
+			Value:    keylimeClaims.Geolocation.Value,
+		}
 	}
 
 	return &types.AttestedClaims{
-		Geolocation:         keylimeClaims.Geolocation,
-		HostIntegrityStatus: hostIntegrityStatus,
-		GpuMetricsHealth: &types.AttestedClaims_GpuMetrics{
-			Status:        keylimeClaims.GPUMetricsHealth.Status,
-			UtilizationPct: keylimeClaims.GPUMetricsHealth.UtilizationPct,
-			MemoryMb:      keylimeClaims.GPUMetricsHealth.MemoryMB,
-		},
+		Geolocation: protoGeo,
 	}, nil
 }
 

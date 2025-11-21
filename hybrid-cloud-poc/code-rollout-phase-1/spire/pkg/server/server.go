@@ -454,7 +454,6 @@ func (s *Server) newPolicyEngine() *policy.Engine {
 	// In production, this would be configured via server config
 	return policy.NewEngine(policy.PolicyConfig{
 		AllowedGeolocations: []string{"*"}, // Allow all geolocations in Phase 1
-		RequireIntegrity:   false,          // Don't require integrity checks in Phase 1
 		Logger:             s.config.Log.WithField(telemetry.SubsystemName, "policy"),
 	})
 }

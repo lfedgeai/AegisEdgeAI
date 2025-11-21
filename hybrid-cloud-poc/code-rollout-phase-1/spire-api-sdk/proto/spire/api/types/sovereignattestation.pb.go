@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v3.12.4
-// source: spire-api-sdk/proto/spire/api/types/sovereignattestation.proto
+// source: spire/api/types/sovereignattestation.proto
 
 package types
 
@@ -20,58 +20,6 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
-
-type AttestedClaims_HostIntegrity int32
-
-const (
-	AttestedClaims_HOST_INTEGRITY_UNSPECIFIED AttestedClaims_HostIntegrity = 0
-	AttestedClaims_PASSED_ALL_CHECKS          AttestedClaims_HostIntegrity = 1
-	AttestedClaims_FAILED                     AttestedClaims_HostIntegrity = 2
-	AttestedClaims_PARTIAL                    AttestedClaims_HostIntegrity = 3
-)
-
-// Enum value maps for AttestedClaims_HostIntegrity.
-var (
-	AttestedClaims_HostIntegrity_name = map[int32]string{
-		0: "HOST_INTEGRITY_UNSPECIFIED",
-		1: "PASSED_ALL_CHECKS",
-		2: "FAILED",
-		3: "PARTIAL",
-	}
-	AttestedClaims_HostIntegrity_value = map[string]int32{
-		"HOST_INTEGRITY_UNSPECIFIED": 0,
-		"PASSED_ALL_CHECKS":          1,
-		"FAILED":                     2,
-		"PARTIAL":                    3,
-	}
-)
-
-func (x AttestedClaims_HostIntegrity) Enum() *AttestedClaims_HostIntegrity {
-	p := new(AttestedClaims_HostIntegrity)
-	*p = x
-	return p
-}
-
-func (x AttestedClaims_HostIntegrity) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (AttestedClaims_HostIntegrity) Descriptor() protoreflect.EnumDescriptor {
-	return file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_enumTypes[0].Descriptor()
-}
-
-func (AttestedClaims_HostIntegrity) Type() protoreflect.EnumType {
-	return &file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_enumTypes[0]
-}
-
-func (x AttestedClaims_HostIntegrity) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use AttestedClaims_HostIntegrity.Descriptor instead.
-func (AttestedClaims_HostIntegrity) EnumDescriptor() ([]byte, []int) {
-	return file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescGZIP(), []int{1, 0}
-}
 
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // A hardware-rooted PoR package produced by the Agent.
@@ -98,7 +46,7 @@ type SovereignAttestation struct {
 
 func (x *SovereignAttestation) Reset() {
 	*x = SovereignAttestation{}
-	mi := &file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_msgTypes[0]
+	mi := &file_spire_api_types_sovereignattestation_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -110,7 +58,7 @@ func (x *SovereignAttestation) String() string {
 func (*SovereignAttestation) ProtoMessage() {}
 
 func (x *SovereignAttestation) ProtoReflect() protoreflect.Message {
-	mi := &file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_msgTypes[0]
+	mi := &file_spire_api_types_sovereignattestation_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -123,7 +71,7 @@ func (x *SovereignAttestation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SovereignAttestation.ProtoReflect.Descriptor instead.
 func (*SovereignAttestation) Descriptor() ([]byte, []int) {
-	return file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescGZIP(), []int{0}
+	return file_spire_api_types_sovereignattestation_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *SovereignAttestation) GetTpmSignedAttestation() string {
@@ -171,17 +119,15 @@ func (x *SovereignAttestation) GetKeylimeAgentUuid() string {
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // AttestedClaims contains verified facts from Keylime about the host.
 type AttestedClaims struct {
-	state               protoimpl.MessageState       `protogen:"open.v1"`
-	Geolocation         string                       `protobuf:"bytes,1,opt,name=geolocation,proto3" json:"geolocation,omitempty"` // structured preferred; free-form fallback allowed
-	HostIntegrityStatus AttestedClaims_HostIntegrity `protobuf:"varint,2,opt,name=host_integrity_status,json=hostIntegrityStatus,proto3,enum=spire.api.types.AttestedClaims_HostIntegrity" json:"host_integrity_status,omitempty"`
-	GpuMetricsHealth    *AttestedClaims_GpuMetrics   `protobuf:"bytes,3,opt,name=gpu_metrics_health,json=gpuMetricsHealth,proto3" json:"gpu_metrics_health,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Geolocation   *Geolocation           `protobuf:"bytes,1,opt,name=geolocation,proto3" json:"geolocation,omitempty"` // Geolocation object with type, sensor_id, and optional value
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AttestedClaims) Reset() {
 	*x = AttestedClaims{}
-	mi := &file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_msgTypes[1]
+	mi := &file_spire_api_types_sovereignattestation_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -193,7 +139,7 @@ func (x *AttestedClaims) String() string {
 func (*AttestedClaims) ProtoMessage() {}
 
 func (x *AttestedClaims) ProtoReflect() protoreflect.Message {
-	mi := &file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_msgTypes[1]
+	mi := &file_spire_api_types_sovereignattestation_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -206,54 +152,42 @@ func (x *AttestedClaims) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttestedClaims.ProtoReflect.Descriptor instead.
 func (*AttestedClaims) Descriptor() ([]byte, []int) {
-	return file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescGZIP(), []int{1}
+	return file_spire_api_types_sovereignattestation_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *AttestedClaims) GetGeolocation() string {
+func (x *AttestedClaims) GetGeolocation() *Geolocation {
 	if x != nil {
 		return x.Geolocation
-	}
-	return ""
-}
-
-func (x *AttestedClaims) GetHostIntegrityStatus() AttestedClaims_HostIntegrity {
-	if x != nil {
-		return x.HostIntegrityStatus
-	}
-	return AttestedClaims_HOST_INTEGRITY_UNSPECIFIED
-}
-
-func (x *AttestedClaims) GetGpuMetricsHealth() *AttestedClaims_GpuMetrics {
-	if x != nil {
-		return x.GpuMetricsHealth
 	}
 	return nil
 }
 
-type AttestedClaims_GpuMetrics struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Status         string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`                                         // 'healthy', 'degraded', 'failed'
-	UtilizationPct float64                `protobuf:"fixed64,2,opt,name=utilization_pct,json=utilizationPct,proto3" json:"utilization_pct,omitempty"` // 0..100
-	MemoryMb       int64                  `protobuf:"varint,3,opt,name=memory_mb,json=memoryMb,proto3" json:"memory_mb,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Geolocation represents geolocation sensor metadata
+type Geolocation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                         // "mobile" or "gnss"
+	SensorId      string                 `protobuf:"bytes,2,opt,name=sensor_id,json=sensorId,proto3" json:"sensor_id,omitempty"` // Sensor identifier (e.g., USB ID "12d1:1433" for mobile)
+	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`                       // Optional for mobile, mandatory for gnss (e.g., GNSS coordinates)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AttestedClaims_GpuMetrics) Reset() {
-	*x = AttestedClaims_GpuMetrics{}
-	mi := &file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_msgTypes[2]
+func (x *Geolocation) Reset() {
+	*x = Geolocation{}
+	mi := &file_spire_api_types_sovereignattestation_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AttestedClaims_GpuMetrics) String() string {
+func (x *Geolocation) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AttestedClaims_GpuMetrics) ProtoMessage() {}
+func (*Geolocation) ProtoMessage() {}
 
-func (x *AttestedClaims_GpuMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_msgTypes[2]
+func (x *Geolocation) ProtoReflect() protoreflect.Message {
+	mi := &file_spire_api_types_sovereignattestation_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -264,111 +198,98 @@ func (x *AttestedClaims_GpuMetrics) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AttestedClaims_GpuMetrics.ProtoReflect.Descriptor instead.
-func (*AttestedClaims_GpuMetrics) Descriptor() ([]byte, []int) {
-	return file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescGZIP(), []int{1, 0}
+// Deprecated: Use Geolocation.ProtoReflect.Descriptor instead.
+func (*Geolocation) Descriptor() ([]byte, []int) {
+	return file_spire_api_types_sovereignattestation_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *AttestedClaims_GpuMetrics) GetStatus() string {
+func (x *Geolocation) GetType() string {
 	if x != nil {
-		return x.Status
+		return x.Type
 	}
 	return ""
 }
 
-func (x *AttestedClaims_GpuMetrics) GetUtilizationPct() float64 {
+func (x *Geolocation) GetSensorId() string {
 	if x != nil {
-		return x.UtilizationPct
+		return x.SensorId
 	}
-	return 0
+	return ""
 }
 
-func (x *AttestedClaims_GpuMetrics) GetMemoryMb() int64 {
+func (x *Geolocation) GetValue() string {
 	if x != nil {
-		return x.MemoryMb
+		return x.Value
 	}
-	return 0
+	return ""
 }
 
-var File_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto protoreflect.FileDescriptor
+var File_spire_api_types_sovereignattestation_proto protoreflect.FileDescriptor
 
-const file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDesc = "" +
+const file_spire_api_types_sovereignattestation_proto_rawDesc = "" +
 	"\n" +
-	">spire-api-sdk/proto/spire/api/types/sovereignattestation.proto\x12\x0fspire.api.types\"\xa7\x02\n" +
+	"*spire/api/types/sovereignattestation.proto\x12\x0fspire.api.types\"\xa7\x02\n" +
 	"\x14SovereignAttestation\x124\n" +
 	"\x16tpm_signed_attestation\x18\x01 \x01(\tR\x14tpmSignedAttestation\x12$\n" +
 	"\x0eapp_key_public\x18\x02 \x01(\tR\fappKeyPublic\x12.\n" +
 	"\x13app_key_certificate\x18\x03 \x01(\fR\x11appKeyCertificate\x12'\n" +
 	"\x0fchallenge_nonce\x18\x04 \x01(\tR\x0echallengeNonce\x12,\n" +
 	"\x12workload_code_hash\x18\x05 \x01(\tR\x10workloadCodeHash\x12,\n" +
-	"\x12keylime_agent_uuid\x18\x06 \x01(\tR\x10keylimeAgentUuid\"\xbc\x03\n" +
-	"\x0eAttestedClaims\x12 \n" +
-	"\vgeolocation\x18\x01 \x01(\tR\vgeolocation\x12a\n" +
-	"\x15host_integrity_status\x18\x02 \x01(\x0e2-.spire.api.types.AttestedClaims.HostIntegrityR\x13hostIntegrityStatus\x12X\n" +
-	"\x12gpu_metrics_health\x18\x03 \x01(\v2*.spire.api.types.AttestedClaims.GpuMetricsR\x10gpuMetricsHealth\x1aj\n" +
-	"\n" +
-	"GpuMetrics\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\x12'\n" +
-	"\x0futilization_pct\x18\x02 \x01(\x01R\x0eutilizationPct\x12\x1b\n" +
-	"\tmemory_mb\x18\x03 \x01(\x03R\bmemoryMb\"_\n" +
-	"\rHostIntegrity\x12\x1e\n" +
-	"\x1aHOST_INTEGRITY_UNSPECIFIED\x10\x00\x12\x15\n" +
-	"\x11PASSED_ALL_CHECKS\x10\x01\x12\n" +
-	"\n" +
-	"\x06FAILED\x10\x02\x12\v\n" +
-	"\aPARTIAL\x10\x03B7Z5github.com/spiffe/spire-api-sdk/proto/spire/api/typesb\x06proto3"
+	"\x12keylime_agent_uuid\x18\x06 \x01(\tR\x10keylimeAgentUuid\"P\n" +
+	"\x0eAttestedClaims\x12>\n" +
+	"\vgeolocation\x18\x01 \x01(\v2\x1c.spire.api.types.GeolocationR\vgeolocation\"T\n" +
+	"\vGeolocation\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1b\n" +
+	"\tsensor_id\x18\x02 \x01(\tR\bsensorId\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\tR\x05valueB7Z5github.com/spiffe/spire-api-sdk/proto/spire/api/typesb\x06proto3"
 
 var (
-	file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescOnce sync.Once
-	file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescData []byte
+	file_spire_api_types_sovereignattestation_proto_rawDescOnce sync.Once
+	file_spire_api_types_sovereignattestation_proto_rawDescData []byte
 )
 
-func file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescGZIP() []byte {
-	file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescOnce.Do(func() {
-		file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDesc), len(file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDesc)))
+func file_spire_api_types_sovereignattestation_proto_rawDescGZIP() []byte {
+	file_spire_api_types_sovereignattestation_proto_rawDescOnce.Do(func() {
+		file_spire_api_types_sovereignattestation_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_spire_api_types_sovereignattestation_proto_rawDesc), len(file_spire_api_types_sovereignattestation_proto_rawDesc)))
 	})
-	return file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDescData
+	return file_spire_api_types_sovereignattestation_proto_rawDescData
 }
 
-var file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
-var file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_goTypes = []any{
-	(AttestedClaims_HostIntegrity)(0), // 0: spire.api.types.AttestedClaims.HostIntegrity
-	(*SovereignAttestation)(nil),      // 1: spire.api.types.SovereignAttestation
-	(*AttestedClaims)(nil),            // 2: spire.api.types.AttestedClaims
-	(*AttestedClaims_GpuMetrics)(nil), // 3: spire.api.types.AttestedClaims.GpuMetrics
+var file_spire_api_types_sovereignattestation_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_spire_api_types_sovereignattestation_proto_goTypes = []any{
+	(*SovereignAttestation)(nil), // 0: spire.api.types.SovereignAttestation
+	(*AttestedClaims)(nil),       // 1: spire.api.types.AttestedClaims
+	(*Geolocation)(nil),          // 2: spire.api.types.Geolocation
 }
-var file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_depIdxs = []int32{
-	0, // 0: spire.api.types.AttestedClaims.host_integrity_status:type_name -> spire.api.types.AttestedClaims.HostIntegrity
-	3, // 1: spire.api.types.AttestedClaims.gpu_metrics_health:type_name -> spire.api.types.AttestedClaims.GpuMetrics
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+var file_spire_api_types_sovereignattestation_proto_depIdxs = []int32{
+	2, // 0: spire.api.types.AttestedClaims.geolocation:type_name -> spire.api.types.Geolocation
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_init() }
-func file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_init() {
-	if File_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto != nil {
+func init() { file_spire_api_types_sovereignattestation_proto_init() }
+func file_spire_api_types_sovereignattestation_proto_init() {
+	if File_spire_api_types_sovereignattestation_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDesc), len(file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_rawDesc)),
-			NumEnums:      1,
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_spire_api_types_sovereignattestation_proto_rawDesc), len(file_spire_api_types_sovereignattestation_proto_rawDesc)),
+			NumEnums:      0,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_goTypes,
-		DependencyIndexes: file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_depIdxs,
-		EnumInfos:         file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_enumTypes,
-		MessageInfos:      file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_msgTypes,
+		GoTypes:           file_spire_api_types_sovereignattestation_proto_goTypes,
+		DependencyIndexes: file_spire_api_types_sovereignattestation_proto_depIdxs,
+		MessageInfos:      file_spire_api_types_sovereignattestation_proto_msgTypes,
 	}.Build()
-	File_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto = out.File
-	file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_goTypes = nil
-	file_spire_api_sdk_proto_spire_api_types_sovereignattestation_proto_depIdxs = nil
+	File_spire_api_types_sovereignattestation_proto = out.File
+	file_spire_api_types_sovereignattestation_proto_goTypes = nil
+	file_spire_api_types_sovereignattestation_proto_depIdxs = nil
 }

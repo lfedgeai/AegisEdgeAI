@@ -28,12 +28,8 @@ func TestSovereignAttestationIntegration(t *testing.T) {
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Create mock Keylime client (stubbed)
 	claims := &keylime.AttestedClaims{
-		Geolocation:         "Spain: N40.4168, W3.7038",
-		HostIntegrityStatus: "passed_all_checks",
+		Geolocation: "Spain: N40.4168, W3.7038",
 	}
-	claims.GPUMetricsHealth.Status = "healthy"
-	claims.GPUMetricsHealth.UtilizationPct = 15.0
-	claims.GPUMetricsHealth.MemoryMB = 10240
 
 	mockKeylimeClient := &mockKeylimeClient{
 		returnAttestedClaims: claims,
@@ -43,7 +39,6 @@ func TestSovereignAttestationIntegration(t *testing.T) {
 	// Create policy engine with permissive policy
 	policyEngine := policy.NewEngine(policy.PolicyConfig{
 		AllowedGeolocations: []string{"Spain:*"},
-		RequireIntegrity:    false,
 		Logger:              logrus.New(),
 	})
 
@@ -81,10 +76,6 @@ func TestSovereignAttestationIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, attestedClaims)
 	assert.Equal(t, "Spain: N40.4168, W3.7038", attestedClaims.Geolocation)
-	assert.Equal(t, "passed_all_checks", attestedClaims.HostIntegrityStatus)
-	assert.Equal(t, "healthy", attestedClaims.GPUMetricsHealth.Status)
-	assert.Equal(t, 15.0, attestedClaims.GPUMetricsHealth.UtilizationPct)
-	assert.Equal(t, int64(10240), attestedClaims.GPUMetricsHealth.MemoryMB)
 }
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -109,12 +100,8 @@ func TestPolicyFailure(t *testing.T) {
 	defer fflag.Unload()
 
 	claims2 := &keylime.AttestedClaims{
-		Geolocation:         "Germany: Berlin",
-		HostIntegrityStatus: "passed_all_checks",
+		Geolocation: "Germany: Berlin",
 	}
-	claims2.GPUMetricsHealth.Status = "healthy"
-	claims2.GPUMetricsHealth.UtilizationPct = 15.0
-	claims2.GPUMetricsHealth.MemoryMB = 10240
 
 	mockKeylimeClient := &mockKeylimeClient{
 		returnAttestedClaims: claims2,
@@ -124,7 +111,6 @@ func TestPolicyFailure(t *testing.T) {
 	// Policy only allows Spain
 	policyEngine := policy.NewEngine(policy.PolicyConfig{
 		AllowedGeolocations: []string{"Spain:*"},
-		RequireIntegrity:    false,
 		Logger:              logrus.New(),
 	})
 

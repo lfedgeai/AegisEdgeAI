@@ -22,23 +22,10 @@ func TestEngine_Evaluate(t *testing.T) {
 			name: "all checks pass",
 			config: PolicyConfig{
 				AllowedGeolocations: []string{"Spain:*"},
-				RequireIntegrity:    true,
-				MaxGPUUtilization:   100.0,
-				MinGPUMemoryMB:     0,
 				Logger:              logrus.New(),
 			},
 			claims: &AttestedClaims{
-				Geolocation:         "Spain: N40.4168, W3.7038",
-				HostIntegrityStatus: "passed_all_checks",
-				GPUMetricsHealth: struct {
-					Status        string
-					UtilizationPct float64
-					MemoryMB      int64
-				}{
-					Status:        "healthy",
-					UtilizationPct: 15.0,
-					MemoryMB:      10240,
-				},
+				Geolocation: "Spain: N40.4168, W3.7038",
 			},
 			wantAllowed: true,
 		},
@@ -46,89 +33,10 @@ func TestEngine_Evaluate(t *testing.T) {
 			name: "geolocation violation",
 			config: PolicyConfig{
 				AllowedGeolocations: []string{"Germany:*"},
-				RequireIntegrity:    false,
 				Logger:              logrus.New(),
 			},
 			claims: &AttestedClaims{
-				Geolocation:         "Spain: N40.4168, W3.7038",
-				HostIntegrityStatus: "passed_all_checks",
-				GPUMetricsHealth: struct {
-					Status        string
-					UtilizationPct float64
-					MemoryMB      int64
-				}{
-					Status:        "healthy",
-					UtilizationPct: 15.0,
-					MemoryMB:      10240,
-				},
-			},
-			wantAllowed: false,
-		},
-		{
-			name: "integrity violation",
-			config: PolicyConfig{
-				AllowedGeolocations: []string{"Spain:*"},
-				RequireIntegrity:    true,
-				Logger:              logrus.New(),
-			},
-			claims: &AttestedClaims{
-				Geolocation:         "Spain: N40.4168, W3.7038",
-				HostIntegrityStatus: "failed",
-				GPUMetricsHealth: struct {
-					Status        string
-					UtilizationPct float64
-					MemoryMB      int64
-				}{
-					Status:        "healthy",
-					UtilizationPct: 15.0,
-					MemoryMB:      10240,
-				},
-			},
-			wantAllowed: false,
-		},
-		{
-			name: "GPU utilization violation",
-			config: PolicyConfig{
-				AllowedGeolocations: []string{"Spain:*"},
-				RequireIntegrity:    false,
-				MaxGPUUtilization:   50.0,
-				Logger:              logrus.New(),
-			},
-			claims: &AttestedClaims{
-				Geolocation:         "Spain: N40.4168, W3.7038",
-				HostIntegrityStatus: "passed_all_checks",
-				GPUMetricsHealth: struct {
-					Status        string
-					UtilizationPct float64
-					MemoryMB      int64
-				}{
-					Status:        "healthy",
-					UtilizationPct: 75.0,
-					MemoryMB:      10240,
-				},
-			},
-			wantAllowed: false,
-		},
-		{
-			name: "GPU memory violation",
-			config: PolicyConfig{
-				AllowedGeolocations: []string{"Spain:*"},
-				RequireIntegrity:    false,
-				MinGPUMemoryMB:     20000,
-				Logger:              logrus.New(),
-			},
-			claims: &AttestedClaims{
-				Geolocation:         "Spain: N40.4168, W3.7038",
-				HostIntegrityStatus: "passed_all_checks",
-				GPUMetricsHealth: struct {
-					Status        string
-					UtilizationPct float64
-					MemoryMB      int64
-				}{
-					Status:        "healthy",
-					UtilizationPct: 15.0,
-					MemoryMB:      10240,
-				},
+				Geolocation: "Spain: N40.4168, W3.7038",
 			},
 			wantAllowed: false,
 		},
@@ -138,17 +46,7 @@ func TestEngine_Evaluate(t *testing.T) {
 				Logger: logrus.New(),
 			},
 			claims: &AttestedClaims{
-				Geolocation:         "Spain: N40.4168, W3.7038",
-				HostIntegrityStatus: "failed",
-				GPUMetricsHealth: struct {
-					Status        string
-					UtilizationPct float64
-					MemoryMB      int64
-				}{
-					Status:        "degraded",
-					UtilizationPct: 99.0,
-					MemoryMB:      100,
-				},
+				Geolocation: "Spain: N40.4168, W3.7038",
 			},
 			wantAllowed: true,
 		},
@@ -218,25 +116,11 @@ func TestEngine_matchesGeolocation(t *testing.T) {
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 func TestConvertKeylimeAttestedClaims(t *testing.T) {
 	keylimeClaims := &KeylimeAttestedClaims{
-		Geolocation:         "Spain: N40.4168, W3.7038",
-		HostIntegrityStatus: "passed_all_checks",
-		GPUMetricsHealth: struct {
-			Status        string
-			UtilizationPct float64
-			MemoryMB      int64
-		}{
-			Status:        "healthy",
-			UtilizationPct: 15.0,
-			MemoryMB:      10240,
-		},
+		Geolocation: "Spain: N40.4168, W3.7038",
 	}
 
 	result := ConvertKeylimeAttestedClaims(keylimeClaims)
 	require.NotNil(t, result)
 	assert.Equal(t, keylimeClaims.Geolocation, result.Geolocation)
-	assert.Equal(t, keylimeClaims.HostIntegrityStatus, result.HostIntegrityStatus)
-	assert.Equal(t, keylimeClaims.GPUMetricsHealth.Status, result.GPUMetricsHealth.Status)
-	assert.Equal(t, keylimeClaims.GPUMetricsHealth.UtilizationPct, result.GPUMetricsHealth.UtilizationPct)
-	assert.Equal(t, keylimeClaims.GPUMetricsHealth.MemoryMB, result.GPUMetricsHealth.MemoryMB)
 }
 
