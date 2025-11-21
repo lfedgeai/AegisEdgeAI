@@ -1,15 +1,18 @@
 import asyncio
 import base64
 import functools
+import http.client as http_client
 import multiprocessing
 import os
 import signal
+import socket
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
+import requests
 import tornado.httpserver
 import tornado.ioloop
 import tornado.netutil
@@ -107,6 +110,232 @@ exclude_db: Dict[str, Any] = {
     "learned_ima_keyrings": {},
     "ssl_context": None,
 }
+
+MOBILE_SENSOR_SETTINGS_CACHE: Optional[Dict[str, Any]] = None
+
+
+class MobileSensorVerificationError(Exception):
+    """Raised when mobile sensor verification fails."""
+
+
+class _UnixSocketHTTPConnection(http_client.HTTPConnection):
+    """HTTPConnection variant that talks over a Unix domain socket."""
+
+    def __init__(self, socket_path: str, timeout: float):
+        super().__init__("localhost", timeout=timeout)
+        self.socket_path = socket_path
+
+    def connect(self) -> None:  # noqa: D401
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        if self.timeout:
+            sock.settimeout(self.timeout)
+        sock.connect(self.socket_path)
+        self.sock = sock
+
+
+def _get_mobile_sensor_settings() -> Optional[Dict[str, Any]]:
+    global MOBILE_SENSOR_SETTINGS_CACHE
+    if MOBILE_SENSOR_SETTINGS_CACHE is not None:
+        return MOBILE_SENSOR_SETTINGS_CACHE
+
+    try:
+        enabled_raw = config.get("verifier", "mobile_sensor_enabled", fallback="false")
+        logger.info(
+            "Unified-Identity - Phase 3: Read mobile_sensor_enabled raw value: %s (type: %s)",
+            enabled_raw,
+            type(enabled_raw).__name__,
+        )
+        enabled = config.getboolean("verifier", "mobile_sensor_enabled", fallback=False)
+        logger.info(
+            "Unified-Identity - Phase 3: Parsed mobile_sensor_enabled as boolean: %s",
+            enabled,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Unified-Identity - Phase 3: Failed to read mobile_sensor_enabled config: %s", exc
+        )
+        enabled = False
+
+    if not enabled:
+        logger.info(
+            "Unified-Identity - Phase 3: Mobile sensor verification disabled in config (enabled=%s)",
+            enabled,
+        )
+        MOBILE_SENSOR_SETTINGS_CACHE = None
+        return None
+
+    try:
+        endpoint = config.get("verifier", "mobile_sensor_endpoint", fallback="")
+    except Exception:  # noqa: BLE001
+        endpoint = ""
+
+    endpoint = (endpoint or "").strip()
+    if not endpoint:
+        logger.error(
+            "Unified-Identity - Phase 3: mobile_sensor_enabled is true but 'mobile_sensor_endpoint' missing; disabling mobile sensor verification"
+        )
+        MOBILE_SENSOR_SETTINGS_CACHE = None
+        return None
+
+    try:
+        timeout = float(config.get("verifier", "mobile_sensor_timeout_seconds", fallback=5.0))
+    except Exception:  # noqa: BLE001
+        timeout = 5.0
+
+    timeout = max(timeout, 1.0)
+    MOBILE_SENSOR_SETTINGS_CACHE = {"endpoint": endpoint, "timeout": timeout}
+    logger.info(
+        "Unified-Identity - Phase 3: Mobile sensor verification enabled (endpoint=%s, timeout=%ss)",
+        endpoint,
+        timeout,
+    )
+    return MOBILE_SENSOR_SETTINGS_CACHE
+
+
+def _build_http_verify_url(base_endpoint: str) -> str:
+    base = base_endpoint.rstrip("/")
+    if base.endswith("/verify"):
+        return base
+    return f"{base}/verify"
+
+
+def _call_mobile_sensor_service(payload: Dict[str, Any]) -> Dict[str, Any]:
+    settings = _get_mobile_sensor_settings()
+    if not settings:
+        return {}
+
+    endpoint = settings["endpoint"]
+    timeout = settings["timeout"]
+
+    if endpoint.startswith("unix://"):
+        socket_path = endpoint[len("unix://") :]
+        if not socket_path:
+            raise MobileSensorVerificationError("invalid unix socket endpoint for mobile sensor service")
+        return _unix_socket_mobile_sensor_request(socket_path, payload, timeout)
+
+    url = _build_http_verify_url(endpoint)
+    logger.info(
+        "Unified-Identity - Phase 3: Calling mobile sensor service at %s with payload: %s",
+        url,
+        payload,
+    )
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=timeout,
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+        )
+        logger.info(
+            "Unified-Identity - Phase 3: Mobile sensor service response: status=%s, body=%s",
+            response.status_code,
+            response.text[:500],
+        )
+    except requests.RequestException as exc:  # noqa: BLE001
+        logger.error(
+            "Unified-Identity - Phase 3: Mobile sensor service HTTP request failed: %s", exc
+        )
+        raise MobileSensorVerificationError(f"mobile sensor service HTTP request failed: {exc}") from exc
+
+    if response.status_code != 200:
+        logger.error(
+            "Unified-Identity - Phase 3: Mobile sensor service returned HTTP %s: %s",
+            response.status_code,
+            response.text[:500],
+        )
+        raise MobileSensorVerificationError(
+            f"mobile sensor service returned HTTP {response.status_code} ({response.text[:200]})"
+        )
+
+    try:
+        result = response.json()
+        logger.info(
+            "Unified-Identity - Phase 3: Mobile sensor service returned JSON: %s", result
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "Unified-Identity - Phase 3: Failed to parse mobile sensor service JSON response: %s, body: %s",
+            exc,
+            response.text[:500],
+        )
+        raise MobileSensorVerificationError("invalid JSON response from mobile sensor service") from exc
+
+
+def _unix_socket_mobile_sensor_request(socket_path: str, payload: Dict[str, Any], timeout: float) -> Dict[str, Any]:
+    conn = _UnixSocketHTTPConnection(socket_path, timeout)
+    body = json.dumps(payload)
+    body_bytes = body.encode("utf-8")
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Content-Length": str(len(body_bytes)),
+        "Host": "localhost",
+    }
+    try:
+        conn.request("POST", "/verify", body_bytes, headers=headers)
+        response = conn.getresponse()
+        status = response.status
+        resp_body = response.read()
+    except Exception as exc:  # noqa: BLE001
+        raise MobileSensorVerificationError(f"mobile sensor UDS request failed: {exc}") from exc
+    finally:
+        conn.close()
+
+    if status != 200:
+        raise MobileSensorVerificationError(
+            f"mobile sensor service returned HTTP {status} ({resp_body[:200]!r})"
+        )
+
+    try:
+        return json.loads(resp_body.decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        raise MobileSensorVerificationError("invalid JSON response from mobile sensor service") from exc
+
+
+def _verify_mobile_sensor_geolocation(geolocation: Optional[Dict[str, Any]]) -> None:
+    logger.info(
+        "Unified-Identity - Phase 3: _verify_mobile_sensor_geolocation called with geolocation=%s",
+        geolocation,
+    )
+    settings = _get_mobile_sensor_settings()
+    if not settings:
+        logger.info(
+            "Unified-Identity - Phase 3: Mobile sensor settings not available, skipping verification"
+        )
+        return
+
+    # Only verify if geolocation is present and is a dict
+    # If geolocation is None (e.g., during SVID renewals without new quotes), skip verification
+    if not geolocation or not isinstance(geolocation, dict):
+        logger.debug(
+            "Unified-Identity - Phase 3: Mobile sensor verification enabled but geolocation is None or not a dict; skipping verification (this is normal for SVID renewals)"
+        )
+        return
+
+    geo_type = str(geolocation.get("type", "")).lower()
+    if geo_type != "mobile":
+        logger.debug(
+            "Unified-Identity - Phase 3: Mobile sensor verification enabled but geolocation type is '%s'; skipping microservice call",
+            geo_type or "<unknown>",
+        )
+        return
+
+    sensor_id = geolocation.get("sensor_id")
+    if not sensor_id:
+        raise MobileSensorVerificationError("sensor_id missing in mobile geolocation data")
+
+    response = _call_mobile_sensor_service({"sensor_id": sensor_id})
+    verification_result = response.get("verification_result")
+    if verification_result is True:
+        logger.info(
+            "Unified-Identity - Phase 3: Mobile sensor verification succeeded (sensor_id=%s)", sensor_id
+        )
+        return
+
+    raise MobileSensorVerificationError(
+        f"mobile sensor service returned verification_result={verification_result} for sensor_id={sensor_id}"
+    )
 
 
 def _from_db_obj(agent_db_obj: VerfierMain) -> Dict[str, Any]:
@@ -2126,6 +2355,18 @@ class VerifyEvidenceHandler(BaseHandler):
             parsed_geo = fp._parse_geolocation_string(geolocation_from_request)
             if parsed_geo:
                 attested_claims['geolocation'] = parsed_geo
+
+        try:
+            _verify_mobile_sensor_geolocation(attested_claims.get('geolocation'))
+        except MobileSensorVerificationError as exc:
+            logger.error('Unified-Identity - Phase 3: Mobile sensor location verification failed: %s', exc)
+            web_util.echo_json_response(
+                self,
+                422,
+                f"mobile sensor location verification failed: {exc}",
+                {'verified': False},
+            )
+            return None
 
         audit_id = str(uuid.uuid4())
         response = {

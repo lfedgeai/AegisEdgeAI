@@ -591,12 +591,11 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 - **UDS Socket Permissions**: Ensure proper file permissions and ownership for UDS sockets
 - **mTLS Certificate Management**: Ensure verifier and agent have proper certificate chains and trust anchors
 
-### Mobile location verification sensor microservice
-- prestep: configure the mobile location verification sensor microservice to use a simple sqlite database to convert the sensor id into a phone number (default is )
-- keylime verifier passes the geolocation sensor id  to the mobile location verification sensor microservice
-- the mobile location verification sensor microservice converts the sensor id into a phone number by looking a simple sqlite database
-- the mobile location verification sensor microservice connects to the camara APIs and returns the verification result true/false to the keylime verifier; if the verification result is false, the keylime verifier will not issue the SVID to the spire agent
-
+### Mobile location verification microservice
+- prestep: configure the mobile location verification microservice to use a simple sqlite database to convert the sensor id into a phone number **and** the default latitude/longitude/accuracy (seed with `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7`); keylime verifier connects to the mobile location verification microservice via a REST API (JSON) over UDS socket
+- keylime verifier extracts the geolocation sensor id from the TPM quote response and passes it unchanged to the mobile location verification microservice (no hardcoded defaults)
+- the mobile location verification microservice converts the sensor id into a phone number by looking a simple sqlite database
+- the mobile location verification microservice connects to the camara APIs and returns the verification result true/false to the keylime verifier; if the verification result is false—or if the verifier cannot reach the microservice—the Keylime Verifier fails the attestation and the SPIRE Server will not issue the SVID to the SPIRE Agent
 
 ---
 

@@ -70,7 +70,13 @@ stop_all_instances_and_cleanup() {
     # Stop TPM Plugin Server
     echo "     Stopping TPM Plugin Server..."
     pkill -f "tpm_plugin_server" >/dev/null 2>&1 || true
-    
+
+    # Stop mobile location verification microservice
+    echo "     Stopping Mobile Location Verification microservice..."
+    pkill -f "mobile-sensor-microservice" >/dev/null 2>&1 || true
+    pkill -f "mobile_sensor_service" >/dev/null 2>&1 || true
+    pkill -f "mobile-sensor-microservice/service.py" >/dev/null 2>&1 || true
+
     # Wait a moment for processes to stop before unmounting
     sleep 1
     
@@ -230,7 +236,12 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/tpm-plugin*.pid 2>/dev/null || true
     rm -f /tmp/tpm-plugin*.log 2>/dev/null || true
     rm -f /tmp/tpm-plugin*.sock 2>/dev/null || true
-    
+
+    # Clean up mobile location verification microservice data
+    echo "     Removing mobile location verification microservice data..."
+    rm -rf /tmp/mobile-sensor-service 2>/dev/null || true
+    rm -f /tmp/mobile-sensor-microservice.pid 2>/dev/null || true
+
     # Clean up rust-keylime agent directory (after ensuring tmpfs is unmounted)
     echo "     Removing rust-keylime agent data directory..."
     # Make sure it's not mounted before removing
@@ -276,6 +287,7 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/phase3_complete_workflow_logs.txt 2>/dev/null || true
     rm -f /tmp/phase3_*.log 2>/dev/null || true
     rm -f /tmp/test_phase3_*.log 2>/dev/null || true
+    rm -f /tmp/mobile-sensor-microservice.log 2>/dev/null || true
     # Clean up temporary config files
     rm -f /tmp/keylime-agent-*.conf 2>/dev/null || true
     rm -f /tmp/*.conf.tmp 2>/dev/null || true
@@ -288,6 +300,7 @@ stop_all_instances_and_cleanup() {
     rm -f "$HOME/.keylime/run/keylime-agent-certify.sock" 2>/dev/null || true
     rm -f /tmp/keylime-agent.sock 2>/dev/null || true
     rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
+    rm -f /tmp/mobile-sensor.sock 2>/dev/null || true
     # Clean up any other socket files
     find /tmp -name "*.sock" -type s 2>/dev/null | grep -E "(keylime|spire|tpm)" | xargs rm -f 2>/dev/null || true
     rm -rf /tmp/spire-server 2>/dev/null || true

@@ -19,6 +19,15 @@ PYTHON_KEYLIME_DIR="${KEYLIME_DIR}"
 RUST_KEYLIME_DIR="${PHASE2_DIR}/rust-keylime"
 SPIRE_DIR="${PHASE1_DIR}/spire"
 
+MOBILE_SENSOR_DIR="${PHASE3_DIR}/mobile-sensor-microservice"
+MOBILE_SENSOR_HOST="${MOBILE_SENSOR_HOST:-127.0.0.1}"
+MOBILE_SENSOR_PORT="${MOBILE_SENSOR_PORT:-9050}"
+MOBILE_SENSOR_BASE_URL="http://${MOBILE_SENSOR_HOST}:${MOBILE_SENSOR_PORT}"
+MOBILE_SENSOR_DB_ROOT="/tmp/mobile-sensor-service"
+MOBILE_SENSOR_DB_PATH="${MOBILE_SENSOR_DB_ROOT}/sensor_mapping.db"
+MOBILE_SENSOR_LOG="/tmp/mobile-sensor-microservice.log"
+MOBILE_SENSOR_PID_FILE="/tmp/mobile-sensor-microservice.pid"
+
 # Colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -87,6 +96,152 @@ pause_at_phase() {
         read -r
         echo ""
     fi
+}
+
+start_mobile_sensor_microservice() {
+    echo ""
+    echo -e "${CYAN}Step 1.5: Starting Mobile Location Verification microservice...${NC}"
+    if [ ! -d "${MOBILE_SENSOR_DIR}" ]; then
+        echo -e "${RED}  ✗ Mobile sensor microservice directory not found: ${MOBILE_SENSOR_DIR}${NC}"
+        exit 1
+    fi
+
+    echo "  Preparing mobile sensor service data directory..."
+    mkdir -p "${MOBILE_SENSOR_DB_ROOT}" 2>/dev/null || true
+    rm -f "${MOBILE_SENSOR_DB_PATH}" 2>/dev/null || true
+
+    export MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB_PATH}"
+    # CAMARA APIs are enabled by default (can be bypassed by setting CAMARA_BYPASS=true)
+    # Set CAMARA_BYPASS=true to skip CAMARA API calls for testing
+    export CAMARA_BYPASS="${CAMARA_BYPASS:-false}"
+    if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
+        # Default to valid CAMARA sandbox credentials (can be overridden via env var)
+        export CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
+    fi
+    
+    # Allow lat/lon/accuracy to be overridden via env vars for testing
+    if [ -n "${MOBILE_SENSOR_LATITUDE:-}" ]; then
+        export MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE}"
+        echo "    Using custom latitude from MOBILE_SENSOR_LATITUDE: ${MOBILE_SENSOR_LATITUDE}"
+    fi
+    if [ -n "${MOBILE_SENSOR_LONGITUDE:-}" ]; then
+        export MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE}"
+        echo "    Using custom longitude from MOBILE_SENSOR_LONGITUDE: ${MOBILE_SENSOR_LONGITUDE}"
+    fi
+    if [ -n "${MOBILE_SENSOR_ACCURACY:-}" ]; then
+        export MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY}"
+        echo "    Using custom accuracy from MOBILE_SENSOR_ACCURACY: ${MOBILE_SENSOR_ACCURACY}"
+    fi
+
+    cd "${MOBILE_SENSOR_DIR}" || exit 1
+    
+    # Ensure port is free before starting
+    if command -v lsof > /dev/null 2>&1; then
+        if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
+            echo "    Port ${MOBILE_SENSOR_PORT} is in use, stopping existing service..."
+            stop_mobile_sensor_microservice
+            sleep 2
+        fi
+    fi
+    
+    echo "  Starting mobile sensor microservice..."
+    echo "    Endpoint: ${MOBILE_SENSOR_BASE_URL}"
+    echo "    Database: ${MOBILE_SENSOR_DB_PATH}"
+    echo "    Log file: ${MOBILE_SENSOR_LOG}"
+    echo "    CAMARA_BYPASS: ${CAMARA_BYPASS}"
+    nohup env MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB}" \
+             CAMARA_BYPASS="${CAMARA_BYPASS}" \
+             CAMARA_BASIC_AUTH="${CAMARA_BASIC_AUTH:-}" \
+             MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE:-}" \
+             MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE:-}" \
+             MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY:-}" \
+             python3 service.py --host "${MOBILE_SENSOR_HOST}" --port "${MOBILE_SENSOR_PORT}" > "${MOBILE_SENSOR_LOG}" 2>&1 &
+    local pid=$!
+    echo $pid > "${MOBILE_SENSOR_PID_FILE}"
+    echo "    Mobile sensor microservice PID: ${pid}"
+    
+    # Wait a moment for startup logs
+    sleep 2
+    
+    # Show startup logs
+    if [ -f "${MOBILE_SENSOR_LOG}" ]; then
+        echo "  Startup logs:"
+        tail -10 "${MOBILE_SENSOR_LOG}" | grep -E "(Starting|latitude|longitude|accuracy|CAMARA_BYPASS|ready)" | sed 's/^/    /' || true
+    fi
+
+    local started=false
+    for i in {1..30}; do
+        local status
+        status=$(curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" -d '{}' "${MOBILE_SENSOR_BASE_URL}/verify" || true)
+        if [ -n "${status}" ] && [ "${status}" != "000" ]; then
+            echo -e "${GREEN}    ✓ Mobile sensor microservice is responding (HTTP ${status})${NC}"
+            started=true
+            break
+        fi
+        sleep 1
+    done
+
+    if [ "$started" = false ]; then
+        echo -e "${RED}    ✗ Mobile sensor microservice failed to start (check ${MOBILE_SENSOR_LOG})${NC}"
+        if [ -f "${MOBILE_SENSOR_LOG}" ]; then
+            echo "    Recent logs:"
+            tail -30 "${MOBILE_SENSOR_LOG}" | sed 's/^/      /'
+        fi
+        if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
+            local check_pid
+            check_pid=$(cat "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || echo "")
+            if [ -n "${check_pid}" ]; then
+                if ps -p "${check_pid}" > /dev/null 2>&1; then
+                    echo "    Process ${check_pid} is still running"
+                else
+                    echo "    Process ${check_pid} is not running (may have crashed)"
+                fi
+            fi
+        fi
+        return 1
+    fi
+    
+    # Double-check the service is actually listening on the port
+    if command -v netstat > /dev/null 2>&1; then
+        if ! netstat -tln 2>/dev/null | grep -q ":${MOBILE_SENSOR_PORT} "; then
+            echo -e "${YELLOW}    ⚠ Warning: Service may not be listening on port ${MOBILE_SENSOR_PORT}${NC}"
+        fi
+    elif command -v ss > /dev/null 2>&1; then
+        if ! ss -tln 2>/dev/null | grep -q ":${MOBILE_SENSOR_PORT} "; then
+            echo -e "${YELLOW}    ⚠ Warning: Service may not be listening on port ${MOBILE_SENSOR_PORT}${NC}"
+        fi
+    fi
+
+    pause_at_phase "Step 1.5 Complete" "Mobile Location Verification microservice is running on ${MOBILE_SENSOR_BASE_URL}."
+}
+
+stop_mobile_sensor_microservice() {
+    # Kill by PID file if it exists
+    if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
+        local pid
+        pid=$(cat "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || echo "")
+        if [ -n "$pid" ]; then
+            kill "$pid" >/dev/null 2>&1 || true
+        fi
+        rm -f "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || true
+    fi
+    
+    # Also kill any service.py process listening on the mobile sensor port
+    # This handles cases where the PID file is missing or the service was started outside the script
+    if command -v lsof > /dev/null 2>&1; then
+        local port_pid
+        port_pid=$(lsof -ti :${MOBILE_SENSOR_PORT} 2>/dev/null || echo "")
+        if [ -n "$port_pid" ]; then
+            kill "$port_pid" >/dev/null 2>&1 || true
+        fi
+    elif command -v fuser > /dev/null 2>&1; then
+        fuser -k ${MOBILE_SENSOR_PORT}/tcp >/dev/null 2>&1 || true
+    fi
+    
+    # Also kill any python3 process running service.py (as a fallback)
+    pkill -f "service.py.*--port.*${MOBILE_SENSOR_PORT}" >/dev/null 2>&1 || true
+    
+    sleep 1
 }
 
 # Function to generate consolidated workflow log file
@@ -350,6 +505,7 @@ EOF
 cleanup() {
     echo ""
     echo -e "${YELLOW}Cleaning up on exit...${NC}"
+    stop_mobile_sensor_microservice
     # Only stop processes on exit, don't delete data (user may want to inspect)
     pkill -f "keylime_verifier" >/dev/null 2>&1 || true
     pkill -f "python.*keylime" >/dev/null 2>&1 || true
@@ -621,6 +777,8 @@ else
 fi
 
 pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
+
+start_mobile_sensor_microservice
 
 # Step 2: Start Real Keylime Verifier with unified_identity enabled
 echo ""
@@ -1863,6 +2021,36 @@ if [ -f /tmp/keylime-verifier.log ]; then
     fi
 else
     echo -e "${YELLOW}  ⚠ Keylime Verifier log not found${NC}"
+fi
+
+echo ""
+echo "  Checking Keylime Verifier logs for Mobile Sensor verification..."
+if [ -f /tmp/keylime-verifier.log ]; then
+    MOBILE_SENSOR_LOGS=$(grep -i "mobile sensor verification" /tmp/keylime-verifier.log | wc -l)
+    if [ "$MOBILE_SENSOR_LOGS" -gt 0 ]; then
+        echo -e "${GREEN}  ✓ Found $MOBILE_SENSOR_LOGS mobile sensor verification log entries${NC}"
+        echo "  Sample log entries:"
+        grep -i "mobile sensor verification" /tmp/keylime-verifier.log | tail -3 | sed 's/^/    /'
+    else
+        echo -e "${YELLOW}  ⚠ No mobile sensor verification logs found (may be disabled or no mobile geolocation detected)${NC}"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ Keylime Verifier log not found${NC}"
+fi
+
+echo ""
+echo "  Checking Mobile Location Verification microservice logs for verification requests..."
+if [ -f /tmp/mobile-sensor-microservice.log ]; then
+    MOBILE_SERVICE_REQUESTS=$(grep -i "CAMARA_BYPASS\|verify\|sensor_id" /tmp/mobile-sensor-microservice.log | wc -l)
+    if [ "$MOBILE_SERVICE_REQUESTS" -gt 0 ]; then
+        echo -e "${GREEN}  ✓ Found $MOBILE_SERVICE_REQUESTS mobile sensor service log entries${NC}"
+        echo "  Sample log entries:"
+        grep -i "CAMARA_BYPASS\|verify\|sensor_id" /tmp/mobile-sensor-microservice.log | tail -3 | sed 's/^/    /'
+    else
+        echo -e "${YELLOW}  ⚠ No mobile sensor service activity found in logs${NC}"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ Mobile Sensor microservice log not found${NC}"
 fi
 
 echo ""
