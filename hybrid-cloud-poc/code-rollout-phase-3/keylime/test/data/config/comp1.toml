@@ -1,8 +1,0 @@
-[comp1]
-version = "2.0"
-test_option = "current"
-test_adjust = "not_adjusted"
-
-[subcomp1]
-
-suboption = "current"

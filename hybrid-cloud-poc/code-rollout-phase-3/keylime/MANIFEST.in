@@ -1,3 +1,0 @@
-include config/*.conf
-recursive-include templates *
-prune templates/*/__pycache__
