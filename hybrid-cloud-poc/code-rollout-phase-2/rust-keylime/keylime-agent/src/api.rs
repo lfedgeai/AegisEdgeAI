@@ -98,10 +98,9 @@ fn configure_api_v2_2(cfg: &mut web::ServiceConfig) {
     // Configure added endpoints
     _ = cfg
         .service(web::scope("/agent").configure(agent_handler::configure_agent_endpoints))
-        .service(
-            web::scope("/delegated_certification")
-                .configure(delegated_certification_handler::configure_delegated_certification_endpoints),
-        )
+        .service(web::scope("/delegated_certification").configure(
+            delegated_certification_handler::configure_delegated_certification_endpoints,
+        ))
 }
 
 /// Get a scope configured for the given API version

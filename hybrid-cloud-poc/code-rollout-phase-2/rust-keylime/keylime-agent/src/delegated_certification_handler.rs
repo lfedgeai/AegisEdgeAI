@@ -25,12 +25,17 @@ pub struct CertifyAppKeyRequest {
     pub app_key_public: String,
     #[serde(rename = "app_key_context_path")]
     pub app_key_context_path: String,
+    #[serde(rename = "challenge_nonce")]
+    pub challenge_nonce: Option<String>,
 }
 
 #[derive(Serialize, Debug)]
 pub struct CertifyAppKeyResponse {
     pub result: String,
-    #[serde(rename = "app_key_certificate", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "app_key_certificate",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub app_key_certificate: Option<String>,
     #[serde(rename = "agent_uuid", skip_serializing_if = "Option::is_none")]
     pub agent_uuid: Option<String>,
@@ -39,11 +44,11 @@ pub struct CertifyAppKeyResponse {
 }
 
 /// Unified-Identity - Phase 3: Delegated Certification Endpoint
-/// 
+///
 /// This endpoint allows the SPIRE TPM Plugin to request a certificate for an App Key
 /// that was generated in the TPM. The certificate is created by using TPM2_Certify to
 /// sign the App Key's public key with the agent's Attestation Key (AK).
-/// 
+///
 /// The certificate format is a JSON object containing:
 /// - certify_data: The attestation structure (base64 encoded)
 /// - signature: The signature over the attestation (base64 encoded)
@@ -76,6 +81,17 @@ async fn certify_app_key(
         ));
     }
 
+    let challenge_nonce = match request.challenge_nonce.as_ref() {
+        Some(nonce) if !nonce.is_empty() => nonce.clone(),
+        _ => {
+            warn!("Delegated certification request missing challenge_nonce");
+            return HttpResponse::BadRequest().json(JsonWrapper::error(
+                400,
+                "Missing required field: challenge_nonce".to_string(),
+            ));
+        }
+    };
+
     // Validate that the context file exists
     let context_path = Path::new(&request.app_key_context_path);
     if !context_path.exists() {
@@ -85,7 +101,10 @@ async fn certify_app_key(
         );
         return HttpResponse::BadRequest().json(JsonWrapper::error(
             400,
-            format!("App Key context file not found: {}", request.app_key_context_path),
+            format!(
+                "App Key context file not found: {}",
+                request.app_key_context_path
+            ),
         ));
     }
 
@@ -130,10 +149,13 @@ async fn certify_app_key(
 
     // Convert PEM public key to TPM digest for qualifying data
     // The qualifying data should be the hash of the App Key public key
-    let qualifying_data = match create_qualifying_data_from_pem(&app_key_public_pem) {
+    let qualifying_data = match create_qualifying_data(&app_key_public_pem, &challenge_nonce) {
         Ok(data) => data,
         Err(e) => {
-            error!("Failed to create qualifying data from App Key public key: {}", e);
+            error!(
+                "Failed to create qualifying data from App Key public key: {}",
+                e
+            );
             return HttpResponse::InternalServerError().json(JsonWrapper::error(
                 500,
                 format!("Failed to process App Key public key: {}", e),
@@ -142,20 +164,17 @@ async fn certify_app_key(
     };
 
     // Use the AK to certify the App Key (context is already locked above)
-    let (attest, signature) = match context.certify_credential(
-        qualifying_data,
-        app_key_handle,
-        data.ak_handle,
-    ) {
-        Ok((attest, sig)) => (attest, sig),
-        Err(e) => {
-            error!("TPM2_Certify failed: {:?}", e);
-            return HttpResponse::InternalServerError().json(JsonWrapper::error(
-                500,
-                format!("TPM2_Certify failed: {}", e),
-            ));
-        }
-    };
+    let (attest, signature) =
+        match context.certify_credential(qualifying_data, app_key_handle, data.ak_handle) {
+            Ok((attest, sig)) => (attest, sig),
+            Err(e) => {
+                error!("TPM2_Certify failed: {:?}", e);
+                return HttpResponse::InternalServerError().json(JsonWrapper::error(
+                    500,
+                    format!("TPM2_Certify failed: {}", e),
+                ));
+            }
+        };
 
     // Serialize attestation and signature to base64
     let attest_bytes = match attest.marshall() {
@@ -184,6 +203,7 @@ async fn certify_app_key(
     let certificate = serde_json::json!({
         "certify_data": general_purpose::STANDARD.encode(&attest_bytes),
         "signature": general_purpose::STANDARD.encode(&sig_bytes),
+        "challenge_nonce": challenge_nonce,
     });
 
     let certificate_b64 = general_purpose::STANDARD.encode(certificate.to_string().as_bytes());
@@ -203,9 +223,8 @@ async fn certify_app_key(
     HttpResponse::Ok().json(response)
 }
 
-
-/// Create qualifying data (hash) from PEM public key
-fn create_qualifying_data_from_pem(pem: &str) -> Result<Data, String> {
+/// Create qualifying data (hash) from PEM public key and challenge nonce
+fn create_qualifying_data(pem: &str, challenge_nonce: &str) -> Result<Data, String> {
     use openssl::hash::{Hasher, MessageDigest};
     use openssl::pkey::PKey;
 
@@ -224,24 +243,31 @@ fn create_qualifying_data_from_pem(pem: &str) -> Result<Data, String> {
     hasher
         .update(&pubkey_bytes)
         .map_err(|e| format!("Failed to hash public key: {}", e))?;
-    let hash = hasher
+    let pubkey_hash = hasher
         .finish()
         .map_err(|e| format!("Failed to finish hash: {}", e))?;
 
-    // Convert to TPM Data structure
-    Data::try_from(hash.as_ref())
-        .map_err(|e| format!("Failed to create TPM Data from hash: {}", e))
+    // Combine public key hash with challenge nonce and hash again
+    let mut combined_hasher = Hasher::new(MessageDigest::sha256())
+        .map_err(|e| format!("Failed to create combined hasher: {}", e))?;
+    combined_hasher
+        .update(pubkey_hash.as_ref())
+        .map_err(|e| format!("Failed to hash public key digest: {}", e))?;
+    combined_hasher
+        .update(challenge_nonce.as_bytes())
+        .map_err(|e| format!("Failed to hash challenge nonce: {}", e))?;
+    let combined_hash = combined_hasher
+        .finish()
+        .map_err(|e| format!("Failed to finish combined hash: {}", e))?;
+
+    Data::try_from(combined_hash.as_ref())
+        .map_err(|e| format!("Failed to create TPM Data from combined hash: {}", e))
 }
 
 /// Configure the endpoints for the /delegated_certification scope
-pub(crate) fn configure_delegated_certification_endpoints(
-    cfg: &mut web::ServiceConfig,
-) {
+pub(crate) fn configure_delegated_certification_endpoints(cfg: &mut web::ServiceConfig) {
     _ = cfg
-        .service(
-            web::resource("/certify_app_key")
-                .route(web::post().to(certify_app_key)),
-        )
+        .service(web::resource("/certify_app_key").route(web::post().to(certify_app_key)))
         .default_service(web::to(delegated_certification_default));
 }
 
@@ -275,4 +301,3 @@ async fn delegated_certification_default(req: HttpRequest) -> impl Responder {
 
     response
 }
-

@@ -46,9 +46,8 @@ type TPMPluginGateway struct {
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 // AppKeyResult contains the result of App Key generation
 type AppKeyResult struct {
-	AppKeyPublic  string `json:"app_key_public"`
-	AppKeyContext string `json:"app_key_context"`
-	Status        string `json:"status"`
+	AppKeyPublic string `json:"app_key_public"`
+	Status       string `json:"status"`
 }
 
 // Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -148,8 +147,7 @@ func (g *TPMPluginGateway) generateAppKeyHTTP(force bool) (*AppKeyResult, error)
 	}
 
 	g.log.WithFields(logrus.Fields{
-		"app_key_context": result.AppKeyContext,
-		"public_key_len":  len(result.AppKeyPublic),
+		"public_key_len": len(result.AppKeyPublic),
 	}).Info("Unified-Identity - Phase 3: TPM App Key generated successfully via HTTP/UDS")
 
 	return &result, nil
@@ -171,27 +169,30 @@ type QuoteResult struct {
 // appKeyPublic: PEM-encoded App Key public key
 // appKeyContext: Path to App Key context file
 // endpoint: rust-keylime agent endpoint (defaults to HTTP endpoint)
-func (g *TPMPluginGateway) RequestCertificate(appKeyPublic, appKeyContext, endpoint string) ([]byte, string, error) {
+func (g *TPMPluginGateway) RequestCertificate(appKeyPublic, endpoint, challengeNonce string) ([]byte, string, error) {
 	g.log.Info("Unified-Identity - Phase 3: Requesting App Key certificate from rust-keylime agent via plugin")
 
-	if appKeyPublic == "" || appKeyContext == "" {
-		return nil, "", fmt.Errorf("app key public and context are required")
+	if appKeyPublic == "" {
+		return nil, "", fmt.Errorf("app key public is required")
+	}
+	if challengeNonce == "" {
+		return nil, "", fmt.Errorf("challenge nonce is required")
 	}
 
-	return g.requestCertificateHTTP(appKeyPublic, appKeyContext, endpoint)
+	return g.requestCertificateHTTP(appKeyPublic, endpoint, challengeNonce)
 }
 
 // requestCertificateHTTP requests certificate via HTTP/UDS
-func (g *TPMPluginGateway) requestCertificateHTTP(appKeyPublic, appKeyContext, endpoint string) ([]byte, string, error) {
+func (g *TPMPluginGateway) requestCertificateHTTP(appKeyPublic, endpoint, challengeNonce string) ([]byte, string, error) {
 	// Use HTTP endpoint (rust-keylime agent) - simplified, no mTLS required
 	if endpoint == "" {
 		endpoint = "http://127.0.0.1:9002"
 	}
 
 	request := map[string]interface{}{
-		"app_key_public":       appKeyPublic,
-		"app_key_context_path": appKeyContext,
-		"endpoint":             endpoint,
+		"app_key_public":  appKeyPublic,
+		"endpoint":        endpoint,
+		"challenge_nonce": challengeNonce,
 	}
 
 	var result struct {
@@ -246,12 +247,8 @@ func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.Sover
 	// For now, we'll use stub data for the quote since Keylime Verifier will request it directly
 	g.log.Info("Unified-Identity - Phase 3: Getting App Key public and certificate (quote will be handled by Keylime Verifier)")
 
-	// Get App Key public key and context via /get-app-key endpoint
-	var appKeyResult struct {
-		Status        string `json:"status"`
-		AppKeyPublic  string `json:"app_key_public"`
-		AppKeyContext string `json:"app_key_context"`
-	}
+	// Get App Key public key via /get-app-key endpoint
+	var appKeyResult AppKeyResult
 
 	if err := g.httpRequest("POST", "/get-app-key", map[string]interface{}{}, &appKeyResult); err != nil {
 		return nil, fmt.Errorf("failed to get App Key: %w", err)
@@ -261,18 +258,16 @@ func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.Sover
 		return nil, fmt.Errorf("App Key not available: status=%s", appKeyResult.Status)
 	}
 
-	// Request App Key certificate if context is available
+	// Request App Key certificate (delegated certification)
 	var appKeyCertificate []byte
 	var agentUUID string
-	if appKeyResult.AppKeyContext != "" {
-		cert, uuid, err := g.RequestCertificate(appKeyResult.AppKeyPublic, appKeyResult.AppKeyContext, "")
-		if err != nil {
-			g.log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to get App Key certificate, continuing without certificate")
-		} else {
-			appKeyCertificate = cert
-			agentUUID = uuid
-			g.log.Info("Unified-Identity - Phase 3: App Key certificate obtained via delegated certification (App Key signed by AK)")
-		}
+	cert, uuid, err := g.RequestCertificate(appKeyResult.AppKeyPublic, "", nonce)
+	if err != nil {
+		g.log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to get App Key certificate, continuing without certificate")
+	} else {
+		appKeyCertificate = cert
+		agentUUID = uuid
+		g.log.Info("Unified-Identity - Phase 3: App Key certificate obtained via delegated certification (App Key signed by AK)")
 	}
 
 	// Build SovereignAttestation

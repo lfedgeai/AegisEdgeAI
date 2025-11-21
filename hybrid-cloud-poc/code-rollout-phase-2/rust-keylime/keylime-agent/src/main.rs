@@ -325,139 +325,170 @@ async fn main() -> Result<()> {
 
     // Gather EK values and certs
     // If USE_TPM2_QUOTE_DIRECT is set, create EK using tpm2 createek for persistence
-    let (ek_result, ek_persistent_handle) = if std::env::var("USE_TPM2_QUOTE_DIRECT").is_ok() && config.ek_handle.is_empty() {
-        use std::path::PathBuf;
-        use std::fs;
-        use std::process::Command;
-        
-        // Create EK context file path in agent data directory
-        let agent_data_dir = match config.agent_data_path.as_ref() {
-            "" => PathBuf::from("/tmp/keylime-agent"),
-            path => PathBuf::from(path).parent().unwrap_or(PathBuf::from("/tmp/keylime-agent").as_path()).to_path_buf(),
-        };
-        fs::create_dir_all(&agent_data_dir).map_err(|e| {
-            Error::Tpm(tpm::TpmError::HexDecodeError(format!("Failed to create agent data directory: {}", e)))
-        })?;
-        
-        let ek_context_path = agent_data_dir.join("ek.ctx");
-        let ek_context_str = ek_context_path.to_str().ok_or_else(|| {
-            Error::Tpm(tpm::TpmError::HexDecodeError("Invalid EK context file path".to_string()))
-        })?;
-        
-        let ek_pub_path = agent_data_dir.join("ek.pub");
-        let ek_pub_str = ek_pub_path.to_str().ok_or_else(|| {
-            Error::Tpm(tpm::TpmError::HexDecodeError("Invalid EK pub file path".to_string()))
-        })?;
-        
-        let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
-        let ek_persistent_handle_val = 0x81010001;
-        
-        info!("Creating EK using tpm2 createek for tpm2_quote direct mode");
-        
-        // Flush any existing transient handles first
-        let _ = Command::new("tpm2")
-            .arg("flushcontext")
-            .arg("-t")
-            .env("TCTI", &tcti)
-            .output();
-        
-        // Create EK using tpm2 createek
-        let createek_output = Command::new("tpm2")
-            .arg("createek")
-            .env("TCTI", &tcti)
-            .arg("-G")
-            .arg("rsa")
-            .arg("-c")
-            .arg(ek_context_str)
-            .arg("-u")
-            .arg(ek_pub_str)
-            .output()
-            .map_err(|e| {
-                Error::Tpm(tpm::TpmError::HexDecodeError(format!("Failed to execute tpm2 createek: {}", e)))
+    let (ek_result, ek_persistent_handle) =
+        if std::env::var("USE_TPM2_QUOTE_DIRECT").is_ok() && config.ek_handle.is_empty() {
+            use std::fs;
+            use std::path::PathBuf;
+            use std::process::Command;
+
+            // Create EK context file path in agent data directory
+            let agent_data_dir = match config.agent_data_path.as_ref() {
+                "" => PathBuf::from("/tmp/keylime-agent"),
+                path => PathBuf::from(path)
+                    .parent()
+                    .unwrap_or(PathBuf::from("/tmp/keylime-agent").as_path())
+                    .to_path_buf(),
+            };
+            fs::create_dir_all(&agent_data_dir).map_err(|e| {
+                Error::Tpm(tpm::TpmError::HexDecodeError(format!(
+                    "Failed to create agent data directory: {}",
+                    e
+                )))
             })?;
-        
-        if !createek_output.status.success() {
-            let stderr = String::from_utf8_lossy(&createek_output.stderr);
-            warn!("tpm2 createek failed: {}. Falling back to TSS library create_ek.", stderr);
-            // Fall back to TSS library method
-            let ek_result = ctx.create_ek(tpm_encryption_alg, None)?;
-            (ek_result, None)
-        } else {
-            info!("EK created successfully with context file: {}", ek_context_str);
-            
-            // Persist EK to persistent handle
-            let evict_output = Command::new("tpm2")
-                .arg("evictcontrol")
+
+            let ek_context_path = agent_data_dir.join("ek.ctx");
+            let ek_context_str = ek_context_path.to_str().ok_or_else(|| {
+                Error::Tpm(tpm::TpmError::HexDecodeError(
+                    "Invalid EK context file path".to_string(),
+                ))
+            })?;
+
+            let ek_pub_path = agent_data_dir.join("ek.pub");
+            let ek_pub_str = ek_pub_path.to_str().ok_or_else(|| {
+                Error::Tpm(tpm::TpmError::HexDecodeError(
+                    "Invalid EK pub file path".to_string(),
+                ))
+            })?;
+
+            let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
+            let ek_persistent_handle_val = 0x81010001;
+
+            info!("Creating EK using tpm2 createek for tpm2_quote direct mode");
+
+            // Flush any existing transient handles first
+            let _ = Command::new("tpm2")
+                .arg("flushcontext")
+                .arg("-t")
                 .env("TCTI", &tcti)
-                .arg("-C")
-                .arg("o")
+                .output();
+
+            // Create EK using tpm2 createek
+            let createek_output = Command::new("tpm2")
+                .arg("createek")
+                .env("TCTI", &tcti)
+                .arg("-G")
+                .arg("rsa")
                 .arg("-c")
                 .arg(ek_context_str)
-                .arg(&format!("{:#x}", ek_persistent_handle_val))
+                .arg("-u")
+                .arg(ek_pub_str)
                 .output()
                 .map_err(|e| {
-                    Error::Tpm(tpm::TpmError::HexDecodeError(format!("Failed to execute tpm2 evictcontrol for EK: {}", e)))
+                    Error::Tpm(tpm::TpmError::HexDecodeError(format!(
+                        "Failed to execute tpm2 createek: {}",
+                        e
+                    )))
                 })?;
-            
-            if !evict_output.status.success() {
-                let stderr = String::from_utf8_lossy(&evict_output.stderr);
-                warn!("Failed to persist EK: {}. Falling back to TSS library.", stderr);
+
+            if !createek_output.status.success() {
+                let stderr = String::from_utf8_lossy(&createek_output.stderr);
+                warn!(
+                    "tpm2 createek failed: {}. Falling back to TSS library create_ek.",
+                    stderr
+                );
+                // Fall back to TSS library method
                 let ek_result = ctx.create_ek(tpm_encryption_alg, None)?;
                 (ek_result, None)
             } else {
-                info!("EK persisted to handle {:#x}", ek_persistent_handle_val);
-                
-                // Read EK public key to create EKResult
-                // We need to parse the public key file or use tpm2 readpublic
-                let readpub_output = Command::new("tpm2")
-                    .arg("readpublic")
+                info!(
+                    "EK created successfully with context file: {}",
+                    ek_context_str
+                );
+
+                // Persist EK to persistent handle
+                let evict_output = Command::new("tpm2")
+                    .arg("evictcontrol")
                     .env("TCTI", &tcti)
+                    .arg("-C")
+                    .arg("o")
                     .arg("-c")
                     .arg(ek_context_str)
-                    .arg("-f")
-                    .arg("pem")
+                    .arg(&format!("{:#x}", ek_persistent_handle_val))
                     .output()
                     .map_err(|e| {
-                        Error::Tpm(tpm::TpmError::HexDecodeError(format!("Failed to read EK public key: {}", e)))
+                        Error::Tpm(tpm::TpmError::HexDecodeError(format!(
+                            "Failed to execute tpm2 evictcontrol for EK: {}",
+                            e
+                        )))
                     })?;
-                
-                if !readpub_output.status.success() {
-                    let stderr = String::from_utf8_lossy(&readpub_output.stderr);
-                    warn!("Failed to read EK public key: {}. Falling back to TSS library.", stderr);
+
+                if !evict_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&evict_output.stderr);
+                    warn!(
+                        "Failed to persist EK: {}. Falling back to TSS library.",
+                        stderr
+                    );
                     let ek_result = ctx.create_ek(tpm_encryption_alg, None)?;
                     (ek_result, None)
                 } else {
-                    // Load the persistent EK handle
-                    let ek_persistent_handle_tpm = ctx.load_persistent_handle(ek_persistent_handle_val)?;
-                    
-                    // Read public key from persistent handle using TSS library
-                    let (ek_public, _, _) = ctx
-                        .read_public_from_handle(ek_persistent_handle_tpm)
+                    info!("EK persisted to handle {:#x}", ek_persistent_handle_val);
+
+                    // Read EK public key to create EKResult
+                    // We need to parse the public key file or use tpm2 readpublic
+                    let readpub_output = Command::new("tpm2")
+                        .arg("readpublic")
+                        .env("TCTI", &tcti)
+                        .arg("-c")
+                        .arg(ek_context_str)
+                        .arg("-f")
+                        .arg("pem")
+                        .output()
                         .map_err(|e| {
-                            Error::Tpm(e)
+                            Error::Tpm(tpm::TpmError::HexDecodeError(format!(
+                                "Failed to read EK public key: {}",
+                                e
+                            )))
                         })?;
-                    
-                    // Create EKResult from the public key
-                    // EKResult has public, key_handle, ek_cert, and ek_chain fields
-                    let ek_result = tpm::EKResult {
-                        public: ek_public,
-                        key_handle: ek_persistent_handle_tpm,
-                        ek_cert: None, // EK cert not available from tpm2 createek
-                        ek_chain: None, // EK chain not available from tpm2 createek
-                    };
-                    
-                    (ek_result, Some(ek_persistent_handle_val))
+
+                    if !readpub_output.status.success() {
+                        let stderr = String::from_utf8_lossy(&readpub_output.stderr);
+                        warn!(
+                            "Failed to read EK public key: {}. Falling back to TSS library.",
+                            stderr
+                        );
+                        let ek_result = ctx.create_ek(tpm_encryption_alg, None)?;
+                        (ek_result, None)
+                    } else {
+                        // Load the persistent EK handle
+                        let ek_persistent_handle_tpm =
+                            ctx.load_persistent_handle(ek_persistent_handle_val)?;
+
+                        // Read public key from persistent handle using TSS library
+                        let (ek_public, _, _) = ctx
+                            .read_public_from_handle(ek_persistent_handle_tpm)
+                            .map_err(|e| Error::Tpm(e))?;
+
+                        // Create EKResult from the public key
+                        // EKResult has public, key_handle, ek_cert, and ek_chain fields
+                        let ek_result = tpm::EKResult {
+                            public: ek_public,
+                            key_handle: ek_persistent_handle_tpm,
+                            ek_cert: None,  // EK cert not available from tpm2 createek
+                            ek_chain: None, // EK chain not available from tpm2 createek
+                        };
+
+                        (ek_result, Some(ek_persistent_handle_val))
+                    }
                 }
             }
-        }
-    } else {
-        // Use TSS library method (standard)
-        let ek_result = match config.ek_handle.as_ref() {
-            "" => ctx.create_ek(tpm_encryption_alg, None)?,
-            s => ctx.create_ek(tpm_encryption_alg, Some(s))?,
+        } else {
+            // Use TSS library method (standard)
+            let ek_result = match config.ek_handle.as_ref() {
+                "" => ctx.create_ek(tpm_encryption_alg, None)?,
+                s => ctx.create_ek(tpm_encryption_alg, Some(s))?,
+            };
+            (ek_result, None)
         };
-        (ek_result, None)
-    };
 
     // Calculate the SHA-256 hash of the public key in PEM format
     let ek_hash = hash_ek::hash_ek_pubkey(ek_result.public.clone())?;
@@ -528,46 +559,60 @@ async fn main() -> Result<()> {
             // Check if we have a persistent handle stored
             let old_data = match config.agent_data_path.as_ref() {
                 "" => None,
-                path => {
-                    match AgentData::load(Path::new(&path)) {
-                        Ok(data) => Some(data),
-                        Err(_) => None,
-                    }
-                }
+                path => match AgentData::load(Path::new(&path)) {
+                    Ok(data) => Some(data),
+                    Err(_) => None,
+                },
             };
             let persistent = old_data.and_then(|d| d.ak_persistent_handle);
             // If we have a persistent handle, use it instead of the transient one
-            (if let Some(ph) = persistent {
-                ctx.load_persistent_handle(ph)?
-            } else {
-                ak_handle
-            }, ak, persistent)
-        },
+            (
+                if let Some(ph) = persistent {
+                    ctx.load_persistent_handle(ph)?
+                } else {
+                    ak_handle
+                },
+                ak,
+                persistent,
+            )
+        }
         None => {
             // If USE_TPM2_QUOTE_DIRECT is set and we have a persistent EK, create AK using tpm2 createak
-            let (ak_handle, new_ak, persistent_handle) = if std::env::var("USE_TPM2_QUOTE_DIRECT").is_ok() && ek_persistent_handle.is_some() {
-                use std::path::PathBuf;
+            let (ak_handle, new_ak, persistent_handle) = if std::env::var("USE_TPM2_QUOTE_DIRECT")
+                .is_ok()
+                && ek_persistent_handle.is_some()
+            {
                 use std::fs;
+                use std::path::PathBuf;
                 use std::process::Command;
-                
+
                 let ek_persistent_handle_val = ek_persistent_handle.unwrap();
-                
+
                 // Create AK context file path in agent data directory
                 let agent_data_dir = match config.agent_data_path.as_ref() {
                     "" => PathBuf::from("/tmp/keylime-agent"),
-                    path => PathBuf::from(path).parent().unwrap_or(PathBuf::from("/tmp/keylime-agent").as_path()).to_path_buf(),
+                    path => PathBuf::from(path)
+                        .parent()
+                        .unwrap_or(PathBuf::from("/tmp/keylime-agent").as_path())
+                        .to_path_buf(),
                 };
                 fs::create_dir_all(&agent_data_dir).map_err(|e| {
-                    Error::Tpm(tpm::TpmError::HexDecodeError(format!("Failed to create agent data directory: {}", e)))
+                    Error::Tpm(tpm::TpmError::HexDecodeError(format!(
+                        "Failed to create agent data directory: {}",
+                        e
+                    )))
                 })?;
-                
+
                 let ak_context_path = agent_data_dir.join("ak.ctx");
                 let ak_context_str = ak_context_path.to_str().ok_or_else(|| {
-                    Error::Tpm(tpm::TpmError::HexDecodeError("Invalid AK context file path".to_string()))
+                    Error::Tpm(tpm::TpmError::HexDecodeError(
+                        "Invalid AK context file path".to_string(),
+                    ))
                 })?;
-                
-                let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
-                
+
+                let tcti =
+                    std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
+
                 let hash_alg_str = match tpm_hash_alg {
                     keylime::algorithms::HashAlgorithm::Sha256 => "sha256",
                     keylime::algorithms::HashAlgorithm::Sha1 => "sha1",
@@ -575,22 +620,25 @@ async fn main() -> Result<()> {
                     keylime::algorithms::HashAlgorithm::Sha512 => "sha512",
                     _ => "sha256",
                 };
-                
+
                 let sign_alg_str = match tpm_signing_alg {
                     keylime::algorithms::SignAlgorithm::RsaSsa => "rsassa",
                     keylime::algorithms::SignAlgorithm::RsaPss => "rsapss",
                     _ => "rsassa",
                 };
-                
-                info!("Creating AK using tpm2 createak with persistent EK handle {:#x}", ek_persistent_handle_val);
-                
+
+                info!(
+                    "Creating AK using tpm2 createak with persistent EK handle {:#x}",
+                    ek_persistent_handle_val
+                );
+
                 // Flush transient handles first
                 let _ = Command::new("tpm2")
                     .arg("flushcontext")
                     .arg("-t")
                     .env("TCTI", &tcti)
                     .output();
-                
+
                 // Create AK using tpm2 createak with persistent EK handle
                 let createak_output = Command::new("tpm2")
                     .arg("createak")
@@ -607,12 +655,18 @@ async fn main() -> Result<()> {
                     .arg("rsa")
                     .output()
                     .map_err(|e| {
-                        Error::Tpm(tpm::TpmError::HexDecodeError(format!("Failed to execute tpm2 createak: {}", e)))
+                        Error::Tpm(tpm::TpmError::HexDecodeError(format!(
+                            "Failed to execute tpm2 createak: {}",
+                            e
+                        )))
                     })?;
-                
+
                 if !createak_output.status.success() {
                     let stderr = String::from_utf8_lossy(&createak_output.stderr);
-                    warn!("tpm2 createak failed: {}. Falling back to TSS library create_ak.", stderr);
+                    warn!(
+                        "tpm2 createak failed: {}. Falling back to TSS library create_ak.",
+                        stderr
+                    );
                     // Fall back to TSS library method
                     let new_ak = ctx.create_ak(
                         ek_result.key_handle,
@@ -623,8 +677,11 @@ async fn main() -> Result<()> {
                     let ak_handle = ctx.load_ak(ek_result.key_handle, &new_ak)?;
                     (ak_handle, new_ak, None)
                 } else {
-                    info!("AK created successfully with context file: {}", ak_context_str);
-                    
+                    info!(
+                        "AK created successfully with context file: {}",
+                        ak_context_str
+                    );
+
                     // Persist AK to persistent handle
                     let persistent_handle_val = 0x8101000A;
                     let evict_output = Command::new("tpm2")
@@ -637,12 +694,18 @@ async fn main() -> Result<()> {
                         .arg(&format!("{:#x}", persistent_handle_val))
                         .output()
                         .map_err(|e| {
-                            Error::Tpm(tpm::TpmError::HexDecodeError(format!("Failed to execute tpm2 evictcontrol for AK: {}", e)))
+                            Error::Tpm(tpm::TpmError::HexDecodeError(format!(
+                                "Failed to execute tpm2 evictcontrol for AK: {}",
+                                e
+                            )))
                         })?;
-                    
+
                     if !evict_output.status.success() {
                         let stderr = String::from_utf8_lossy(&evict_output.stderr);
-                        warn!("Failed to persist AK: {}. Falling back to TSS library.", stderr);
+                        warn!(
+                            "Failed to persist AK: {}. Falling back to TSS library.",
+                            stderr
+                        );
                         let new_ak = ctx.create_ak(
                             ek_result.key_handle,
                             tpm_hash_alg,
@@ -653,32 +716,35 @@ async fn main() -> Result<()> {
                         (ak_handle, new_ak, None)
                     } else {
                         info!("AK persisted to handle {:#x}", persistent_handle_val);
-                        
+
                         // Set environment variable with AK context file path for quote function
                         std::env::set_var("KEYLIME_AGENT_AK_CONTEXT", ak_context_str);
                         info!("Set KEYLIME_AGENT_AK_CONTEXT={}", ak_context_str);
-                        
+
                         // Load the persistent AK handle (for AgentData, but quote will use context file)
-                        let ak_persistent_handle_tpm = ctx.load_persistent_handle(persistent_handle_val)?;
-                        
+                        let ak_persistent_handle_tpm =
+                            ctx.load_persistent_handle(persistent_handle_val)?;
+
                         // Read public key from persistent handle to create AKResult
                         let (ak_public, _, _) = ctx
                             .read_public_from_handle(ak_persistent_handle_tpm)
-                            .map_err(|e| {
-                                Error::Tpm(e)
-                            })?;
-                        
+                            .map_err(|e| Error::Tpm(e))?;
+
                         // Create AKResult from the public key
                         // The private key is in the context file, but we need a minimal one for AgentData
                         use tss_esapi::structures::Private;
                         let ak_private = Private::try_from(vec![0u8; 1]).unwrap(); // Dummy private key - real one is in ak.ctx
-                        
+
                         let new_ak = tpm::AKResult {
                             public: ak_public,
                             private: ak_private,
                         };
-                        
-                        (ak_persistent_handle_tpm, new_ak, Some(persistent_handle_val))
+
+                        (
+                            ak_persistent_handle_tpm,
+                            new_ak,
+                            Some(persistent_handle_val),
+                        )
                     }
                 }
             } else {
@@ -690,74 +756,99 @@ async fn main() -> Result<()> {
                     tpm_signing_alg,
                 )?;
                 let ak_handle = ctx.load_ak(ek_result.key_handle, &new_ak)?;
-                
+
                 // If USE_TPM2_QUOTE_DIRECT is set but EK is not persistent, try to save the AK context and persist it
                 let persistent_handle = if std::env::var("USE_TPM2_QUOTE_DIRECT").is_ok() {
-                    use std::path::PathBuf;
                     use std::fs;
+                    use std::path::PathBuf;
                     use std::process::Command;
-                    
+
                     // Create AK context file path in agent data directory
                     let agent_data_dir = match config.agent_data_path.as_ref() {
                         "" => PathBuf::from("/tmp/keylime-agent"),
-                        path => PathBuf::from(path).parent().unwrap_or(PathBuf::from("/tmp/keylime-agent").as_path()).to_path_buf(),
+                        path => PathBuf::from(path)
+                            .parent()
+                            .unwrap_or(PathBuf::from("/tmp/keylime-agent").as_path())
+                            .to_path_buf(),
                     };
                     fs::create_dir_all(&agent_data_dir).map_err(|e| {
-                        Error::Tpm(tpm::TpmError::HexDecodeError(format!("Failed to create agent data directory: {}", e)))
+                        Error::Tpm(tpm::TpmError::HexDecodeError(format!(
+                            "Failed to create agent data directory: {}",
+                            e
+                        )))
                     })?;
-                    
+
                     let ak_context_path = agent_data_dir.join("ak.ctx");
                     let ak_context_str = ak_context_path.to_str().ok_or_else(|| {
-                        Error::Tpm(tpm::TpmError::HexDecodeError("Invalid context file path".to_string()))
+                        Error::Tpm(tpm::TpmError::HexDecodeError(
+                            "Invalid context file path".to_string(),
+                        ))
                     })?;
-                    
-                    let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
+
+                    let tcti =
+                        std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
                     let ak_handle_str = format!("{:#x}", u32::from(ak_handle));
-                    
-                    info!("Attempting to save AK context for tpm2_quote direct mode (handle: {})", ak_handle_str);
-                    
+
+                    info!(
+                        "Attempting to save AK context for tpm2_quote direct mode (handle: {})",
+                        ak_handle_str
+                    );
+
                     // Try to save the context using TSS library's context_save, then serialize it
                     // The context needs to be in TPM2B_CONTEXT format for tpm2-tools
                     match ctx.save_ak_context_to_file(ak_handle, ak_context_str) {
                         Ok(_) => {
                             info!("Saved AK context to file: {}", ak_context_str);
-                            
+
                             // Now try to persist it using the context file
                             let persistent_handle_val = 0x8101000A;
-                            match ctx.persist_ak_from_context_file(ak_context_str, persistent_handle_val) {
+                            match ctx
+                                .persist_ak_from_context_file(ak_context_str, persistent_handle_val)
+                            {
                                 Ok(_) => {
-                                    info!("AK persisted to handle {:#x} using saved context file", persistent_handle_val);
+                                    info!(
+                                        "AK persisted to handle {:#x} using saved context file",
+                                        persistent_handle_val
+                                    );
                                     Some(persistent_handle_val)
-                                },
+                                }
                                 Err(e) => {
                                     warn!("Failed to persist AK from context file: {}. Will use transient handle.", e);
                                     None
                                 }
                             }
-                        },
+                        }
                         Err(e) => {
-                            warn!("Failed to save AK context: {}. Cannot use tpm2_quote direct mode.", e);
+                            warn!(
+                                "Failed to save AK context: {}. Cannot use tpm2_quote direct mode.",
+                                e
+                            );
                             None
                         }
                     }
                 } else {
                     None
                 };
-                
-                (if let Some(ph) = persistent_handle {
-                    // Use persistent handle if available
-                    ctx.load_persistent_handle(ph)?
-                } else {
-                    ak_handle
-                }, new_ak, persistent_handle)
+
+                (
+                    if let Some(ph) = persistent_handle {
+                        // Use persistent handle if available
+                        ctx.load_persistent_handle(ph)?
+                    } else {
+                        ak_handle
+                    },
+                    new_ak,
+                    persistent_handle,
+                )
             };
-            
+
             (ak_handle, new_ak, persistent_handle)
         }
     };
 
     // Store new AgentData with persistent handle
-    let mut agent_data_new = AgentData::create(tpm_hash_alg, tpm_signing_alg, &ak, ek_hash.as_bytes())?;
+    let mut agent_data_new =
+        AgentData::create(tpm_hash_alg, tpm_signing_alg, &ak, ek_hash.as_bytes())?;
     agent_data_new.ak_persistent_handle = persistent_handle;
 
     match config.agent_data_path.as_ref() {
@@ -1092,13 +1183,13 @@ async fn main() -> Result<()> {
     };
 
     let port = config.port;
-    
+
     // Unified-Identity - Phase 3: Support UDS socket for delegated certification
     // Note: Actix-web 4.x doesn't natively support Unix domain sockets.
     // For now, we'll use HTTP over localhost. UDS support can be added later
     // using a custom server implementation or by upgrading to a version that supports it.
     // The endpoint will be accessible via HTTP at http://127.0.0.1:{port}/v2.2/delegated_certification/certify_app_key
-    
+
     // Standard TCP binding (UDS support to be added in future)
     // HARDCODED: Always use HTTP for simplified deployment (no mTLS required)
     // if config.enable_agent_mtls && ssl_context.is_some() {
@@ -1111,9 +1202,9 @@ async fn main() -> Result<()> {
     //     info!("Listening on https://{ip}:{port}");
     //     info!("Unified-Identity - Phase 3: Delegated certification endpoint available at https://{ip}:{port}/v2.2/delegated_certification/certify_app_key");
     // } else {
-        server = actix_server.bind(format!("{ip}:{port}"))?.run();
-        info!("Listening on http://{ip}:{port}");
-        info!("Unified-Identity - Phase 3: Delegated certification endpoint available at http://{ip}:{port}/v2.2/delegated_certification/certify_app_key");
+    server = actix_server.bind(format!("{ip}:{port}"))?.run();
+    info!("Listening on http://{ip}:{port}");
+    info!("Unified-Identity - Phase 3: Delegated certification endpoint available at http://{ip}:{port}/v2.2/delegated_certification/certify_app_key");
     // }
 
     let server_handle = server.handle();

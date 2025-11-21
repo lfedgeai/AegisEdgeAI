@@ -59,9 +59,15 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
                     });
                 }
 
-                if line_lower.contains("gnss") || line_lower.contains("gps") || line_lower.contains("nmea") {
+                if line_lower.contains("gnss")
+                    || line_lower.contains("gps")
+                    || line_lower.contains("nmea")
+                {
                     let sensor_id = extract_usb_id(line);
-                    info!("Unified-Identity - Phase 3: GNSS/GPS sensor detected via lsusb: {}", sensor_id);
+                    info!(
+                        "Unified-Identity - Phase 3: GNSS/GPS sensor detected via lsusb: {}",
+                        sensor_id
+                    );
                     return Some(Geolocation {
                         r#type: Some("gnss".to_string()),
                         sensor_id: Some(sensor_id),
@@ -75,16 +81,14 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
         }
     }
 
-    let gnss_paths = [
-        "/dev/ttyUSB0",
-        "/dev/ttyACM0",
-        "/dev/gps",
-        "/dev/gps0",
-    ];
+    let gnss_paths = ["/dev/ttyUSB0", "/dev/ttyACM0", "/dev/gps", "/dev/gps0"];
 
     for path in &gnss_paths {
         if std::path::Path::new(path).exists() {
-            info!("Unified-Identity - Phase 3: GNSS device detected at {}", path);
+            info!(
+                "Unified-Identity - Phase 3: GNSS device detected at {}",
+                path
+            );
             return Some(Geolocation {
                 r#type: Some("gnss".to_string()),
                 sensor_id: Some(path.to_string()),
@@ -95,7 +99,6 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
 
     None
 }
-
 
 // This is a Quote request from the tenant, which does not check
 // integrity measurement. It should return this data:

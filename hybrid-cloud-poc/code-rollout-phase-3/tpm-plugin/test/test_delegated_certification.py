@@ -63,7 +63,8 @@ class TestDelegatedCertificationClient(unittest.TestCase):
         try:
             success, cert_b64, agent_uuid, error = client.request_certificate(
                 app_key_public="-----BEGIN PUBLIC KEY-----\nTEST\n-----END PUBLIC KEY-----",
-                app_key_context_path=ctx_path
+                app_key_context_path=ctx_path,
+                challenge_nonce="test-nonce"
             )
             
             self.assertTrue(success)
@@ -92,7 +93,8 @@ class TestDelegatedCertificationClient(unittest.TestCase):
         try:
             success, cert_b64, agent_uuid, error = client.request_certificate(
                 app_key_public="-----BEGIN PUBLIC KEY-----\nTEST\n-----END PUBLIC KEY-----",
-                app_key_context_path=ctx_path
+                app_key_context_path=ctx_path,
+                challenge_nonce="test-nonce"
             )
             
             self.assertFalse(success)
@@ -115,7 +117,8 @@ class TestDelegatedCertificationClient(unittest.TestCase):
         try:
             success, cert_b64, agent_uuid, error = client.request_certificate(
                 app_key_public="-----BEGIN PUBLIC KEY-----\nTEST\n-----END PUBLIC KEY-----",
-                app_key_context_path=ctx_path
+                app_key_context_path=ctx_path,
+                challenge_nonce="test-nonce"
             )
             
             self.assertFalse(success)

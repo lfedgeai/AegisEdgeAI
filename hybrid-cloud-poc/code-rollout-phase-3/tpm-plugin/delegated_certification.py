@@ -144,7 +144,7 @@ class DelegatedCertificationClient:
             )
 
     def request_certificate(
-        self, app_key_public: str, app_key_context_path: str
+        self, app_key_public: str, app_key_context_path: str, challenge_nonce: str
     ) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
         """
         Request App Key certificate from rust-keylime Agent.
@@ -171,6 +171,7 @@ class DelegatedCertificationClient:
             "command": "certify_app_key",
             "app_key_public": app_key_public,
             "app_key_context_path": app_key_context_path,
+            "challenge_nonce": challenge_nonce,
         }
 
         request_json = json.dumps(request)

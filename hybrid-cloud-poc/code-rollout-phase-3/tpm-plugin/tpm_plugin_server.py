@@ -85,7 +85,6 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
                 return
             
             app_key_public = plugin.get_app_key_public()
-            app_key_context = plugin.get_app_key_context()
             
             if not app_key_public:
                 self.send_error(500, "Unified-Identity - Phase 3: App Key not generated")
@@ -93,8 +92,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             
             response = {
                 "status": "success",
-                "app_key_public": app_key_public,
-                "app_key_context": app_key_context
+                "app_key_public": app_key_public
             }
             
             self.send_json_response(200, response)
@@ -106,11 +104,19 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         """Handle /request-certificate endpoint"""
         try:
             app_key_public = request_data.get("app_key_public")
-            app_key_context_path = request_data.get("app_key_context_path")
+            challenge_nonce = request_data.get("challenge_nonce")
             endpoint = request_data.get("endpoint")
             
-            if not app_key_public or not app_key_context_path:
-                self.send_error(400, "Unified-Identity - Phase 3: app_key_public and app_key_context_path are required")
+            if not app_key_public or not challenge_nonce:
+                self.send_error(400, "Unified-Identity - Phase 3: app_key_public and challenge_nonce are required")
+                return
+            
+            app_key_context_path = None
+            plugin = self.plugin
+            if plugin is not None:
+                app_key_context_path = plugin.get_app_key_context()
+            if not app_key_context_path:
+                self.send_error(500, "Unified-Identity - Phase 3: App Key context unavailable")
                 return
             
             # Default to HTTP endpoint if not provided or if it's the old UDS default
@@ -125,7 +131,8 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             client = DelegatedCertificationClient(endpoint=endpoint)
             success, cert_b64, agent_uuid, error = client.request_certificate(
                 app_key_public=app_key_public,
-                app_key_context_path=app_key_context_path
+                app_key_context_path=app_key_context_path,
+                challenge_nonce=challenge_nonce
             )
             
             if not success:

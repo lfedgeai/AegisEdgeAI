@@ -508,8 +508,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 
 ---
 
-### 2. Keylime Verifier — Fetch Geolocation Sensor Info During Quote Retrieval
-
+### 2. Keylime Verifier — Fetch Geolocation Sensor Info During Quote Retrieval -- gap fixed
 **Current State:** Quote is fetched, but geolocation sensor ID (mobile/gnss) and geolocation details (gnss) are not extracted
 
 **Issue:** Missing sensor metadata for geolocation attestation
@@ -522,7 +521,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 
 ---
 
-### 3. SPIRE Agent — Delegated Certificate Request Improvements
+### 3. SPIRE Agent — Delegated Certificate Request Improvements -- gap fixed
 
 #### 3.1. TPM App Key Context Should Not Be Sent Back to SPIRE Agent
 
@@ -591,6 +590,13 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 - **Geolocation Data Format**: Define the format for sensor ID and GNSS data in the quote response
 - **UDS Socket Permissions**: Ensure proper file permissions and ownership for UDS sockets
 - **mTLS Certificate Management**: Ensure verifier and agent have proper certificate chains and trust anchors
+
+### Mobile location verification sensor microservice
+- prestep: configure the mobile location verification sensor microservice to use a simple sqlite database to convert the sensor id into a phone number (default is )
+- keylime verifier passes the geolocation sensor id  to the mobile location verification sensor microservice
+- the mobile location verification sensor microservice converts the sensor id into a phone number by looking a simple sqlite database
+- the mobile location verification sensor microservice connects to the camara APIs and returns the verification result true/false to the keylime verifier; if the verification result is false, the keylime verifier will not issue the SVID to the spire agent
+
 
 ---
 

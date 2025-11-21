@@ -775,7 +775,10 @@ impl Context<'_> {
     /// # Returns
     ///
     /// A tuple of (TssPublic, name, qualified_name) if successful, a TpmError otherwise
-    pub fn read_public_from_handle(&mut self, key_handle: KeyHandle) -> Result<(TssPublic, Name, Name)> {
+    pub fn read_public_from_handle(
+        &mut self,
+        key_handle: KeyHandle,
+    ) -> Result<(TssPublic, Name, Name)> {
         let mut ctx = self.inner.lock().unwrap(); //#[allow_ci]
         ctx.read_public(key_handle.into())
             .map_err(|source| TpmError::TSSReadPublicError { source })
@@ -792,15 +795,23 @@ impl Context<'_> {
     /// # Returns
     ///
     /// Ok(()) if successful, a TpmError otherwise
-    pub fn save_ak_context_to_file(&mut self, ak_handle: KeyHandle, context_path: &str) -> Result<()> {
+    pub fn save_ak_context_to_file(
+        &mut self,
+        ak_handle: KeyHandle,
+        context_path: &str,
+    ) -> Result<()> {
         use std::process::Command;
-        
+
         // Get TCTI from environment
         let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
         let ak_handle_str = format!("{:#x}", u32::from(ak_handle));
-        
-        log::info!("Saving AK context (handle: {}) to file: {}", ak_handle_str, context_path);
-        
+
+        log::info!(
+            "Saving AK context (handle: {}) to file: {}",
+            ak_handle_str,
+            context_path
+        );
+
         // Use tpm2 contextsave command
         // Note: This only works if the handle is still in the TPM session
         let output = Command::new("tpm2")
@@ -811,8 +822,10 @@ impl Context<'_> {
             .arg("-o")
             .arg(context_path)
             .output()
-            .map_err(|e| TpmError::HexDecodeError(format!("Failed to execute tpm2 contextsave: {}", e)))?;
-        
+            .map_err(|e| {
+                TpmError::HexDecodeError(format!("Failed to execute tpm2 contextsave: {}", e))
+            })?;
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             log::warn!("tpm2 contextsave failed: {}", stderr);
@@ -821,7 +834,7 @@ impl Context<'_> {
                 stderr
             )));
         }
-        
+
         log::info!("AK context saved to file: {}", context_path);
         Ok(())
     }
@@ -843,26 +856,32 @@ impl Context<'_> {
         persistent_handle: u32,
     ) -> Result<KeyHandle> {
         use std::process::Command;
-        
+
         // Get TCTI from environment
         let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
-        
+
         let persistent_handle_str = format!("{:#x}", persistent_handle);
-        
-        log::info!("Persisting AK from context file {} to persistent handle {}", ak_context_path, persistent_handle_str);
-        
+
+        log::info!(
+            "Persisting AK from context file {} to persistent handle {}",
+            ak_context_path,
+            persistent_handle_str
+        );
+
         // Use tpm2 evictcontrol with the context file
         let output = Command::new("tpm2")
             .arg("evictcontrol")
             .env("TCTI", &tcti)
             .arg("-C")
-            .arg("o")  // Owner hierarchy
+            .arg("o") // Owner hierarchy
             .arg("-c")
             .arg(ak_context_path)
             .arg(&persistent_handle_str)
             .output()
-            .map_err(|e| TpmError::HexDecodeError(format!("Failed to execute tpm2 evictcontrol: {}", e)))?;
-        
+            .map_err(|e| {
+                TpmError::HexDecodeError(format!("Failed to execute tpm2 evictcontrol: {}", e))
+            })?;
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             log::error!("tpm2 evictcontrol failed: {}", stderr);
@@ -871,29 +890,34 @@ impl Context<'_> {
                 stderr
             )));
         }
-        
-        log::info!("AK persisted successfully to handle {} using tpm2 evictcontrol", persistent_handle_str);
-        
+
+        log::info!(
+            "AK persisted successfully to handle {} using tpm2 evictcontrol",
+            persistent_handle_str
+        );
+
         // Convert persistent handle to KeyHandle
         let mut ctx = self.inner.lock().unwrap(); //#[allow_ci]
-        let persistent_tpm_handle = PersistentTpmHandle::new(persistent_handle)
-            .map_err(|source| TpmError::TSSNewPersistentHandleError {
-                handle: persistent_handle_str.clone(),
-                source,
+        let persistent_tpm_handle =
+            PersistentTpmHandle::new(persistent_handle).map_err(|source| {
+                TpmError::TSSNewPersistentHandleError {
+                    handle: persistent_handle_str.clone(),
+                    source,
+                }
             })?;
-        
+
         let persistent_key_handle = ctx
             .tr_from_tpm_public(TpmHandle::Persistent(persistent_tpm_handle))
             .map_err(|source| TpmError::TSSHandleFromPersistentHandleError {
                 handle: persistent_handle_str,
                 source,
             })?;
-        
+
         Ok(KeyHandle::from(persistent_key_handle))
     }
 
     /// Loads a key from a context file using tpm2 load and converts it to a TSS KeyHandle.
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `context_path` - Path to the key context file (created by tpm2 createak or similar)
@@ -902,20 +926,27 @@ impl Context<'_> {
     ///
     /// The loaded KeyHandle if successful, a TpmError otherwise
     pub fn load_key_from_context_file(&mut self, context_path: &str) -> Result<KeyHandle> {
-        use std::process::Command;
         use std::path::Path;
+        use std::process::Command;
         use tss_esapi::handles::{PersistentTpmHandle, TpmHandle};
-        
+
         // Check if the path looks like a persistent handle (starts with "0x" or is numeric)
         let trimmed = context_path.trim();
-        if trimmed.starts_with("0x") || (trimmed.chars().all(|c| c.is_ascii_hexdigit()) && trimmed.len() <= 10) {
+        if trimmed.starts_with("0x")
+            || (trimmed.chars().all(|c| c.is_ascii_hexdigit()) && trimmed.len() <= 10)
+        {
             // It's a handle string - parse and load it directly
-            let handle_val = u32::from_str_radix(trimmed.trim_start_matches("0x"), 16)
-                .map_err(|e| TpmError::HexDecodeError(format!("Failed to parse handle from '{}': {}", context_path, e)))?;
+            let handle_val =
+                u32::from_str_radix(trimmed.trim_start_matches("0x"), 16).map_err(|e| {
+                    TpmError::HexDecodeError(format!(
+                        "Failed to parse handle from '{}': {}",
+                        context_path, e
+                    ))
+                })?;
             log::info!("Loading key from persistent handle: {:#x}", handle_val);
             return self.load_persistent_handle(handle_val);
         }
-        
+
         // It's a file path - check if file exists
         let path = Path::new(context_path);
         if !path.exists() {
@@ -923,7 +954,10 @@ impl Context<'_> {
             // Try parsing as decimal first, then hex
             if let Ok(handle_val) = u32::from_str_radix(trimmed, 10) {
                 if handle_val >= 0x81000000 && handle_val <= 0x81FFFFFF {
-                    log::info!("File not found, treating as decimal handle: {:#x}", handle_val);
+                    log::info!(
+                        "File not found, treating as decimal handle: {:#x}",
+                        handle_val
+                    );
                     return self.load_persistent_handle(handle_val);
                 }
             }
@@ -938,14 +972,14 @@ impl Context<'_> {
                 context_path
             )));
         }
-        
+
         // File exists - try to read the handle from it
         // Since App Keys are persisted, we should use the persistent handle directly
         // But first, try to verify the context file is valid using tpm2_readpublic
         let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
-        
+
         log::info!("Loading key from context file: {}", context_path);
-        
+
         // Try to read public key from the context file to verify it exists
         let output = Command::new("tpm2")
             .arg("readpublic")
@@ -953,17 +987,25 @@ impl Context<'_> {
             .arg("-c")
             .arg(context_path)
             .output()
-            .map_err(|e| TpmError::HexDecodeError(format!("Failed to execute tpm2 readpublic: {}", e)))?;
-        
+            .map_err(|e| {
+                TpmError::HexDecodeError(format!("Failed to execute tpm2 readpublic: {}", e))
+            })?;
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             // Context file is invalid (key was persisted and context flushed)
             // Use the default App Key persistent handle
-            log::warn!("tpm2 readpublic failed for context file {}: {}", context_path, stderr);
-            log::info!("Context file invalid after persistence, using default App Key handle 0x8101000B");
+            log::warn!(
+                "tpm2 readpublic failed for context file {}: {}",
+                context_path,
+                stderr
+            );
+            log::info!(
+                "Context file invalid after persistence, using default App Key handle 0x8101000B"
+            );
             return self.load_persistent_handle(0x8101000B);
         }
-        
+
         // Context file is valid - but since the key is persisted, use the persistent handle
         // The App Key is always persisted at 0x8101000B
         log::info!("Context file valid, but key is persisted. Using persistent handle 0x8101000B");
@@ -980,29 +1022,42 @@ impl Context<'_> {
     /// # Returns
     ///
     /// The persistent KeyHandle if successful, a TpmError otherwise
-    pub fn persist_ak(&mut self, ak_handle: KeyHandle, persistent_handle: u32) -> Result<KeyHandle> {
+    pub fn persist_ak(
+        &mut self,
+        ak_handle: KeyHandle,
+        persistent_handle: u32,
+    ) -> Result<KeyHandle> {
         use std::process::Command;
         use tempfile::NamedTempFile;
-        
+
         // Get TCTI from environment
         let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
-        
+
         let ak_handle_str = format!("{:#x}", u32::from(ak_handle));
         let persistent_handle_str = format!("{:#x}", persistent_handle);
-        
-        log::info!("Persisting AK from handle {} to persistent handle {}", ak_handle_str, persistent_handle_str);
-        
+
+        log::info!(
+            "Persisting AK from handle {} to persistent handle {}",
+            ak_handle_str,
+            persistent_handle_str
+        );
+
         // First, save the context to a file using tpm2 contextsave
         // We need to use the TSS library to save the context, then serialize it
         let mut ctx = self.inner.lock().unwrap(); //#[allow_ci]
         let context_struct = ctx
             .context_save(ak_handle.into())
             .map_err(|source| TpmError::TSSQuoteError { source })?;
-        
+
         // Create a temporary context file
-        let ak_context_file = NamedTempFile::new().map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp AK context file: {}", e)))?;
-        let ak_context_path = ak_context_file.path().to_str().ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
-        
+        let ak_context_file = NamedTempFile::new().map_err(|e| {
+            TpmError::HexDecodeError(format!("Failed to create temp AK context file: {}", e))
+        })?;
+        let ak_context_path = ak_context_file
+            .path()
+            .to_str()
+            .ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
+
         // Try using tpm2 contextsave with the handle - if that fails, we'll need to serialize manually
         // But first, let's try a simpler approach: use tpm2 evictcontrol with the handle directly
         // after ensuring the handle is still accessible
@@ -1010,46 +1065,60 @@ impl Context<'_> {
             .arg("evictcontrol")
             .env("TCTI", &tcti)
             .arg("-C")
-            .arg("o")  // Owner hierarchy
+            .arg("o") // Owner hierarchy
             .arg("-c")
             .arg(&ak_handle_str)
             .arg(&persistent_handle_str)
             .output()
-            .map_err(|e| TpmError::HexDecodeError(format!("Failed to execute tpm2 evictcontrol: {}", e)))?;
-        
+            .map_err(|e| {
+                TpmError::HexDecodeError(format!("Failed to execute tpm2 evictcontrol: {}", e))
+            })?;
+
         if !output.status.success() {
             // tpm2 evictcontrol failed - transient handles aren't accessible to tpm2-tools
             // This is expected. The TSS library's evict_control also requires complex session setup.
             // For now, we'll return an error and the agent will continue with transient handles.
             // In production, you may want to manually persist the AK using tpm2-tools after agent startup.
             let stderr = String::from_utf8_lossy(&output.stderr);
-            log::warn!("Cannot persist transient AK handle via tpm2 evictcontrol: {}", stderr);
+            log::warn!(
+                "Cannot persist transient AK handle via tpm2 evictcontrol: {}",
+                stderr
+            );
             log::warn!("The handle is only accessible within the TSS library context.");
-            log::warn!("Agent will continue with transient handle. For persistent handles, consider:");
-            log::warn!("  1. Using tpm2 createak to create AK with context file, then evictcontrol");
+            log::warn!(
+                "Agent will continue with transient handle. For persistent handles, consider:"
+            );
+            log::warn!(
+                "  1. Using tpm2 createak to create AK with context file, then evictcontrol"
+            );
             log::warn!("  2. Or manually persisting after agent creates the AK");
             return Err(TpmError::HexDecodeError(format!(
                 "Cannot persist transient handle. Transient handles are only accessible via TSS library context."
             )));
         }
-        
-        log::info!("AK persisted successfully to handle {} using tpm2 evictcontrol", persistent_handle_str);
-        
+
+        log::info!(
+            "AK persisted successfully to handle {} using tpm2 evictcontrol",
+            persistent_handle_str
+        );
+
         // Convert persistent handle to KeyHandle
         let mut ctx = self.inner.lock().unwrap(); //#[allow_ci]
-        let persistent_tpm_handle = PersistentTpmHandle::new(persistent_handle)
-            .map_err(|source| TpmError::TSSNewPersistentHandleError {
-                handle: persistent_handle_str.clone(),
-                source,
+        let persistent_tpm_handle =
+            PersistentTpmHandle::new(persistent_handle).map_err(|source| {
+                TpmError::TSSNewPersistentHandleError {
+                    handle: persistent_handle_str.clone(),
+                    source,
+                }
             })?;
-        
+
         let persistent_key_handle = ctx
             .tr_from_tpm_public(TpmHandle::Persistent(persistent_tpm_handle))
             .map_err(|source| TpmError::TSSHandleFromPersistentHandleError {
                 handle: persistent_handle_str,
                 source,
             })?;
-        
+
         Ok(KeyHandle::from(persistent_key_handle))
     }
 
@@ -1064,20 +1133,22 @@ impl Context<'_> {
     /// The KeyHandle if successful, a TpmError otherwise
     pub fn load_persistent_handle(&mut self, persistent_handle: u32) -> Result<KeyHandle> {
         let mut ctx = self.inner.lock().unwrap(); //#[allow_ci]
-        
-        let persistent_tpm_handle = PersistentTpmHandle::new(persistent_handle)
-            .map_err(|source| TpmError::TSSNewPersistentHandleError {
-                handle: format!("{:#x}", persistent_handle),
-                source,
+
+        let persistent_tpm_handle =
+            PersistentTpmHandle::new(persistent_handle).map_err(|source| {
+                TpmError::TSSNewPersistentHandleError {
+                    handle: format!("{:#x}", persistent_handle),
+                    source,
+                }
             })?;
-        
+
         let persistent_key_handle = ctx
             .tr_from_tpm_public(TpmHandle::Persistent(persistent_tpm_handle))
             .map_err(|source| TpmError::TSSHandleFromPersistentHandleError {
                 handle: format!("{:#x}", persistent_handle),
                 source,
             })?;
-        
+
         Ok(KeyHandle::from(persistent_key_handle))
     }
 
@@ -1731,7 +1802,7 @@ impl Context<'_> {
         // to avoid TSS context lock conflicts
         let use_tpm2_quote_direct = std::env::var("USE_TPM2_QUOTE_DIRECT").is_ok()
             && std::env::var("KEYLIME_AGENT_AK_CONTEXT").is_ok();
-        
+
         let nk_digest = pubkey_to_tpm_digest(pubkey, hash_alg)?;
 
         // Only extend PCR 16 if we're not using tpm2_quote directly
@@ -1739,7 +1810,7 @@ impl Context<'_> {
         let pcrlist = if use_tpm2_quote_direct {
             // Build PCR list without extending PCR 16 (tpm2_quote will read current PCR values)
             let mut pcrs = read_mask(mask)?;
-            
+
             // For identity quotes (mask == 0), include PCRs 0-7 by default
             if mask == 0 && pcrs.is_empty() {
                 pcrs = vec![
@@ -1753,16 +1824,18 @@ impl Context<'_> {
                     PcrSlot::Slot7,
                 ];
             }
-            
+
             // Add PCR 16 (but don't extend it - tpm2_quote will read current value)
             if !pcrs.contains(&PcrSlot::Slot16) {
                 let mut slot16 = vec![PcrSlot::Slot16];
                 pcrs.append(&mut slot16);
             }
-            
+
             let mut pcrlist = PcrSelectionListBuilder::new();
             pcrlist = pcrlist.with_selection(hash_alg.into(), &pcrs);
-            pcrlist.build().map_err(|source| TpmError::TSSPCRSelectionBuildError { source })?
+            pcrlist
+                .build()
+                .map_err(|source| TpmError::TSSPCRSelectionBuildError { source })?
         } else {
             // Standard path: extend PCR 16 before quoting
             self.build_pcr_list(nk_digest, mask, hash_alg.into())?
@@ -2520,11 +2593,17 @@ fn perform_quote_with_tpm2_command_using_context(
     use std::fs;
     use std::process::Command;
     use tempfile::NamedTempFile;
-    
+
     // Log immediately to verify function is called
-    eprintln!("[TPM] perform_quote_with_tpm2_command_using_context called with context file: {}", ak_context_path);
-    log::info!("Using tpm2_quote command directly with context file: {}", ak_context_path);
-    
+    eprintln!(
+        "[TPM] perform_quote_with_tpm2_command_using_context called with context file: {}",
+        ak_context_path
+    );
+    log::info!(
+        "Using tpm2_quote command directly with context file: {}",
+        ak_context_path
+    );
+
     // Get TCTI from environment - use direct device to avoid resource manager deadlock
     let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpm0".to_string());
     // If using resource manager, try direct device instead to avoid deadlock
@@ -2535,11 +2614,11 @@ fn perform_quote_with_tpm2_command_using_context(
         tcti
     };
     log::info!("Using TCTI: {}", tcti);
-    
+
     // Convert nonce to hex
     let nonce_hex = hex::encode(nonce);
     log::info!("Nonce (hex): {}", nonce_hex);
-    
+
     // Build PCR list string (e.g., "sha256:0,1,2,3,4,5,6,7")
     let hash_alg_str = match hash_alg {
         HashingAlgorithm::Sha256 => "sha256",
@@ -2548,7 +2627,7 @@ fn perform_quote_with_tpm2_command_using_context(
         HashingAlgorithm::Sha512 => "sha512",
         _ => "sha256",
     };
-    
+
     // Convert PcrSelectionList to TPML_PCR_SELECTION to iterate
     let pcrsel: TPML_PCR_SELECTION = pcrlist.clone().into();
     let mut pcr_slots = Vec::new();
@@ -2568,21 +2647,36 @@ fn perform_quote_with_tpm2_command_using_context(
             }
         }
     }
-    
+
     let pcr_list_str = format!("{}:{}", hash_alg_str, pcr_slots.join(","));
     log::debug!("PCR list: {}", pcr_list_str);
-    
+
     // Create temporary files for quote output
     log::debug!("Creating temporary files for quote output");
-    let quote_msg_file = NamedTempFile::new().map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp quote message file: {}", e)))?;
-    let quote_msg_path = quote_msg_file.path().to_str().ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
-    
-    let quote_sig_file = NamedTempFile::new().map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp quote signature file: {}", e)))?;
-    let quote_sig_path = quote_sig_file.path().to_str().ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
-    
-    let quote_pcrs_file = NamedTempFile::new().map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp quote PCRs file: {}", e)))?;
-    let quote_pcrs_path = quote_pcrs_file.path().to_str().ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
-    
+    let quote_msg_file = NamedTempFile::new().map_err(|e| {
+        TpmError::HexDecodeError(format!("Failed to create temp quote message file: {}", e))
+    })?;
+    let quote_msg_path = quote_msg_file
+        .path()
+        .to_str()
+        .ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
+
+    let quote_sig_file = NamedTempFile::new().map_err(|e| {
+        TpmError::HexDecodeError(format!("Failed to create temp quote signature file: {}", e))
+    })?;
+    let quote_sig_path = quote_sig_file
+        .path()
+        .to_str()
+        .ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
+
+    let quote_pcrs_file = NamedTempFile::new().map_err(|e| {
+        TpmError::HexDecodeError(format!("Failed to create temp quote PCRs file: {}", e))
+    })?;
+    let quote_pcrs_path = quote_pcrs_file
+        .path()
+        .to_str()
+        .ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
+
     // Execute tpm2_quote command with context file
     // IMPORTANT: Use direct device TCTI to avoid deadlock with TSS resource manager
     log::info!("Executing tpm2_quote subprocess with TCTI: {}", tcti);
@@ -2605,96 +2699,105 @@ fn perform_quote_with_tpm2_command_using_context(
             log::error!("Failed to execute tpm2_quote: {}", e);
             TpmError::HexDecodeError(format!("Failed to execute tpm2_quote: {}", e))
         })?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         log::error!("tpm2_quote failed: {}", stderr);
-        return Err(TpmError::HexDecodeError(format!("tpm2_quote failed: {}", stderr)));
+        return Err(TpmError::HexDecodeError(format!(
+            "tpm2_quote failed: {}",
+            stderr
+        )));
     }
-    
+
     log::info!("tpm2_quote completed successfully");
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         log::error!("tpm2_quote failed: stderr={}, stdout={}", stderr, stdout);
-        return Err(TpmError::HexDecodeError(format!("tpm2_quote failed: {}", stderr)));
+        return Err(TpmError::HexDecodeError(format!(
+            "tpm2_quote failed: {}",
+            stderr
+        )));
     }
-    
+
     log::info!("tpm2_quote succeeded, reading output files");
-    
+
     // Read quote message, signature, and PCRs from files
-    let quote_msg = fs::read(quote_msg_path).map_err(|e| {
-        TpmError::HexDecodeError(format!("Failed to read quote message: {}", e))
-    })?;
-    
-    let quote_sig = fs::read(quote_sig_path).map_err(|e| {
-        TpmError::HexDecodeError(format!("Failed to read quote signature: {}", e))
-    })?;
-    
+    let quote_msg = fs::read(quote_msg_path)
+        .map_err(|e| TpmError::HexDecodeError(format!("Failed to read quote message: {}", e)))?;
+
+    let quote_sig = fs::read(quote_sig_path)
+        .map_err(|e| TpmError::HexDecodeError(format!("Failed to read quote signature: {}", e)))?;
+
     // Parse the quote message (TPM2B_ATTEST)
     use tss_esapi::traits::UnMarshall;
     log::info!("Parsing quote message and signature...");
     let attest = Attest::unmarshall(&mut quote_msg.as_slice())
         .map_err(|e| TpmError::HexDecodeError(format!("Failed to parse quote message: {:?}", e)))?;
-    
-    let signature = Signature::unmarshall(&mut quote_sig.as_slice())
-        .map_err(|e| TpmError::HexDecodeError(format!("Failed to parse quote signature: {:?}", e)))?;
-    
+
+    let signature = Signature::unmarshall(&mut quote_sig.as_slice()).map_err(|e| {
+        TpmError::HexDecodeError(format!("Failed to parse quote signature: {:?}", e))
+    })?;
+
     // Parse PCR data from tpm2_quote output file to avoid deadlock with TSS context lock
     // The -o file contains TPML_PCR_SELECTION followed by number of TPML_DIGESTS + TPML_DIGESTs
     // This is the same format that pcrdata_to_vec creates, so we can use make_pcr_blob to parse it
     // make_pcr_blob reads from TPM, but we can work around this by using the PCR file format
     log::info!("Parsing PCR data from tpm2_quote output file...");
-    let quote_pcrs = fs::read(quote_pcrs_path).map_err(|e| {
-        TpmError::HexDecodeError(format!("Failed to read quote PCRs file: {}", e))
-    })?;
-    
+    let quote_pcrs = fs::read(quote_pcrs_path)
+        .map_err(|e| TpmError::HexDecodeError(format!("Failed to read quote PCRs file: {}", e)))?;
+
     // The PCR file format matches what pcrdata_to_vec creates:
     // TPML_PCR_SELECTION (serialized) + u32 (count of TPML_DIGEST) + TPML_DIGEST[] (serialized)
     // We can parse this and reconstruct PcrData
     // But actually, make_pcr_blob reads from TPM, so we need a different approach
-    
+
     // Parse the format directly (reverse of pcrdata_to_vec):
     // 1. Parse TPML_PCR_SELECTION (skip it, we already have pcrlist)
     // 2. Parse count (u32)
     // 3. Parse TPML_DIGEST array
     // 4. Convert to PcrData
-    
+
     // TPML_PCR_SELECTION and TPML_DIGEST are from tss2_esys (C structs, don't implement UnMarshall)
     // We need to manually deserialize based on the serialization format
     let mut pcr_bytes = quote_pcrs.as_slice();
-    
+
     // Skip TPML_PCR_SELECTION (we already have pcrlist, so we don't need to parse it)
     // TPML_PCR_SELECTION is 132 bytes (see assert_eq_size! at top of file)
     if pcr_bytes.len() < TPML_PCR_SELECTION_SIZE {
-        return Err(TpmError::HexDecodeError("PCR file too short for TPML_PCR_SELECTION".to_string()));
+        return Err(TpmError::HexDecodeError(
+            "PCR file too short for TPML_PCR_SELECTION".to_string(),
+        ));
     }
     pcr_bytes = &pcr_bytes[TPML_PCR_SELECTION_SIZE..];
-    
+
     // Parse count of TPML_DIGEST
     if pcr_bytes.len() < 4 {
-        return Err(TpmError::HexDecodeError("PCR file too short for count".to_string()));
+        return Err(TpmError::HexDecodeError(
+            "PCR file too short for count".to_string(),
+        ));
     }
     let count = u32::from_le_bytes([pcr_bytes[0], pcr_bytes[1], pcr_bytes[2], pcr_bytes[3]]);
     pcr_bytes = &pcr_bytes[4..];
-    
+
     // Parse TPML_DIGEST array
     // Each TPML_DIGEST is 532 bytes (see assert_eq_size! at top of file)
     // We'll use unsafe to convert bytes to struct (these are C structs from tss2_esys)
     let mut digest_list = Vec::new();
     for _ in 0..count {
         if pcr_bytes.len() < TPML_DIGEST_SIZE {
-            return Err(TpmError::HexDecodeError("PCR file too short for TPML_DIGEST".to_string()));
+            return Err(TpmError::HexDecodeError(
+                "PCR file too short for TPML_DIGEST".to_string(),
+            ));
         }
         // Unsafe: convert bytes to TPML_DIGEST struct (it's a C struct, so this is safe if aligned)
-        let digest: TPML_DIGEST = unsafe {
-            std::ptr::read(pcr_bytes.as_ptr() as *const TPML_DIGEST)
-        };
+        let digest: TPML_DIGEST =
+            unsafe { std::ptr::read(pcr_bytes.as_ptr() as *const TPML_DIGEST) };
         digest_list.push(digest);
         pcr_bytes = &pcr_bytes[TPML_DIGEST_SIZE..];
     }
-    
+
     // Convert to PcrData
     // Since pcrdata.into() gives Vec<TPML_DIGEST>, PcrData is likely a newtype wrapper
     // We'll use unsafe transmute since the memory layout should be compatible
@@ -2704,9 +2807,9 @@ fn perform_quote_with_tpm2_command_using_context(
         // as evidenced by: let digest: Vec<TPML_DIGEST> = pcrdata.into();
         mem::transmute(digest_list)
     };
-    
+
     log::info!("tpm2_quote completed successfully");
-    
+
     Ok((attest, signature, pcrlist, pcr_data))
 }
 
@@ -2721,24 +2824,33 @@ fn perform_quote_with_tpm2_command(
 ) -> Result<(Attest, Signature, PcrSelectionList, PcrData)> {
     use std::fs;
     use tempfile::NamedTempFile;
-    
+
     log::info!("Using tpm2_quote command directly (workaround for hardware TPM)");
-    
+
     // Get TCTI from environment
     let tcti = std::env::var("TCTI").unwrap_or_else(|_| "device:/dev/tpmrm0".to_string());
-    
+
     // Save AK context to a temporary file using TSS library's context_save
     // tpm2_quote needs a context file, not a handle
-    let ak_context_file = NamedTempFile::new().map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp AK context file: {}", e)))?;
-    let ak_context_path = ak_context_file.path().to_str().ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
-    
-    log::debug!("Saving AK context for handle {:#x} to {}", u32::from(ak_handle), ak_context_path);
-    
+    let ak_context_file = NamedTempFile::new().map_err(|e| {
+        TpmError::HexDecodeError(format!("Failed to create temp AK context file: {}", e))
+    })?;
+    let ak_context_path = ak_context_file
+        .path()
+        .to_str()
+        .ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
+
+    log::debug!(
+        "Saving AK context for handle {:#x} to {}",
+        u32::from(ak_handle),
+        ak_context_path
+    );
+
     // Save AK context to file for tpm2_quote
     // Check if the handle is a persistent handle (0x81xxxxxx) or transient
     let ak_handle_u32 = u32::from(ak_handle);
     let ak_handle_str = format!("{:#x}", ak_handle_u32);
-    
+
     // This function should only be called with persistent handles
     // The caller should check handle type before calling this function
     if ak_handle_u32 < 0x81000000 || ak_handle_u32 > 0x817FFFFF {
@@ -2746,15 +2858,18 @@ fn perform_quote_with_tpm2_command(
             format!("tpm2_quote direct mode requires persistent AK handles (0x81xxxxxx). Got transient handle: {}", ak_handle_str)
         ));
     }
-    
+
     // Persistent handle - can use it directly with tpm2_quote
-    log::debug!("Using persistent handle {} directly with tpm2_quote", ak_handle_str);
-    
+    log::debug!(
+        "Using persistent handle {} directly with tpm2_quote",
+        ak_handle_str
+    );
+
     log::debug!("AK context saved successfully");
-    
+
     // Convert nonce to hex
     let nonce_hex = hex::encode(nonce);
-    
+
     // Build PCR list string (e.g., "sha256:0,1,2,3,4,5,6,7")
     let hash_alg_str = match hash_alg {
         HashingAlgorithm::Sha256 => "sha256",
@@ -2763,7 +2878,7 @@ fn perform_quote_with_tpm2_command(
         HashingAlgorithm::Sha512 => "sha512",
         _ => "sha256",
     };
-    
+
     // Convert PcrSelectionList to TPML_PCR_SELECTION to iterate
     let pcrsel: TPML_PCR_SELECTION = pcrlist.clone().into();
     let mut pcr_slots = Vec::new();
@@ -2784,25 +2899,42 @@ fn perform_quote_with_tpm2_command(
         }
     }
     let pcr_list_str = format!("{}:{}", hash_alg_str, pcr_slots.join(","));
-    
+
     // Create temporary files for quote output
-    let quote_file = NamedTempFile::new().map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp file: {}", e)))?;
-    let sig_file = NamedTempFile::new().map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp file: {}", e)))?;
-    let pcr_file = NamedTempFile::new().map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp file: {}", e)))?;
-    
-    let quote_path = quote_file.path().to_str().ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
-    let sig_path = sig_file.path().to_str().ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
-    let pcr_path = pcr_file.path().to_str().ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
-    
+    let quote_file = NamedTempFile::new()
+        .map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp file: {}", e)))?;
+    let sig_file = NamedTempFile::new()
+        .map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp file: {}", e)))?;
+    let pcr_file = NamedTempFile::new()
+        .map_err(|e| TpmError::HexDecodeError(format!("Failed to create temp file: {}", e)))?;
+
+    let quote_path = quote_file
+        .path()
+        .to_str()
+        .ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
+    let sig_path = sig_file
+        .path()
+        .to_str()
+        .ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
+    let pcr_path = pcr_file
+        .path()
+        .to_str()
+        .ok_or_else(|| TpmError::HexDecodeError("Invalid temp file path".to_string()))?;
+
     // Use handle directly if persistent, otherwise use context file
     let context_arg = if ak_handle_u32 >= 0x81000000 && ak_handle_u32 <= 0x817FFFFF {
         &ak_handle_str
     } else {
         ak_context_path
     };
-    
-    log::debug!("Calling tpm2_quote with context={}, pcr_list={}, nonce={}", context_arg, pcr_list_str, nonce_hex);
-    
+
+    log::debug!(
+        "Calling tpm2_quote with context={}, pcr_list={}, nonce={}",
+        context_arg,
+        pcr_list_str,
+        nonce_hex
+    );
+
     // Call tpm2_quote using either persistent handle or context file
     let output = Command::new("tpm2_quote")
         .env("TCTI", &tcti)
@@ -2820,7 +2952,7 @@ fn perform_quote_with_tpm2_command(
         .arg(pcr_path)
         .output()
         .map_err(|e| TpmError::HexDecodeError(format!("Failed to execute tpm2_quote: {}", e)))?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2830,7 +2962,7 @@ fn perform_quote_with_tpm2_command(
             stderr
         )));
     }
-    
+
     // Read quote, signature, and PCR data
     let quote_data = fs::read(quote_path)
         .map_err(|e| TpmError::HexDecodeError(format!("Failed to read quote file: {}", e)))?;
@@ -2838,36 +2970,38 @@ fn perform_quote_with_tpm2_command(
         .map_err(|e| TpmError::HexDecodeError(format!("Failed to read signature file: {}", e)))?;
     let _pcr_data_raw = fs::read(pcr_path)
         .map_err(|e| TpmError::HexDecodeError(format!("Failed to read PCR file: {}", e)))?;
-    
+
     // Parse TPM2B_ATTEST (quote) - this is a TPM2B structure: 2-byte size + data
     if quote_data.len() < 2 {
         return Err(TpmError::HexDecodeError("Quote data too short".to_string()));
     }
     let quote_size = u16::from_be_bytes([quote_data[0], quote_data[1]]) as usize;
     if quote_data.len() < 2 + quote_size {
-        return Err(TpmError::HexDecodeError("Quote data size mismatch".to_string()));
+        return Err(TpmError::HexDecodeError(
+            "Quote data size mismatch".to_string(),
+        ));
     }
-    let quote_bytes = &quote_data[2..2+quote_size];
-    
+    let quote_bytes = &quote_data[2..2 + quote_size];
+
     // Parse TPMT_SIGNATURE (signature)
-    let sig = Signature::unmarshall(&sig_data)
-        .map_err(|e| TpmError::HexDecodeError(format!("Failed to unmarshall signature: {:?}", e)))?;
-    
+    let sig = Signature::unmarshall(&sig_data).map_err(|e| {
+        TpmError::HexDecodeError(format!("Failed to unmarshall signature: {:?}", e))
+    })?;
+
     // Parse TPM2B_ATTEST to Attest structure
-    let attestation = Attest::unmarshall(quote_bytes)
-        .map_err(|e| TpmError::HexDecodeError(format!("Failed to unmarshall attestation: {:?}", e)))?;
-    
+    let attestation = Attest::unmarshall(quote_bytes).map_err(|e| {
+        TpmError::HexDecodeError(format!("Failed to unmarshall attestation: {:?}", e))
+    })?;
+
     // Parse PCR data - this is in tpm2-tools format
     // We need to read PCRs using the library to get PcrData structure
     let (pcrs_read, pcr_data) = make_pcr_blob(context, pcrlist.clone())?;
-    
+
     // Verify the quote matches PCR data
     if !check_if_pcr_data_and_attestation_match(hash_alg, &pcr_data, attestation.clone())? {
-        return Err(TpmError::TooManyAttestationMismatches {
-            attempts: 1,
-        });
+        return Err(TpmError::TooManyAttestationMismatches { attempts: 1 });
     }
-    
+
     Ok((attestation, sig, pcrs_read, pcr_data))
 }
 
@@ -2884,10 +3018,19 @@ fn perform_quote_and_pcr_read(
     if std::env::var("USE_TPM2_QUOTE_DIRECT").is_ok() {
         // Check if we have a context file path (preferred method)
         if let Ok(context_path) = std::env::var("KEYLIME_AGENT_AK_CONTEXT") {
-            log::info!("Using tpm2_quote command directly with context file: {}", context_path);
-            return perform_quote_with_tpm2_command_using_context(context, &context_path, nonce, pcrlist, hash_alg);
+            log::info!(
+                "Using tpm2_quote command directly with context file: {}",
+                context_path
+            );
+            return perform_quote_with_tpm2_command_using_context(
+                context,
+                &context_path,
+                nonce,
+                pcrlist,
+                hash_alg,
+            );
         }
-        
+
         // Fallback: Check if handle is persistent
         let ak_handle_u32 = u32::from(ak_handle);
         if ak_handle_u32 >= 0x81000000 && ak_handle_u32 <= 0x817FFFFF {
@@ -2898,7 +3041,7 @@ fn perform_quote_and_pcr_read(
             // Fall through to use TSS library quote
         }
     }
-    
+
     let nonce: tss_esapi::structures::Data =
         nonce.try_into().map_err(|_| TpmError::DataFromNonce)?;
 
