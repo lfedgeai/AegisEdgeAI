@@ -76,6 +76,9 @@ stop_all_instances_and_cleanup() {
     pkill -f "mobile-sensor-microservice" >/dev/null 2>&1 || true
     pkill -f "mobile_sensor_service" >/dev/null 2>&1 || true
     pkill -f "mobile-sensor-microservice/service.py" >/dev/null 2>&1 || true
+    pkill -f "service.py.*--port.*9050" >/dev/null 2>&1 || true
+    pkill -f "service.py.*--host.*127.0.0.1" >/dev/null 2>&1 || true
+    pkill -f "python3.*service.py.*--port" >/dev/null 2>&1 || true
 
     # Wait a moment for processes to stop before unmounting
     sleep 1
@@ -170,6 +173,7 @@ stop_all_instances_and_cleanup() {
         lsof -ti:8081 | xargs kill -9 >/dev/null 2>&1 || true
         lsof -ti:8890 | xargs kill -9 >/dev/null 2>&1 || true
         lsof -ti:8891 | xargs kill -9 >/dev/null 2>&1 || true
+        lsof -ti:9050 | xargs kill -9 >/dev/null 2>&1 || true
     fi
     if command -v fuser >/dev/null 2>&1; then
         fuser -k 8881/tcp >/dev/null 2>&1 || true
@@ -178,6 +182,7 @@ stop_all_instances_and_cleanup() {
         fuser -k 8081/tcp >/dev/null 2>&1 || true
         fuser -k 8890/tcp >/dev/null 2>&1 || true
         fuser -k 8891/tcp >/dev/null 2>&1 || true
+        fuser -k 9050/tcp >/dev/null 2>&1 || true
     fi
     
     # Wait for processes to fully stop
@@ -185,14 +190,15 @@ stop_all_instances_and_cleanup() {
     
     # Force kill any remaining processes
     RUNNING_COUNT=0
-    if pgrep -f "spire-server|spire-agent|keylime|tpm_plugin" >/dev/null 2>&1; then
-        RUNNING_COUNT=$(pgrep -f "spire-server|spire-agent|keylime|tpm_plugin" | wc -l)
+    if pgrep -f "spire-server|spire-agent|keylime|tpm_plugin|service.py.*--port" >/dev/null 2>&1; then
+        RUNNING_COUNT=$(pgrep -f "spire-server|spire-agent|keylime|tpm_plugin|service.py.*--port" | wc -l)
         if [ "$RUNNING_COUNT" -gt 0 ]; then
             echo "     Force killing $RUNNING_COUNT remaining process(es)..."
             pkill -9 -f "spire-server" >/dev/null 2>&1 || true
             pkill -9 -f "spire-agent" >/dev/null 2>&1 || true
             pkill -9 -f "keylime" >/dev/null 2>&1 || true
             pkill -9 -f "tpm_plugin" >/dev/null 2>&1 || true
+            pkill -9 -f "service.py.*--port" >/dev/null 2>&1 || true
             sleep 1
         fi
     fi
@@ -241,6 +247,9 @@ stop_all_instances_and_cleanup() {
     echo "     Removing mobile location verification microservice data..."
     rm -rf /tmp/mobile-sensor-service 2>/dev/null || true
     rm -f /tmp/mobile-sensor-microservice.pid 2>/dev/null || true
+    # Clean up SQLite database files
+    rm -f /tmp/mobile-sensor-service/*.db 2>/dev/null || true
+    rm -f /tmp/sensor_mapping.db 2>/dev/null || true
 
     # Clean up rust-keylime agent directory (after ensuring tmpfs is unmounted)
     echo "     Removing rust-keylime agent data directory..."
@@ -325,12 +334,12 @@ stop_all_instances_and_cleanup() {
     
     # Final verification
     echo ""
-    if ! pgrep -f "spire-server|spire-agent|keylime|tpm_plugin" >/dev/null 2>&1; then
+    if ! pgrep -f "spire-server|spire-agent|keylime|tpm_plugin|service.py.*--port" >/dev/null 2>&1; then
         echo -e "${GREEN}  ✓ All existing instances stopped and all data cleaned up${NC}"
         return 0
     else
         echo -e "${YELLOW}  ⚠ Some processes may still be running:${NC}"
-        pgrep -f "spire-server|spire-agent|keylime|tpm_plugin" || true
+        pgrep -f "spire-server|spire-agent|keylime|tpm_plugin|service.py.*--port" || true
         return 1
     fi
 }

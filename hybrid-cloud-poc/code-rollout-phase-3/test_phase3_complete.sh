@@ -238,8 +238,12 @@ stop_mobile_sensor_microservice() {
         fuser -k ${MOBILE_SENSOR_PORT}/tcp >/dev/null 2>&1 || true
     fi
     
-    # Also kill any python3 process running service.py (as a fallback)
+    # Kill by process pattern matching (multiple patterns to catch all variations)
     pkill -f "service.py.*--port.*${MOBILE_SENSOR_PORT}" >/dev/null 2>&1 || true
+    pkill -f "python3.*service.py.*--port" >/dev/null 2>&1 || true
+    pkill -f "service.py.*--host.*127.0.0.1" >/dev/null 2>&1 || true
+    pkill -f "python3.*service.py.*--host.*127.0.0.1.*--port.*9050" >/dev/null 2>&1 || true
+    pkill -f "mobile-sensor-microservice.*service.py" >/dev/null 2>&1 || true
     
     sleep 1
 }
