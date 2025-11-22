@@ -104,9 +104,10 @@
     - If verification_result is false, or if the microservice is unreachable, the verifier fails the attestation
 
 15. **Verifier Retrieves Attested Claims**
-    - The verifier calls the fact provider to get optional metadata (geolocation, etc.)
-    - In Phase 3, geolocation comes from the TPM quote response (not fact provider)
-    - The verifier prepares the verification response
+   - The verifier calls the fact provider to get optional metadata (if available)
+   - **In Phase 3, geolocation comes from the TPM quote response** (not from fact provider)
+   - The verifier overrides any fact provider geolocation with the TPM quote geolocation
+   - The verifier prepares the verification response with attested claims (geolocation, TPM attestation, etc.)
 
 16. **Verifier Returns Verification Result**
     - The verifier returns a verification response to SPIRE Server containing:
@@ -183,11 +184,13 @@ The workload SVID flow follows the standard SPIRE pattern, with the key differen
    - The SPIRE Server authenticates the agent using the agent's SVID
    - The server verifies the agent SVID's certificate chain and signature
    - The server validates that the agent is authorized to request SVIDs for the specified workload
+   - **Note**: Workload SVID requests skip Keylime verification - workloads inherit attested claims from the agent SVID
 
 6. **SPIRE Server Extracts Agent Attestation Claims**
    - The SPIRE Server extracts the AttestedClaims from the agent SVID
    - These claims include TPM attestation data (geolocation, TPM quote, etc.)
    - The server prepares to issue a workload SVID with workload-specific claims only
+   - **No Keylime Verification**: Workload SVID generation does not call Keylime Verifier; it uses the agent SVID's attested claims directly
 
 7. **SPIRE Server Issues Workload SVID**
    - The SPIRE Server creates an X.509 certificate (SVID) for the workload
@@ -427,7 +430,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
             │     - Challenge nonce                    │
             │     - Signed by AK                       │
             │                                           │
-            │ 18. Return TPM Quote                    │
+            │ 16. Return TPM Quote                    │
             │     { quote: <base64>,                    │
             │       signature: <base64>,                │
             │       geolocation: {                      │
@@ -443,25 +446,25 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │                      │                    │ (Port 9050)          │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 18. Extract Geolocation from Quote       │
+            │ 17. Extract Geolocation from Quote       │
             │     - Parse geolocation from quote       │
             │     - Extract sensor_id if mobile type   │
             │                                           │
-            │ 19. Request Location Verification       │
+            │ 18. Request Location Verification       │
             │     POST /verify                         │
             │     { sensor_id: "12d1:1433" }           │
             └──────────────────────────────────────────>│
             │                                           │
-            │ 20. Lookup Sensor in Database            │
+            │ 19. Lookup Sensor in Database            │
             │     - Query SQLite for sensor_id         │
             │     - Get MSISDN, lat, lon, accuracy     │
             │                                           │
-            │ 21. Call CAMARA APIs                     │
+            │ 20. Call CAMARA APIs                     │
             │     - POST /bc-authorize                 │
             │     - POST /token                        │
             │     - POST /location/v0/verify           │
             │                                           │
-            │ 22. Return Verification Result           │
+            │ 21. Return Verification Result           │
             │     { verification_result: true/false,   │
             │       latitude: 40.33,                    │
             │       longitude: -3.7707,                 │
@@ -474,14 +477,16 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │  (Port 8881)         │                    │  (Internal)          │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 23. Get Attested Claims                   │
-            │     - Geolocation from quote             │
-            │     (geolocation comes from TPM quote)   │
+            │ 22. Get Attested Claims                   │
+            │     - Call fact provider (optional)      │
+            │     - Override with geolocation from     │
+            │       TPM quote (Phase 3)                │
+            │     - Prepare attested claims structure  │
             └──────────────────────────────────────────>│
             │                                           │
-            │ 24. Return Claims                        │
+            │ 23. Return Claims                           │
             │     { geolocation: {...} }                │
-            │     (or empty if not available)           │
+            │     (from TPM quote in Phase 3)           │
             │<───────────────────────────────────────────┘
             │
             │
@@ -490,14 +495,14 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │  (Port 8881)         │                    │   (Port 8081)        │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 25. Verify Evidence                       │
+            │ 24. Verify Evidence                       │
             │     - Certificate signature verified      │
             │     - Verify quote signature (AK)         │
             │     - Verify nonce matches                │
             │     - Validate quote structure            │
             │     - Verify mobile location (if mobile)   │
             │                                           │
-            │ 26. Return Verification Result           │
+            │ 25. Return Verification Result           │
             │     { status: "success",                  │
             │       attested_claims: {                   │
             │         grc.geolocation: {                 │
@@ -517,25 +522,25 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │   (Port 8081)        │                    │   (Low Privilege)    │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 27. Validate Verification                 │
+            │ 26. Validate Verification                 │
             │     - Check verification status           │
             │     - Verify certificate signature valid   │
             │     - Verify mobile location (if mobile)   │
             │     - Extract attested claims             │
             │                                           │
-            │ 28. Issue Sovereign SVID                  │
+            │ 27. Issue Sovereign SVID                  │
             │     - Create X.509 certificate            │
             │     - Embed attested claims               │
             │       (geolocation, TPM attestation)      │
             │     - Sign with SPIRE Server CA           │
             │                                           │
-            │ 29. Return Agent SVID                     │
+            │ 28. Return Agent SVID                     │
             │     { svid: <certificate>,                │
             │       private_key: <key>,                  │
             │       bundle: <trust_bundle> }              │
             └──────────────────────────────────────────>│
             │                                           │
-            │ 30. Agent SVID Received                   │
+            │ 29. Agent SVID Received                   │
             │     - Agent can now authenticate          │
             │     - Ready to request workload SVIDs     │
             │                                           │
