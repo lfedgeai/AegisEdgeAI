@@ -19,7 +19,7 @@
 ### Phase 2: SPIRE Agent Attestation Request
 
 3. **SPIRE Agent Initiates Attestation**
-   - The SPIRE Agent needs to attest to the SPIRE Server to get its agent SVID
+   - The SPIRE Agent initiates attestation by opening a gRPC stream to the SPIRE Server
    - The SPIRE Server sends a challenge nonce to the agent
    - The agent must prove its identity using TPM-based attestation
 
@@ -285,15 +285,18 @@ SPIRE Agent TPM Plugin Server (Python Sidecar, UDS Socket)
 
 **Step 3: SPIRE Agent Initiates Attestation**
 ```
-SPIRE Server (Port 8081)
+SPIRE Agent (Low Privilege)
     │
-    └─> POST /agent/attest-agent
+    └─> Initiate gRPC stream: AttestAgent()
         │
-        └─> Send challenge nonce
+        └─> SPIRE Server (Port 8081)
             │
-            <─ SPIRE Agent (Low Privilege)
+            ├─> Receives attestation request
+            └─> Send challenge nonce
                 │
-                └─> Receives challenge nonce
+                <─ SPIRE Agent
+                    │
+                    └─> Receives challenge nonce
 ```
 
 **Step 4: SPIRE Agent Requests App Key Information**
@@ -347,7 +350,7 @@ SPIRE Agent
 ```
 ### PHASE 3: SPIRE SERVER VERIFICATION
 
-**Step 7: SPIRE Server Receives Attestation**
+**Step 7: SPIRE Server Receives Attestation and sends to Keylime Verifier**
 ```
 SPIRE Server (Port 8081)
     │
