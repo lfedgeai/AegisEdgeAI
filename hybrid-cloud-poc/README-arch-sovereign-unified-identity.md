@@ -77,30 +77,49 @@
     - It validates the hash algorithm and quote structure
     - This proves the TPM is genuine and the platform state is authentic
 
-12. **Verifier Retrieves Attested Claims**
-    - The verifier calls the fact provider to get optional metadata (geolocation, GPU metrics, etc.)
-    - In Phase 3, this typically returns empty since agents aren't registered with the verifier
+12. **Verifier Extracts Geolocation from Quote**
+    - The verifier extracts geolocation sensor information from the TPM quote response
+    - If a mobile sensor is detected (sensor_id present), the verifier proceeds to location verification
+    - Geolocation data includes: sensor type (mobile/gnss), sensor_id, and optional value (for GNSS)
+
+13. **Verifier Calls Mobile Location Verification Microservice** (if mobile geolocation detected)
+    - The verifier extracts the sensor_id from the geolocation data
+    - The verifier calls the mobile location verification microservice via REST API (HTTP)
+    - Request: `POST /verify` with `{"sensor_id": "<sensor_id>"}`
+    - The microservice:
+      - Looks up the sensor_id in SQLite database to get phone number (MSISDN) and default coordinates
+      - Calls CAMARA APIs in sequence:
+        1. `POST /bc-authorize` with login_hint (phone number) and scope
+        2. `POST /token` with grant_type and auth_req_id
+        3. `POST /location/v0/verify` with access_token, ueId, latitude, longitude, accuracy
+      - Returns verification result: `{"verification_result": true/false, ...}`
+    - If verification_result is false, or if the microservice is unreachable, the verifier fails the attestation
+
+14. **Verifier Retrieves Attested Claims**
+    - The verifier calls the fact provider to get optional metadata (geolocation, etc.)
+    - In Phase 3, geolocation comes from the TPM quote response (not fact provider)
     - The verifier prepares the verification response
 
-13. **Verifier Returns Verification Result**
+15. **Verifier Returns Verification Result**
     - The verifier returns a verification response to SPIRE Server containing:
       - Verification status (success/failure)
-      - Attested claims (if any)
-      - Verification details (quote signature valid, nonce valid, etc.)
+      - Attested claims (geolocation with sensor_id, type, etc.)
+      - Verification details (quote signature valid, nonce valid, mobile location verified, etc.)
 
 ### Phase 5: SPIRE Server Issues SVID
 
-14. **SPIRE Server Validates Verification Result**
+16. **SPIRE Server Validates Verification Result**
     - The SPIRE Server receives the verification result from Keylime Verifier
-    - If verification succeeded, the server proceeds to issue the agent SVID
+    - If verification succeeded (including mobile location verification if applicable), the server proceeds to issue the agent SVID
+    - If mobile location verification failed, the server rejects the attestation and does not issue an SVID
 
-15. **SPIRE Server Issues Sovereign SVID**
+17. **SPIRE Server Issues Sovereign SVID**
     - The SPIRE Server creates an X.509 certificate (SVID) for the SPIRE Agent
-    - The SVID includes the attested claims from Keylime Verifier (if any)
-    - The SVID is embedded with metadata proving the agent's TPM-based identity
+    - The SVID includes the attested claims from Keylime Verifier (geolocation with sensor_id, TPM attestation, etc.)
+    - The SVID is embedded with metadata proving the agent's TPM-based identity and verified location
     - The SVID is returned to the SPIRE Agent
 
-16. **SPIRE Agent Receives SVID**
+18. **SPIRE Agent Receives SVID**
     - The SPIRE Agent receives its agent SVID from SPIRE Server
     - The agent can now use this SVID to authenticate and request workload SVIDs
     - The attestation process is complete
@@ -112,6 +131,7 @@
 - **Separation of Concerns**: Quote generation (platform attestation) is separate from App Key certification (workload identity)
 - **No Periodic Polling**: Unlike traditional Keylime, agents aren't continuously monitored; verification happens on-demand per attestation request
 - **Agent Registration Model**: Agents register with the Keylime Registrar (persistent storage) but are not registered with the Keylime Verifier (on-demand lookup only)
+- **Mobile Location Verification**: When mobile geolocation is detected in the TPM quote, the verifier calls the mobile location verification microservice to verify the device location via CAMARA APIs; attestation fails if location verification fails
 
 This flow provides hardware-backed identity attestation where the SPIRE Agent proves its identity using the TPM, and the SPIRE Server verifies this proof through the Keylime Verifier before issuing credentials.
 
@@ -386,8 +406,44 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
             │                                           │
             │ 17. Return TPM Quote                    │
             │     { quote: <base64>,                    │
-            │       signature: <base64> }               │
+            │       signature: <base64>,                │
+            │       geolocation: {                      │
+            │         type: "mobile",                   │
+            │         sensor_id: "12d1:1433" } }        │
             │<──────────────────────────────────────────┘
+            │
+            │
+┌───────────┴──────────┐                    ┌───────────┴──────────┐
+│  Keylime Verifier    │                    │ Mobile Location      │
+│  (Port 8881)         │                    │ Verification         │
+│                      │                    │ Microservice         │
+│                      │                    │ (Port 9050)          │
+└───────────┬──────────┘                    └──────────┬───────────┘
+            │                                           │
+            │ 18. Extract Geolocation from Quote       │
+            │     - Parse geolocation from quote       │
+            │     - Extract sensor_id if mobile type   │
+            │                                           │
+            │ 19. Request Location Verification       │
+            │     POST /verify                         │
+            │     { sensor_id: "12d1:1433" }           │
+            └──────────────────────────────────────────>│
+            │                                           │
+            │ 20. Lookup Sensor in Database            │
+            │     - Query SQLite for sensor_id         │
+            │     - Get MSISDN, lat, lon, accuracy     │
+            │                                           │
+            │ 21. Call CAMARA APIs                     │
+            │     - POST /bc-authorize                 │
+            │     - POST /token                        │
+            │     - POST /location/v0/verify           │
+            │                                           │
+            │ 22. Return Verification Result           │
+            │     { verification_result: true/false,   │
+            │       latitude: 40.33,                    │
+            │       longitude: -3.7707,                 │
+            │       accuracy: 7.0 }                     │
+            │<───────────────────────────────────────────┘
             │
             │
 ┌───────────┴──────────┐                    ┌───────────┴──────────┐
@@ -395,14 +451,13 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │  (Port 8881)         │                    │  (Internal)          │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 18. Get Attested Claims                   │
-            │     - Geolocation (if available)          │
-            │     - GPU metrics (if available)          │
-            │     - Host integrity (if available)       │
+            │ 23. Get Attested Claims                   │
+            │     - Geolocation from quote             │
+            │     (geolocation comes from TPM quote)   │
             └──────────────────────────────────────────>│
             │                                           │
-            │ 19. Return Claims                        │
-            │     { geolocation: {...}, ... }           │
+            │ 24. Return Claims                        │
+            │     { geolocation: {...} }                │
             │     (or empty if not available)           │
             │<───────────────────────────────────────────┘
             │
@@ -412,17 +467,20 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │  (Port 8881)         │                    │   (Port 8081)        │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 20. Verify Evidence                       │
+            │ 25. Verify Evidence                       │
             │     - Verify quote signature (AK)         │
             │     - Verify nonce matches                │
             │     - Validate quote structure            │
             │     - Check certificate structure         │
+            │     - Verify mobile location (if mobile)   │
             │                                           │
-            │ 21. Return Verification Result           │
+            │ 26. Return Verification Result           │
             │     { status: "success",                  │
             │       attested_claims: {                   │
-            │         grc.geolocation: {...},           │
-            │         grc.tpm-attestation: {...} },     │
+            │         grc.geolocation: {                 │
+            │           type: "mobile",                  │
+            │           sensor_id: "12d1:1433" },        │
+            │         grc.tpm-attestation: {...} },      │
             │       verification_details: {...} }        │
             └──────────────────────────────────────────>│
 
@@ -436,22 +494,24 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │   (Port 8081)        │                    │   (Low Privilege)    │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 22. Validate Verification                 │
+            │ 27. Validate Verification                 │
             │     - Check verification status           │
+            │     - Verify mobile location (if mobile)   │
             │     - Extract attested claims             │
             │                                           │
-            │ 23. Issue Sovereign SVID                  │
+            │ 28. Issue Sovereign SVID                  │
             │     - Create X.509 certificate            │
             │     - Embed attested claims               │
+            │       (geolocation, TPM attestation)      │
             │     - Sign with SPIRE Server CA           │
             │                                           │
-            │ 24. Return Agent SVID                     │
+            │ 29. Return Agent SVID                     │
             │     { svid: <certificate>,                │
             │       private_key: <key>,                  │
             │       bundle: <trust_bundle> }              │
             └──────────────────────────────────────────>│
             │                                           │
-            │ 25. Agent SVID Received                   │
+            │ 30. Agent SVID Received                   │
             │     - Agent can now authenticate          │
             │     - Ready to request workload SVIDs     │
             │                                           │
@@ -485,11 +545,45 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 
 5. **Nonce-Based Freshness**
    - SPIRE Server provides challenge nonce
-   - Included in TPM quote
+   - Included in TPM quote and App Key certificate
    - Prevents replay attacks
+
+6. **Mobile Location Verification**
+   - Geolocation sensor ID extracted from TPM quote
+   - Verifier calls mobile location verification microservice
+   - Microservice verifies device location via CAMARA APIs
+   - Attestation fails if location verification fails
+   - Enables geofencing and location-based policy enforcement
 ```
 
 ---
+
+## Mobile Location Verification Microservice
+
+**Status:** ✅ Implemented and integrated
+
+**Implementation Details:**
+- **Database**: SQLite database (`sensor_mapping.db`) stores sensor_id → MSISDN, latitude, longitude, accuracy mappings
+- **Default Seed**: `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7.0`
+- **Communication**: Keylime Verifier connects to microservice via REST API (HTTP/JSON) over TCP (port 9050)
+  - Note: UDS support was deferred (similar to TPM Plugin → Keylime Agent communication)
+- **Sensor ID Extraction**: Verifier extracts `sensor_id` from TPM quote response geolocation data (no hardcoded defaults)
+- **CAMARA API Flow**: Microservice implements three-step CAMARA API sequence:
+  1. `POST /bc-authorize` with `login_hint` (phone number) and `scope`
+  2. `POST /token` with `grant_type=urn:openid:params:grant-type:ciba` and `auth_req_id`
+  3. `POST /location/v0/verify` with `access_token`, `ueId` (phone number), `latitude`, `longitude`, `accuracy`
+- **Verification Result**: Microservice returns `{"verification_result": true/false, ...}` to verifier
+- **Attestation Gating**: If `verification_result` is `false`, or if the verifier cannot reach the microservice, the Keylime Verifier fails the attestation with error "mobile sensor location verification failed" and the SPIRE Server does not issue the SVID to the SPIRE Agent
+- **Configuration**: 
+  - `mobile_sensor_enabled` in verifier config (default: false, set to true to enable)
+  - `mobile_sensor_endpoint` in verifier config (default: `http://127.0.0.1:9050`)
+  - `CAMARA_BYPASS` environment variable (default: false, set to true to skip CAMARA APIs for testing)
+  - `MOBILE_SENSOR_LATITUDE`, `MOBILE_SENSOR_LONGITUDE`, `MOBILE_SENSOR_ACCURACY` environment variables for coordinate overrides
+
+**Location:**
+- `code-rollout-phase-3/mobile-sensor-microservice/service.py` - Flask microservice implementation
+- `code-rollout-phase-2/keylime/keylime/cloud_verifier_tornado.py` - Verifier integration (`_verify_mobile_sensor_geolocation`)
+- `code-rollout-phase-2/verifier.conf.minimal` - Configuration (`[verifier]` section)
 
 ## Gaps to be Addressed
 
@@ -505,45 +599,6 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 - Ensure `certify_data` contains the correct App Key public key
 
 **Location:** `code-rollout-phase-2/keylime/keylime/cloud_verifier_tornado.py` lines 2005-2020
-
----
-
-### 2. Keylime Verifier — Fetch Geolocation Sensor Info During Quote Retrieval -- gap fixed
-**Current State:** Quote is fetched, but geolocation sensor ID (mobile/gnss) and geolocation details (gnss) are not extracted
-
-**Issue:** Missing sensor metadata for geolocation attestation
-
-**Required:** When fetching the quote from the agent, also request/parse:
-- Geolocation sensor ID (mobile/gnss)
-- Geolocation details (GNSS coordinates, accuracy, etc.)
-
-**Location:** `code-rollout-phase-2/keylime/keylime/cloud_verifier_tornado.py` lines 1886-1990 (`_fetch_quote_from_agent`)
-
----
-
-### 3. SPIRE Agent — Delegated Certificate Request Improvements -- gap fixed
-
-#### 3.1. TPM App Key Context Should Not Be Sent Back to SPIRE Agent
-
-**Current State:** `app_key_context_path` is sent from SPIRE Agent to TPM Plugin Server, then forwarded to rust-keylime agent
-
-**Issue:** Context path is exposed beyond the TPM Plugin boundary
-
-**Required:** Keep the context path internal to the TPM Plugin; SPIRE Agent should only send the App Key public key
-
-**Location:**
-- `code-rollout-phase-1/spire/pkg/agent/tpmplugin/tpm_plugin_gateway.go` line 193
-- `code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py` line 109
-
-#### 3.2. Add SPIRE Agent Nonce as Part of Certificate
-
-**Current State:** Certificate qualifying data is only the hash of the App Key public key; SPIRE Server's challenge nonce is not included
-
-**Issue:** Certificate lacks freshness proof; cannot verify it was generated for the specific attestation request
-
-**Required:** Include the SPIRE Server's challenge nonce in the `qualifying_data` when performing TPM2_Certify
-
-**Location:** `code-rollout-phase-2/rust-keylime/keylime-agent/src/delegated_certification_handler.rs` lines 131-142
 
 ---
 
@@ -587,33 +642,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 
 - **Certificate Verification Error Handling**: If certificate verification fails, the verifier should reject the attestation
 - **Nonce Validation in Certificate**: When verifying the certificate, validate that the nonce matches the one from SPIRE Server
-- **Geolocation Data Format**: Define the format for sensor ID and GNSS data in the quote response
-- **UDS Socket Permissions**: Ensure proper file permissions and ownership for UDS sockets
+- **Geolocation Data Format**: Geolocation is structured as `{"type": "mobile"|"gnss", "sensor_id": "<id>", "value": "<optional>"}` in the quote response
+- **Mobile Location Verification**: When mobile geolocation is detected, location verification is mandatory; attestation fails if CAMARA verification fails
+- **UDS Socket Permissions**: Ensure proper file permissions and ownership for UDS sockets (when UDS support is added)
 - **mTLS Certificate Management**: Ensure verifier and agent have proper certificate chains and trust anchors
-
-### Mobile location verification microservice
-- prestep: configure the mobile location verification microservice to use a simple sqlite database to convert the sensor id into a phone number **and** the default latitude/longitude/accuracy (seed with `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7`); keylime verifier connects to the mobile location verification microservice via a REST API (JSON) over UDS socket
-- keylime verifier extracts the geolocation sensor id from the TPM quote response and passes it unchanged to the mobile location verification microservice (no hardcoded defaults)
-- the mobile location verification microservice converts the sensor id into a phone number by looking a simple sqlite database
-- the mobile location verification microservice connects to the camara APIs and returns the verification result true/false to the keylime verifier; if the verification result is false—or if the verifier cannot reach the microservice—the Keylime Verifier fails the attestation and the SPIRE Server will not issue the SVID to the SPIRE Agent
-
----
-
-## Gap Priority
-
-**Critical for Production Security:**
-- Gap 4: UDS for SPIRE Agent TPM Plugin → Keylime Agent communication
-- Gap 5: mTLS for Keylime Verifier → Keylime Agent communication
-
-**Security Enhancements:**
-- Gap 1: Certificate signature verification
-- Gap 3.2: Nonce in certificate for freshness
-
-**Functionality Enhancements:**
-- Gap 2: Geolocation sensor metadata
-- Gap 3.1: Context path security
-
-These gaps address:
-- **Security**: Certificate verification, UDS for local communication, mTLS for network communication, context exposure, nonce freshness
-- **Functionality**: Geolocation sensor metadata
-
