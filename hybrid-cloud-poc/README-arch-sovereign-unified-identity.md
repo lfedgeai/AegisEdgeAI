@@ -10,10 +10,11 @@
    - The registrar stores the agent's UUID, IP address, port, TPM keys, and mTLS certificate
    - The agent is now registered and ready to serve attestation requests
 
-2. **TPM Plugin Server Startup**
-   - The TPM Plugin Server starts and generates an App Key in the TPM
+2. **SPIRE Agent TPM Plugin Server (Sidecar) Startup**
+   - The SPIRE Agent TPM Plugin Server (sidecar process) starts and generates an App Key in the TPM
    - The App Key is a workload-specific key used for identity attestation
    - The App Key context (handle) is stored for later use
+   - **Note**: SPIRE Agent TPM Plugin Server is a separate Python process (sidecar) that runs alongside SPIRE Agent
 
 ### Phase 2: SPIRE Agent Attestation Request
 
@@ -23,13 +24,12 @@
    - The agent must prove its identity using TPM-based attestation
 
 4. **SPIRE Agent Requests App Key Information**
-   - The SPIRE Agent calls its TPM Plugin Gateway to build a SovereignAttestation
-   - The TPM Plugin Gateway requests the App Key public key and context from the TPM Plugin Server
-   - The TPM Plugin Server returns the App Key public key (PEM format) and context file path
+   - The SPIRE Agent requests the App Key public key and context from the SPIRE Agent TPM Plugin Server (sidecar)
+   - The SPIRE Agent TPM Plugin Server (sidecar) returns the App Key public key (PEM format) and context file path
 
 5. **Delegated Certification Request**
-   - The TPM Plugin Gateway requests an App Key certificate from the TPM Plugin Server
-   - The TPM Plugin Server forwards this request to the rust-keylime agent's delegated certification endpoint
+   - The SPIRE Agent requests an App Key certificate from the SPIRE Agent TPM Plugin Server (sidecar)
+   - The SPIRE Agent TPM Plugin Server (sidecar) forwards this request to the rust-keylime agent's delegated certification endpoint
    - The rust-keylime agent performs TPM2_Certify: it uses the TPM's Attestation Key (AK) to sign the App Key's public key
    - This creates a certificate proving the App Key exists in the TPM and was certified by the AK
    - The certificate (containing attestation data and signature) is returned along with the agent's UUID
@@ -258,293 +258,235 @@ This structure allows verifiers to:
 
 The following diagram illustrates the complete end-to-end flow for SPIRE Agent Sovereign SVID attestation, showing all components, interactions, and data transformations.
 
+### PHASE 1: INITIAL SETUP (Before Attestation)
+
+**Step 1: rust-keylime Agent Registration**
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                          PHASE 1: INITIAL SETUP (Before Attestation)                        │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+rust-keylime Agent (High Privilege, Port 9002)
+    │
+    ├─> Generate EK (Endorsement Key)
+    ├─> Generate AK (Attestation Key)
+    └─> Register with Keylime Registrar (Port 8890)
+        │
+        └─> Send: UUID, IP, port, TPM keys, mTLS certificate
+            │
+            <─ Keylime Registrar stores registration
+```
 
-┌──────────────────────┐                    ┌──────────────────────┐
-│  rust-keylime Agent   │                    │  Keylime Registrar  │
-│  (High Privilege)     │                    │  (Port 8890)         │
-│  Port 9002           │                    │                      │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 1. Register Agent                        │
-            │    - Generate EK (Endorsement Key)      │
-            │    - Generate AK (Attestation Key)       │
-            │    - Send UUID, IP, port, TPM keys       │
-            └──────────────────────────────────────────>│
-            │                                           │
-            │ 2. Store Registration                    │
-            │    - UUID, IP:port, TPM AK, mTLS cert   │
-            │<──────────────────────────────────────────┘
-            │
-            │
-┌───────────┴──────────┐
-│  TPM Plugin Server    │
-│  (Python)             │
-│  UDS Socket           │
-└───────────┬───────────┘
-            │
-            │ 3. Generate App Key
-            │    - Create App Key in TPM
-            │    - Store context/handle
-            │    - Ready for certification
+**Step 2: SPIRE Agent TPM Plugin Server (Sidecar) Startup**
+```
+SPIRE Agent TPM Plugin Server (Python Sidecar, UDS Socket)
+    │
+    ├─> Generate App Key in TPM
+    ├─> Store App Key context/handle
+    └─> Ready for certification
+```
+### PHASE 2: SPIRE AGENT ATTESTATION REQUEST
 
+**Step 3: SPIRE Agent Initiates Attestation**
+```
+SPIRE Server (Port 8081)
+    │
+    └─> POST /agent/attest-agent
+        │
+        └─> Send challenge nonce
+            │
+            <─ SPIRE Agent (Low Privilege)
+                │
+                └─> Receives challenge nonce
+```
 
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                    PHASE 2: SPIRE AGENT ATTESTATION REQUEST                                  │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+**Step 4: SPIRE Agent Requests App Key Information**
+```
+SPIRE Agent
+    │
+    └─> Request App Key from SPIRE Agent TPM Plugin Server (Sidecar)
+        │
+        └─> GET App Key public key (PEM)
+        └─> GET App Key context path
+            │
+            <─ SPIRE Agent TPM Plugin Server (Sidecar)
+                │
+                └─> Return: App Key public key (PEM), App Key context path
+```
 
-┌──────────────────────┐                    ┌──────────────────────┐
-│   SPIRE Server       │                    │   SPIRE Agent        │
-│   (Port 8081)        │                    │   (Low Privilege)    │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 4. Challenge Nonce                        │
-            │    POST /agent/attest-agent               │
-            │    { nonce: <challenge> }                 │
-            │<───────────────────────────────────────────┘
+**Step 5: Delegated Certification Request**
+```
+SPIRE Agent TPM Plugin Server (Sidecar)
+    │
+    └─> POST /v2.2/delegated_certification/certify_app_key (HTTPS/mTLS)
+        │
+        └─> rust-keylime Agent (High Privilege, Port 9002)
             │
+            ├─> Perform TPM2_Certify
+            │   ├─> Load App Key from context
+            │   ├─> Use AK to sign App Key public key
+            │   └─> Generate certificate (attest + sig)
             │
-┌───────────┴──────────┐                    ┌───────────┴──────────┐
-│  TPM Plugin Gateway  │                    │  TPM Plugin Server   │
-│  (Go)                │                    │  (Python)            │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 5. Request App Key Info                  │
-            │    - Get App Key public key (PEM)        │
-            │    - Get App Key context                │
-            └──────────────────────────────────────────>│
-            │                                           │
-            │ 6. Return App Key                        │
-            │    - App Key public key (PEM)            │
-            │    - App Key context path                │
-            │<──────────────────────────────────────────┘
-            │
-            │
-┌───────────┴──────────┐                    ┌───────────┴──────────┐
-│  TPM Plugin Server   │                    │  rust-keylime Agent   │
-│  (Python)            │                    │  (High Privilege)    │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 7. Request App Key Certificate           │
-            │    POST /v2.2/delegated_certification/  │
-            │         certify_app_key (HTTPS/mTLS)    │
-            │    { app_key_public_pem,                 │
-            │      app_key_context_path }              │
-            └──────────────────────────────────────────>│
-            │                                           │
-            │ 8. Perform TPM2_Certify                  │
-            │    - Load App Key from context           │
-            │    - Use AK to sign App Key public key   │
-            │    - Generate certificate (attest + sig) │
-            │                                           │
-            │ 9. Return Certificate                    │
-            │    { certificate: {                      │
-            │        certify_data: <base64>,           │
-            │        signature: <base64> },            │
-            │      agent_uuid: <uuid> }                │
-            │<──────────────────────────────────────────┘
-            │
-            │
-┌───────────┴──────────┐                    ┌───────────┴──────────┐
-│  TPM Plugin Gateway  │                    │   SPIRE Server       │
-│  (Go)                │                    │   (Port 8081)        │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 10. Build SovereignAttestation           │
-            │     - App Key public key                 │
-            │     - App Key certificate (AK-signed)   │
-            │     - Challenge nonce                    │
-            │     - Agent UUID                         │
-            │     - TPM quote: empty (verifier fetches)│
-            │                                           │
-            │ 11. Send SovereignAttestation            │
-            │     POST /agent/attest-agent             │
-            └──────────────────────────────────────────>│
+            └─> Return: { certificate: { certify_data, signature }, agent_uuid }
+                │
+                <─ SPIRE Agent TPM Plugin Server (Sidecar)
+```
 
+**Step 6: SPIRE Agent Builds and Sends SovereignAttestation**
+```
+SPIRE Agent
+    │
+    ├─> Build SovereignAttestation:
+    │   ├─> App Key public key
+    │   ├─> App Key certificate (AK-signed)
+    │   ├─> Challenge nonce
+    │   ├─> Agent UUID
+    │   └─> TPM quote: empty (verifier fetches)
+    │
+    └─> POST /agent/attest-agent
+        │
+        └─> SPIRE Server (Port 8081)
+            │
+            └─> Receives SovereignAttestation
+```
+### PHASE 3: SPIRE SERVER VERIFICATION
 
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                        PHASE 3: SPIRE SERVER VERIFICATION                                   │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+**Step 7: SPIRE Server Receives Attestation**
+```
+SPIRE Server (Port 8081)
+    │
+    ├─> Extract: App Key public key, certificate, nonce, agent UUID
+    │
+    └─> POST /v2.2/unified_identity/verify
+        │
+        └─> Keylime Verifier (Port 8881)
+            │
+            └─> Receives verification request
+```
 
-┌──────────────────────┐                    ┌──────────────────────┐
-│   SPIRE Server       │                    │  Keylime Verifier    │
-│   (Port 8081)        │                    │  (Port 8881)         │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 12. Verification Request                  │
-            │     POST /v2.2/unified_identity/verify   │
-            │     { app_key_public_pem,                 │
-            │       certificate: { certify_data, sig }, │
-            │       nonce,                              │
-            │       agent_uuid }                        │
-            └──────────────────────────────────────────>│
+### PHASE 4: KEYLIME VERIFIER ON-DEMAND VERIFICATION
 
+**Step 8: Verifier Looks Up Agent Information**
+```
+Keylime Verifier (Port 8881)
+    │
+    └─> GET /agents/{agent_uuid}
+        │
+        └─> Keylime Registrar (Port 8890)
+            │
+            └─> Return: { ip, port, tpm_ak, mtls_cert }
+                │
+                <─ Keylime Verifier
+```
 
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                  PHASE 4: KEYLIME VERIFIER ON-DEMAND VERIFICATION                           │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+**Step 9: Verifier Verifies App Key Certificate Signature**
+```
+Keylime Verifier (Port 8881)
+    │
+    ├─> Parse certificate JSON
+    ├─> Extract certify_data & signature
+    ├─> Verify signature with AK (from registrar)
+    └─> Verify qualifying data (hash of App Key + nonce)
+```
 
-┌──────────────────────┐                    ┌──────────────────────┐
-│  Keylime Verifier    │                    │  Keylime Registrar  │
-│  (Port 8881)         │                    │  (Port 8890)         │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 13. Lookup Agent Info                     │
-            │     GET /agents/{agent_uuid}              │
-            └──────────────────────────────────────────>│
-            │                                           │
-            │ 14. Return Agent Info                    │
-            │     { ip, port, tpm_ak, mtls_cert }       │
-            │<───────────────────────────────────────────┘
+**Step 10: Verifier Fetches TPM Quote On-Demand**
+```
+Keylime Verifier (Port 8881)
+    │
+    └─> POST /v2.2/quote (HTTPS/mTLS)
+        │
+        └─> rust-keylime Agent (High Privilege, Port 9002)
             │
+            ├─> Generate TPM Quote:
+            │   ├─> PCR values (platform state)
+            │   ├─> Challenge nonce
+            │   └─> Signed by AK
             │
-┌───────────┴──────────┐
-│  Keylime Verifier    │
-│  (Port 8881)         │
-│  (Internal)          │
-└───────────┬──────────┘
-            │
-            │ 15. Verify App Key Certificate            │
-            │     - Parse certificate JSON              │
-            │     - Extract certify_data & signature    │
-            │     - Verify signature with AK            │
-            │     - Verify qualifying data              │
-            │     - (hash of App Key + nonce)           │
-            │
-            │
-┌───────────┴──────────┐                    ┌───────────┴──────────┐
-│  Keylime Verifier    │                    │  rust-keylime Agent │
-│  (Port 8881)         │                    │  (High Privilege)    │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 16. Request TPM Quote                    │
-            │     POST /v2.2/quote (HTTPS/mTLS)       │
-            │     { nonce: <challenge> }                │
-            └──────────────────────────────────────────>│
-            │                                           │
-            │ 17. Generate TPM Quote                   │
-            │     - PCR values (platform state)        │
-            │     - Challenge nonce                    │
-            │     - Signed by AK                       │
-            │                                           │
-            │ 18. Return TPM Quote                      │
-            │     { quote: <base64>,                    │
-            │       signature: <base64>,                │
-            │       geolocation: {                      │
-            │         type: "mobile",                   │
-            │         sensor_id: "12d1:1433" } }        │
-            │<──────────────────────────────────────────┘
-            │
-            │
-┌───────────┴──────────┐                    ┌───────────┴──────────┐
-│  Keylime Verifier    │                    │ Mobile Location      │
-│  (Port 8881)         │                    │ Verification         │
-│                      │                    │ Microservice         │
-│                      │                    │ (Port 9050)          │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 19. Extract Geolocation from Quote        │
-            │     - Parse geolocation from quote       │
-            │     - Extract sensor_id if mobile type   │
-            │                                           │
-            │ 19. Request Location Verification        │
-            │     POST /verify                         │
-            │     { sensor_id: "12d1:1433" }           │
-            └──────────────────────────────────────────>│
-            │                                           │
-            │ 20. Lookup Sensor in Database            │
-            │     - Query SQLite for sensor_id         │
-            │     - Get MSISDN, lat, lon, accuracy     │
-            │                                           │
-            │ 21. Call CAMARA APIs                     │
-            │     - POST /bc-authorize                 │
-            │     - POST /token                        │
-            │     - POST /location/v0/verify           │
-            │                                           │
-            │ 22. Return Verification Result           │
-            │     { verification_result: true/false,   │
-            │       latitude: 40.33,                    │
-            │       longitude: -3.7707,                 │
-            │       accuracy: 7.0 }                     │
-            │<───────────────────────────────────────────┘
-            │
-            │
-┌───────────┴──────────┐                    ┌───────────┴──────────┐
-│  Keylime Verifier    │                    │  Fact Provider       │
-│  (Port 8881)         │                    │  (Internal)          │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 23. Get Attested Claims                   │
-            │     - Call fact provider (optional)      │
-            │     - Override with geolocation from     │
-            │       TPM quote (Phase 3)                │
-            │     - Prepare attested claims structure  │
-            └──────────────────────────────────────────>│
-            │                                           │
-            │ 24. Return Claims                         │
-            │     { geolocation: {...} }                │
-            │     (from TPM quote in Phase 3)           │
-            │<───────────────────────────────────────────┘
-            │
-            │
-┌───────────┴──────────┐                    ┌───────────┴──────────┐
-│  Keylime Verifier    │                    │   SPIRE Server       │
-│  (Port 8881)         │                    │   (Port 8081)        │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 25. Verify Evidence                       │
-            │     - Certificate signature verified      │
-            │     - Verify quote signature (AK)         │
-            │     - Verify nonce matches                │
-            │     - Validate quote structure            │
-            │     - Verify mobile location (if mobile)   │
-            │                                           │
-            │ 26. Return Verification Result           │
-            │     { status: "success",                  │
-            │       attested_claims: {                   │
-            │         grc.geolocation: {                 │
-            │           type: "mobile",                  │
-            │           sensor_id: "12d1:1433" },        │
-            │         grc.tpm-attestation: {...} },      │
-            │       verification_details: {...} }        │
-            └──────────────────────────────────────────>│
+            └─> Return: { quote, signature, geolocation: { type: "mobile", sensor_id: "12d1:1433" } }
+                │
+                <─ Keylime Verifier
+```
 
+**Step 11: Mobile Location Verification**
+```
+Keylime Verifier (Port 8881)
+    │
+    ├─> Extract geolocation from quote
+    ├─> Extract sensor_id if mobile type
+    │
+    └─> POST /verify
+        │
+        └─> Mobile Location Verification Microservice (Port 9050)
+            │
+            ├─> Lookup sensor_id in SQLite database
+            │   └─> Get MSISDN, lat, lon, accuracy
+            │
+            ├─> Call CAMARA APIs:
+            │   ├─> POST /bc-authorize
+            │   ├─> POST /token
+            │   └─> POST /location/v0/verify
+            │
+            └─> Return: { verification_result: true/false, latitude, longitude, accuracy }
+                │
+                <─ Keylime Verifier
+```
 
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                        PHASE 5: SPIRE SERVER ISSUES SVID                                     │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+**Step 12: Verifier Retrieves Attested Claims**
+```
+Keylime Verifier (Port 8881)
+    │
+    └─> Get Attested Claims
+        │
+        ├─> Call fact provider (optional)
+        ├─> Override with geolocation from TPM quote
+        └─> Prepare attested claims structure
+            │
+            └─> Return: { geolocation: {...} } (from TPM quote)
+```
 
-┌──────────────────────┐                    ┌──────────────────────┐
-│   SPIRE Server       │                    │   SPIRE Agent        │
-│   (Port 8081)        │                    │   (Low Privilege)    │
-└───────────┬──────────┘                    └──────────┬───────────┘
-            │                                           │
-            │ 27. Validate Verification                 │
-            │     - Check verification status           │
-            │     - Verify certificate signature valid   │
-            │     - Verify mobile location (if mobile)   │
-            │     - Extract attested claims             │
-            │                                           │
-            │ 28. Issue Sovereign SVID                  │
-            │     - Create X.509 certificate            │
-            │     - Embed attested claims               │
-            │       (geolocation, TPM attestation)      │
-            │     - Sign with SPIRE Server CA           │
-            │                                           │
-            │ 29. Return Agent SVID                     │
-            │     { svid: <certificate>,                │
-            │       private_key: <key>,                  │
-            │       bundle: <trust_bundle> }              │
-            └──────────────────────────────────────────>│
-            │                                           │
-            │ 30. Agent SVID Received                   │
-            │     - Agent can now authenticate          │
-            │     - Ready to request workload SVIDs     │
-            │                                           │
-            │ ✓ Attestation Complete                    │
+**Step 13: Verifier Returns Verification Result**
+```
+Keylime Verifier (Port 8881)
+    │
+    ├─> Verify Evidence:
+    │   ├─> Certificate signature verified
+    │   ├─> Quote signature verified (AK)
+    │   ├─> Nonce matches
+    │   ├─> Quote structure validated
+    │   └─> Mobile location verified (if mobile)
+    │
+    └─> POST /v2.2/unified_identity/verify (response)
+        │
+        └─> SPIRE Server (Port 8081)
+            │
+            └─> Receives: { status: "success", attested_claims: { grc.geolocation, grc.tpm-attestation }, ... }
+```
+### PHASE 5: SPIRE SERVER ISSUES SVID
+
+**Step 14: SPIRE Server Validates Verification Result**
+```
+SPIRE Server (Port 8081)
+    │
+    ├─> Check verification status
+    ├─> Verify certificate signature valid
+    ├─> Verify mobile location (if mobile)
+    └─> Extract attested claims
+```
+
+**Step 15: SPIRE Server Issues Sovereign SVID**
+```
+SPIRE Server (Port 8081)
+    │
+    ├─> Create X.509 certificate
+    ├─> Embed attested claims (geolocation, TPM attestation)
+    ├─> Sign with SPIRE Server CA
+    │
+    └─> POST /agent/attest-agent (response)
+        │
+        └─> SPIRE Agent (Low Privilege)
+            │
+            ├─> Receives Agent SVID
+            ├─> Agent can now authenticate
+            └─> Ready to request workload SVIDs
+                │
+                └─> ✓ Attestation Complete
+```
 
 
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -595,7 +537,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 - **Database**: SQLite database (`sensor_mapping.db`) stores sensor_id → MSISDN, latitude, longitude, accuracy mappings
 - **Default Seed**: `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7.0`
 - **Communication**: Keylime Verifier connects to microservice via REST API (HTTP/JSON) over TCP (port 9050)
-  - Note: UDS support was deferred (similar to TPM Plugin → Keylime Agent communication)
+  - Note: UDS support was deferred (similar to SPIRE Agent TPM Plugin Server (Sidecar) → Keylime Agent communication)
 - **Sensor ID Extraction**: Verifier extracts `sensor_id` from TPM quote response geolocation data (no hardcoded defaults)
 - **CAMARA API Flow**: Microservice implements three-step CAMARA API sequence:
   1. `POST /bc-authorize` with `login_hint` (phone number) and `scope`
@@ -616,21 +558,21 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 
 ## Gaps to be Addressed
 
-### 1. SPIRE Agent TPM Plugin → Keylime Agent: Use UDS for Security
+### 1. SPIRE Agent TPM Plugin Server (Sidecar) → Keylime Agent: Use UDS for Security
 
 **Current State:** Communication uses HTTPS/mTLS over localhost (`https://127.0.0.1:9002`)
 
 **Status:** ✅ mTLS implemented (Gap #2 fix)
-- TPM Plugin now uses HTTPS with client certificate authentication (mTLS)
-- TPM Plugin uses verifier's client certificate (signed by verifier's CA, which agent trusts)
-- Agent requires and verifies client certificate from TPM Plugin
+- SPIRE Agent TPM Plugin Server (Sidecar) now uses HTTPS with client certificate authentication (mTLS)
+- SPIRE Agent TPM Plugin Server (Sidecar) uses verifier's client certificate (signed by verifier's CA, which agent trusts)
+- Agent requires and verifies client certificate from SPIRE Agent TPM Plugin Server (Sidecar)
 - Communication is encrypted and authenticated
 
 **Remaining Gap:** UDS support (preferred over TCP for localhost communication)
 
 **Required for UDS:**
 - Implement UDS socket support in rust-keylime agent for the delegated certification endpoint
-- Update TPM Plugin client to use UDS instead of HTTPS
+- Update SPIRE Agent TPM Plugin Server (Sidecar) client to use UDS instead of HTTPS
 - Protocol can be HTTP/JSON or pure JSON over UDS
 - Default UDS path: `/tmp/keylime-agent.sock` or similar
 
