@@ -577,6 +577,15 @@ func parseAndCheckCSR(ctx context.Context, csrBytes []byte) (*x509.CertificateRe
 // processSovereignAttestation processes SovereignAttestation by calling Keylime and evaluating policy
 func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.FieldLogger, sovereignAttestation *types.SovereignAttestation, spiffeID string) (*types.AttestedClaims, error) {
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Skip Keylime verification for workload SVID requests - workloads inherit attested claims from agent SVID
+	// Agent SVIDs have pattern: spiffe://<trust-domain>/spire/agent/...
+	// Workload SVIDs have different patterns (e.g., spiffe://<trust-domain>/python-app)
+	if !strings.Contains(spiffeID, "/spire/agent/") {
+		log.Info("Unified-Identity - Phase 3: Skipping Keylime verification for workload SVID request (workloads inherit claims from agent SVID)")
+		return nil, nil
+	}
+
+	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 	// Check if Keylime client is configured
 	if s.keylimeClient == nil {
 		log.Warn("Unified-Identity - Phase 3: Keylime client not configured, skipping attestation verification")

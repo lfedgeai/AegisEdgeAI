@@ -113,9 +113,9 @@ def wait_for_agent_svid_in_logs(agent_log_path="/tmp/spire-agent.log", max_wait_
                     elapsed = int(time.time() - start_time)
                     print(f"  ✓ Found SVID indicator in agent logs after {elapsed}s")
                     # Wait a bit more to allow registration entries to propagate
-                    # Agent syncs with server every ~5 seconds, so wait a bit longer
-                    print("  Waiting additional 8s for registration entries to propagate...")
-                    time.sleep(8)
+                    # Agent syncs with server every ~5 seconds, so wait longer to ensure entry propagation
+                    print("  Waiting additional 15s for registration entries to propagate...")
+                    time.sleep(15)
                     return True
         except Exception as e:
             # If we can't read the log, continue waiting
@@ -200,6 +200,34 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
         # This ensures the agent is ready before we make the call
         wait_for_agent_svid_in_logs(max_wait_seconds=max_wait_seconds)
         
+        # Also wait for registration entry to propagate to agent
+        # Check agent logs for entry creation
+        agent_log_path = "/tmp/spire-agent.log"
+        if os.path.exists(agent_log_path):
+            print("  Waiting for registration entry to propagate to agent...")
+            import time
+            max_entry_wait = 30  # Wait up to 30 seconds for entry to propagate
+            entry_wait_start = time.time()
+            entry_found = False
+            
+            while time.time() - entry_wait_start < max_entry_wait:
+                try:
+                    with open(agent_log_path, 'r') as f:
+                        log_content = f.read()
+                        # Look for entry creation or SVID creation for python-app
+                        if "python-app" in log_content or "Entry created" in log_content or "Creating X509-SVID" in log_content:
+                            entry_found = True
+                            elapsed = int(time.time() - entry_wait_start)
+                            print(f"  ✓ Registration entry found in agent logs after {elapsed}s")
+                            break
+                except Exception:
+                    pass
+                time.sleep(1)
+            
+            if not entry_found:
+                print(f"  ⚠ Registration entry not found in agent logs after {max_entry_wait}s")
+                print("  Will proceed anyway - entry may propagate during streaming RPC")
+        
         print()
         print("Calling FetchX509SVID...")
         print("  (Agent should have SVID ready based on log check)")
@@ -218,7 +246,7 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
             # Get the first response (streaming may send multiple updates)
             # The agent will send updates when SVID becomes available
             response = None
-            max_wait_updates = 20  # Wait for up to 20 updates (agent sends updates periodically)
+            max_wait_updates = 40  # Wait for up to 40 updates (agent sends updates periodically, ~1 per second)
             update_count = 0
             
             for resp in responses:

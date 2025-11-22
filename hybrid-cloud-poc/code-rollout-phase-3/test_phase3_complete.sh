@@ -244,9 +244,36 @@ stop_mobile_sensor_microservice() {
     sleep 1
 }
 
+# Function to extract timestamp from log line
+extract_timestamp() {
+    local line="$1"
+    # Try different timestamp formats
+    # Format 1: 2025-11-22 03:00:03,410 (Python/TPM Plugin)
+    if echo "$line" | grep -qE "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"; then
+        echo "$line" | sed -E 's/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}[^ ]*).*/\1/'
+    # Format 2: time="2025-11-22T03:00:08+01:00" (SPIRE)
+    elif echo "$line" | grep -qE 'time="[^"]*"'; then
+        echo "$line" | sed -E 's/.*time="([^"]*)".*/\1/'
+    # Format 3:  INFO  keylime_agent (rust-keylime)
+    elif echo "$line" | grep -qE "^[[:space:]]*INFO[[:space:]]+"; then
+        # Extract date from log if available, otherwise use current
+        echo "$(date +%Y-%m-%dT%H:%M:%S%z)"
+    else
+        echo "$(date +%Y-%m-%dT%H:%M:%S%z)"
+    fi
+}
+
+# Function to normalize timestamp for sorting
+normalize_timestamp() {
+    local ts="$1"
+    # Convert to sortable format (YYYY-MM-DD HH:MM:SS)
+    echo "$ts" | sed -E 's/T/ /; s/[+-][0-9]{2}:[0-9]{2}$//; s/,.*//'
+}
+
 # Function to generate consolidated workflow log file
 generate_workflow_log_file() {
     local OUTPUT_FILE="/tmp/phase3_complete_workflow_logs.txt"
+    local TEMP_DIR=$(mktemp -d)
     
     echo -e "${CYAN}Generating consolidated workflow log file...${NC}"
     
@@ -257,153 +284,257 @@ generate_workflow_log_file() {
         echo "╚════════════════════════════════════════════════════════════════════════════════════════╝"
         echo ""
         
+        # Extract and tag logs from each component
+        echo "Extracting logs from all components..." >&2
+        
+        # TPM Plugin Server logs
+        if [ -f /tmp/tpm-plugin-server.log ]; then
+            grep -E "App Key|TPM Quote|Delegated|certificate|request|response|Unified-Identity" /tmp/tpm-plugin-server.log | \
+            while IFS= read -r line; do
+                ts=$(extract_timestamp "$line")
+                nts=$(normalize_timestamp "$ts")
+                echo "$nts|TPM_PLUGIN|$line"
+            done > "$TEMP_DIR/tpm-plugin.log"
+        fi
+        
+        # SPIRE Agent logs
+        if [ -f /tmp/spire-agent.log ]; then
+            grep -E "TPM Plugin|SovereignAttestation|TPM Quote|certificate|Agent SVID|Workload|Unified-Identity|attest" /tmp/spire-agent.log | \
+            while IFS= read -r line; do
+                ts=$(extract_timestamp "$line")
+                nts=$(normalize_timestamp "$ts")
+                echo "$nts|SPIRE_AGENT|$line"
+            done > "$TEMP_DIR/spire-agent.log"
+        fi
+        
+        # SPIRE Server logs
+        if [ -f /tmp/spire-server.log ]; then
+            grep -E "SovereignAttestation|Keylime Verifier|AttestedClaims|Agent SVID|Workload|Unified-Identity|attest" /tmp/spire-server.log | \
+            while IFS= read -r line; do
+                ts=$(extract_timestamp "$line")
+                nts=$(normalize_timestamp "$ts")
+                echo "$nts|SPIRE_SERVER|$line"
+            done > "$TEMP_DIR/spire-server.log"
+        fi
+        
+        # Keylime Verifier logs
+        if [ -f /tmp/keylime-verifier.log ]; then
+            grep -E "Processing|Verifying|certificate|quote|mobile|sensor|Unified-Identity|Phase 3" /tmp/keylime-verifier.log | \
+            while IFS= read -r line; do
+                ts=$(extract_timestamp "$line")
+                nts=$(normalize_timestamp "$ts")
+                echo "$nts|KEYLIME_VERIFIER|$line"
+            done > "$TEMP_DIR/keylime-verifier.log"
+        fi
+        
+        # rust-keylime Agent logs
+        if [ -f /tmp/rust-keylime-agent.log ]; then
+            grep -E "registered|activated|Delegated|certificate|quote|geolocation|Unified-Identity" /tmp/rust-keylime-agent.log | \
+            while IFS= read -r line; do
+                ts=$(extract_timestamp "$line")
+                nts=$(normalize_timestamp "$ts")
+                echo "$nts|RUST_KEYLIME|$line"
+            done > "$TEMP_DIR/rust-keylime.log"
+        fi
+        
+        # Mobile Location Verification Microservice logs
+        if [ -f /tmp/mobile-sensor-microservice.log ]; then
+            grep -E "verify|CAMARA|sensor|verification|request|response" /tmp/mobile-sensor-microservice.log | \
+            while IFS= read -r line; do
+                ts=$(extract_timestamp "$line")
+                nts=$(normalize_timestamp "$ts")
+                echo "$nts|MOBILE_SENSOR|$line"
+            done > "$TEMP_DIR/mobile-sensor.log"
+        fi
+        
+        # Sort all logs chronologically
+        cat "$TEMP_DIR"/*.log 2>/dev/null | sort -t'|' -k1,1 > "$TEMP_DIR/all-logs-sorted.log"
+        
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "PHASE 1: INITIAL SETUP & TPM PREPARATION"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        if [ -f /tmp/tpm-plugin-server.log ]; then
-            echo "[TPM Plugin Server] App Key Generation:"
-            grep -i "App Key.*generated\|App Key context" /tmp/tpm-plugin-server.log | head -3 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/rust-keylime-agent.log ]; then
-            echo "[rust-keylime Agent] Registration:"
-            grep -i "Agent.*registered\|Agent.*activated" /tmp/rust-keylime-agent.log | head -3 | sed 's/^/  /'
-            echo ""
-        fi
+        # Phase 1 logs
+        grep -E "TPM_PLUGIN.*App Key|RUST_KEYLIME.*registered|RUST_KEYLIME.*activated" "$TEMP_DIR/all-logs-sorted.log" | \
+        while IFS='|' read -r ts component line; do
+            case "$component" in
+                TPM_PLUGIN)
+                    echo "[TPM Plugin Server] $line" | sed 's/^/  /'
+                    ;;
+                RUST_KEYLIME)
+                    echo "[rust-keylime Agent] $line" | sed 's/^/  /'
+                    ;;
+            esac
+        done
+        echo ""
         
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 2: SPIRE AGENT ATTESTATION (Agent SVID Generation)"
+        echo "PHASE 2: SPIRE AGENT ATTESTATION (Agent SVID Generation) - CHRONOLOGICAL FLOW"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        if [ -f /tmp/spire-agent.log ]; then
-            echo "[SPIRE Agent] TPM Plugin Connection:"
-            grep -i "TPM Plugin Gateway\|TPM plugin client initialized" /tmp/spire-agent.log | head -3 | sed 's/^/  /'
-            echo ""
+        # Extract Phase 2 logs in chronological order
+        grep -E "SPIRE_AGENT.*TPM Plugin|SPIRE_AGENT.*SovereignAttestation|SPIRE_AGENT.*Building|TPM_PLUGIN.*Quote|TPM_PLUGIN.*certificate|RUST_KEYLIME.*Delegated|SPIRE_SERVER.*SovereignAttestation|SPIRE_SERVER.*Keylime|KEYLIME_VERIFIER|SPIRE_SERVER.*AttestedClaims|SPIRE_SERVER.*Agent SVID|SPIRE_AGENT.*Agent SVID|MOBILE_SENSOR" "$TEMP_DIR/all-logs-sorted.log" | \
+        while IFS='|' read -r ts component line; do
+            # Format component name
+            case "$component" in
+                SPIRE_AGENT)
+                    comp_name="SPIRE Agent"
+                    ;;
+                SPIRE_SERVER)
+                    comp_name="SPIRE Server"
+                    ;;
+                TPM_PLUGIN)
+                    comp_name="TPM Plugin Server"
+                    ;;
+                RUST_KEYLIME)
+                    comp_name="rust-keylime Agent"
+                    ;;
+                KEYLIME_VERIFIER)
+                    comp_name="Keylime Verifier"
+                    ;;
+                MOBILE_SENSOR)
+                    comp_name="Mobile Location Verification"
+                    ;;
+                *)
+                    comp_name="$component"
+                    ;;
+            esac
             
-            echo "[SPIRE Agent] Building SovereignAttestation:"
-            grep -i "Building real SovereignAttestation\|Real SovereignAttestation built" /tmp/spire-agent.log | head -3 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/tpm-plugin-server.log ]; then
-            echo "[TPM Plugin Server] TPM Quote Generation:"
-            grep -i "TPM Quote.*generated" /tmp/tpm-plugin-server.log | head -2 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/spire-agent.log ]; then
-            echo "[SPIRE Agent] TPM Quote Result:"
-            grep -i "TPM Quote.*generated.*successfully\|app_key_public_len\|has_certificate" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/tpm-plugin-server.log ]; then
-            echo "[TPM Plugin Server] Delegated Certification Request:"
-            grep -i "Requesting App Key certificate\|App Key context" /tmp/tpm-plugin-server.log | head -3 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/rust-keylime-agent.log ]; then
-            echo "[rust-keylime Agent] Delegated Certification:"
-            grep -i "Delegated certification request\|App Key.*certified\|certificate.*generated" /tmp/rust-keylime-agent.log | head -6 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/tpm-plugin-server.log ]; then
-            echo "[TPM Plugin Server] Certificate Received:"
-            grep -i "App Key certificate obtained\|certificate.*received successfully" /tmp/tpm-plugin-server.log | head -2 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/spire-server.log ]; then
-            echo "[SPIRE Server] Receives SovereignAttestation:"
-            grep -i "Received SovereignAttestation.*agent bootstrap" /tmp/spire-server.log | head -1 | sed 's/^/  /'
-            echo ""
+            # Extract and format timestamp
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
             
-            echo "[SPIRE Server] Calls Keylime Verifier:"
-            grep -i "Calling Keylime Verifier.*verify evidence" /tmp/spire-server.log | head -2 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/keylime-verifier.log ]; then
-            echo "[Keylime Verifier] Processing Request:"
-            grep -i "Processing tpm-app-key\|TPM Quote.*verified\|Verification successful" /tmp/keylime-verifier.log | head -8 | sed 's/^/  /'
-            echo ""
-        fi
-        
-        if [ -f /tmp/spire-server.log ]; then
-            echo "[SPIRE Server] Receives AttestedClaims:"
-            grep -i "Successfully received AttestedClaims from Keylime" /tmp/spire-server.log | head -2 | sed 's/^/  /'
-            echo ""
+            # Format log line (remove component tag, keep original format)
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
             
-            echo "[SPIRE Server] Builds Agent SVID Claims:"
-            grep -i "Built agent unified identity claims\|AttestedClaims.*embedded" /tmp/spire-server.log | head -2 | sed 's/^/  /'
-            echo ""
-        fi
+            echo "[$formatted_ts] [$comp_name] $clean_line" | sed 's/^/  /'
+        done
+        echo ""
         
-        if [ -f /tmp/spire-agent.log ]; then
-            echo "[SPIRE Agent] Agent SVID Received:"
-            grep -i "Agent SVID Unified Identity Claims\|Node attestation was successful" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
-            echo ""
-            
-            echo "[SPIRE Agent] Agent SVID Claims (Full JSON):"
-            grep -A 30 "Agent SVID Unified Identity Claims" /tmp/spire-agent.log | grep -A 25 "\"grc\." | head -30 | sed 's/^/  /'
-            echo ""
-        fi
-        
+        # Also show detailed sections for key events
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 3: WORKLOAD SVID GENERATION"
+        echo "PHASE 2: DETAILED EVENT BREAKDOWN"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        if [ -f /tmp/spire-agent.log ]; then
-            echo "[SPIRE Agent] Workload API Started:"
-            grep -i "Starting Workload and SDS APIs" /tmp/spire-agent.log | head -1 | sed 's/^/  /'
-            echo ""
-            
-            echo "[SPIRE Agent] Registration Entry Created:"
-            grep -i "Entry created\|Creating X509-SVID.*python-app" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
-            echo ""
-        fi
+        # TPM Quote Generation
+        echo "[1] TPM Quote Generation:"
+        grep -E "TPM_PLUGIN.*Quote|SPIRE_AGENT.*Quote" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
+        while IFS='|' read -r ts component line; do
+            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
+        done
+        echo ""
         
-        if [ -f /tmp/spire-server.log ]; then
-            echo "[SPIRE Server] Processing Workload Request:"
-            grep -i "Processing SovereignAttestation.*python-app\|Built workload unified identity claims" /tmp/spire-server.log | head -2 | sed 's/^/  /'
-            echo ""
-            
-            echo "[SPIRE Server] Workload SVID Claims (Full JSON):"
-            grep -A 5 "Built workload unified identity claims" /tmp/spire-server.log | grep -A 3 "claims=" | head -6 | sed 's/^/  /'
-            echo ""
-            
-            echo "[SPIRE Server] Issues Workload SVID:"
-            grep -i "Embedding AttestedClaims\|Verified agent SVID\|Signed X509 SVID.*python-app" /tmp/spire-server.log | head -3 | sed 's/^/  /'
-            echo ""
-        fi
+        # Delegated Certification
+        echo "[2] Delegated Certification:"
+        grep -E "TPM_PLUGIN.*certificate|RUST_KEYLIME.*Delegated|RUST_KEYLIME.*certificate" "$TEMP_DIR/all-logs-sorted.log" | head -8 | \
+        while IFS='|' read -r ts component line; do
+            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
+        done
+        echo ""
         
-        if [ -f /tmp/spire-agent.log ]; then
-            echo "[SPIRE Agent] Workload Authenticated:"
-            grep -i "PID attested\|Fetched X.509 SVID.*python-app" /tmp/spire-agent.log | head -2 | sed 's/^/  /'
-            echo ""
+        # Certificate Verification
+        echo "[3] Certificate Signature Verification:"
+        grep -E "KEYLIME_VERIFIER.*certificate|KEYLIME_VERIFIER.*Verifying.*certificate" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
+        while IFS='|' read -r ts component line; do
+            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
+        done
+        echo ""
+        
+        # Mobile Location Verification
+        echo "[4] Mobile Location Verification:"
+        grep -E "MOBILE_SENSOR|KEYLIME_VERIFIER.*mobile|KEYLIME_VERIFIER.*sensor" "$TEMP_DIR/all-logs-sorted.log" | head -8 | \
+        while IFS='|' read -r ts component line; do
+            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
+        done
+        echo ""
+        
+        # Agent SVID Issuance
+        echo "[5] Agent SVID Issuance:"
+        grep -E "SPIRE_SERVER.*Agent SVID|SPIRE_AGENT.*Agent SVID|SPIRE_SERVER.*AttestedClaims" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
+        while IFS='|' read -r ts component line; do
+            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
+        done
+        echo ""
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "PHASE 3: WORKLOAD SVID GENERATION - CHRONOLOGICAL FLOW"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        # Extract Phase 3 logs in chronological order
+        grep -E "SPIRE_AGENT.*Workload|SPIRE_AGENT.*python-app|SPIRE_SERVER.*Workload|SPIRE_SERVER.*python-app" "$TEMP_DIR/all-logs-sorted.log" | \
+        while IFS='|' read -r ts component line; do
+            # Format component name
+            case "$component" in
+                SPIRE_AGENT)
+                    comp_name="SPIRE Agent"
+                    ;;
+                SPIRE_SERVER)
+                    comp_name="SPIRE Server"
+                    ;;
+                *)
+                    comp_name="$component"
+                    ;;
+            esac
             
-            echo "[SPIRE Agent] SVID Renewal Configuration:"
+            # Extract and format timestamp
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            
+            # Format log line (remove component tag, keep original format)
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            
+            echo "[$formatted_ts] [$comp_name] $clean_line" | sed 's/^/  /'
+        done
+        echo ""
+        
+        # Detailed workload SVID breakdown
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "PHASE 3: DETAILED EVENT BREAKDOWN"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        # Workload API and Registration
+        echo "[1] Workload API & Registration:"
+        if [ -f /tmp/spire-agent.log ]; then
+            grep -i "Starting Workload\|Entry created\|python-app" /tmp/spire-agent.log | head -3 | sed 's/^/    /'
+        fi
+        echo ""
+        
+        # Workload SVID Request Processing
+        echo "[2] Workload SVID Request Processing:"
+        grep -E "SPIRE_SERVER.*Workload|SPIRE_SERVER.*python-app" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
+        while IFS='|' read -r ts component line; do
+            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
+        done
+        echo ""
+        
+        # Workload SVID Issuance
+        echo "[3] Workload SVID Issuance:"
+        grep -E "SPIRE_SERVER.*Signed.*python-app|SPIRE_AGENT.*Fetched.*python-app" "$TEMP_DIR/all-logs-sorted.log" | head -3 | \
+        while IFS='|' read -r ts component line; do
+            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
+        done
+        echo ""
+        
+        # SVID Renewal
+        if [ -f /tmp/spire-agent.log ]; then
+            echo "[4] SVID Renewal Configuration:"
             if grep -q "availability_target" /tmp/spire-agent.log 2>/dev/null; then
-                grep -i "availability_target" /tmp/spire-agent.log | head -1 | sed 's/^/  /'
+                grep -i "availability_target" /tmp/spire-agent.log | head -1 | sed 's/^/    /'
             else
-                echo "  Configured for 15s renewal interval (demo purposes)"
+                echo "    Configured for 15s renewal interval (demo purposes)"
             fi
             echo ""
             
-            echo "[SPIRE Agent] SVID Renewal Activity:"
+            echo "[5] SVID Renewal Activity:"
             RENEWAL_EVENTS=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
             if [ "$RENEWAL_EVENTS" -gt 0 ]; then
-                echo "  Found $RENEWAL_EVENTS renewal events:"
-                grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | tail -10 | sed 's/^/    /'
+                echo "    Found $RENEWAL_EVENTS renewal events:"
+                grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | tail -5 | sed 's/^/      /'
             else
-                echo "  No renewal events yet (renewal configured for 15s intervals)"
+                echo "    No renewal events yet (renewal configured for 15s intervals)"
             fi
             echo ""
         fi
@@ -468,6 +599,9 @@ generate_workflow_log_file() {
         echo "  ✓ All verifications: Passed"
         echo ""
     } > "$OUTPUT_FILE"
+    
+    # Cleanup temp directory
+    rm -rf "$TEMP_DIR" 2>/dev/null
     
     if [ -f "$OUTPUT_FILE" ]; then
         local line_count=$(wc -l < "$OUTPUT_FILE" 2>/dev/null || echo "0")
@@ -1777,6 +1911,9 @@ if [ -f "./create-registration-entry.sh" ]; then
     ./create-registration-entry.sh
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}  ✓ Registration entry created${NC}"
+        # Wait for entry to propagate to agent (agent syncs with server periodically)
+        echo "  Waiting 10s for registration entry to propagate to agent..."
+        sleep 10
     else
         echo -e "${YELLOW}  ⚠ Registration entry creation had issues, but continuing...${NC}"
     fi

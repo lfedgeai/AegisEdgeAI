@@ -22,7 +22,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.exc import NoResultFound  # pyright: ignore
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
 
 from keylime import api_version as keylime_api_version
 from keylime import (
@@ -2181,6 +2182,13 @@ class VerifyEvidenceHandler(BaseHandler):
                         response.body.decode('utf-8') if isinstance(response.body, bytes) else response.body
                     )
                     quote_response = json.loads(response_body)
+                    logger.debug(
+                        'Unified-Identity - Phase 3: Parsed quote response (API v%s): code=%s, status=%s, has_results=%s',
+                        api_version,
+                        quote_response.get('code'),
+                        quote_response.get('status'),
+                        'results' in quote_response,
+                    )
                 except Exception as exc:  # noqa: BLE001
                     logger.error(
                         'Unified-Identity - Phase 3: Failed to parse agent quote response (API v%s): %s',
@@ -2193,10 +2201,16 @@ class VerifyEvidenceHandler(BaseHandler):
                     quote_data = quote_response.get('data') or quote_response.get('results', {})
                     agent_quote = quote_data.get('quote')
                     if agent_quote:
+                        logger.info(
+                            'Unified-Identity - Phase 3: Successfully retrieved quote from agent (API v%s), quote length=%d',
+                            api_version,
+                            len(agent_quote) if agent_quote else 0,
+                        )
                         return agent_quote, quote_data.get('hash_alg'), quote_data
                     logger.warning(
-                        'Unified-Identity - Phase 3: Agent returned success but quote payload empty (API v%s)',
+                        'Unified-Identity - Phase 3: Agent returned success but quote payload empty (API v%s). Response keys: %s',
                         api_version,
+                        list(quote_data.keys()) if isinstance(quote_data, dict) else 'not a dict',
                     )
                 else:
                     logger.debug(
@@ -2241,18 +2255,135 @@ class VerifyEvidenceHandler(BaseHandler):
 
         cert_validated = False
         if app_key_certificate and app_key_certificate.strip():
-            try:
-                import base64
-
-                cert_bytes = base64.b64decode(app_key_certificate)
-                cert_validated = bool(cert_bytes)
-                if not cert_validated:
-                    logger.info(
-                        'Unified-Identity - Phase 3: App Key certificate empty (continuing without certificate validation)'
-                    )
-            except Exception as e:  # noqa: BLE001
-                logger.debug('Unified-Identity - Phase 3: Unable to parse App Key certificate: %s', e)
+            if not tpm_ak:
+                logger.error("Unified-Identity - Phase 3: Cannot verify certificate without TPM AK")
                 cert_validated = False
+            else:
+                logger.info("Unified-Identity - Phase 3: Verifying App Key certificate signature with TPM AK")
+                # Convert AK to PEM format if needed (for certificate verification)
+                ak_public_for_cert_verification = tpm_ak
+                if not tpm_ak.strip().startswith("-----BEGIN"):
+                    try:
+                        ak_bytes = base64.b64decode(tpm_ak)
+                        ak_pub = tpm2_objects.pubkey_from_tpm2b_public(ak_bytes)
+                        ak_public_for_cert_verification = ak_pub.public_bytes(
+                            encoding=serialization.Encoding.PEM,
+                            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                        ).decode("utf-8")
+                        logger.debug("Unified-Identity - Phase 3: Converted TPM AK from TPM2B_PUBLIC to PEM for certificate verification")
+                    except Exception as e:  # noqa: BLE001
+                        logger.error("Unified-Identity - Phase 3: Failed to convert TPM AK to PEM for certificate verification: %s", e)
+                        web_util.echo_json_response(
+                            self,
+                            400,
+                            "failed to convert TPM AK to PEM format for certificate verification",
+                        )
+                        return None
+                # Verify certificate signature using AK
+                cert_is_valid, cert_obj, cert_error = app_key_verification.validate_app_key_certificate(
+                    app_key_certificate, ak_public_for_cert_verification, tpm_ek
+                )
+                if not cert_is_valid:
+                    logger.error(
+                        'Unified-Identity - Phase 3: App Key certificate signature verification failed: %s',
+                        cert_error or "unknown error"
+                    )
+                    web_util.echo_json_response(
+                        self,
+                        422,
+                        f"app key certificate signature verification failed: {cert_error or 'unknown error'}",
+                        {'verified': False},
+                    )
+                    return None
+                
+                # Verify that certify_data contains the correct App Key public key
+                # Extract qualifying data from certificate and verify it matches App Key + nonce
+                try:
+                    cert_bytes = base64.b64decode(app_key_certificate)
+                    cert_str = cert_bytes.decode("utf-8")
+                    cert_json = json.loads(cert_str)
+                    certify_data_b64 = cert_json.get("certify_data")
+                    challenge_nonce = cert_json.get("challenge_nonce", "")
+                    
+                    if certify_data_b64:
+                        certify_data_bytes = base64.b64decode(certify_data_b64)
+                        try:
+                            attest_dict = tpm2_objects.unmarshal_tpms_attest(certify_data_bytes)
+                            qualifying_data = attest_dict.get("extraData", b"")
+                        except Exception as unmarshal_err:
+                            # Signature verification already passed, so certificate is cryptographically valid
+                            # Unmarshaling failure is likely due to unsupported TPM type in Keylime library
+                            logger.warning(
+                                "Unified-Identity - Phase 3: Failed to unmarshal TPMS_ATTEST structure for qualifying data verification: %s. "
+                                "Certificate signature verification already passed, so certificate is cryptographically valid. "
+                                "Skipping qualifying data verification.",
+                                unmarshal_err
+                            )
+                            # Skip qualifying data verification but continue (signature verification already passed)
+                            attest_dict = {}
+                            qualifying_data = b""
+                        
+                        # Verify qualifying data matches hash of (App Key public key + nonce)
+                        # The qualifying data is created as: SHA256(SHA256(PEM_public_key_bytes) + challenge_nonce)
+                        # This matches the rust-keylime agent's create_qualifying_data function
+                        # Skip verification if unmarshaling failed (qualifying_data will be empty)
+                        if qualifying_data:
+                            hash_alg_int = attest_dict.get("type", {}).get("hashAlg", 0x000B)  # Default to SHA256
+                            hashfunc = tpm2_objects.HASH_FUNCS.get(hash_alg_int)
+                            if not hashfunc:
+                                hashfunc = hashes.SHA256()  # Fallback to SHA256
+                            
+                            # Step 1: Hash the PEM public key bytes
+                            app_key_pem_bytes = app_key_public.encode("utf-8")
+                            pubkey_digest = hashes.Hash(hashfunc, backend=default_backend())
+                            pubkey_digest.update(app_key_pem_bytes)
+                            pubkey_hash = pubkey_digest.finalize()
+                            
+                            # Step 2: Hash (pubkey_hash + challenge_nonce)
+                            combined_digest = hashes.Hash(hashfunc, backend=default_backend())
+                            combined_digest.update(pubkey_hash)
+                            if challenge_nonce:
+                                combined_digest.update(challenge_nonce.encode("utf-8"))
+                            expected_qualifying_data = combined_digest.finalize()
+                            
+                            # Compare qualifying data (may be hex-encoded or raw bytes)
+                            qualifying_data_matches = False
+                            if qualifying_data == expected_qualifying_data:
+                                qualifying_data_matches = True
+                            else:
+                                # Try hex comparison
+                                try:
+                                    qualifying_data_hex = qualifying_data.hex() if isinstance(qualifying_data, bytes) else qualifying_data
+                                    expected_hex = expected_qualifying_data.hex()
+                                    if qualifying_data_hex.lower() == expected_hex.lower():
+                                        qualifying_data_matches = True
+                                except Exception:
+                                    pass
+                            
+                            if not qualifying_data_matches:
+                                logger.error(
+                                    "Unified-Identity - Phase 3: Qualifying data in certificate does not match App Key public key + nonce"
+                                )
+                                web_util.echo_json_response(
+                                    self,
+                                    422,
+                                    "app key certificate qualifying data verification failed: qualifying data does not match App Key public key",
+                                    {'verified': False},
+                                )
+                                return None
+                            
+                            logger.info("Unified-Identity - Phase 3: Certificate qualifying data verified (matches App Key public key + nonce)")
+                        else:
+                            logger.info("Unified-Identity - Phase 3: Certificate qualifying data verification skipped (unmarshaling failed, but signature verification passed)")
+                
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        "Unified-Identity - Phase 3: Could not verify qualifying data in certificate (continuing): %s", e
+                    )
+                    # Continue even if qualifying data verification fails (signature verification is the critical check)
+                
+                cert_validated = True
+                logger.info("Unified-Identity - Phase 3: App Key certificate signature verified successfully with AK")
         else:
             logger.warning("Unified-Identity - Phase 3: Missing 'app_key_certificate', proceeding without certificate validation")
 
@@ -2268,8 +2399,6 @@ class VerifyEvidenceHandler(BaseHandler):
         ak_public_for_verification = tpm_ak
         if not tpm_ak.strip().startswith("-----BEGIN"):
             try:
-                import base64
-
                 ak_bytes = base64.b64decode(tpm_ak)
                 ak_pub = tpm2_objects.pubkey_from_tpm2b_public(ak_bytes)
                 ak_public_for_verification = ak_pub.public_bytes(

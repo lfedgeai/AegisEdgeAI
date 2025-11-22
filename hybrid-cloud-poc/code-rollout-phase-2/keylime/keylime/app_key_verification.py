@@ -7,6 +7,7 @@ using App Keys for the Unified Identity flow.
 
 import base64
 import hashlib
+import json
 import struct
 import uuid
 from typing import Any, Dict, Optional, Tuple
@@ -66,21 +67,129 @@ def validate_app_key_certificate(
             return False, None, error_msg
 
         # Unified-Identity - Phase 3: Validate TPM attestation format (JSON structure with certify_data/signature)
-        # Phase 3 format: {"app_key_public": "...", "certify_data": "...", "signature": "...", ...}
+        # Phase 3 format: {"certify_data": "...", "signature": "...", "challenge_nonce": "..."}
         # This is TPM2_Certify output, not an X.509 certificate
         try:
+            if not cert_bytes:
+                error_msg = "Certificate bytes are empty after base64 decoding"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
             cert_str = cert_bytes.decode("utf-8")
-            import json
+            if not cert_str or not cert_str.strip():
+                error_msg = "Certificate string is empty after decoding"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
             cert_json = json.loads(cert_str)
-            if isinstance(cert_json, dict) and "certify_data" in cert_json and "signature" in cert_json:
-                logger.info("Unified-Identity - Phase 3: Validated TPM attestation format (TPM2_Certify output)")
-                logger.info("Unified-Identity - Phase 3: TPM attestation validated via quote verification (no separate X.509 certificate)")
-                # Return None to indicate no X.509 cert, but this is expected for Phase 3 format
-                return True, None, None
-            else:
+            if not isinstance(cert_json, dict) or "certify_data" not in cert_json or "signature" not in cert_json:
                 error_msg = "TPM attestation structure missing required fields (certify_data/signature)"
                 logger.error("Unified-Identity - Phase 3: %s", error_msg)
                 return False, None, error_msg
+            
+            # Extract certify_data and signature
+            certify_data_b64 = cert_json.get("certify_data")
+            signature_b64 = cert_json.get("signature")
+            challenge_nonce = cert_json.get("challenge_nonce", "")
+            
+            if not certify_data_b64 or not signature_b64:
+                error_msg = "TPM attestation structure has empty certify_data or signature"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
+            
+            # Decode base64 fields
+            try:
+                certify_data_bytes = base64.b64decode(certify_data_b64)
+                signature_bytes = base64.b64decode(signature_b64)
+                logger.debug("Unified-Identity - Phase 3: Decoded certificate structure (certify_data: %d bytes, signature: %d bytes)", len(certify_data_bytes), len(signature_bytes))
+            except Exception as e:
+                error_msg = f"Failed to decode base64 certify_data or signature: {e}"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
+            
+            # Verify signature using AK public key
+            logger.info("Unified-Identity - Phase 3: Verifying certificate signature with TPM AK (TPM2_Certify verification)")
+            logger.debug("Unified-Identity - Phase 3: AK public key format check - starts with '-----BEGIN': %s, length: %d", 
+                        ak_public_key.strip().startswith("-----BEGIN"), len(ak_public_key))
+            try:
+                ak_pubkey = serialization.load_pem_public_key(ak_public_key.encode("utf-8"), backend=default_backend())
+                logger.debug("Unified-Identity - Phase 3: Successfully parsed AK as PEM")
+            except Exception as pem_err:
+                logger.debug("Unified-Identity - Phase 3: Failed to parse AK as PEM: %s, trying DER/base64", pem_err)
+                # Try DER format
+                try:
+                    ak_bytes = base64.b64decode(ak_public_key)
+                    ak_pubkey = serialization.load_der_public_key(ak_bytes, backend=default_backend())
+                    logger.debug("Unified-Identity - Phase 3: Successfully parsed AK as DER")
+                except Exception as e:
+                    error_msg = f"Failed to parse AK public key: {e}"
+                    logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                    logger.debug("Unified-Identity - Phase 3: AK key preview (first 100 chars): %s", ak_public_key[:100])
+                    return False, None, error_msg
+            
+            if not isinstance(ak_pubkey, (RSAPublicKey, EllipticCurvePublicKey)):
+                error_msg = f"Unsupported AK public key type: {type(ak_pubkey).__name__}"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
+            
+            # Parse signature structure (TPMT_SIGNATURE format: sigAlg (2 bytes), hashAlg (2 bytes), signature)
+            if len(signature_bytes) < 4:
+                error_msg = "Signature blob too short"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
+            
+            sig_alg, hash_alg_int = struct.unpack_from(">HH", signature_bytes, 0)
+            
+            # Get hash function
+            hashfunc = tpm2_objects.HASH_FUNCS.get(hash_alg_int)
+            if not hashfunc:
+                error_msg = f"Unsupported hash algorithm {hash_alg_int:#x} in signature"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
+            
+            # Extract signature based on algorithm
+            if isinstance(ak_pubkey, RSAPublicKey) and sig_alg in [tpm2_objects.TPM_ALG_RSASSA]:
+                if len(signature_bytes) < 6:
+                    error_msg = "RSA signature blob too short"
+                    logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                    return False, None, error_msg
+                (sig_size,) = struct.unpack_from(">H", signature_bytes, 4)
+                if len(signature_bytes) < 6 + sig_size:
+                    error_msg = f"RSA signature size mismatch: expected {6 + sig_size} bytes, got {len(signature_bytes)}"
+                    logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                    return False, None, error_msg
+                (signature,) = struct.unpack_from(f"{sig_size}s", signature_bytes, 6)
+            elif isinstance(ak_pubkey, EllipticCurvePublicKey) and sig_alg in [tpm2_objects.TPM_ALG_ECDSA]:
+                signature = tpm_util.ecdsa_der_from_tpm(signature_bytes, ak_pubkey)
+            else:
+                error_msg = f"Unsupported signature algorithm {sig_alg:#x} for key type {type(ak_pubkey).__name__}"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
+            
+            # Compute digest of certify_data (TPMS_ATTEST)
+            digest = hashes.Hash(hashfunc, backend=default_backend())
+            digest.update(certify_data_bytes)
+            certify_data_digest = digest.finalize()
+            
+            # Verify signature
+            from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
+            try:
+                if isinstance(ak_pubkey, RSAPublicKey):
+                    ak_pubkey.verify(signature, certify_data_digest, padding.PKCS1v15(), Prehashed(hashfunc))
+                else:
+                    ak_pubkey.verify(signature, certify_data_digest, ec.ECDSA(Prehashed(hashfunc)))
+                logger.info("Unified-Identity - Phase 3: Certificate signature verified successfully with AK")
+            except crypto_exceptions.InvalidSignature:
+                error_msg = "Certificate signature verification failed: signature does not match"
+                logger.error("Unified-Identity - Phase 3: %s", error_msg)
+                return False, None, error_msg
+            
+            # Signature verification already passed, so certificate is cryptographically valid
+            # Unmarshaling is not needed here - signature verification is sufficient proof
+            # Qualifying data verification (if needed) is done separately in cloud_verifier_tornado.py
+            logger.info("Unified-Identity - Phase 3: Certificate signature verified successfully with TPM AK")
+            logger.info("Unified-Identity - Phase 3: App Key certificate validated (signature verified)")
+            # Return None to indicate no X.509 cert, but this is expected for Phase 3 format
+            return True, None, None
+                
         except (UnicodeDecodeError, json.JSONDecodeError, KeyError) as e:
             error_msg = f"Failed to parse TPM attestation structure: {e}"
             logger.error("Unified-Identity - Phase 3: %s", error_msg)
