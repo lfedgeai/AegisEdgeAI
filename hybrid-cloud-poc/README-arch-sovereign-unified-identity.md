@@ -71,7 +71,7 @@
     - This proves the App Key certificate was actually signed by the TPM's AK and is bound to the specific App Key and nonce
 
 11. **Verifier Fetches TPM Quote On-Demand**
-    - The verifier connects to the rust-keylime agent (over HTTP for localhost agents)
+    - The verifier connects to the rust-keylime agent (over HTTPS/mTLS)
     - It requests a fresh TPM quote using the challenge nonce from SPIRE Server
     - The agent generates a TPM quote containing:
       - Platform Configuration Register (PCR) values showing system state
@@ -330,7 +330,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
             │                                           │
             │ 7. Request App Key Certificate           │
             │    POST /v2.2/delegated_certification/  │
-            │         certify_app_key                  │
+            │         certify_app_key (HTTPS/mTLS)    │
             │    { app_key_public_pem,                 │
             │      app_key_context_path }              │
             └──────────────────────────────────────────>│
@@ -421,7 +421,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
             │ 16. Request TPM Quote                    │
-            │     POST /v2.2/quote                    │
+            │     POST /v2.2/quote (HTTPS/mTLS)       │
             │     { nonce: <challenge> }                │
             └──────────────────────────────────────────>│
             │                                           │
@@ -430,7 +430,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
             │     - Challenge nonce                    │
             │     - Signed by AK                       │
             │                                           │
-            │ 16. Return TPM Quote                    │
+            │ 18. Return TPM Quote                      │
             │     { quote: <base64>,                    │
             │       signature: <base64>,                │
             │       geolocation: {                      │
@@ -446,25 +446,25 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │                      │                    │ (Port 9050)          │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 17. Extract Geolocation from Quote       │
+            │ 19. Extract Geolocation from Quote        │
             │     - Parse geolocation from quote       │
             │     - Extract sensor_id if mobile type   │
             │                                           │
-            │ 18. Request Location Verification       │
+            │ 19. Request Location Verification        │
             │     POST /verify                         │
             │     { sensor_id: "12d1:1433" }           │
             └──────────────────────────────────────────>│
             │                                           │
-            │ 19. Lookup Sensor in Database            │
+            │ 20. Lookup Sensor in Database            │
             │     - Query SQLite for sensor_id         │
             │     - Get MSISDN, lat, lon, accuracy     │
             │                                           │
-            │ 20. Call CAMARA APIs                     │
+            │ 21. Call CAMARA APIs                     │
             │     - POST /bc-authorize                 │
             │     - POST /token                        │
             │     - POST /location/v0/verify           │
             │                                           │
-            │ 21. Return Verification Result           │
+            │ 22. Return Verification Result           │
             │     { verification_result: true/false,   │
             │       latitude: 40.33,                    │
             │       longitude: -3.7707,                 │
@@ -477,14 +477,14 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │  (Port 8881)         │                    │  (Internal)          │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 22. Get Attested Claims                   │
+            │ 23. Get Attested Claims                   │
             │     - Call fact provider (optional)      │
             │     - Override with geolocation from     │
             │       TPM quote (Phase 3)                │
             │     - Prepare attested claims structure  │
             └──────────────────────────────────────────>│
             │                                           │
-            │ 23. Return Claims                           │
+            │ 24. Return Claims                         │
             │     { geolocation: {...} }                │
             │     (from TPM quote in Phase 3)           │
             │<───────────────────────────────────────────┘
@@ -495,14 +495,14 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │  (Port 8881)         │                    │   (Port 8081)        │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 24. Verify Evidence                       │
+            │ 25. Verify Evidence                       │
             │     - Certificate signature verified      │
             │     - Verify quote signature (AK)         │
             │     - Verify nonce matches                │
             │     - Validate quote structure            │
             │     - Verify mobile location (if mobile)   │
             │                                           │
-            │ 25. Return Verification Result           │
+            │ 26. Return Verification Result           │
             │     { status: "success",                  │
             │       attested_claims: {                   │
             │         grc.geolocation: {                 │
@@ -522,25 +522,25 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 │   (Port 8081)        │                    │   (Low Privilege)    │
 └───────────┬──────────┘                    └──────────┬───────────┘
             │                                           │
-            │ 26. Validate Verification                 │
+            │ 27. Validate Verification                 │
             │     - Check verification status           │
             │     - Verify certificate signature valid   │
             │     - Verify mobile location (if mobile)   │
             │     - Extract attested claims             │
             │                                           │
-            │ 27. Issue Sovereign SVID                  │
+            │ 28. Issue Sovereign SVID                  │
             │     - Create X.509 certificate            │
             │     - Embed attested claims               │
             │       (geolocation, TPM attestation)      │
             │     - Sign with SPIRE Server CA           │
             │                                           │
-            │ 28. Return Agent SVID                     │
+            │ 29. Return Agent SVID                     │
             │     { svid: <certificate>,                │
             │       private_key: <key>,                  │
             │       bundle: <trust_bundle> }              │
             └──────────────────────────────────────────>│
             │                                           │
-            │ 29. Agent SVID Received                   │
+            │ 30. Agent SVID Received                   │
             │     - Agent can now authenticate          │
             │     - Ready to request workload SVIDs     │
             │                                           │
@@ -640,27 +640,7 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 
 ---
 
-### 2. Keylime Verifier → Keylime Agent: Use mTLS for Security -- gap fixed
-
-**Previous State:** Communication was forced to HTTP for localhost agents (bypassing mTLS)
-
-**Issue:** HTTP is unencrypted and unauthenticated; vulnerable to MITM attacks
-
-**Fixed:**
-- ✅ Removed HTTP bypass for localhost agents in verifier
-- ✅ Verifier now uses mTLS when agent's mTLS certificate is available from registrar
-- ✅ Agent mTLS is enabled by default (`enable_agent_mtls = true`)
-- ✅ Agent's `trusted_client_ca` is configured to trust verifier's CA certificate
-- ✅ Both verifier and agent authenticate each other using certificates
-
-**Implementation:**
-- `code-rollout-phase-2/keylime/keylime/cloud_verifier_tornado.py` - Removed localhost HTTP bypass, always use mTLS when agent certificate available
-- `code-rollout-phase-3/test_phase3_complete.sh` - Configured agent's `trusted_client_ca` to trust verifier's CA
-- Agent uses mTLS by default and requires client certificate authentication from verifier
-
----
-
-### 3. Keylime Verifier to Mobile Location Verification Microservice: Use UDS for Security
+### 2. Keylime Verifier to Mobile Location Verification Microservice: Use UDS for Security
 
 **Current State:** Communication is hardcoded to HTTP over localhost (`http://127.0.0.1:9050`)
 

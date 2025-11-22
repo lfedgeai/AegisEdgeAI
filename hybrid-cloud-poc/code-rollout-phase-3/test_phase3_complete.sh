@@ -370,45 +370,123 @@ generate_workflow_log_file() {
         echo ""
         
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 2: SPIRE AGENT ATTESTATION (Agent SVID Generation) - CHRONOLOGICAL FLOW"
+        echo "PHASE 2: SPIRE AGENT ATTESTATION (Agent SVID Generation) - ARCHITECTURE FLOW ORDER"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        # Extract Phase 2 logs in chronological order
-        grep -E "SPIRE_AGENT.*TPM Plugin|SPIRE_AGENT.*SovereignAttestation|SPIRE_AGENT.*Building|TPM_PLUGIN.*Quote|TPM_PLUGIN.*certificate|RUST_KEYLIME.*Delegated|SPIRE_SERVER.*SovereignAttestation|SPIRE_SERVER.*Keylime|KEYLIME_VERIFIER|SPIRE_SERVER.*AttestedClaims|SPIRE_SERVER.*Agent SVID|SPIRE_AGENT.*Agent SVID|MOBILE_SENSOR" "$TEMP_DIR/all-logs-sorted.log" | \
-        while IFS='|' read -r ts component line; do
-            # Format component name
-            case "$component" in
-                SPIRE_AGENT)
-                    comp_name="SPIRE Agent"
-                    ;;
-                SPIRE_SERVER)
-                    comp_name="SPIRE Server"
-                    ;;
-                TPM_PLUGIN)
-                    comp_name="TPM Plugin Server"
-                    ;;
-                RUST_KEYLIME)
-                    comp_name="rust-keylime Agent"
-                    ;;
-                KEYLIME_VERIFIER)
-                    comp_name="Keylime Verifier"
-                    ;;
-                MOBILE_SENSOR)
-                    comp_name="Mobile Location Verification"
-                    ;;
-                *)
-                    comp_name="$component"
-                    ;;
-            esac
-            
-            # Extract and format timestamp
+        # Phase 2 follows architecture flow: SPIRE Agent → TPM Plugin → rust-keylime → SPIRE Agent → SPIRE Server → Keylime Verifier → Mobile Sensor → Keylime Verifier → SPIRE Server → SPIRE Agent
+        
+        # Step 1: SPIRE Agent Initiates Attestation & Requests App Key Info
+        echo "[Step 3-4] SPIRE Agent Initiates Attestation & Requests App Key Information:"
+        {
+            grep -E "SPIRE_AGENT.*TPM Plugin|SPIRE_AGENT.*Building|SPIRE_AGENT.*attest" "$TEMP_DIR/all-logs-sorted.log" | head -3
+            grep -E "TPM_PLUGIN.*App Key" "$TEMP_DIR/all-logs-sorted.log" | head -2
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
             formatted_ts=$(echo "$ts" | sed 's/|.*//')
-            
-            # Format log line (remove component tag, keep original format)
             clean_line=$(echo "$line" | sed 's/^[^|]*|//')
-            
-            echo "[$formatted_ts] [$comp_name] $clean_line" | sed 's/^/  /'
+            comp_name="SPIRE Agent"
+            [[ "$component" == "TPM_PLUGIN" ]] && comp_name="TPM Plugin Server"
+            echo "  [$formatted_ts] [$comp_name] $clean_line"
+        done
+        echo ""
+        
+        # Step 2: Delegated Certification (TPM Plugin → rust-keylime Agent)
+        echo "[Step 5] Delegated Certification Request (TPM Plugin → rust-keylime Agent):"
+        {
+            grep -E "TPM_PLUGIN.*certificate|TPM_PLUGIN.*request.*certificate" "$TEMP_DIR/all-logs-sorted.log"
+            grep -E "RUST_KEYLIME.*Delegated|RUST_KEYLIME.*certificate" "$TEMP_DIR/all-logs-sorted.log"
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            comp_name="TPM Plugin Server"
+            [[ "$component" == "RUST_KEYLIME" ]] && comp_name="rust-keylime Agent"
+            echo "  [$formatted_ts] [$comp_name] $clean_line"
+        done
+        echo ""
+        
+        # Step 3: SPIRE Agent Builds & Sends SovereignAttestation
+        echo "[Step 6] SPIRE Agent Builds & Sends SovereignAttestation:"
+        grep -E "SPIRE_AGENT.*SovereignAttestation|SPIRE_AGENT.*Building.*Sovereign" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            echo "  [$formatted_ts] [SPIRE Agent] $clean_line"
+        done
+        echo ""
+        
+        # Step 4: SPIRE Server Receives & Calls Keylime Verifier
+        echo "[Step 7-8] SPIRE Server Receives Attestation & Calls Keylime Verifier:"
+        {
+            grep -E "SPIRE_SERVER.*SovereignAttestation|SPIRE_SERVER.*Keylime" "$TEMP_DIR/all-logs-sorted.log" | head -3
+            grep -E "KEYLIME_VERIFIER.*Processing|KEYLIME_VERIFIER.*verification request" "$TEMP_DIR/all-logs-sorted.log" | head -2
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            comp_name="SPIRE Server"
+            [[ "$component" == "KEYLIME_VERIFIER" ]] && comp_name="Keylime Verifier"
+            echo "  [$formatted_ts] [$comp_name] $clean_line"
+        done
+        echo ""
+        
+        # Step 5: Keylime Verifier Certificate Verification
+        echo "[Step 10] Keylime Verifier Verifies App Key Certificate Signature:"
+        grep -E "KEYLIME_VERIFIER.*certificate|KEYLIME_VERIFIER.*Verifying.*certificate|KEYLIME_VERIFIER.*App Key.*certificate" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            echo "  [$formatted_ts] [Keylime Verifier] $clean_line"
+        done
+        echo ""
+        
+        # Step 6: Keylime Verifier Fetches TPM Quote
+        echo "[Step 11] Keylime Verifier Fetches TPM Quote On-Demand:"
+        {
+            grep -E "KEYLIME_VERIFIER.*quote|KEYLIME_VERIFIER.*Requesting quote" "$TEMP_DIR/all-logs-sorted.log"
+            grep -E "RUST_KEYLIME.*quote|RUST_KEYLIME.*GET.*quote" "$TEMP_DIR/all-logs-sorted.log"
+            grep -E "KEYLIME_VERIFIER.*Successfully retrieved quote" "$TEMP_DIR/all-logs-sorted.log"
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            comp_name="Keylime Verifier"
+            [[ "$component" == "RUST_KEYLIME" ]] && comp_name="rust-keylime Agent"
+            echo "  [$formatted_ts] [$comp_name] $clean_line"
+        done
+        echo ""
+        
+        # Step 7: Mobile Location Verification
+        echo "[Step 13-14] Mobile Location Verification:"
+        {
+            grep -E "KEYLIME_VERIFIER.*mobile|KEYLIME_VERIFIER.*sensor|KEYLIME_VERIFIER.*geolocation" "$TEMP_DIR/all-logs-sorted.log"
+            grep -E "MOBILE_SENSOR" "$TEMP_DIR/all-logs-sorted.log"
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            comp_name="Keylime Verifier"
+            [[ "$component" == "MOBILE_SENSOR" ]] && comp_name="Mobile Location Verification"
+            echo "  [$formatted_ts] [$comp_name] $clean_line"
+        done
+        echo ""
+        
+        # Step 8: Keylime Verifier Returns Result to SPIRE Server
+        echo "[Step 16] Keylime Verifier Returns Verification Result:"
+        grep -E "KEYLIME_VERIFIER.*Verification successful|KEYLIME_VERIFIER.*Returning|SPIRE_SERVER.*AttestedClaims|SPIRE_SERVER.*received.*AttestedClaims" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            comp_name="Keylime Verifier"
+            [[ "$component" == "SPIRE_SERVER" ]] && comp_name="SPIRE Server"
+            echo "  [$formatted_ts] [$comp_name] $clean_line"
+        done
+        echo ""
+        
+        # Step 9: SPIRE Server Issues Agent SVID
+        echo "[Step 17-19] SPIRE Server Issues Agent SVID:"
+        {
+            grep -E "SPIRE_SERVER.*Agent SVID|SPIRE_SERVER.*Issuing|SPIRE_SERVER.*AttestedClaims" "$TEMP_DIR/all-logs-sorted.log"
+            grep -E "SPIRE_AGENT.*Agent SVID|SPIRE_AGENT.*received.*SVID|SPIRE_AGENT.*attestation.*successful" "$TEMP_DIR/all-logs-sorted.log"
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            comp_name="SPIRE Server"
+            [[ "$component" == "SPIRE_AGENT" ]] && comp_name="SPIRE Agent"
+            echo "  [$formatted_ts] [$comp_name] $clean_line"
         done
         echo ""
         
@@ -459,33 +537,64 @@ generate_workflow_log_file() {
         echo ""
         
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 3: WORKLOAD SVID GENERATION - CHRONOLOGICAL FLOW"
+        echo "PHASE 3: WORKLOAD SVID GENERATION - ARCHITECTURE FLOW ORDER"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        # Extract Phase 3 logs in chronological order
-        grep -E "SPIRE_AGENT.*Workload|SPIRE_AGENT.*python-app|SPIRE_SERVER.*Workload|SPIRE_SERVER.*python-app" "$TEMP_DIR/all-logs-sorted.log" | \
-        while IFS='|' read -r ts component line; do
-            # Format component name
-            case "$component" in
-                SPIRE_AGENT)
-                    comp_name="SPIRE Agent"
-                    ;;
-                SPIRE_SERVER)
-                    comp_name="SPIRE Server"
-                    ;;
-                *)
-                    comp_name="$component"
-                    ;;
-            esac
-            
-            # Extract and format timestamp
+        # Phase 3 follows architecture flow: Workload → SPIRE Agent → SPIRE Server → SPIRE Agent → Workload
+        
+        # Step 1: Workload Requests SVID via SPIRE Agent
+        echo "[Step 1-2] Workload Requests SVID via SPIRE Agent:"
+        {
+            grep -E "SPIRE_AGENT.*Workload|SPIRE_AGENT.*python-app|SPIRE_AGENT.*FetchX509SVID" "$TEMP_DIR/all-logs-sorted.log"
+            grep -E "SPIRE_AGENT.*Entry.*python-app|SPIRE_AGENT.*registration.*python-app" "$TEMP_DIR/all-logs-sorted.log"
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
             formatted_ts=$(echo "$ts" | sed 's/|.*//')
-            
-            # Format log line (remove component tag, keep original format)
             clean_line=$(echo "$line" | sed 's/^[^|]*|//')
-            
-            echo "[$formatted_ts] [$comp_name] $clean_line" | sed 's/^/  /'
+            echo "  [$formatted_ts] [SPIRE Agent] $clean_line"
+        done
+        echo ""
+        
+        # Step 2: SPIRE Agent Forwards Request to SPIRE Server
+        echo "[Step 3-4] SPIRE Agent Forwards Workload SVID Request to SPIRE Server:"
+        grep -E "SPIRE_AGENT.*BatchNewX509SVID|SPIRE_AGENT.*workload.*request" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            echo "  [$formatted_ts] [SPIRE Agent] $clean_line"
+        done
+        echo ""
+        
+        # Step 3: SPIRE Server Processes Workload SVID Request (skips Keylime)
+        echo "[Step 5-6] SPIRE Server Processes Workload SVID Request (skips Keylime verification):"
+        {
+            grep -E "SPIRE_SERVER.*Workload|SPIRE_SERVER.*python-app|SPIRE_SERVER.*Skipping.*Keylime.*workload" "$TEMP_DIR/all-logs-sorted.log"
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            echo "  [$formatted_ts] [SPIRE Server] $clean_line"
+        done
+        echo ""
+        
+        # Step 4: SPIRE Server Returns Workload SVID to SPIRE Agent
+        echo "[Step 7-8] SPIRE Server Returns Workload SVID to SPIRE Agent:"
+        {
+            grep -E "SPIRE_SERVER.*Issuing.*workload|SPIRE_SERVER.*workload.*SVID" "$TEMP_DIR/all-logs-sorted.log"
+            grep -E "SPIRE_AGENT.*workload.*SVID|SPIRE_AGENT.*received.*workload" "$TEMP_DIR/all-logs-sorted.log"
+        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            comp_name="SPIRE Server"
+            [[ "$component" == "SPIRE_AGENT" ]] && comp_name="SPIRE Agent"
+            echo "  [$formatted_ts] [$comp_name] $clean_line"
+        done
+        echo ""
+        
+        # Step 5: SPIRE Agent Returns SVID to Workload
+        echo "[Step 9-10] SPIRE Agent Returns Workload SVID to Workload:"
+        grep -E "SPIRE_AGENT.*SVID.*python-app|SPIRE_AGENT.*workload.*SVID.*received" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+            echo "  [$formatted_ts] [SPIRE Agent] $clean_line"
         done
         echo ""
         
@@ -2315,6 +2424,23 @@ echo ""
 echo "Consolidated workflow log (all components in chronological order):"
 generate_workflow_log_file
 echo ""
+
+# Generate interactive HTML visualization
+if [ -f "${SCRIPT_DIR}/generate_workflow_ui.py" ]; then
+    echo "Generating interactive HTML visualization..."
+    if python3 "${SCRIPT_DIR}/generate_workflow_ui.py" 2>/dev/null; then
+        echo -e "${GREEN}  ✓ Interactive workflow visualization generated: /tmp/workflow_visualization.html${NC}"
+        echo -e "${CYAN}    Local access: file:///tmp/workflow_visualization.html${NC}"
+        if [ -f "${SCRIPT_DIR}/serve_workflow_ui.py" ]; then
+            echo -e "${CYAN}    HTTP access:  Run 'python3 ${SCRIPT_DIR}/serve_workflow_ui.py' then visit:${NC}"
+            echo -e "${CYAN}                  http://10.1.0.11:8080/workflow_visualization.html${NC}"
+        fi
+    else
+        echo -e "${YELLOW}  ⚠ Warning: Failed to generate HTML visualization${NC}"
+    fi
+    echo ""
+fi
+
 if [ -f "/tmp/svid-dump/svid.pem" ]; then
     echo "To view SVID certificate with AttestedClaims extension:"
     if [ -f "${PHASE2_DIR}/dump-svid-attested-claims.sh" ]; then
