@@ -119,14 +119,14 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(500, "Unified-Identity - Phase 3: App Key context unavailable")
                 return
             
-            # Default to HTTP endpoint if not provided or if it's the old UDS default
+            # Unified-Identity - Phase 3: Default to HTTPS endpoint (agent uses mTLS, Gap #2 fix)
             if not endpoint or endpoint == "unix:///tmp/keylime-agent.sock":
-                endpoint = "http://127.0.0.1:9002"
-                logger.info("Unified-Identity - Phase 3: Using default HTTP endpoint: %s", endpoint)
-            elif endpoint.startswith("https://"):
-                # Convert HTTPS to HTTP for simplicity
-                endpoint = endpoint.replace("https://", "http://")
-                logger.info("Unified-Identity - Phase 3: Converting HTTPS to HTTP endpoint: %s", endpoint)
+                endpoint = "https://127.0.0.1:9002"
+                logger.info("Unified-Identity - Phase 3: Using default HTTPS endpoint (agent uses mTLS): %s", endpoint)
+            elif endpoint.startswith("http://") and ("127.0.0.1" in endpoint or "localhost" in endpoint):
+                # Convert HTTP to HTTPS for localhost (agent now uses mTLS)
+                endpoint = endpoint.replace("http://", "https://")
+                logger.info("Unified-Identity - Phase 3: Converting HTTP to HTTPS endpoint (agent uses mTLS): %s", endpoint)
             
             client = DelegatedCertificationClient(endpoint=endpoint)
             success, cert_b64, agent_uuid, error = client.request_certificate(

@@ -155,12 +155,31 @@ class CamaraClient:
             "login_hint": f"tel:{msisdn}",
             "scope": self.scope,
         }
+        url = f"{CAMARA_BASE}{AUTHORIZE_PATH}"
+        headers = self._headers("application/x-www-form-urlencoded")
+        LOG.info(
+            "CAMARA authorize API call: url=%s, payload=%s, headers=%s",
+            url,
+            payload,
+            {k: v if k.lower() != "authorization" else "***REDACTED***" for k, v in headers.items()},
+        )
         resp = requests.post(
-            f"{CAMARA_BASE}{AUTHORIZE_PATH}",
-            headers=self._headers("application/x-www-form-urlencoded"),
+            url,
+            headers=headers,
             data=payload,
             timeout=30,
         )
+        LOG.info(
+            "CAMARA authorize API response: status=%s, headers=%s",
+            resp.status_code,
+            dict(resp.headers),
+        )
+        if resp.status_code != 200:
+            LOG.error(
+                "CAMARA authorize API error: status=%s, response_body=%s",
+                resp.status_code,
+                resp.text[:500],
+            )
         resp.raise_for_status()
         data = resp.json()
         auth_req_id = data.get("auth_req_id")
@@ -250,11 +269,21 @@ def create_app(db_path: Path) -> Flask:
         sensor = database.get_sensor(sensor_id)
         if not sensor:
             LOG.warning("Unknown sensor_id=%s", sensor_id)
-            return jsonify({"error": "unknown sensor_id"}), 404
+            return jsonify({"error": "unknown_sensor_id"}), 404
 
         msisdn, latitude, longitude, accuracy = sensor
+        
+        # Ensure MSISDN is always from database, never a test user
+        if not msisdn or not isinstance(msisdn, str) or msisdn.strip() == "":
+            LOG.error("Invalid MSISDN from database for sensor_id=%s: %s", sensor_id, msisdn)
+            return jsonify({"error": "invalid_msisdn_from_database"}), 500
+        
+        # Validate MSISDN format (should start with + and contain digits)
+        if not msisdn.startswith("+") or not msisdn[1:].replace(" ", "").isdigit():
+            LOG.warning("MSISDN format may be invalid for sensor_id=%s: %s (proceeding anyway)", sensor_id, msisdn)
+        
         LOG.info(
-            "Resolved sensor_id=%s to msisdn=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
+            "Resolved sensor_id=%s to msisdn=%s (from database), lat=%.6f, lon=%.6f, accuracy=%.1f",
             sensor_id,
             msisdn,
             latitude,
@@ -288,12 +317,44 @@ def create_app(db_path: Path) -> Flask:
                 )
                 LOG.info("Step 3: CAMARA verification result=%s", verification_result)
             except requests.HTTPError as http_err:
-                status_code = http_err.response.status_code if http_err.response else None
+                # Extract status code - try multiple ways in case response is None
+                status_code = None
+                if http_err.response is not None:
+                    status_code = http_err.response.status_code
+                elif hasattr(http_err, 'response') and http_err.response:
+                    status_code = getattr(http_err.response, 'status_code', None)
+                
+                # Try to extract from error message if status_code is still None
+                if status_code is None:
+                    error_str = str(http_err)
+                    # Look for status code in error message (e.g., "400 Client Error")
+                    import re
+                    match = re.search(r'(\d{3})\s+', error_str)
+                    if match:
+                        status_code = int(match.group(1))
+                
+                # Log response body if available for debugging
+                response_body = None
+                if http_err.response is not None:
+                    try:
+                        response_body = http_err.response.text[:500]  # Limit to 500 chars
+                    except Exception:
+                        pass
+                
                 if status_code == 401:
                     LOG.error("CAMARA authentication failed (401 Unauthorized): %s", http_err)
+                    if response_body:
+                        LOG.error("CAMARA response body: %s", response_body)
                     LOG.error("This usually means invalid CAMARA credentials. Set CAMARA_BYPASS=true for testing.")
+                elif status_code == 400:
+                    LOG.error("CAMARA bad request (400): %s", http_err)
+                    if response_body:
+                        LOG.error("CAMARA response body: %s", response_body)
+                    LOG.error("This usually means the request format is incorrect or parameters are invalid.")
                 else:
                     LOG.error("CAMARA HTTP error (status %s): %s", status_code, http_err)
+                    if response_body:
+                        LOG.error("CAMARA response body: %s", response_body)
                 return jsonify({"error": "camara_http_error", "status_code": status_code}), 502
             except Exception as exc:
                 LOG.error("CAMARA flow failed: %s", exc)

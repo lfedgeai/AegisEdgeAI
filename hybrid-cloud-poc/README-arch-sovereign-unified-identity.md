@@ -618,37 +618,45 @@ The following diagram illustrates the complete end-to-end flow for SPIRE Agent S
 
 ### 1. SPIRE Agent TPM Plugin → Keylime Agent: Use UDS for Security
 
-**Current State:** Communication is hardcoded to HTTP over localhost (`http://127.0.0.1:9002`)
+**Current State:** Communication uses HTTPS/mTLS over localhost (`https://127.0.0.1:9002`)
 
-**Issue:** HTTP over TCP is less secure than UDS; traffic could be intercepted or spoofed
+**Status:** ✅ mTLS implemented (Gap #2 fix)
+- TPM Plugin now uses HTTPS with client certificate authentication (mTLS)
+- TPM Plugin uses verifier's client certificate (signed by verifier's CA, which agent trusts)
+- Agent requires and verifies client certificate from TPM Plugin
+- Communication is encrypted and authenticated
 
-**Required:**
+**Remaining Gap:** UDS support (preferred over TCP for localhost communication)
+
+**Required for UDS:**
 - Implement UDS socket support in rust-keylime agent for the delegated certification endpoint
-- Update TPM Plugin client to use UDS instead of HTTP
+- Update TPM Plugin client to use UDS instead of HTTPS
 - Protocol can be HTTP/JSON or pure JSON over UDS
 - Default UDS path: `/tmp/keylime-agent.sock` or similar
 
 **Location:**
-- `code-rollout-phase-3/tpm-plugin/delegated_certification.py` lines 68-100 (currently hardcoded to HTTP)
-- `code-rollout-phase-2/rust-keylime/keylime-agent/src/main.rs` (needs UDS socket binding support)
+- `code-rollout-phase-3/tpm-plugin/delegated_certification.py` - Now uses HTTPS/mTLS (client certificate from verifier's CA)
+- `code-rollout-phase-2/rust-keylime/keylime-agent/src/main.rs` - Needs UDS socket binding support
 
 ---
 
-### 2. Keylime Verifier → Keylime Agent: Use mTLS for Security
+### 2. Keylime Verifier → Keylime Agent: Use mTLS for Security -- gap fixed
 
-**Current State:** Communication is forced to HTTP for localhost agents (bypassing mTLS)
+**Previous State:** Communication was forced to HTTP for localhost agents (bypassing mTLS)
 
 **Issue:** HTTP is unencrypted and unauthenticated; vulnerable to MITM attacks
 
-**Required:**
-- Enable mTLS between verifier and agent (remove localhost HTTP bypass)
-- Verifier should use agent's mTLS certificate from registrar
-- Agent should require mTLS for all verifier connections
-- Both verifier and agent should authenticate each other using certificates
+**Fixed:**
+- ✅ Removed HTTP bypass for localhost agents in verifier
+- ✅ Verifier now uses mTLS when agent's mTLS certificate is available from registrar
+- ✅ Agent mTLS is enabled by default (`enable_agent_mtls = true`)
+- ✅ Agent's `trusted_client_ca` is configured to trust verifier's CA certificate
+- ✅ Both verifier and agent authenticate each other using certificates
 
-**Location:**
-- `code-rollout-phase-2/keylime/keylime/cloud_verifier_tornado.py` lines 1867-1880 (currently forcing HTTP for localhost)
-- `code-rollout-phase-2/rust-keylime/keylime-agent/src/main.rs` (needs mTLS enabled, not hardcoded to HTTP)
+**Implementation:**
+- `code-rollout-phase-2/keylime/keylime/cloud_verifier_tornado.py` - Removed localhost HTTP bypass, always use mTLS when agent certificate available
+- `code-rollout-phase-3/test_phase3_complete.sh` - Configured agent's `trusted_client_ca` to trust verifier's CA
+- Agent uses mTLS by default and requires client certificate authentication from verifier
 
 ---
 

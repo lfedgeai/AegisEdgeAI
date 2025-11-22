@@ -2090,20 +2090,16 @@ class VerifyEvidenceHandler(BaseHandler):
             agent_port_int = 9002
 
         # Determine if we should use HTTP or HTTPS based on mTLS certificate availability
-        # For Phase 3 testing: force HTTP for localhost agents (agent is hardcoded to HTTP)
+        # Unified-Identity - Phase 3: Always use mTLS when agent certificate is available (Gap #2 fix)
         use_https = True
         ssl_context = None
-        force_http = False
-        if agent_ip in ('127.0.0.1', 'localhost', '::1') and agent_port_int == 9002:
-            logger.info('Unified-Identity - Phase 3: Detected localhost agent on port 9002; forcing HTTP (agent is HTTP-only)')
-            force_http = True
-            use_https = False
-        elif not agent_mtls_cert or agent_mtls_cert == 'disabled':
+        if not agent_mtls_cert or agent_mtls_cert == 'disabled':
             logger.warning('Unified-Identity - Phase 3: Agent mTLS certificate unavailable; using HTTP fallback')
             use_https = False
         else:
             try:
                 ssl_context = web_util.generate_agent_tls_context('verifier', agent_mtls_cert, logger=logger)
+                logger.info('Unified-Identity - Phase 3: Using mTLS for agent communication (agent: %s:%s)', agent_ip, agent_port_int)
             except Exception as e:  # noqa: BLE001
                 logger.warning('Unified-Identity - Phase 3: Failed to build mTLS context: %s; falling back to HTTP', e)
                 use_https = False

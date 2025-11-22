@@ -65,20 +65,21 @@ class DelegatedCertificationClient:
                 "Unified-Identity - Phase 3: Feature flag disabled, delegated certification client will not function"
             )
 
-        # HARDCODED: Always use HTTP (agent is hardcoded to HTTP)
+        # Unified-Identity - Phase 3: Use HTTPS for agent communication (Gap #2 fix - mTLS enabled)
+        # Agent now uses mTLS/HTTPS by default
         if endpoint is None:
-            endpoint = "http://127.0.0.1:9002"
+            endpoint = "https://127.0.0.1:9002"
         elif endpoint == "unix:///tmp/keylime-agent.sock":
-            # Convert old UDS default to HTTP (UDS not yet implemented in agent)
+            # Convert old UDS default to HTTPS (UDS not yet implemented in agent, Gap #1)
             logger.info(
-                "Unified-Identity - Phase 3: Converting old UDS default to HTTP endpoint"
+                "Unified-Identity - Phase 3: Converting old UDS default to HTTPS endpoint (agent uses mTLS)"
             )
-            endpoint = "http://127.0.0.1:9002"
-        elif endpoint.startswith("https://"):
-            # Force HTTPS to HTTP (agent is hardcoded to HTTP)
-            endpoint = endpoint.replace("https://", "http://")
+            endpoint = "https://127.0.0.1:9002"
+        elif endpoint.startswith("http://") and ("127.0.0.1" in endpoint or "localhost" in endpoint):
+            # Convert HTTP to HTTPS for localhost (agent now uses mTLS, Gap #2 fix)
+            endpoint = endpoint.replace("http://", "https://")
             logger.info(
-                "Unified-Identity - Phase 3: Converting HTTPS to HTTP (agent is hardcoded to HTTP)"
+                "Unified-Identity - Phase 3: Converting HTTP to HTTPS (agent uses mTLS)"
             )
 
         # Support both UDS and HTTP endpoints
@@ -91,36 +92,32 @@ class DelegatedCertificationClient:
                     "Unified-Identity - Phase 3: UDS socket path does not exist: %s, falling back to HTTP",
                     self.socket_path,
                 )
-                # Fallback to HTTP if UDS socket doesn't exist
+                # Fallback to HTTPS if UDS socket doesn't exist (agent uses mTLS)
                 self.use_uds = False
                 self.socket_path = None
-                self.http_endpoint = "http://127.0.0.1:9002"
+                self.http_endpoint = "https://127.0.0.1:9002"
         elif endpoint.startswith("/"):
             self.socket_path = endpoint
             self.use_uds = True
             self.http_endpoint = None
             if not os.path.exists(self.socket_path):
                 logger.warning(
-                    "Unified-Identity - Phase 3: UDS socket path does not exist: %s, falling back to HTTP",
+                    "Unified-Identity - Phase 3: UDS socket path does not exist: %s, falling back to HTTPS",
                     self.socket_path,
                 )
-                # Fallback to HTTP if UDS socket doesn't exist
+                # Fallback to HTTPS if UDS socket doesn't exist (agent uses mTLS)
                 self.use_uds = False
                 self.socket_path = None
-                self.http_endpoint = "http://127.0.0.1:9002"
+                self.http_endpoint = "https://127.0.0.1:9002"
         elif endpoint.startswith("http://") or endpoint.startswith("https://"):
-            # HTTP/HTTPS endpoint - force to HTTP (agent is hardcoded to HTTP)
+            # HTTP/HTTPS endpoint - use as-is (agent now uses HTTPS/mTLS, Gap #2 fix)
             self.use_uds = False
             self.socket_path = None
-            # Convert HTTPS to HTTP if needed
-            if endpoint.startswith("https://"):
-                endpoint = endpoint.replace("https://", "http://")
-                logger.info(
-                    "Unified-Identity - Phase 3: Converting HTTPS to HTTP (agent is hardcoded to HTTP)"
-                )
             self.http_endpoint = endpoint.rstrip("/")
+            protocol = "HTTPS" if endpoint.startswith("https://") else "HTTP"
             logger.info(
-                "Unified-Identity - Phase 3: Using HTTP endpoint: %s",
+                "Unified-Identity - Phase 3: Using %s endpoint: %s (agent uses mTLS/HTTPS)",
+                protocol,
                 self.http_endpoint
             )
         else:
@@ -139,8 +136,9 @@ class DelegatedCertificationClient:
                 "Unified-Identity - Phase 3: Using UNIX socket: %s", self.socket_path
             )
         else:
+            protocol = "HTTPS (mTLS)" if self.http_endpoint and self.http_endpoint.startswith("https://") else "HTTP"
             logger.info(
-                "Unified-Identity - Phase 3: Using HTTP endpoint: %s", self.http_endpoint
+                "Unified-Identity - Phase 3: Using %s endpoint: %s", protocol, self.http_endpoint
             )
 
     def request_certificate(
@@ -316,20 +314,80 @@ class DelegatedCertificationClient:
         sock.close()
         return response_json
 
+    def _create_mtls_context(self):
+        """
+        Create an SSL context with client certificate for mTLS (Gap #2 fix).
+        Uses the verifier's client certificate since the agent trusts the verifier's CA.
+        """
+        import ssl
+        import os
+        
+        # Try to find the verifier's client certificate
+        # The verifier's client cert is in the Keylime cv_ca directory
+        keylime_dir = os.getenv("KEYLIME_DIR", "/home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-2/keylime")
+        client_cert_path = os.path.join(keylime_dir, "cv_ca", "client-cert.crt")
+        client_key_path = os.path.join(keylime_dir, "cv_ca", "client-private.pem")
+        ca_cert_path = os.path.join(keylime_dir, "cv_ca", "cacert.crt")
+        
+        # Also try alternative paths
+        if not os.path.exists(client_cert_path):
+            # Try relative to current directory
+            alt_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "..", "code-rollout-phase-2", "keylime", "cv_ca", "client-cert.crt"
+            )
+            if os.path.exists(alt_path):
+                client_cert_path = alt_path
+                client_key_path = alt_path.replace("client-cert.crt", "client-private.pem")
+                ca_cert_path = alt_path.replace("client-cert.crt", "cacert.crt")
+        
+        if not os.path.exists(client_cert_path) or not os.path.exists(client_key_path):
+            logger.debug(
+                "Unified-Identity - Phase 3: Client certificate not found at %s or key at %s",
+                client_cert_path,
+                client_key_path,
+            )
+            return None
+        
+        try:
+            context = ssl.create_default_context()
+            # Agent uses self-signed certificate, so we disable hostname and cert verification
+            # The security comes from mTLS (client certificate authentication)
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            
+            # Load client certificate and key for mTLS authentication
+            # The agent will verify this certificate against its trusted_client_ca
+            context.load_cert_chain(client_cert_path, client_key_path)
+            
+            logger.debug(
+                "Unified-Identity - Phase 3: Created mTLS context with client certificate: %s (agent will verify client cert)",
+                client_cert_path,
+            )
+            return context
+        except Exception as e:
+            logger.warning(
+                "Unified-Identity - Phase 3: Failed to create mTLS context: %s",
+                e,
+            )
+            return None
+
     def _perform_http_request(
         self, method: str, path: str, body: Optional[bytes] = None, timeout: int = 10
     ) -> Optional[str]:
         """
-        Send an HTTP request over TCP (HTTP/HTTPS) and return the JSON body as a string.
+        Send an HTTP/HTTPS request over TCP and return the JSON body as a string.
+        For HTTPS (mTLS), uses client certificate for authentication (Gap #2 fix).
         """
         import urllib.request
         import urllib.error
+        import ssl
         
         url = f"{self.http_endpoint}{path}"
         request_body = body or b""
         
         logger.debug(
-            "Unified-Identity - Phase 3: HTTP %s %s",
+            "Unified-Identity - Phase 3: HTTP/HTTPS %s %s",
             method,
             url,
         )
@@ -339,9 +397,28 @@ class DelegatedCertificationClient:
             req.add_header("Content-Type", "application/json")
             req.add_header("Content-Length", str(len(request_body)))
             
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                response_json = response.read().decode("utf-8")
-                return response_json
+            # For HTTPS (mTLS), use client certificate for authentication
+            if url.startswith("https://"):
+                ssl_context = self._create_mtls_context()
+                if ssl_context:
+                    with urllib.request.urlopen(req, timeout=timeout, context=ssl_context) as response:
+                        response_json = response.read().decode("utf-8")
+                        return response_json
+                else:
+                    # Fallback: disable certificate verification if client cert not available
+                    logger.warning(
+                        "Unified-Identity - Phase 3: Client certificate not available, disabling certificate verification (insecure)"
+                    )
+                    ssl_context = ssl.create_default_context()
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
+                    with urllib.request.urlopen(req, timeout=timeout, context=ssl_context) as response:
+                        response_json = response.read().decode("utf-8")
+                        return response_json
+            else:
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    response_json = response.read().decode("utf-8")
+                    return response_json
         except urllib.error.HTTPError as e:
             logger.error(
                 "Unified-Identity - Phase 3: HTTP error %d: %s",

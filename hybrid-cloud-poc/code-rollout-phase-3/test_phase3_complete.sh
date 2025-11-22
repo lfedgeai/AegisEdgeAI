@@ -1153,6 +1153,30 @@ cp "$(pwd)/keylime-agent.conf" "$TEMP_CONFIG" 2>/dev/null || true
 sed -i "s|^keylime_dir = .*|keylime_dir = \"$KEYLIME_AGENT_DIR\"|" "$TEMP_CONFIG" 2>/dev/null || \
 sed -i "s|keylime_dir = .*|keylime_dir = \"$KEYLIME_AGENT_DIR\"|" "$TEMP_CONFIG" 2>/dev/null || true
 
+# Unified-Identity - Phase 3: Configure mTLS for verifier communication (Gap #2 fix)
+# Set trusted_client_ca to verifier's CA certificate so agent trusts verifier connections
+VERIFIER_CA_CERT="${AGENT_CV_CA_DST}/cacert.crt"
+if [ -f "$VERIFIER_CA_CERT" ]; then
+    # Add or update trusted_client_ca in config
+    # Format: trusted_client_ca = "path" or "path1, path2" for multiple CAs
+    if grep -q "^trusted_client_ca" "$TEMP_CONFIG" 2>/dev/null; then
+        sed -i "s|^trusted_client_ca = .*|trusted_client_ca = \"$VERIFIER_CA_CERT\"|" "$TEMP_CONFIG" 2>/dev/null || \
+        sed -i "s|trusted_client_ca = .*|trusted_client_ca = \"$VERIFIER_CA_CERT\"|" "$TEMP_CONFIG" 2>/dev/null || true
+    else
+        # Add trusted_client_ca if not present (add in [agent] section)
+        if grep -q "^\[agent\]" "$TEMP_CONFIG" 2>/dev/null; then
+            # Insert after [agent] section header
+            sed -i "/^\[agent\]/a trusted_client_ca = \"$VERIFIER_CA_CERT\"" "$TEMP_CONFIG" 2>/dev/null || \
+            echo "trusted_client_ca = \"$VERIFIER_CA_CERT\"" >> "$TEMP_CONFIG" 2>/dev/null || true
+        else
+            echo "trusted_client_ca = \"$VERIFIER_CA_CERT\"" >> "$TEMP_CONFIG" 2>/dev/null || true
+        fi
+    fi
+    echo "    ✓ Configured agent trusted_client_ca for mTLS: $VERIFIER_CA_CERT"
+else
+    echo -e "${YELLOW}    ⚠ Verifier CA certificate not found at $VERIFIER_CA_CERT, mTLS may not work${NC}"
+fi
+
 # Set config file path to use our temporary config
 export KEYLIME_AGENT_CONFIG="$TEMP_CONFIG"
 # Ensure API versions include all supported versions for better compatibility
