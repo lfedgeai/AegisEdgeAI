@@ -950,7 +950,7 @@ fi
 echo ""
 
 # Create minimal config if needed
-VERIFIER_CONFIG="${PHASE2_DIR}/verifier.conf.minimal"
+VERIFIER_CONFIG="${KEYLIME_DIR}/verifier.conf.minimal"
 if [ ! -f "${VERIFIER_CONFIG}" ]; then
     abort_on_error "Verifier config not found at ${VERIFIER_CONFIG}"
 fi
@@ -2029,9 +2029,30 @@ for i in {1..90}; do
                 fi
                 # Check if attestation failed due to Keylime verification
                 if grep -q "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log 2>/dev/null; then
-                    echo -e "${RED}    ✗ Attestation request received but verification failed${NC}"
-                    grep "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log | tail -1 | sed 's/^/      /'
-                    abort_on_error "SPIRE Agent attestation verification failed"
+                    ERROR_MSG=$(grep "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log | tail -1)
+                    # Check if it's a CAMARA rate limiting issue (429)
+                    if echo "$ERROR_MSG" | grep -q "mobile sensor.*429\|status_code.*429\|rate.*limit"; then
+                        echo -e "${RED}    ✗ Attestation failed due to CAMARA API rate limiting (429)${NC}"
+                        echo ""
+                        echo -e "${YELLOW}    CAMARA API Rate Limiting Detected:${NC}"
+                        echo "      The CAMARA API has rate limits that prevent too many requests."
+                        echo "      This is a limitation of the external CAMARA sandbox service."
+                        echo ""
+                        echo -e "${CYAN}    Options to resolve:${NC}"
+                        echo "      1. Wait a few minutes and retry the test"
+                        echo "      2. Set CAMARA_BYPASS=true to skip CAMARA API calls for testing:"
+                        echo "         export CAMARA_BYPASS=true"
+                        echo "         ./test_phase3_complete.sh"
+                        echo ""
+                        echo "      Error details:"
+                        echo "$ERROR_MSG" | sed 's/^/        /'
+                        echo ""
+                        abort_on_error "SPIRE Agent attestation failed due to CAMARA API rate limiting (429). See message above for resolution options."
+                    else
+                        echo -e "${RED}    ✗ Attestation request received but verification failed${NC}"
+                        echo "$ERROR_MSG" | sed 's/^/      /'
+                        abort_on_error "SPIRE Agent attestation verification failed"
+                    fi
                 fi
             fi
         fi
@@ -2481,13 +2502,13 @@ fi
 echo ""
 
 # Generate interactive HTML visualization
-if [ -f "${SCRIPT_DIR}/generate_workflow_ui.py" ]; then
+if [ -f "${SCRIPT_DIR}/workflow-ui/generate_workflow_ui.py" ]; then
     echo "Generating interactive HTML visualization..."
-    if python3 "${SCRIPT_DIR}/generate_workflow_ui.py" 2>/dev/null; then
+    if python3 "${SCRIPT_DIR}/workflow-ui/generate_workflow_ui.py" 2>/dev/null; then
         echo -e "${GREEN}  ✓ Interactive workflow visualization generated: /tmp/workflow_visualization.html${NC}"
         echo -e "${CYAN}    Local access: file:///tmp/workflow_visualization.html${NC}"
-        if [ -f "${SCRIPT_DIR}/serve_workflow_ui.py" ]; then
-            echo -e "${CYAN}    HTTP access:  Run 'python3 ${SCRIPT_DIR}/serve_workflow_ui.py' then visit:${NC}"
+        if [ -f "${SCRIPT_DIR}/workflow-ui/serve_workflow_ui.py" ]; then
+            echo -e "${CYAN}    HTTP access:  Run 'python3 ${SCRIPT_DIR}/workflow-ui/serve_workflow_ui.py' then visit:${NC}"
             echo -e "${CYAN}                  http://10.1.0.11:8080/workflow_visualization.html${NC}"
         fi
     else

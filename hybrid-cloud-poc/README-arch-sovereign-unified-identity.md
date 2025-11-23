@@ -557,7 +557,7 @@ SPIRE Server (Port 8081)
 **Location:**
 - `code-rollout-phase-3/mobile-sensor-microservice/service.py` - Flask microservice implementation
 - `code-rollout-phase-2/keylime/keylime/cloud_verifier_tornado.py` - Verifier integration (`_verify_mobile_sensor_geolocation`)
-- `code-rollout-phase-2/verifier.conf.minimal` - Configuration (`[verifier]` section)
+- `keylime/verifier.conf.minimal` - Configuration (`[verifier]` section)
 
 ## Gaps to be Addressed
 
