@@ -31,12 +31,12 @@ logger = keylime_logging.init_logging("app_key_verification")
 # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)
 # Feature flag check
 def is_unified_identity_enabled() -> bool:
-    """Check if Unified-Identity feature flag is enabled"""
+    """Check if Unified-Identity feature flag is enabled (default: True)"""
     try:
-        return config.getboolean("verifier", "unified_identity_enabled", fallback=False)
+        return config.getboolean("verifier", "unified_identity_enabled", fallback=True)
     except Exception as e:
         logger.debug("Unified-Identity - Phase 3: Error checking feature flag: %s", e)
-        return False
+        return True  # Default to enabled
 
 
 # Unified-Identity - Phase 3: Core Keylime Functionality (Fact-Provider Logic)

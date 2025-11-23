@@ -91,23 +91,28 @@ fn configure_api_v2_1(cfg: &mut web::ServiceConfig) {
 /// Configure the endpoints supported by API version 2.2
 ///
 /// The version 2.2 added the /agent/info endpoint and /delegated_certification endpoint
-fn configure_api_v2_2(cfg: &mut web::ServiceConfig) {
+/// Unified-Identity - Phase 3: /delegated_certification is only registered if feature flag is enabled
+fn configure_api_v2_2(cfg: &mut web::ServiceConfig, unified_identity_enabled: bool) {
     // Configure the endpoints shared with version 2.1
     configure_api_v2_1(cfg);
 
     // Configure added endpoints
-    _ = cfg
-        .service(web::scope("/agent").configure(agent_handler::configure_agent_endpoints))
-        .service(web::scope("/delegated_certification").configure(
+    _ = cfg.service(web::scope("/agent").configure(agent_handler::configure_agent_endpoints));
+    
+    // Unified-Identity - Phase 3: Only register delegated certification endpoint if feature flag is enabled
+    if unified_identity_enabled {
+        _ = cfg.service(web::scope("/delegated_certification").configure(
             delegated_certification_handler::configure_delegated_certification_endpoints,
-        ))
+        ));
+    }
 }
 
 /// Get a scope configured for the given API version
-pub(crate) fn get_api_scope(version: &str) -> Result<Scope, APIError> {
+/// Unified-Identity - Phase 3: unified_identity_enabled flag controls whether delegated certification endpoint is registered
+pub(crate) fn get_api_scope(version: &str, unified_identity_enabled: bool) -> Result<Scope, APIError> {
     match version {
         "2.1" => Ok(web::scope(format!("v{version}").as_ref()).configure(configure_api_v2_1)),
-        "2.2" => Ok(web::scope(format!("v{version}").as_ref()).configure(configure_api_v2_2)),
+        "2.2" => Ok(web::scope(format!("v{version}").as_ref()).configure(|cfg| configure_api_v2_2(cfg, unified_identity_enabled))),
         _ => Err(APIError::UnsupportedVersion(version.into())),
     }
 }
@@ -121,7 +126,7 @@ mod tests {
     #[actix_rt::test]
     async fn test_configure_api() {
         // Test that invalid version results in error
-        let result = get_api_scope("invalid");
+        let result = get_api_scope("invalid", false);
         assert!(result.is_err());
         if let Err(e) = result {
             assert_eq!(e, APIError::UnsupportedVersion("invalid".into()));
@@ -129,7 +134,7 @@ mod tests {
 
         // Test that a valid version is successful
         let version = SUPPORTED_API_VERSIONS.last().unwrap(); //#[allow_ci]
-        let result = get_api_scope(version);
+        let result = get_api_scope(version, false); // Test with feature flag disabled
         assert!(
             result.is_ok(),
             "Failed to get scope for version \"{version}\""

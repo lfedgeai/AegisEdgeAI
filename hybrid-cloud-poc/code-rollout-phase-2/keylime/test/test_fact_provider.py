@@ -48,7 +48,7 @@ class TestFactProvider(unittest.TestCase):
 
     def test_get_attested_claims_empty(self):
         """Unified-Identity - Phase 2: Test getting empty attested claims when no facts available"""
-        claims = fact_provider.get_attested_claims()
+                claims = fact_provider.get_attested_claims()
 
         self.assertIsInstance(claims, dict)
         # Should be empty when no facts are available

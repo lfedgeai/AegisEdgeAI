@@ -734,8 +734,12 @@ generate_workflow_log_file() {
     
     if [ -f "$OUTPUT_FILE" ]; then
         local line_count=$(wc -l < "$OUTPUT_FILE" 2>/dev/null || echo "0")
-        echo -e "${GREEN}  ✓ Consolidated workflow log file generated: ${OUTPUT_FILE}${NC}"
-        echo -e "${GREEN}    File size: ${line_count} lines${NC}"
+        local file_size=$(du -h "$OUTPUT_FILE" 2>/dev/null | cut -f1 || echo "unknown")
+        echo -e "${GREEN}  ✓ Consolidated workflow log file generated${NC}"
+        echo -e "${GREEN}    Location: ${OUTPUT_FILE}${NC}"
+        echo -e "${GREEN}    File size: ${line_count} lines (${file_size})${NC}"
+        echo -e "${CYAN}    View with: cat ${OUTPUT_FILE}${NC}"
+        echo -e "${CYAN}    Or: less ${OUTPUT_FILE}${NC}"
         return 0
     else
         echo -e "${YELLOW}  ⚠ Warning: Failed to generate workflow log file${NC}"
@@ -1306,6 +1310,22 @@ if [ -f "$VERIFIER_CA_CERT" ]; then
 else
     echo -e "${YELLOW}    ⚠ Verifier CA certificate not found at $VERIFIER_CA_CERT, mTLS may not work${NC}"
 fi
+
+# Unified-Identity - Phase 3: Enable unified_identity_enabled feature flag in agent config
+if grep -q "^unified_identity_enabled" "$TEMP_CONFIG" 2>/dev/null; then
+    sed -i "s|^unified_identity_enabled = .*|unified_identity_enabled = true|" "$TEMP_CONFIG" 2>/dev/null || \
+    sed -i "s|unified_identity_enabled = .*|unified_identity_enabled = true|" "$TEMP_CONFIG" 2>/dev/null || true
+else
+    # Add unified_identity_enabled if not present (add in [agent] section)
+    if grep -q "^\[agent\]" "$TEMP_CONFIG" 2>/dev/null; then
+        # Insert after [agent] section header
+        sed -i "/^\[agent\]/a unified_identity_enabled = true" "$TEMP_CONFIG" 2>/dev/null || \
+        echo "unified_identity_enabled = true" >> "$TEMP_CONFIG" 2>/dev/null || true
+    else
+        echo "unified_identity_enabled = true" >> "$TEMP_CONFIG" 2>/dev/null || true
+    fi
+fi
+echo "    ✓ Configured agent unified_identity_enabled = true"
 
 # Set config file path to use our temporary config
 export KEYLIME_AGENT_CONFIG="$TEMP_CONFIG"
@@ -2444,7 +2464,19 @@ echo "  SPIRE Server:         tail -f /tmp/spire-server.log"
 echo "  SPIRE Agent:          tail -f /tmp/spire-agent.log"
 echo ""
 echo "Consolidated workflow log (all components in chronological order):"
-generate_workflow_log_file
+if generate_workflow_log_file; then
+    # Function already printed the path, but ensure it's visible
+    if [ -f "/tmp/phase3_complete_workflow_logs.txt" ]; then
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CYAN}  Consolidated workflow log location: /tmp/phase3_complete_workflow_logs.txt${NC}"
+        echo -e "${CYAN}    View with: cat /tmp/phase3_complete_workflow_logs.txt${NC}"
+        echo -e "${CYAN}    Or: less /tmp/phase3_complete_workflow_logs.txt${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ Warning: Consolidated workflow log generation failed${NC}"
+fi
 echo ""
 
 # Generate interactive HTML visualization

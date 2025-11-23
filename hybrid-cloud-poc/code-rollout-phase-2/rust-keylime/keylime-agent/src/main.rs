@@ -125,6 +125,8 @@ pub struct QuoteData<'a> {
     sign_alg: keylime::algorithms::SignAlgorithm,
     tpmcontext: Mutex<tpm::Context<'a>>,
     work_dir: PathBuf,
+    // Unified-Identity - Phase 3: Feature flag for unified identity support
+    unified_identity_enabled: bool,
 }
 
 #[actix_web::main]
@@ -1123,6 +1125,7 @@ async fn main() -> Result<()> {
         sign_alg: tpm_signing_alg,
         tpmcontext: Mutex::new(ctx),
         work_dir,
+        unified_identity_enabled: config.unified_identity_enabled,
     });
 
     let actix_server = HttpServer::new(move || {
@@ -1148,7 +1151,7 @@ async fn main() -> Result<()> {
 
         for version in &api_versions {
             // This should never fail, thus unwrap should never panic
-            let scope = api::get_api_scope(version).unwrap(); //#[allow_ci]
+            let scope = api::get_api_scope(version, config.unified_identity_enabled).unwrap(); //#[allow_ci]
             app = app.service(scope);
         }
 
@@ -1509,6 +1512,7 @@ mod testing {
                     measuredboot_ml_file,
                     ima_ml: Mutex::new(MeasurementList::new()),
                     secure_mount,
+                    unified_identity_enabled: test_config.unified_identity_enabled,
                 },
                 mutex,
             ))

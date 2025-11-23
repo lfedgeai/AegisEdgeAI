@@ -134,8 +134,10 @@ func TestPolicyFailure(t *testing.T) {
 // TestFeatureFlagDisabled tests that SovereignAttestation is ignored when feature flag is disabled
 func TestFeatureFlagDisabled(t *testing.T) {
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Ensure feature flag is not set
+	// Explicitly disable feature flag (default is now enabled)
 	fflag.Unload()
+	err := fflag.Load([]string{"-Unified-Identity"})
+	require.NoError(t, err)
 	defer fflag.Unload()
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -163,8 +165,10 @@ func TestFeatureFlagDisabled(t *testing.T) {
 // SovereignAttestation in requests is ignored and normal SVID flow continues
 func TestFeatureFlagDisabledWithSovereignAttestation(t *testing.T) {
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Ensure feature flag is disabled
+	// Explicitly disable feature flag (default is now enabled)
 	fflag.Unload()
+	err := fflag.Load([]string{"-Unified-Identity"})
+	require.NoError(t, err)
 	defer fflag.Unload()
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -202,8 +206,10 @@ func TestFeatureFlagDisabledWithSovereignAttestation(t *testing.T) {
 // even if Keylime client is not configured, no errors occur
 func TestFeatureFlagDisabledWithoutKeylimeClient(t *testing.T) {
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Ensure feature flag is disabled
+	// Explicitly disable feature flag (default is now enabled)
 	fflag.Unload()
+	err := fflag.Load([]string{"-Unified-Identity"})
+	require.NoError(t, err)
 	defer fflag.Unload()
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
@@ -223,23 +229,25 @@ func TestFeatureFlagDisabledWithoutKeylimeClient(t *testing.T) {
 // TestFeatureFlagToggle tests that feature flag can be toggled on and off
 func TestFeatureFlagToggle(t *testing.T) {
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Start with disabled state
+	// Start with default state (enabled)
 	fflag.Unload()
 	defer fflag.Unload()
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Verify disabled
-	assert.False(t, fflag.IsSet(fflag.FlagUnifiedIdentity))
+	// Verify enabled by default
+	assert.True(t, fflag.IsSet(fflag.FlagUnifiedIdentity))
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Enable feature flag
+	// Explicitly enable feature flag (redundant but tests explicit enable)
 	err := fflag.Load([]string{"Unified-Identity"})
 	require.NoError(t, err)
 	assert.True(t, fflag.IsSet(fflag.FlagUnifiedIdentity))
 
 	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-	// Disable feature flag
+	// Disable feature flag explicitly
 	err = fflag.Unload()
+	require.NoError(t, err)
+	err = fflag.Load([]string{"-Unified-Identity"})
 	require.NoError(t, err)
 	assert.False(t, fflag.IsSet(fflag.FlagUnifiedIdentity))
 }

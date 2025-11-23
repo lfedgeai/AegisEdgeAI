@@ -199,8 +199,12 @@ async fn identity(
         }
     };
 
-    // Unified-Identity - Phase 3: Detect geolocation sensor
-    let geolocation = detect_geolocation_sensor();
+    // Unified-Identity - Phase 3: Detect geolocation sensor (only if feature flag is enabled)
+    let geolocation = if data.unified_identity_enabled {
+        detect_geolocation_sensor()
+    } else {
+        None
+    };
 
     let mut quote = KeylimeQuote {
         quote: tpm_quote,

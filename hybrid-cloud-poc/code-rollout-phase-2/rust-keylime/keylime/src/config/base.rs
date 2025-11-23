@@ -62,6 +62,8 @@ pub static DEFAULT_DEC_PAYLOAD_FILE: &str = "decrypted_payload";
 pub static DEFAULT_ENABLE_AGENT_MTLS: bool = true;
 pub static DEFAULT_ENABLE_INSECURE_PAYLOAD: bool = false;
 pub static DEFAULT_ENABLE_REVOCATION_NOTIFICATIONS: bool = false;
+// Unified-Identity - Phase 3: Feature flag for unified identity support (default: true, can be disabled for backward compatibility)
+pub static DEFAULT_UNIFIED_IDENTITY_ENABLED: bool = true;
 pub static DEFAULT_ENC_KEYNAME: &str = "derived_tci_key";
 pub static DEFAULT_EXTRACT_PAYLOAD_ZIP: bool = true;
 pub static DEFAULT_MEASUREDBOOT_ML_PATH: &str =
@@ -145,6 +147,8 @@ pub struct AgentConfig {
     pub enable_agent_mtls: bool,
     pub enable_insecure_payload: bool,
     pub enable_revocation_notifications: bool,
+    // Unified-Identity - Phase 3: Feature flag for unified identity support
+    pub unified_identity_enabled: bool,
     pub enc_keyname: String,
     pub extract_payload_zip: bool,
     pub measuredboot_ml_path: String,
@@ -264,6 +268,7 @@ impl Default for AgentConfig {
             enable_iak_idevid: DEFAULT_ENABLE_IAK_IDEVID,
             enable_insecure_payload: DEFAULT_ENABLE_INSECURE_PAYLOAD,
             enable_revocation_notifications: DEFAULT_ENABLE_REVOCATION_NOTIFICATIONS,
+            unified_identity_enabled: DEFAULT_UNIFIED_IDENTITY_ENABLED,
             enc_keyname: DEFAULT_ENC_KEYNAME.to_string(),
             exponential_backoff_max_delay: Some(DEFAULT_EXP_BACKOFF_MAX_DELAY as u64),
             exponential_backoff_max_retries: Some(DEFAULT_EXP_BACKOFF_MAX_RETRIES),

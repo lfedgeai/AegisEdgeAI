@@ -128,7 +128,7 @@ pub async fn register_agent(aa: AgentRegistration, ctx: &mut tpm::Context<'_>) -
             info!("Skipping EK flush - USE_TPM2_QUOTE_DIRECT is set, EK is persistent");
         } else {
             // EK is transient, safe to flush
-            ctx.flush_context(aa.ek_result.key_handle.into())?;
+        ctx.flush_context(aa.ek_result.key_handle.into())?;
         }
     }
 

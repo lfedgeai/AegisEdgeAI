@@ -122,10 +122,10 @@ func convertUnifiedJSONToAttestedClaims(data map[string]any) *types.AttestedClai
 						}
 						if sensorIdVal, ok := geoMap["sensor_id"].(string); ok {
 							geo.SensorId = sensorIdVal
-						}
+							}
 						if valueVal, ok := geoMap["value"].(string); ok {
 							geo.Value = valueVal
-						}
+							}
 						if geo.Type != "" || geo.SensorId != "" {
 							claims.Geolocation = geo
 						}

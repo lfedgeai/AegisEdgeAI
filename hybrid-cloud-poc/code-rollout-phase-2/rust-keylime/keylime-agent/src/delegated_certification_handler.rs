@@ -57,6 +57,15 @@ async fn certify_app_key(
     body: web::Json<CertifyAppKeyRequest>,
     data: web::Data<QuoteData<'_>>,
 ) -> impl Responder {
+    // Unified-Identity - Phase 3: Check feature flag
+    if !data.unified_identity_enabled {
+        warn!("Unified-Identity - Phase 3: Delegated certification request received but feature flag is disabled");
+        return HttpResponse::Forbidden().json(JsonWrapper::error(
+            403,
+            "Unified-Identity feature is disabled. Enable unified_identity_enabled in agent config.".to_string(),
+        ));
+    }
+
     info!(
         "Unified-Identity - Phase 3: Delegated certification request from {:?}",
         req.connection_info().peer_addr()

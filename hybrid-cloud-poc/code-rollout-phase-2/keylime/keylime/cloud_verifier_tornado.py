@@ -1938,7 +1938,6 @@ class VerifyEvidenceHandler(BaseHandler):
         import uuid
         import asyncio
         from concurrent.futures import ThreadPoolExecutor
-
         from keylime import app_key_verification, fact_provider
 
         logger.info('Unified-Identity - Phase 3: Processing tpm-app-key verification request')
@@ -1960,13 +1959,13 @@ class VerifyEvidenceHandler(BaseHandler):
             logger.error("Unified-Identity - Phase 3: Missing required field 'nonce'")
             web_util.echo_json_response(self, 400, 'missing required field: data.nonce')
             return None
-
+        
         def _hydrate_agent_from_db() -> None:
             nonlocal agent_ip, agent_port, agent_uuid, tpm_ak, agent_mtls_cert
             try:
                 from keylime.db.keylime_db import SessionManager, make_engine
                 from keylime.db.verifier_db import VerfierMain
-
+                
                 engine = make_engine('cloud_verifier')
                 with SessionManager().session_context(engine) as session:
                     agent_obj = None
@@ -1990,12 +1989,12 @@ class VerifyEvidenceHandler(BaseHandler):
                             agent_mtls_cert = agent_mtls_cert or agent_obj.mtls_cert
             except Exception as e:  # noqa: BLE001
                 logger.debug('Unified-Identity - Phase 3: Could not hydrate agent info from DB: %s', e)
-
+            
         def _hydrate_agent_from_registrar() -> None:
             nonlocal agent_ip, agent_port, agent_uuid, agent_mtls_cert, tpm_ak
             try:
                 from keylime import registrar_client
-
+                
                 registrar_ip = config.get('verifier', 'registrar_ip', fallback='127.0.0.1')
                 registrar_port = config.getint('verifier', 'registrar_port', fallback=8890)
                 registrar_tls_context = None
@@ -2015,7 +2014,7 @@ class VerifyEvidenceHandler(BaseHandler):
                         )
                 except Exception as e:  # noqa: BLE001
                     logger.debug('Unified-Identity - Phase 3: Could not create TLS context for registrar queries: %s', e)
-
+                    
                 def _list_agents(context):
                     try:
                         return registrar_client.doRegistrarList(registrar_ip, registrar_port, context)
@@ -2128,7 +2127,7 @@ class VerifyEvidenceHandler(BaseHandler):
                     if use_https and ssl_context:
                         request_kwargs['context'] = ssl_context
                     return await tornado_requests.request('GET', quote_url, **request_kwargs)
-
+                        
                 def _run_request():
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
@@ -2136,7 +2135,7 @@ class VerifyEvidenceHandler(BaseHandler):
                         return loop.run_until_complete(_make_request())
                     finally:
                         loop.close()
-
+                        
                 try:
                     with ThreadPoolExecutor(max_workers=1) as executor:
                         response = executor.submit(_run_request).result(timeout=agent_quote_timeout + 5)
@@ -2172,7 +2171,7 @@ class VerifyEvidenceHandler(BaseHandler):
                         body_preview,
                     )
                     continue
-
+                
                 try:
                     response_body = (
                         response.body.decode('utf-8') if isinstance(response.body, bytes) else response.body
@@ -2391,7 +2390,7 @@ class VerifyEvidenceHandler(BaseHandler):
                 "missing required field: data.tpm_ak (required for AK quote verification)",
             )
             return None
-
+        
         ak_public_for_verification = tpm_ak
         if not tpm_ak.strip().startswith("-----BEGIN"):
             try:
@@ -2438,7 +2437,7 @@ class VerifyEvidenceHandler(BaseHandler):
             try:
                 from keylime.db.keylime_db import SessionManager, make_engine
                 from keylime.db.verifier_db import VerfierMain
-
+                
                 engine = make_engine('cloud_verifier')
                 with SessionManager().session_context(engine) as session:
                     if not agent_id and tpm_ak:
@@ -2449,7 +2448,7 @@ class VerifyEvidenceHandler(BaseHandler):
                 logger.debug('Unified-Identity - Phase 3: Could not map TPM keys to agent ID: %s', e)
 
         attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=agent_id)
-
+        
         # Unified-Identity - Phase 3: Add geolocation from quote payload
         # Structure: { "type": "mobile"|"gnss", "sensor_id": "...", "value": "..." }
         # value is optional for mobile, mandatory for gnss
