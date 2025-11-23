@@ -607,10 +607,10 @@ type RenewAgentResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The renewed X509-SVID
 	Svid *types.X509SVID `protobuf:"bytes,1,opt,name=svid,proto3" json:"svid,omitempty"`
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional AttestedClaims returned from Keylime and policy evaluation.
 	AttestedClaims []*types.AttestedClaims `protobuf:"bytes,2,rep,name=attested_claims,json=attestedClaims,proto3" json:"attested_claims,omitempty"`
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Optional challenge nonce for TPM Quote generation. If present, the agent
 	// should use this nonce to build SovereignAttestation and call RenewAgent again.
 	// This enables the server to ensure freshness of TPM attestation.
@@ -742,7 +742,7 @@ type AgentX509SVIDParams struct {
 	// CSR is only used to convey the public key; other fields in the CSR are
 	// ignored. The agent X509-SVID attributes are determined by the server.
 	Csr []byte `protobuf:"bytes,1,opt,name=csr,proto3" json:"csr,omitempty"`
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional SovereignAttestation payload sent by the agent during bootstrap/renewal.
 	SovereignAttestation *types.SovereignAttestation `protobuf:"bytes,2,opt,name=sovereign_attestation,json=sovereignAttestation,proto3" json:"sovereign_attestation,omitempty"`
 	unknownFields        protoimpl.UnknownFields
@@ -1096,7 +1096,7 @@ type AttestAgentResponse_Result struct {
 	Svid *types.X509SVID `protobuf:"bytes,1,opt,name=svid,proto3" json:"svid,omitempty"`
 	// Whether or not the attested agent can reattest to renew its X509-SVID
 	Reattestable bool `protobuf:"varint,2,opt,name=reattestable,proto3" json:"reattestable,omitempty"`
-	// Unified-Identity - Phase 1: Optional AttestedClaims returned from Keylime and policy evaluation.
+	// Unified-Identity - Setup: Optional AttestedClaims returned from Keylime and policy evaluation.
 	AttestedClaims []*types.AttestedClaims `protobuf:"bytes,3,rep,name=attested_claims,json=attestedClaims,proto3" json:"attested_claims,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

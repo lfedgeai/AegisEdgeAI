@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+Unified-Identity - Verification: Hardware Integration & Delegated Certification
 
 TPM Plugin HTTP/UDS Server
 This module provides an HTTP/UDS server for the TPM plugin,
 allowing SPIRE Agent to communicate via JSON over HTTP/UDS instead of subprocess execution.
 
 Interface: SPIRE Agent → SPIRE TPM Plugin
-Status: 🆕 New (Phase 3)
-Transport: JSON over HTTP/UDS (Phase 3)
+Status: 🆕 New (Verification)
+Transport: JSON over HTTP/UDS (Verification)
 Protocol: JSON REST API
 Port/Path: UDS socket (default: /tmp/spire-data/tpm-plugin/tpm-plugin.sock) or localhost HTTP
 """
@@ -55,7 +55,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Handle POST requests"""
         if not is_unified_identity_enabled():
-            self.send_error(403, "Unified-Identity - Phase 3: Feature flag disabled")
+            self.send_error(403, "Unified-Identity - Verification: Feature flag disabled")
             return
         
         try:
@@ -81,13 +81,13 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         try:
             plugin = self.plugin
             if plugin is None:
-                self.send_error(500, "Unified-Identity - Phase 3: Plugin not initialized")
+                self.send_error(500, "Unified-Identity - Verification: Plugin not initialized")
                 return
             
             app_key_public = plugin.get_app_key_public()
             
             if not app_key_public:
-                self.send_error(500, "Unified-Identity - Phase 3: App Key not generated")
+                self.send_error(500, "Unified-Identity - Verification: App Key not generated")
                 return
             
             response = {
@@ -97,7 +97,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             
             self.send_json_response(200, response)
         except Exception as e:
-            logger.error("Unified-Identity - Phase 3: Error getting App Key: %s", e)
+            logger.error("Unified-Identity - Verification: Error getting App Key: %s", e)
             self.send_error(500, f"Internal error: {e}")
     
     def handle_request_certificate(self, request_data: dict):
@@ -108,7 +108,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             endpoint = request_data.get("endpoint")
             
             if not app_key_public or not challenge_nonce:
-                self.send_error(400, "Unified-Identity - Phase 3: app_key_public and challenge_nonce are required")
+                self.send_error(400, "Unified-Identity - Verification: app_key_public and challenge_nonce are required")
                 return
             
             app_key_context_path = None
@@ -116,17 +116,17 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             if plugin is not None:
                 app_key_context_path = plugin.get_app_key_context()
             if not app_key_context_path:
-                self.send_error(500, "Unified-Identity - Phase 3: App Key context unavailable")
+                self.send_error(500, "Unified-Identity - Verification: App Key context unavailable")
                 return
             
-            # Unified-Identity - Phase 3: Default to HTTPS endpoint (agent uses mTLS, Gap #2 fix)
+            # Unified-Identity - Verification: Default to HTTPS endpoint (agent uses mTLS, Gap #2 fix)
             if not endpoint or endpoint == "unix:///tmp/keylime-agent.sock":
                 endpoint = "https://127.0.0.1:9002"
-                logger.info("Unified-Identity - Phase 3: Using default HTTPS endpoint (agent uses mTLS): %s", endpoint)
+                logger.info("Unified-Identity - Verification: Using default HTTPS endpoint (agent uses mTLS): %s", endpoint)
             elif endpoint.startswith("http://") and ("127.0.0.1" in endpoint or "localhost" in endpoint):
                 # Convert HTTP to HTTPS for localhost (agent now uses mTLS)
                 endpoint = endpoint.replace("http://", "https://")
-                logger.info("Unified-Identity - Phase 3: Converting HTTP to HTTPS endpoint (agent uses mTLS): %s", endpoint)
+                logger.info("Unified-Identity - Verification: Converting HTTP to HTTPS endpoint (agent uses mTLS): %s", endpoint)
             
             client = DelegatedCertificationClient(endpoint=endpoint)
             success, cert_b64, agent_uuid, error = client.request_certificate(
@@ -136,7 +136,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             )
             
             if not success:
-                self.send_error(500, f"Unified-Identity - Phase 3: Failed to request certificate: {error}")
+                self.send_error(500, f"Unified-Identity - Verification: Failed to request certificate: {error}")
                 return
             
             response = {
@@ -148,7 +148,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             
             self.send_json_response(200, response)
         except Exception as e:
-            logger.error("Unified-Identity - Phase 3: Error requesting certificate: %s", e)
+            logger.error("Unified-Identity - Verification: Error requesting certificate: %s", e)
             self.send_error(500, f"Internal error: {e}")
     
     def send_json_response(self, status_code: int, data: dict):
@@ -200,7 +200,7 @@ class UnixHTTPServer(HTTPServer):
             os.chmod(self.socket_path, 0o660)
             # IMPORTANT: Call listen() immediately after bind() for UDS sockets
             self.socket.listen(5)
-            logger.info("Unified-Identity - Phase 3: UDS socket bound and listening: %s", self.socket_path)
+            logger.info("Unified-Identity - Verification: UDS socket bound and listening: %s", self.socket_path)
         else:
             HTTPServer.server_bind(self)
     
@@ -210,9 +210,9 @@ class UnixHTTPServer(HTTPServer):
             # For UDS, listen() was already called in server_bind()
             # Verify socket is ready
             if self.socket and self.socket.fileno() >= 0:
-                logger.debug("Unified-Identity - Phase 3: UDS socket activated and ready for connections")
+                logger.debug("Unified-Identity - Verification: UDS socket activated and ready for connections")
             else:
-                logger.error("Unified-Identity - Phase 3: UDS socket not properly initialized")
+                logger.error("Unified-Identity - Verification: UDS socket not properly initialized")
         else:
             # For regular TCP sockets, use default behavior
             HTTPServer.server_activate(self)
@@ -253,7 +253,7 @@ def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = Non
         work_dir: Working directory for TPM operations
     """
     if not is_unified_identity_enabled():
-        logger.error("Unified-Identity - Phase 3: Feature flag disabled, server will not start")
+        logger.error("Unified-Identity - Verification: Feature flag disabled, server will not start")
         sys.exit(1)
     
     if work_dir is None:
@@ -263,45 +263,45 @@ def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = Non
     os.makedirs(work_dir, mode=0o755, exist_ok=True)
     
     # Generate App Key on startup (Step 3: Automatic on Startup)
-    logger.info("Unified-Identity - Phase 3: Generating App Key on startup...")
+    logger.info("Unified-Identity - Verification: Generating App Key on startup...")
     plugin = TPMPlugin(work_dir=work_dir)
     success, app_key_public, app_key_ctx = plugin.generate_app_key(force=False)
     
     if not success:
-        logger.error("Unified-Identity - Phase 3: Failed to generate App Key on startup")
+        logger.error("Unified-Identity - Verification: Failed to generate App Key on startup")
         sys.exit(1)
     
-    logger.info("Unified-Identity - Phase 3: App Key generated successfully on startup")
-    logger.info("Unified-Identity - Phase 3: App Key context: %s", app_key_ctx)
+    logger.info("Unified-Identity - Verification: App Key generated successfully on startup")
+    logger.info("Unified-Identity - Verification: App Key context: %s", app_key_ctx)
     
     HandlerClass = create_handler_class(work_dir, plugin)
     
     if socket_path:
         # Use UNIX domain socket
         socket_path = os.path.abspath(socket_path)
-        logger.info("Unified-Identity - Phase 3: Starting TPM Plugin server on UDS: %s", socket_path)
+        logger.info("Unified-Identity - Verification: Starting TPM Plugin server on UDS: %s", socket_path)
         server = UnixHTTPServer(socket_path, HandlerClass, bind_and_activate=True)
         # server_bind() is called automatically by __init__ with bind_and_activate=True
         # This creates the socket, binds it, and calls listen()
         # server_activate() is also called automatically, which we've overridden for UDS
     elif http_port:
         # HTTP over localhost is not supported for security reasons
-        logger.error("Unified-Identity - Phase 3: HTTP over localhost is not supported for security reasons. Use UDS only (--socket-path)")
+        logger.error("Unified-Identity - Verification: HTTP over localhost is not supported for security reasons. Use UDS only (--socket-path)")
         sys.exit(1)
     else:
         # Default to UDS
         default_socket = os.path.join(work_dir, "tpm-plugin.sock")
-        logger.info("Unified-Identity - Phase 3: Starting TPM Plugin server on UDS (default): %s", default_socket)
+        logger.info("Unified-Identity - Verification: Starting TPM Plugin server on UDS (default): %s", default_socket)
         server = UnixHTTPServer(default_socket, HandlerClass, bind_and_activate=True)
         # server_bind() is called automatically by __init__ with bind_and_activate=True
         # This creates the socket, binds it, and calls listen()
         # server_activate() is also called automatically, which we've overridden for UDS
     
     try:
-        logger.info("Unified-Identity - Phase 3: TPM Plugin server started")
+        logger.info("Unified-Identity - Verification: TPM Plugin server started")
         server.serve_forever()
     except KeyboardInterrupt:
-        logger.info("Unified-Identity - Phase 3: TPM Plugin server shutting down")
+        logger.info("Unified-Identity - Verification: TPM Plugin server shutting down")
         server.shutdown()
 
 
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     )
     
     parser = argparse.ArgumentParser(
-        description="Unified-Identity - Phase 3: TPM Plugin HTTP/UDS Server"
+        description="Unified-Identity - Verification: TPM Plugin HTTP/UDS Server"
     )
     parser.add_argument(
         "--socket-path",

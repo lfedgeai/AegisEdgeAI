@@ -8,7 +8,7 @@ pub struct Integ {
     pub ima_ml_entry: Option<String>,
 }
 
-/// Unified-Identity - Phase 3: Geolocation structure
+/// Unified-Identity - Unified-Identity: Geolocation structure
 /// type: "mobile" or "gnss"
 /// sensor_id: Sensor identifier (e.g., USB device ID for mobile, device path for GNSS)
 /// value: Optional for mobile, mandatory for gnss (GNSS coordinates, accuracy, etc.)
@@ -36,7 +36,7 @@ pub struct KeylimeQuote {
     pub mb_measurement_list: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ima_measurement_list_entry: Option<u64>,
-    // Unified-Identity - Phase 3: Geolocation sensor metadata
+    // Unified-Identity - Unified-Identity: Geolocation sensor metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub geolocation: Option<Geolocation>,
 }

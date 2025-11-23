@@ -1,4 +1,4 @@
-# Unified-Identity - Phase 1: Python App Demo
+# Unified-Identity - Setup: Python App Demo
 
 This demo shows how to fetch and dump a Sovereign SVID with AttestedClaims using a simple Python application.
 

@@ -37,7 +37,7 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 	}
 	claims["grc.workload"] = workload
 
-	// Unified-Identity - Phase 3: TPM attestation and geolocation are ONLY for agent SVIDs
+	// Unified-Identity - Verification: TPM attestation and geolocation are ONLY for agent SVIDs
 	// Workload SVIDs should NOT include TPM attestation or geolocation - those are covered by the SPIRE agent
 	// Only include TPM attestation and geolocation for agent SVIDs (KeySourceTPMApp)
 	if keySource == KeySourceTPMApp {
@@ -57,7 +57,7 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 			}
 		}
 
-		// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+		// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 		// Structure geolocation according to federated-jwt.md schema
 		// Geolocation is NOT part of grc.tpm-attestation - it's a separate top-level claim
 		// Only include geolocation in agent SVIDs
@@ -87,7 +87,7 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 	return json.Marshal(claims)
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // buildGeolocationClaim structures geolocation data according to federated-jwt.md schema
 // Input format: "country:state:city:latitude:longitude" or "country: description"
 // If TPM-attested (hasSovereignAttestation=true), sets tpm-attested-location and tpm-attested-pcr-index
@@ -186,7 +186,7 @@ func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[stri
 		return nil
 	}
 	
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// If TPM attestation is present, mark geolocation as TPM-attested
 	if hasSovereignAttestation {
 		geo["tpm-attested-location"] = true

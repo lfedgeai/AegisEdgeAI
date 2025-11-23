@@ -85,7 +85,7 @@ impl AttestationClient {
         &self,
         config: &NegotiationConfig<'_>,
     ) -> Result<ResponseInformation> {
-        info!("--- Phase 1: Sending Capabilities Negotiation ---");
+        info!("--- Unified-Identity: Sending Capabilities Negotiation ---");
         info!("Capabilities negotiation URL (POST): {}", config.url);
         let mut context_info = context_info_handler::get_context_info(config.avoid_tpm)?;
         let mut filler = struct_filler::get_filler_request(context_info.as_mut());
@@ -169,7 +169,7 @@ impl AttestationClient {
         neg_response: ResponseInformation,
         config: &NegotiationConfig<'_>,
     ) -> Result<ResponseInformation> {
-        info!("--- Phase 2: Preparing and Sending Evidence ---");
+        info!("--- Unified-Identity: Preparing and Sending Evidence ---");
 
         // Use RFC-compliant Location header validation
         let location_header = match HeaderValidator::validate_location_header(

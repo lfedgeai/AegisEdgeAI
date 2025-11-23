@@ -1,20 +1,18 @@
 #!/bin/bash
-# Unified-Identity - Phase 3: Complete End-to-End Integration Test
+# Unified-Identity: Complete End-to-End Integration Test
 # Tests the full workflow: SPIRE Server + Keylime Verifier + rust-keylime Agent -> Sovereign SVID Generation
-# Phase 3: Hardware Integration & Delegated Certification
+# Hardware Integration & Delegated Certification
 
 set -euo pipefail
 # Exit immediately on error - abort if anything goes wrong
 
-# Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+# Unified-Identity: Hardware Integration & Delegated Certification
 # Ensure feature flag is enabled by default (can be overridden by caller)
 export UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # All components are now consolidated in the root directory
-PHASE1_DIR="${SCRIPT_DIR}"
-PHASE2_DIR="${SCRIPT_DIR}"
-PHASE3_DIR="${SCRIPT_DIR}"
+PROJECT_DIR="${SCRIPT_DIR}"
 KEYLIME_DIR="${SCRIPT_DIR}/keylime"
 PYTHON_KEYLIME_DIR="${KEYLIME_DIR}"
 RUST_KEYLIME_DIR="${SCRIPT_DIR}/rust-keylime"
@@ -66,15 +64,21 @@ check_critical() {
 }
 
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║  Unified-Identity - Phase 3: Complete Integration Test         ║"
-echo "║  Phase 3: Hardware Integration & Delegated Certification       ║"
+echo "║  Unified-Identity: Complete Integration Test                  ║"
+echo "║  Hardware Integration & Delegated Certification                ║"
 echo "║  Testing: TPM App Key + rust-keylime Agent -> Sovereign SVID   ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 
 # Source cleanup.sh to reuse the stop_all_instances_and_cleanup function
 # This avoids code duplication and ensures consistency
-source "${SCRIPT_DIR}/cleanup.sh"
+# Note: cleanup.sh will detect it's in scripts/ and use PROJECT_ROOT to find the root
+# Save our SCRIPT_DIR before sourcing cleanup.sh (which may change it)
+TEST_SCRIPT_DIR="${SCRIPT_DIR}"
+PROJECT_ROOT="${SCRIPT_DIR}"
+source "${SCRIPT_DIR}/scripts/cleanup.sh"
+# Restore SCRIPT_DIR after sourcing (cleanup.sh may have changed it)
+SCRIPT_DIR="${TEST_SCRIPT_DIR}"
 
 # Wrap the cleanup function to add "Step 0:" prefix for consistency with test script output
 # Save original function before we override it by copying it with a different name
@@ -340,7 +344,7 @@ generate_workflow_log_file() {
         
         # Keylime Verifier logs
         if [ -f /tmp/keylime-verifier.log ]; then
-            grep -E "Processing|Verifying|certificate|quote|mobile|sensor|Unified-Identity|Phase 3" /tmp/keylime-verifier.log | \
+            grep -E "Processing|Verifying|certificate|quote|mobile|sensor|Unified-Identity" /tmp/keylime-verifier.log | \
             while IFS= read -r line; do
                 ts=$(extract_timestamp "$line")
                 nts=$(normalize_timestamp "$ts")
@@ -372,11 +376,11 @@ generate_workflow_log_file() {
         cat "$TEMP_DIR"/*.log 2>/dev/null | sort -t'|' -k1,1 > "$TEMP_DIR/all-logs-sorted.log"
         
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 1: INITIAL SETUP & TPM PREPARATION"
+        echo "SETUP: INITIAL SETUP & TPM PREPARATION"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        # Phase 1 logs
+        # SPIRE logs
         grep -E "TPM_PLUGIN.*App Key|RUST_KEYLIME.*registered|RUST_KEYLIME.*activated" "$TEMP_DIR/all-logs-sorted.log" | \
         while IFS='|' read -r ts component line; do
             case "$component" in
@@ -391,11 +395,11 @@ generate_workflow_log_file() {
         echo ""
         
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 2: SPIRE AGENT ATTESTATION (Agent SVID Generation) - ARCHITECTURE FLOW ORDER"
+        echo "AGENT ATTESTATION: SPIRE AGENT ATTESTATION (Agent SVID Generation) - ARCHITECTURE FLOW ORDER"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        # Phase 2 follows architecture flow: SPIRE Agent → TPM Plugin → rust-keylime → SPIRE Agent → SPIRE Server → Keylime Verifier → Mobile Sensor → Keylime Verifier → SPIRE Server → SPIRE Agent
+        # Agent attestation follows architecture flow: SPIRE Agent → TPM Plugin → rust-keylime → SPIRE Agent → SPIRE Server → Keylime Verifier → Mobile Sensor → Keylime Verifier → SPIRE Server → SPIRE Agent
         
         # Step 1: SPIRE Agent Initiates Attestation & Requests App Key Info
         echo "[Step 3-4] SPIRE Agent Initiates Attestation & Requests App Key Information:"
@@ -513,7 +517,7 @@ generate_workflow_log_file() {
         
         # Also show detailed sections for key events
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 2: DETAILED EVENT BREAKDOWN"
+        echo "AGENT ATTESTATION: DETAILED EVENT BREAKDOWN"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
@@ -558,11 +562,11 @@ generate_workflow_log_file() {
         echo ""
         
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 3: WORKLOAD SVID GENERATION - ARCHITECTURE FLOW ORDER"
+        echo "WORKLOAD SVID: WORKLOAD SVID GENERATION - ARCHITECTURE FLOW ORDER"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        # Phase 3 follows architecture flow: Workload → SPIRE Agent → SPIRE Server → SPIRE Agent → Workload
+        # Workload SVID generation follows architecture flow: Workload → SPIRE Agent → SPIRE Server → SPIRE Agent → Workload
         
         # Step 1: Workload Requests SVID via SPIRE Agent
         echo "[Step 1-2] Workload Requests SVID via SPIRE Agent:"
@@ -621,7 +625,7 @@ generate_workflow_log_file() {
         
         # Detailed workload SVID breakdown
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "PHASE 3: DETAILED EVENT BREAKDOWN"
+        echo "WORKLOAD SVID: DETAILED EVENT BREAKDOWN"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
@@ -794,7 +798,7 @@ else
 fi
 
 # Note: SVID renewal configuration is not used in this script (for short demos)
-# For persistent deployments with SVID renewal, use test_phase3_persistent.sh
+# For persistent deployments with SVID renewal, use a separate persistent test script
 # Convert seconds to SPIRE format (e.g., 300s -> 5m, 60s -> 1m)
 convert_seconds_to_spire_duration() {
     local seconds=$1
@@ -1206,9 +1210,9 @@ fi
 
 pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent registration."
 
-# Step 4: Start rust-keylime Agent (Phase 3)
+# Step 4: Start rust-keylime Agent
 echo ""
-echo -e "${CYAN}Step 4: Starting rust-keylime Agent (Phase 3) with delegated certification...${NC}"
+echo -e "${CYAN}Step 4: Starting rust-keylime Agent with delegated certification...${NC}"
 
 cd "${RUST_KEYLIME_DIR}"
 
@@ -1288,7 +1292,7 @@ cp "$(pwd)/keylime-agent.conf" "$TEMP_CONFIG" 2>/dev/null || true
 sed -i "s|^keylime_dir = .*|keylime_dir = \"$KEYLIME_AGENT_DIR\"|" "$TEMP_CONFIG" 2>/dev/null || \
 sed -i "s|keylime_dir = .*|keylime_dir = \"$KEYLIME_AGENT_DIR\"|" "$TEMP_CONFIG" 2>/dev/null || true
 
-# Unified-Identity - Phase 3: Configure mTLS for verifier communication (Gap #2 fix)
+# Unified-Identity: Configure mTLS for verifier communication
 # Set trusted_client_ca to verifier's CA certificate so agent trusts verifier connections
 VERIFIER_CA_CERT="${AGENT_CV_CA_DST}/cacert.crt"
 if [ -f "$VERIFIER_CA_CERT" ]; then
@@ -1312,7 +1316,7 @@ else
     echo -e "${YELLOW}    ⚠ Verifier CA certificate not found at $VERIFIER_CA_CERT, mTLS may not work${NC}"
 fi
 
-# Unified-Identity - Phase 3: Enable unified_identity_enabled feature flag in agent config
+# Unified-Identity: Enable unified_identity_enabled feature flag in agent config
 if grep -q "^unified_identity_enabled" "$TEMP_CONFIG" 2>/dev/null; then
     sed -i "s|^unified_identity_enabled = .*|unified_identity_enabled = true|" "$TEMP_CONFIG" 2>/dev/null || \
     sed -i "s|unified_identity_enabled = .*|unified_identity_enabled = true|" "$TEMP_CONFIG" 2>/dev/null || true
@@ -1388,7 +1392,7 @@ fi
 export KEYLIME_AGENT_RUN_AS="$(whoami):$(id -gn)"
 
 # Try to start with sudo if secure mount failed and sudo is available
-# Unified-Identity - Phase 3: Enable mTLS for Verifier communication (standard Keylime)
+# Unified-Identity: Enable mTLS for Verifier communication (standard Keylime)
 export KEYLIME_AGENT_ENABLE_AGENT_MTLS="${KEYLIME_AGENT_ENABLE_AGENT_MTLS:-true}"
 export KEYLIME_AGENT_ENABLE_NETWORK_LISTENER="${KEYLIME_AGENT_ENABLE_NETWORK_LISTENER:-true}"
 export KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD="${KEYLIME_AGENT_ENABLE_INSECURE_PAYLOAD:-true}"
@@ -1463,7 +1467,7 @@ for i in {1..60}; do
         fi
         abort_on_error "rust-keylime Agent process died - delegated certification is required"
     fi
-    # Check if UDS socket exists (primary check for Phase 3)
+    # Check if UDS socket exists (primary check for delegated certification)
     if [ -S "$UDS_SOCKET_PATH" ]; then
         echo -e "${GREEN}  ✓ rust-keylime Agent UDS socket is ready (PID: $RUST_AGENT_PID)${NC}"
         RUST_AGENT_STARTED=true
@@ -1532,7 +1536,7 @@ echo "  Waiting for rust-keylime agent to register with Keylime Registrar..."
 AGENT_REGISTERED=false
 MAX_WAIT=120  # Wait up to 2 minutes for registration
 REGISTRAR_REGISTERED=false
-# Phase 3: Verifier queries registrar on-demand (no pre-registration needed)
+# Verifier queries registrar on-demand (no pre-registration needed)
 
 for i in {1..120}; do
     # Step 1: Check if agent is registered with registrar
@@ -1585,11 +1589,11 @@ for i in {1..120}; do
         fi
     fi
     
-    # Step 2: In Phase 3, verifier queries registrar on-demand (no automatic registration)
+    # Step 2: Verifier queries registrar on-demand (no automatic registration)
     # Skip verifier registration check - verifier will query registrar when SPIRE sends verification requests
     # We only need to confirm registrar registration is complete
     if [ "$REGISTRAR_REGISTERED" = true ]; then
-        # In Phase 3, registrar registration is sufficient - verifier queries on-demand
+        # Registrar registration is sufficient - verifier queries on-demand
         AGENT_REGISTERED=true
         break
     fi
@@ -1602,7 +1606,7 @@ for i in {1..120}; do
         else
             STATUS_MSG="$STATUS_MSG (registrar: ✗"
         fi
-        # Phase 3: Verifier queries registrar on-demand (no pre-registration needed)
+        # Verifier queries registrar on-demand (no pre-registration needed)
         STATUS_MSG="$STATUS_MSG, verifier: on-demand)... (${i}/${MAX_WAIT} seconds)"
         echo "    $STATUS_MSG"
         
@@ -1619,11 +1623,11 @@ for i in {1..120}; do
     sleep 1
 done
 
-# Unified-Identity - Phase 3: Verifier queries registrar on-demand
+# Unified-Identity: Verifier queries registrar on-demand
 # If agent is registered with registrar, we can proceed (verifier will query on-demand)
 if [ "$REGISTRAR_REGISTERED" = "true" ]; then
     echo -e "${GREEN}  ✓ Agent registered with Registrar${NC}"
-    echo "  Unified-Identity - Phase 3: Verifier will query registrar on-demand when SPIRE Server sends verification requests."
+    echo "  Unified-Identity: Verifier will query registrar on-demand when SPIRE Server sends verification requests."
     echo "  TPM Plugin and SPIRE can now be started - geolocation will be available when verifier queries agent."
 elif [ "$AGENT_REGISTERED" = false ]; then
     echo -e "${RED}  ✗ Agent registration failed${NC}"
@@ -1737,14 +1741,7 @@ echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
 
 TPM_PLUGIN_SERVER="${SCRIPT_DIR}/tpm-plugin/tpm_plugin_server.py"
 if [ ! -f "$TPM_PLUGIN_SERVER" ]; then
-    echo -e "${YELLOW}  ⚠ TPM Plugin Server not found at $TPM_PLUGIN_SERVER${NC}"
-    echo "  Trying alternative locations..."
-    # Try to find it
-    if [ -f "${SCRIPT_DIR}/../code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py" ]; then
-        TPM_PLUGIN_SERVER="${SCRIPT_DIR}/../code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py"
-    elif [ -f "${HOME}/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py" ]; then
-        TPM_PLUGIN_SERVER="${HOME}/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-3/tpm-plugin/tpm_plugin_server.py"
-    fi
+    abort_on_error "TPM Plugin Server not found at ${TPM_PLUGIN_SERVER}"
 fi
 
 if [ ! -f "$TPM_PLUGIN_SERVER" ]; then
@@ -1848,8 +1845,8 @@ pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE 
 echo ""
 echo -e "${CYAN}Step 7: Starting SPIRE Server and Agent...${NC}"
 
-if [ ! -d "${PHASE1_DIR}" ]; then
-    echo -e "${RED}Error: Phase 1 directory not found at ${PHASE1_DIR}${NC}"
+if [ ! -d "${PROJECT_DIR}" ]; then
+    echo -e "${RED}Error: Project directory not found at ${PROJECT_DIR}${NC}"
     exit 1
 fi
 
@@ -1861,30 +1858,30 @@ export KEYLIME_AGENT_PORT="${KEYLIME_AGENT_PORT:-9002}"
 echo "  Using rust-keylime agent endpoint: ${KEYLIME_AGENT_IP}:${KEYLIME_AGENT_PORT}"
 
 # Check if SPIRE binaries exist
-SPIRE_SERVER="${PHASE1_DIR}/spire/bin/spire-server"
-SPIRE_AGENT="${PHASE1_DIR}/spire/bin/spire-agent"
+SPIRE_SERVER="${PROJECT_DIR}/spire/bin/spire-server"
+SPIRE_AGENT="${PROJECT_DIR}/spire/bin/spire-agent"
 
 if [ ! -f "${SPIRE_SERVER}" ] || [ ! -f "${SPIRE_AGENT}" ]; then
     echo -e "${YELLOW}  ⚠ SPIRE binaries not found, skipping SPIRE integration test${NC}"
     echo -e "${GREEN}============================================================${NC}"
     echo -e "${GREEN}Integration Test Summary:${NC}"
     echo -e "${GREEN}  ✓ Keylime Verifier started${NC}"
-    echo -e "${GREEN}  ✓ rust-keylime Agent (Phase 3) started${NC}"
+    echo -e "${GREEN}  ✓ rust-keylime Agent started${NC}"
     echo -e "${GREEN}  ✓ unified_identity feature flag is ENABLED${NC}"
     echo -e "${YELLOW}  ⚠ SPIRE integration test skipped (binaries not found)${NC}"
     echo -e "${GREEN}============================================================${NC}"
     echo ""
     echo "To complete full integration test:"
-    echo "  1. Build SPIRE: cd ${PHASE1_DIR}/spire && make bin/spire-server bin/spire-agent"
+    echo "  1. Build SPIRE: cd ${PROJECT_DIR}/spire && make bin/spire-server bin/spire-agent"
     echo "  2. Run this script again"
     exit 0
 fi
 
 # Start SPIRE Server manually
-cd "${PHASE1_DIR}"
-SERVER_CONFIG="${PHASE1_DIR}/python-app-demo/spire-server-phase2.conf"
+cd "${PROJECT_DIR}"
+SERVER_CONFIG="${PROJECT_DIR}/python-app-demo/spire-server.conf"
 if [ ! -f "${SERVER_CONFIG}" ]; then
-    SERVER_CONFIG="${PHASE1_DIR}/spire/conf/server/server.conf"
+    SERVER_CONFIG="${PROJECT_DIR}/spire/conf/server/server.conf"
 fi
 
 if [ -f "${SERVER_CONFIG}" ]; then
@@ -1896,9 +1893,9 @@ if [ -f "${SERVER_CONFIG}" ]; then
 fi
 
 # Start SPIRE Agent manually
-AGENT_CONFIG="${PHASE1_DIR}/python-app-demo/spire-agent.conf"
+AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
 if [ ! -f "${AGENT_CONFIG}" ]; then
-    AGENT_CONFIG="${PHASE1_DIR}/spire/conf/agent/agent.conf"
+    AGENT_CONFIG="${PROJECT_DIR}/spire/conf/agent/agent.conf"
 fi
 
 if [ -f "${AGENT_CONFIG}" ]; then
@@ -2042,7 +2039,7 @@ for i in {1..90}; do
                         echo "      1. Wait a few minutes and retry the test"
                         echo "      2. Set CAMARA_BYPASS=true to skip CAMARA API calls for testing:"
                         echo "         export CAMARA_BYPASS=true"
-                        echo "         ./test_phase3_complete.sh"
+                        echo "         ./test_complete.sh"
                         echo ""
                         echo "      Error details:"
                         echo "$ERROR_MSG" | sed 's/^/        /'
@@ -2102,7 +2099,7 @@ pause_at_phase "Step 7 Complete" "SPIRE Server and Agent are running. Agent has 
 echo ""
 echo -e "${CYAN}Step 8: Creating registration entry for workload...${NC}"
 
-cd "${PHASE1_DIR}/python-app-demo"
+cd "${PROJECT_DIR}/python-app-demo"
 if [ -f "./create-registration-entry.sh" ]; then
     ./create-registration-entry.sh
     if [ $? -eq 0 ]; then
@@ -2268,13 +2265,13 @@ pause_at_phase "Step 9 Complete" "TPM operations verified in SPIRE agent attesta
 # Step 10: Generate Sovereign SVID (reuse demo script to avoid duplication)
 echo ""
 echo -e "${CYAN}Step 10: Generating Sovereign SVID with AttestedClaims...${NC}"
-echo "  (Reusing demo_phase3.sh to avoid code duplication)"
+echo "  (Reusing demo.sh to avoid code duplication)"
 echo ""
 
-# Unified-Identity - Phase 3: Reuse demo script for Step 7
-if [ -f "${SCRIPT_DIR}/demo_phase3.sh" ]; then
+# Unified-Identity: Reuse demo script for Step 7
+if [ -f "${SCRIPT_DIR}/scripts/demo.sh" ]; then
     # Call demo script in quiet mode (suppresses header, uses our step header)
-    "${SCRIPT_DIR}/demo_phase3.sh" --quiet || {
+    "${SCRIPT_DIR}/scripts/demo.sh" --quiet || {
         # If demo script fails, check exit code
         DEMO_EXIT=$?
         if [ $DEMO_EXIT -ne 0 ]; then
@@ -2282,8 +2279,8 @@ if [ -f "${SCRIPT_DIR}/demo_phase3.sh" ]; then
         fi
     }
 else
-    echo -e "${YELLOW}  ⚠ demo_phase3.sh not found, falling back to direct execution${NC}"
-    cd "${PHASE1_DIR}/python-app-demo"
+    echo -e "${YELLOW}  ⚠ demo.sh not found, falling back to direct execution${NC}"
+    cd "${PROJECT_DIR}/python-app-demo"
     if [ -f "./fetch-sovereign-svid-grpc.py" ]; then
         python3 fetch-sovereign-svid-grpc.py
         if [ $? -eq 0 ]; then
@@ -2300,23 +2297,23 @@ pause_at_phase "Step 10 Complete" "Sovereign SVID generated with AttestedClaims.
 
 # Step 11: Run All Tests
 echo ""
-echo -e "${CYAN}Step 11: Running all Phase 3 tests...${NC}"
+echo -e "${CYAN}Step 11: Running all tests...${NC}"
 
-cd "${PHASE3_DIR}"
+cd "${PROJECT_DIR}"
 
 # Unit tests
 echo "  Running unit tests..."
-cd "${PHASE3_DIR}/tpm-plugin"
-export PYTHONPATH="${PHASE3_DIR}/tpm-plugin:${PYTHONPATH:-}"
+cd "${PROJECT_DIR}/tpm-plugin"
+export PYTHONPATH="${PROJECT_DIR}/tpm-plugin:${PYTHONPATH:-}"
 python3 -m pytest test/ -v --tb=short 2>&1 | tail -15
-cd "${PHASE3_DIR}"
+cd "${PROJECT_DIR}"
 
 # Integration summary
-# Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
-# Legacy helper scripts (test_phase3_e2e.sh, etc.) were consolidated into this
+# Unified-Identity: Hardware Integration & Delegated Certification
+# Legacy helper scripts were consolidated into this
 # single harness. The SVID workflow above already exercises the full stack.
 echo "  E2E scenario verification: Executed as part of Steps 1-7"
-echo "  Phase 3 integration: Validated via Sovereign SVID generation and log checks"
+echo "  Integration: Validated via Sovereign SVID generation and log checks"
 echo "  Additional scripted helpers have been retired"
 
 echo -e "${GREEN}  ✓ All tests completed${NC}"
@@ -2325,7 +2322,7 @@ pause_at_phase "Step 11 Complete" "All unit tests passed. E2E scenario verified 
 
 # Step 12: Verify Integration
 echo ""
-echo -e "${CYAN}Step 12: Verifying Phase 3 Integration...${NC}"
+echo -e "${CYAN}Step 12: Verifying Integration...${NC}"
 
 # Check logs for Unified-Identity activity
 echo "  Checking SPIRE Server logs for Keylime Verifier calls..."
@@ -2343,15 +2340,15 @@ else
 fi
 
 echo ""
-echo "  Checking Keylime Verifier logs for Phase 3 activity..."
+echo "  Checking Keylime Verifier logs for Unified-Identity activity..."
 if [ -f /tmp/keylime-verifier.log ]; then
-    PHASE3_VERIFIER_LOGS=$(grep -i "unified-identity.*phase 3" /tmp/keylime-verifier.log | wc -l)
-    if [ "$PHASE3_VERIFIER_LOGS" -gt 0 ]; then
-        echo -e "${GREEN}  ✓ Found $PHASE3_VERIFIER_LOGS Phase 3 Unified-Identity logs${NC}"
+    UNIFIED_IDENTITY_VERIFIER_LOGS=$(grep -i "unified-identity" /tmp/keylime-verifier.log | wc -l)
+    if [ "$UNIFIED_IDENTITY_VERIFIER_LOGS" -gt 0 ]; then
+        echo -e "${GREEN}  ✓ Found $UNIFIED_IDENTITY_VERIFIER_LOGS Unified-Identity logs${NC}"
         echo "  Sample log entries:"
-        grep -i "unified-identity.*phase 3" /tmp/keylime-verifier.log | tail -3 | sed 's/^/    /'
+        grep -i "unified-identity" /tmp/keylime-verifier.log | tail -3 | sed 's/^/    /'
     else
-        echo -e "${YELLOW}  ⚠ No Phase 3 Unified-Identity logs found in verifier${NC}"
+        echo -e "${YELLOW}  ⚠ No Unified-Identity logs found in verifier${NC}"
     fi
 else
     echo -e "${YELLOW}  ⚠ Keylime Verifier log not found${NC}"
@@ -2388,15 +2385,15 @@ else
 fi
 
 echo ""
-echo "  Checking rust-keylime Agent logs for Phase 3 activity..."
+echo "  Checking rust-keylime Agent logs for Unified-Identity activity..."
 if [ -f /tmp/rust-keylime-agent.log ]; then
-    PHASE3_LOGS=$(grep -i "unified-identity.*phase 3" /tmp/rust-keylime-agent.log | wc -l)
-    if [ "$PHASE3_LOGS" -gt 0 ]; then
-        echo -e "${GREEN}  ✓ Found $PHASE3_LOGS Phase 3 Unified-Identity logs${NC}"
+    UNIFIED_IDENTITY_LOGS=$(grep -i "unified-identity" /tmp/rust-keylime-agent.log | wc -l)
+    if [ "$UNIFIED_IDENTITY_LOGS" -gt 0 ]; then
+        echo -e "${GREEN}  ✓ Found $UNIFIED_IDENTITY_LOGS Unified-Identity logs${NC}"
         echo "  Sample log entries:"
-        grep -i "unified-identity.*phase 3" /tmp/rust-keylime-agent.log | tail -3 | sed 's/^/    /'
+        grep -i "unified-identity" /tmp/rust-keylime-agent.log | tail -3 | sed 's/^/    /'
     else
-        echo -e "${YELLOW}  ⚠ No Phase 3 Unified-Identity logs found${NC}"
+        echo -e "${YELLOW}  ⚠ No Unified-Identity logs found${NC}"
     fi
 else
     echo -e "${YELLOW}  ⚠ rust-keylime Agent log not found${NC}"
@@ -2449,9 +2446,9 @@ if [ -f "${SPIRE_SERVER}" ]; then
         fi
     fi
 fi
-echo -e "${GREEN}  ✓ All Phase 3 tests passed${NC}"
+echo -e "${GREEN}  ✓ All tests passed${NC}"
 echo ""
-echo -e "${GREEN}Phase 3 integration test completed successfully!${NC}"
+echo -e "${GREEN}Integration test completed successfully!${NC}"
 echo ""
 
 pause_at_phase "Step 12 Complete" "Integration verification complete. All components are working together successfully."
@@ -2460,8 +2457,8 @@ if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
     echo "Note: Default behavior is to keep services running. Use --exit-cleanup to enable cleanup."
 else
     echo -e "${GREEN}All services are running in background and will continue after script exit:${NC}"
-    echo "  Keylime Verifier (Phase 2): PID $KEYLIME_PID (port 8881)"
-    echo "  rust-keylime Agent (Phase 3): PID $RUST_AGENT_PID (port 9002)"
+    echo "  Keylime Verifier: PID $KEYLIME_PID (port 8881)"
+    echo "  rust-keylime Agent: PID $RUST_AGENT_PID (port 9002)"
     echo "  SPIRE Server: PID $(cat /tmp/spire-server.pid 2>/dev/null || echo 'N/A')"
     echo "  SPIRE Agent: PID $(cat /tmp/spire-agent.pid 2>/dev/null || echo 'N/A')"
     echo ""
@@ -2519,8 +2516,8 @@ fi
 
 if [ -f "/tmp/svid-dump/svid.pem" ]; then
     echo "To view SVID certificate with AttestedClaims extension:"
-    if [ -f "${PHASE2_DIR}/dump-svid-attested-claims.sh" ]; then
-        echo "  ${PHASE2_DIR}/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem"
+    if [ -f "${SCRIPT_DIR}/scripts/dump-svid-attested-claims.sh" ]; then
+        echo "  ${SCRIPT_DIR}/scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem"
     else
         echo "  openssl x509 -in /tmp/svid-dump/svid.pem -text -noout | grep -A 2 \"1.3.6.1.4.1.99999.1\""
     fi

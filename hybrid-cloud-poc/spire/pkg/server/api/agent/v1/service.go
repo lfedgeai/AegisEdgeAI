@@ -46,7 +46,7 @@ type Config struct {
 	ServerCA    ca.ServerCA
 	TrustDomain spiffeid.TrustDomain
 
-	// Unified-Identity - Phase 3: Keylime client and policy engine
+	// Unified-Identity - Verification: Keylime client and policy engine
 	KeylimeClient *keylime.Client
 	PolicyEngine  *policy.Engine
 }
@@ -61,7 +61,7 @@ type Service struct {
 	ca  ca.ServerCA
 	td  spiffeid.TrustDomain
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	keylimeClient *keylime.Client
 	policyEngine  *policy.Engine
 }
@@ -371,7 +371,7 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 		return api.MakeErr(log, codes.PermissionDenied, "failed to attest: agent is banned", nil)
 	}
 
-	// Unified-Identity - Phase 3: Process AttestedClaims BEFORE signing SVID
+	// Unified-Identity - Verification: Process AttestedClaims BEFORE signing SVID
 	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
 	var attestedClaimsForCert *types.AttestedClaims
@@ -379,7 +379,7 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 		if params.Params != nil {
 			if params.Params.SovereignAttestation != nil {
-				log.Debug("Unified-Identity - Phase 3: Received SovereignAttestation in agent bootstrap request")
+				log.Debug("Unified-Identity - Verification: Received SovereignAttestation in agent bootstrap request")
 				claims, err := s.processSovereignAttestation(ctx, log, params.Params.SovereignAttestation, agentID.String())
 				if err != nil {
 					return api.MakeErr(log, codes.Internal, "failed to process sovereign attestation", err)
@@ -395,22 +395,22 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 						claims,
 					)
 					if err != nil {
-						log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to build unified identity claims JSON for agent SVID")
+						log.WithError(err).Warn("Unified-Identity - Verification: Failed to build unified identity claims JSON for agent SVID")
 					} else {
 						attestedClaimsJSON = unifiedJSON
-						log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Phase 3: Built agent unified identity claims")
+						log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Verification: Built agent unified identity claims")
 					}
 					log.WithFields(logrus.Fields{
 						"geolocation": claims.Geolocation,
-					}).Info("Unified-Identity - Phase 3: AttestedClaims will be embedded in agent SVID certificate")
+					}).Info("Unified-Identity - Verification: AttestedClaims will be embedded in agent SVID certificate")
 				} else {
-					log.Warn("Unified-Identity - Phase 3: processSovereignAttestation returned nil claims")
+					log.Warn("Unified-Identity - Verification: processSovereignAttestation returned nil claims")
 				}
 			} else {
-				log.Warn("Unified-Identity - Phase 3: SovereignAttestation is nil in agent attestation params")
+				log.Warn("Unified-Identity - Verification: SovereignAttestation is nil in agent attestation params")
 			}
 		} else {
-			log.Warn("Unified-Identity - Phase 3: params.Params is nil in agent attestation request")
+			log.Warn("Unified-Identity - Verification: params.Params is nil in agent attestation request")
 		}
 	}
 
@@ -505,21 +505,21 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		return nil, api.MakeErr(log, codes.InvalidArgument, "missing CSR", nil)
 	}
 
-	// Unified-Identity - Phase 3: Generate and return nonce if Unified Identity is enabled and no SovereignAttestation provided
+	// Unified-Identity - Verification: Generate and return nonce if Unified Identity is enabled and no SovereignAttestation provided
 	// Step 2: SPIRE Server generates nonce for TPM Quote freshness (per architecture doc)
 	var challengeNonce []byte
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) && req.Params.SovereignAttestation == nil {
 		// Generate cryptographically secure random nonce (32 bytes)
 		nonceBytes := make([]byte, 32)
 		if _, err := rand.Read(nonceBytes); err != nil {
-			log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to generate nonce")
+			log.WithError(err).Warn("Unified-Identity - Verification: Failed to generate nonce")
 		} else {
 			challengeNonce = nonceBytes
-			log.WithField("nonce_length", len(challengeNonce)).Info("Unified-Identity - Phase 3: Generated nonce for agent TPM Quote")
+			log.WithField("nonce_length", len(challengeNonce)).Info("Unified-Identity - Verification: Generated nonce for agent TPM Quote")
 		}
 	}
 
-	// Unified-Identity - Phase 3: Process AttestedClaims BEFORE signing SVID
+	// Unified-Identity - Verification: Process AttestedClaims BEFORE signing SVID
 	// This allows AttestedClaims to be embedded in the certificate extension (Model 3 from federated-jwt.md)
 	var attestedClaims []*types.AttestedClaims
 	var attestedClaimsForCert *types.AttestedClaims
@@ -540,14 +540,14 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 				claims,
 			)
 			if err != nil {
-				log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to build unified identity claims JSON for agent renew")
+				log.WithError(err).Warn("Unified-Identity - Verification: Failed to build unified identity claims JSON for agent renew")
 			} else {
 				attestedClaimsJSON = unifiedJSON
-				log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Phase 3: Built agent unified identity claims (renew)")
+				log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Verification: Built agent unified identity claims (renew)")
 			}
 			log.WithFields(logrus.Fields{
 				"geolocation": claims.Geolocation,
-			}).Info("Unified-Identity - Phase 3: AttestedClaims will be embedded in agent SVID certificate")
+			}).Info("Unified-Identity - Verification: AttestedClaims will be embedded in agent SVID certificate")
 		}
 	}
 
@@ -575,7 +575,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		claim := attestedClaims[0]
 		log.WithFields(logrus.Fields{
 			"geolocation": claim.Geolocation,
-		}).Info("Unified-Identity - Phase 3: AttestedClaims attached to agent SVID")
+		}).Info("Unified-Identity - Verification: AttestedClaims attached to agent SVID")
 	}
 
 	resp := &agentv1.RenewAgentResponse{
@@ -587,20 +587,20 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 		AttestedClaims: attestedClaims,
 	}
 
-	// Unified-Identity - Phase 3: Include challenge nonce in response if generated
+	// Unified-Identity - Verification: Include challenge nonce in response if generated
 	// This allows the agent to use the server-provided nonce for TPM Quote generation
 	if len(challengeNonce) > 0 {
 		resp.ChallengeNonce = challengeNonce
-		log.WithField("nonce_length", len(challengeNonce)).Info("Unified-Identity - Phase 3: Returning nonce to agent for TPM Quote")
+		log.WithField("nonce_length", len(challengeNonce)).Info("Unified-Identity - Verification: Returning nonce to agent for TPM Quote")
 	}
 
 	return resp, nil
 }
 
-// Unified-Identity - Phase 3: Process SovereignAttestation for agent renewals
+// Unified-Identity - Verification: Process SovereignAttestation for agent renewals
 func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.FieldLogger, sovereignAttestation *types.SovereignAttestation, spiffeID string) (*types.AttestedClaims, error) {
 	if s.keylimeClient == nil {
-		log.Warn("Unified-Identity - Phase 3: Keylime client not configured, skipping attestation verification")
+		log.Warn("Unified-Identity - Verification: Keylime client not configured, skipping attestation verification")
 		return nil, nil
 	}
 
@@ -620,7 +620,7 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 		return nil, fmt.Errorf("keylime verification failed: %w", err)
 	}
 
-	// Unified-Identity - Phase 3: Log geolocation object
+	// Unified-Identity - Verification: Log geolocation object
 	geoLog := "none"
 	if keylimeClaims.Geolocation != nil {
 		geoLog = fmt.Sprintf("type=%s, sensor_id=%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID)
@@ -631,7 +631,7 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 
 	log.WithFields(logrus.Fields{
 		"geolocation": geoLog,
-	}).Info("Unified-Identity - Phase 3: Received AttestedClaims from Keylime (agent)")
+	}).Info("Unified-Identity - Verification: Received AttestedClaims from Keylime (agent)")
 
 	if s.policyEngine != nil {
 		// Convert Geolocation object to string for policy engine
@@ -655,14 +655,14 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 		}
 
 		if !policyResult.Allowed {
-			log.WithField("reason", policyResult.Reason).Warn("Unified-Identity - Phase 3: Policy evaluation failed for agent")
+			log.WithField("reason", policyResult.Reason).Warn("Unified-Identity - Verification: Policy evaluation failed for agent")
 			return nil, fmt.Errorf("policy evaluation failed: %s", policyResult.Reason)
 		}
 
-		log.Info("Unified-Identity - Phase 3: Policy evaluation passed for agent")
+		log.Info("Unified-Identity - Verification: Policy evaluation passed for agent")
 	}
 
-	// Unified-Identity - Phase 3: Convert Geolocation object to protobuf Geolocation
+	// Unified-Identity - Verification: Convert Geolocation object to protobuf Geolocation
 	var protoGeo *types.Geolocation
 	if keylimeClaims.Geolocation != nil {
 		protoGeo = &types.Geolocation{
@@ -775,12 +775,12 @@ func (s *Service) signSvid(ctx context.Context, agentID spiffeid.ID, csr []byte,
 		return nil, api.MakeErr(log, codes.InvalidArgument, "failed to parse CSR", err)
 	}
 
-	// Unified-Identity - Phase 3: Sign X509 SVID with AttestedClaims embedded in certificate extension
+	// Unified-Identity - Verification: Sign X509 SVID with AttestedClaims embedded in certificate extension
 	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
 	x509Svid, err := s.ca.SignAgentX509SVID(ctx, ca.AgentX509SVIDParams{
 		SPIFFEID:       agentID,
 		PublicKey:      parsedCsr.PublicKey,
-		AttestedClaims: attestedClaims, // Unified-Identity - Phase 3: Embed AttestedClaims in certificate
+		AttestedClaims: attestedClaims, // Unified-Identity - Verification: Embed AttestedClaims in certificate
 		UnifiedIdentityJSON: attestedClaimsJSON,
 	})
 	if err != nil {

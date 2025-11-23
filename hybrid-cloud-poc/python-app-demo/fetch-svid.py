@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 Python script to fetch SVID from SPIRE Workload API and extract AttestedClaims
 """
 
@@ -72,7 +72,7 @@ def main():
     output_dir.mkdir(exist_ok=True)
     
     print("=" * 70)
-    print("Unified-Identity - Phase 1: Fetching Sovereign SVID")
+    print("Unified-Identity - Setup: Fetching Sovereign SVID")
     print("=" * 70)
     print()
     

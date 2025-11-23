@@ -1,12 +1,12 @@
 #!/bin/bash
-# Unified-Identity - Phase 1: Cleanup script for Python app demo
+# Unified-Identity - Setup: Cleanup script for Python app demo
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-echo "Unified-Identity - Phase 1: Cleaning up Python App Demo"
+echo "Unified-Identity - Setup: Cleaning up Python App Demo"
 echo ""
 
 # Force QUIET=0 to ensure cleanup output is visible

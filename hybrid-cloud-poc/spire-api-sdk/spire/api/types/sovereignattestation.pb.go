@@ -21,7 +21,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 // A hardware-rooted PoR package produced by the Agent.
 type SovereignAttestation struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -38,7 +38,7 @@ type SovereignAttestation struct {
 	ChallengeNonce string `protobuf:"bytes,4,opt,name=challenge_nonce,json=challengeNonce,proto3" json:"challenge_nonce,omitempty"`
 	// Optional workload code hash used as an additional selector/assertion.
 	WorkloadCodeHash string `protobuf:"bytes,5,opt,name=workload_code_hash,json=workloadCodeHash,proto3" json:"workload_code_hash,omitempty"`
-	// Unified-Identity - Phase 3: rust-keylime agent UUID for delegated certification correlation.
+	// Unified-Identity - Verification: rust-keylime agent UUID for delegated certification correlation.
 	KeylimeAgentUuid string `protobuf:"bytes,6,opt,name=keylime_agent_uuid,json=keylimeAgentUuid,proto3" json:"keylime_agent_uuid,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -116,7 +116,7 @@ func (x *SovereignAttestation) GetKeylimeAgentUuid() string {
 	return ""
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 // AttestedClaims contains verified facts from Keylime about the host.
 type AttestedClaims struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`

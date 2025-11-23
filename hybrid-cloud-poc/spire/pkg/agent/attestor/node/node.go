@@ -380,7 +380,7 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 			claim := claims[0]
 			ss.Log.WithFields(logrus.Fields{
 				"geolocation": claim.Geolocation,
-			}).Info("Unified-Identity - Phase 3: Received AttestedClaims during agent bootstrap")
+			}).Info("Unified-Identity - Verification: Received AttestedClaims during agent bootstrap")
 		}
 	}
 
@@ -391,7 +391,7 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 	ss.Reattestable = resp.GetResult().Reattestable
 	ss.SVID = svid
 
-	// Unified-Identity - Phase 3: Dump agent SVID details to logs
+	// Unified-Identity - Verification: Dump agent SVID details to logs
 	if len(svid) > 0 {
 		cert := svid[0]
 		spiffeID := ""
@@ -416,19 +416,19 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 			Bytes: cert.Raw,
 		})
 
-		// Unified-Identity - Phase 3: Log unified agent SVID with formatted, readable output
+		// Unified-Identity - Verification: Log unified agent SVID with formatted, readable output
 		ss.Log.WithFields(logrus.Fields{
 			"spiffe_id":     spiffeID,
 			"serial_number": cert.SerialNumber.String(),
 			"not_before":    cert.NotBefore.Format(time.RFC3339),
 			"not_after":     cert.NotAfter.Format(time.RFC3339),
-		}).Info("Unified-Identity - Phase 3: Agent Unified SVID received")
+		}).Info("Unified-Identity - Verification: Agent Unified SVID received")
 
 		// Log certificate PEM separately for readability
 		ss.Log.WithFields(logrus.Fields{
 			"spiffe_id": spiffeID,
 			"cert_pem":  string(certPEM),
-		}).Info("Unified-Identity - Phase 3: Agent SVID Certificate (PEM)")
+		}).Info("Unified-Identity - Verification: Agent SVID Certificate (PEM)")
 
 		// Log Unified Identity claims in formatted JSON if present
 		if len(unifiedIdentityExt) > 0 {
@@ -439,13 +439,13 @@ func (ss *ServerStream) sendRequest(ctx context.Context, req *agentv1.AttestAgen
 				// Log claims as a multi-line formatted message
 				ss.Log.WithFields(logrus.Fields{
 					"spiffe_id": spiffeID,
-				}).Infof("Unified-Identity - Phase 3: Agent SVID Unified Identity Claims:\n%s", string(claimsFormatted))
+				}).Infof("Unified-Identity - Verification: Agent SVID Unified Identity Claims:\n%s", string(claimsFormatted))
 			} else {
 				// Fallback if JSON parsing fails
 				ss.Log.WithFields(logrus.Fields{
 					"spiffe_id":        spiffeID,
 					"claims_raw":       string(unifiedIdentityExt),
-				}).Warn("Unified-Identity - Phase 3: Agent SVID claims (raw, JSON parse failed)")
+				}).Warn("Unified-Identity - Verification: Agent SVID claims (raw, JSON parse failed)")
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 package keylime
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 func TestBuildVerifyEvidenceRequest(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -85,7 +85,7 @@ func TestBuildVerifyEvidenceRequest(t *testing.T) {
 	}
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 func TestNewClient(t *testing.T) {
 	tests := []struct {
 		name    string

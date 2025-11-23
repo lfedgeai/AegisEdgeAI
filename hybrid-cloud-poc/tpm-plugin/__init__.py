@@ -1,5 +1,5 @@
 """
-Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+Unified-Identity - Verification: Hardware Integration & Delegated Certification
 
 TPM Plugin Package
 """

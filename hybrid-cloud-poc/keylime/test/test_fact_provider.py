@@ -1,5 +1,5 @@
 """
-Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)
+Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
 
 Unit tests for fact provider (geolocation).
 """
@@ -11,15 +11,15 @@ from keylime import fact_provider
 
 
 class TestFactProvider(unittest.TestCase):
-    """Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)"""
+    """Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)"""
 
     def setUp(self):
-        """Unified-Identity - Phase 2: Core Keylime Functionality (Fact-Provider Logic)"""
+        """Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)"""
         # Clear fact store
         fact_provider._fact_store.clear()
 
     def test_get_host_identifier_from_ek(self):
-        """Unified-Identity - Phase 2: Test host identifier generation from EK"""
+        """Unified-Identity - Unified-Identity: Test host identifier generation from EK"""
         tpm_ek = "test_ek_public_key_data"
         host_id = fact_provider.get_host_identifier_from_ek(tpm_ek)
 
@@ -28,12 +28,12 @@ class TestFactProvider(unittest.TestCase):
         self.assertEqual(len(host_id), 19)  # "ek-" (3) + 16 hex chars = 19
 
     def test_get_host_identifier_from_ek_none(self):
-        """Unified-Identity - Phase 2: Test host identifier with None EK"""
+        """Unified-Identity - Unified-Identity: Test host identifier with None EK"""
         host_id = fact_provider.get_host_identifier_from_ek(None)
         self.assertIsNone(host_id)
 
     def test_get_host_identifier_from_ak(self):
-        """Unified-Identity - Phase 2: Test host identifier generation from AK"""
+        """Unified-Identity - Unified-Identity: Test host identifier generation from AK"""
         tpm_ak = "test_ak_public_key_data"
         host_id = fact_provider.get_host_identifier_from_ak(tpm_ak)
 
@@ -42,12 +42,12 @@ class TestFactProvider(unittest.TestCase):
         self.assertEqual(len(host_id), 19)  # "ak-" (3) + 16 hex chars = 19
 
     def test_get_host_identifier_from_ak_none(self):
-        """Unified-Identity - Phase 2: Test host identifier with None AK"""
+        """Unified-Identity - Unified-Identity: Test host identifier with None AK"""
         host_id = fact_provider.get_host_identifier_from_ak(None)
         self.assertIsNone(host_id)
 
     def test_get_attested_claims_empty(self):
-        """Unified-Identity - Phase 2: Test getting empty attested claims when no facts available"""
+        """Unified-Identity - Unified-Identity: Test getting empty attested claims when no facts available"""
                 claims = fact_provider.get_attested_claims()
 
         self.assertIsInstance(claims, dict)
@@ -55,7 +55,7 @@ class TestFactProvider(unittest.TestCase):
         self.assertEqual(len(claims), 0)
 
     def test_set_and_get_facts_from_store(self):
-        """Unified-Identity - Phase 2: Test setting and getting facts from store"""
+        """Unified-Identity - Unified-Identity: Test setting and getting facts from store"""
         host_id = "ek-test1234567890"
         facts = {
             "geolocation": {"type": "mobile", "sensor_id": "12d1:1433", "value": ""},
@@ -68,14 +68,14 @@ class TestFactProvider(unittest.TestCase):
         self.assertEqual(retrieved, facts)
 
     def test_get_facts_from_store_not_found(self):
-        """Unified-Identity - Phase 2: Test getting facts for non-existent host"""
+        """Unified-Identity - Unified-Identity: Test getting facts for non-existent host"""
         host_id = "ek-nonexistent"
         facts = fact_provider._get_facts_from_store(host_id)
 
         self.assertIsNone(facts)
 
     def test_get_attested_claims_from_store(self):
-        """Unified-Identity - Phase 2: Test getting attested claims from fact store"""
+        """Unified-Identity - Unified-Identity: Test getting attested claims from fact store"""
         # Set up fact store
         host_id = "ek-test1234567890"
         stored_facts = {

@@ -1,4 +1,4 @@
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // Package policy provides policy evaluation logic for AttestedClaims.
 package policy
 
@@ -9,33 +9,33 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // PolicyConfig holds configuration for policy evaluation
 type PolicyConfig struct {
 	AllowedGeolocations []string // Allowed geolocation patterns (e.g., "mobile:12d1:1433", "gnss:*")
 	Logger              logrus.FieldLogger
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // PolicyResult represents the result of policy evaluation
 type PolicyResult struct {
 	Allowed bool
 	Reason  string
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // AttestedClaims represents verified facts from Keylime
 type AttestedClaims struct {
 	Geolocation string
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // Engine evaluates AttestedClaims against configured policies
 type Engine struct {
 	config PolicyConfig
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // NewEngine creates a new policy engine
 func NewEngine(config PolicyConfig) *Engine {
 	if config.Logger == nil {
@@ -47,14 +47,14 @@ func NewEngine(config PolicyConfig) *Engine {
 	}
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // Evaluate checks if the AttestedClaims meet the policy requirements
 func (e *Engine) Evaluate(claims *AttestedClaims) (*PolicyResult, error) {
 	e.config.Logger.WithFields(logrus.Fields{
 		"geolocation": claims.Geolocation,
-	}).Info("Unified-Identity - Phase 3: Evaluating AttestedClaims against policy")
+	}).Info("Unified-Identity - Verification: Evaluating AttestedClaims against policy")
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Check geolocation
 	if len(e.config.AllowedGeolocations) > 0 {
 		allowed := false
@@ -68,7 +68,7 @@ func (e *Engine) Evaluate(claims *AttestedClaims) (*PolicyResult, error) {
 			e.config.Logger.WithFields(logrus.Fields{
 				"geolocation": claims.Geolocation,
 				"allowed":     e.config.AllowedGeolocations,
-			}).Warn("Unified-Identity - Phase 3: Geolocation policy violation")
+			}).Warn("Unified-Identity - Verification: Geolocation policy violation")
 			return &PolicyResult{
 				Allowed: false,
 				Reason:  fmt.Sprintf("geolocation %s not in allowed list", claims.Geolocation),
@@ -76,32 +76,32 @@ func (e *Engine) Evaluate(claims *AttestedClaims) (*PolicyResult, error) {
 		}
 	}
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// All checks passed
-	e.config.Logger.Info("Unified-Identity - Phase 3: Policy evaluation passed")
+	e.config.Logger.Info("Unified-Identity - Verification: Policy evaluation passed")
 	return &PolicyResult{
 		Allowed: true,
 		Reason:  "all policy checks passed",
 	}, nil
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // matchesGeolocation checks if a geolocation matches a pattern
 // Patterns can be exact matches or wildcards (e.g., "Spain:*" matches "Spain: N40.4168, W3.7038", "*" matches everything)
 func (e *Engine) matchesGeolocation(geolocation, pattern string) bool {
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Universal wildcard - matches everything
 	if pattern == "*" {
 		return true
 	}
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Exact match
 	if geolocation == pattern {
 		return true
 	}
 
-	// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Wildcard match (e.g., "Spain:*")
 	if strings.HasSuffix(pattern, ":*") {
 		prefix := strings.TrimSuffix(pattern, ":*")
@@ -111,7 +111,7 @@ func (e *Engine) matchesGeolocation(geolocation, pattern string) bool {
 	return false
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // ConvertKeylimeAttestedClaims converts Keylime AttestedClaims to policy AttestedClaims
 func ConvertKeylimeAttestedClaims(keylimeClaims *KeylimeAttestedClaims) *AttestedClaims {
 	return &AttestedClaims{
@@ -119,7 +119,7 @@ func ConvertKeylimeAttestedClaims(keylimeClaims *KeylimeAttestedClaims) *Atteste
 	}
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // KeylimeAttestedClaims represents the AttestedClaims from Keylime client
 type KeylimeAttestedClaims struct {
 	Geolocation string

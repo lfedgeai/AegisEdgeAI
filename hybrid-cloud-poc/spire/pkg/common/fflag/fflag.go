@@ -28,7 +28,7 @@ const (
 	// FlagTestFlag is defined purely for testing purposes.
 	FlagTestFlag Flag = "i_am_a_test_flag"
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// FlagUnifiedIdentity enables the Unified Identity feature for Sovereign AI,
 	// which includes SPIRE API changes for SovereignAttestation and policy
 	// evaluation logic. This flag is enabled by default but can be explicitly
@@ -44,7 +44,7 @@ var (
 	}{
 		flags: map[Flag]bool{
 			FlagTestFlag:        false,
-			FlagUnifiedIdentity: true, // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime) - Enabled by default
+			FlagUnifiedIdentity: true, // Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime) - Enabled by default
 		},
 		loaded: false,
 		mtx:    new(sync.RWMutex),

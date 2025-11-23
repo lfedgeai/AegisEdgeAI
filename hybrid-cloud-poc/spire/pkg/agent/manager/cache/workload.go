@@ -12,7 +12,7 @@ import (
 
 type Selectors []*common.Selector
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 // Identity holds the data for a single workload identity
 type Identity struct {
 	Entry          *common.RegistrationEntry
@@ -39,7 +39,7 @@ func (u *WorkloadUpdate) HasIdentity() bool {
 	return len(u.Identities) > 0
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 // X509SVID holds onto the SVID certificate chain, private key, and AttestedClaims.
 type X509SVID struct {
 	Chain          []*x509.Certificate

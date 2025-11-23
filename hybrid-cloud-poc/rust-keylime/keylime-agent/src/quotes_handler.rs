@@ -25,7 +25,7 @@ pub struct Ident {
     nonce: String,
 }
 
-/// Unified-Identity - Phase 3: Detect geolocation sensor
+/// Unified-Identity - Unified-Identity: Detect geolocation sensor
 /// Returns Geolocation struct with type, sensor_id, and optional value
 /// - Mobile: Detects lsusb entries containing "mobile" (case-insensitive) or known IDs (e.g., 12d1:1433)
 /// - GNSS: Detects lsusb entries containing "gnss", "gps", or "nmea" keywords, or known device paths
@@ -51,7 +51,7 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
 
                 if line_lower.contains("mobile") {
                     let sensor_id = extract_usb_id(line);
-                    info!("Unified-Identity - Phase 3: Mobile geolocation sensor detected via lsusb: {}", sensor_id);
+                    info!("Unified-Identity - Unified-Identity: Mobile geolocation sensor detected via lsusb: {}", sensor_id);
                     return Some(Geolocation {
                         r#type: Some("mobile".to_string()),
                         sensor_id: Some(sensor_id),
@@ -65,7 +65,7 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
                 {
                     let sensor_id = extract_usb_id(line);
                     info!(
-                        "Unified-Identity - Phase 3: GNSS/GPS sensor detected via lsusb: {}",
+                        "Unified-Identity - Unified-Identity: GNSS/GPS sensor detected via lsusb: {}",
                         sensor_id
                     );
                     return Some(Geolocation {
@@ -77,7 +77,7 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
             }
         }
         Err(e) => {
-            debug!("Unified-Identity - Phase 3: Failed to run lsusb: {}", e);
+            debug!("Unified-Identity - Unified-Identity: Failed to run lsusb: {}", e);
         }
     }
 
@@ -86,7 +86,7 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
     for path in &gnss_paths {
         if std::path::Path::new(path).exists() {
             info!(
-                "Unified-Identity - Phase 3: GNSS device detected at {}",
+                "Unified-Identity - Unified-Identity: GNSS device detected at {}",
                 path
             );
             return Some(Geolocation {
@@ -199,7 +199,7 @@ async fn identity(
         }
     };
 
-    // Unified-Identity - Phase 3: Detect geolocation sensor (only if feature flag is enabled)
+    // Unified-Identity - Unified-Identity: Detect geolocation sensor (only if feature flag is enabled)
     let geolocation = if data.unified_identity_enabled {
         detect_geolocation_sensor()
     } else {

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // TPM Plugin integration for SPIRE Agent
 //
 // Interface: SPIRE Agent → SPIRE TPM Plugin
-// Status: 🆕 New (Phase 3)
-// Transport: JSON over UDS (Phase 3)
+// Status: 🆕 New (Verification)
+// Transport: JSON over UDS (Verification)
 // Protocol: JSON REST API
 //
-// Implementation: JSON over UDS (Phase 3) is the transport mechanism.
+// Implementation: JSON over UDS (Verification) is the transport mechanism.
 // The client requires TPM_PLUGIN_ENDPOINT to be set (e.g., "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock").
 // HTTP over localhost is not supported for security reasons.
 
@@ -30,7 +30,7 @@ import (
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 )
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // TPMPluginGateway provides a bridge/gateway interface between SPIRE Agent (Go) and the TPM Plugin Server (Python)
 // This gateway communicates with the Python TPM Plugin Server via HTTP/UDS
 // Architecture: SPIRE Agent (Go) → TPM Plugin Gateway (Go) → TPM Plugin Server (Python) → TPM Hardware
@@ -43,17 +43,17 @@ type TPMPluginGateway struct {
 	log        logrus.FieldLogger
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // AppKeyResult contains the result of App Key generation
 type AppKeyResult struct {
 	AppKeyPublic string `json:"app_key_public"`
 	Status       string `json:"status"`
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // Old QuoteResult type - removed (replaced by new QuoteResult with certificate support)
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // NewTPMPluginGateway creates a new TPM Plugin Gateway
 // This gateway bridges SPIRE Agent (Go) with the TPM Plugin Server (Python)
 // pluginPath: Path to the TPM plugin CLI script (tpm_plugin_cli.py) - kept for compatibility, not used
@@ -69,18 +69,18 @@ func NewTPMPluginGateway(pluginPath, workDir, endpoint string, log logrus.FieldL
 
 	// Ensure work directory exists
 	if err := os.MkdirAll(workDir, 0755); err != nil {
-		log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to create TPM plugin work directory, using default")
+		log.WithError(err).Warn("Unified-Identity - Verification: Failed to create TPM plugin work directory, using default")
 		workDir = "/tmp/spire-data/tpm-plugin"
 	}
 
 	if endpoint == "" {
-		log.Warn("Unified-Identity - Phase 3: TPM_PLUGIN_ENDPOINT not set, defaulting to UDS socket")
+		log.Warn("Unified-Identity - Verification: TPM_PLUGIN_ENDPOINT not set, defaulting to UDS socket")
 		endpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
 	}
 
 	// Validate endpoint is UDS (security requirement)
 	if !strings.HasPrefix(endpoint, "unix://") {
-		log.WithField("endpoint", endpoint).Error("Unified-Identity - Phase 3: TPM_PLUGIN_ENDPOINT must be a UDS socket (unix://). HTTP over localhost is not supported for security reasons")
+		log.WithField("endpoint", endpoint).Error("Unified-Identity - Verification: TPM_PLUGIN_ENDPOINT must be a UDS socket (unix://). HTTP over localhost is not supported for security reasons")
 		return nil
 	}
 
@@ -89,7 +89,7 @@ func NewTPMPluginGateway(pluginPath, workDir, endpoint string, log logrus.FieldL
 
 	// Verify socket exists before creating transport (warn if not, but don't fail - might be created later)
 	if _, err := os.Stat(socketPath); os.IsNotExist(err) {
-		log.WithError(err).WithField("socket_path", socketPath).Warn("Unified-Identity - Phase 3: TPM Plugin Server socket does not exist yet, will retry on first request")
+		log.WithError(err).WithField("socket_path", socketPath).Warn("Unified-Identity - Verification: TPM Plugin Server socket does not exist yet, will retry on first request")
 	}
 
 	transport := &http.Transport{
@@ -110,7 +110,7 @@ func NewTPMPluginGateway(pluginPath, workDir, endpoint string, log logrus.FieldL
 		Transport: transport,
 		Timeout:   30 * time.Second,
 	}
-	log.Infof("Unified-Identity - Phase 3: TPM Plugin Gateway using UDS endpoint: %s", endpoint)
+	log.Infof("Unified-Identity - Verification: TPM Plugin Gateway using UDS endpoint: %s", endpoint)
 
 	return &TPMPluginGateway{
 		pluginPath: pluginPath,
@@ -122,11 +122,11 @@ func NewTPMPluginGateway(pluginPath, workDir, endpoint string, log logrus.FieldL
 	}
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // GenerateAppKey generates a TPM App Key using the TPM plugin
 // Returns the public key (PEM) and context file path
 func (g *TPMPluginGateway) GenerateAppKey(force bool) (*AppKeyResult, error) {
-	g.log.Info("Unified-Identity - Phase 3: Generating TPM App Key via plugin")
+	g.log.Info("Unified-Identity - Verification: Generating TPM App Key via plugin")
 	return g.generateAppKeyHTTP(force)
 }
 
@@ -148,7 +148,7 @@ func (g *TPMPluginGateway) generateAppKeyHTTP(force bool) (*AppKeyResult, error)
 
 	g.log.WithFields(logrus.Fields{
 		"public_key_len": len(result.AppKeyPublic),
-	}).Info("Unified-Identity - Phase 3: TPM App Key generated successfully via HTTP/UDS")
+	}).Info("Unified-Identity - Verification: TPM App Key generated successfully via HTTP/UDS")
 
 	return &result, nil
 }
@@ -160,17 +160,17 @@ type QuoteResult struct {
 	AppKeyCertificate []byte // Optional, may be nil if delegated certification failed
 }
 
-// Unified-Identity - Phase 3: Quote generation removed
+// Unified-Identity - Verification: Quote generation removed
 // Quotes are now generated by rust-keylime agent and requested by Keylime Verifier
 // The GenerateQuote function is no longer needed
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // RequestCertificate requests an App Key certificate from rust-keylime agent
 // appKeyPublic: PEM-encoded App Key public key
 // appKeyContext: Path to App Key context file
 // endpoint: rust-keylime agent endpoint (defaults to HTTP endpoint)
 func (g *TPMPluginGateway) RequestCertificate(appKeyPublic, endpoint, challengeNonce string) ([]byte, string, error) {
-	g.log.Info("Unified-Identity - Phase 3: Requesting App Key certificate from rust-keylime agent via plugin")
+	g.log.Info("Unified-Identity - Verification: Requesting App Key certificate from rust-keylime agent via plugin")
 
 	if appKeyPublic == "" {
 		return nil, "", fmt.Errorf("app key public is required")
@@ -215,25 +215,25 @@ func (g *TPMPluginGateway) requestCertificateHTTP(appKeyPublic, endpoint, challe
 		return nil, "", fmt.Errorf("invalid base64 certificate: %w", err)
 	}
 
-	g.log.WithField("cert_len", len(certBytes)).Info("Unified-Identity - Phase 3: App Key certificate received successfully via HTTP/UDS")
+	g.log.WithField("cert_len", len(certBytes)).Info("Unified-Identity - Verification: App Key certificate received successfully via HTTP/UDS")
 
 	return certBytes, result.AgentUUID, nil
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // BuildSovereignAttestation builds a real SovereignAttestation using the TPM plugin
 // nonce: Challenge nonce from SPIRE Server
 // Returns a fully populated SovereignAttestation with real TPM data
 //
-// Architecture Change (Phase 3):
+// Architecture Change (Verification):
 // - TPM Plugin no longer generates quotes (removed /generate-quote endpoint)
 // - Quotes are now generated by rust-keylime agent and requested by Keylime Verifier
 // - SPIRE Agent only needs to get App Key public and certificate from TPM plugin
 // - Quote field will be empty/stub since Keylime Verifier requests it directly from agent
 func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.SovereignAttestation, error) {
-	g.log.Info("Unified-Identity - Phase 3: Building real SovereignAttestation via TPM plugin")
+	g.log.Info("Unified-Identity - Verification: Building real SovereignAttestation via TPM plugin")
 
-	// Unified-Identity - Phase 3: Get App Key public key and certificate
+	// Unified-Identity - Verification: Get App Key public key and certificate
 	// The App Key was generated on plugin startup, so we need to get it from the plugin
 	// Since the plugin doesn't expose a "get app key" endpoint, we'll request the certificate
 	// which will trigger the plugin to get the App Key public key
@@ -245,7 +245,7 @@ func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.Sover
 	// Get App Key public key - we need to call the plugin to get it
 	// Since there's no dedicated endpoint, we'll need to add one or use a workaround
 	// For now, we'll use stub data for the quote since Keylime Verifier will request it directly
-	g.log.Info("Unified-Identity - Phase 3: Getting App Key public and certificate (quote will be handled by Keylime Verifier)")
+	g.log.Info("Unified-Identity - Verification: Getting App Key public and certificate (quote will be handled by Keylime Verifier)")
 
 	// Get App Key public key via /get-app-key endpoint
 	var appKeyResult AppKeyResult
@@ -263,11 +263,11 @@ func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.Sover
 	var agentUUID string
 	cert, uuid, err := g.RequestCertificate(appKeyResult.AppKeyPublic, "", nonce)
 	if err != nil {
-		g.log.WithError(err).Warn("Unified-Identity - Phase 3: Failed to get App Key certificate, continuing without certificate")
+		g.log.WithError(err).Warn("Unified-Identity - Verification: Failed to get App Key certificate, continuing without certificate")
 	} else {
 		appKeyCertificate = cert
 		agentUUID = uuid
-		g.log.Info("Unified-Identity - Phase 3: App Key certificate obtained via delegated certification (App Key signed by AK)")
+		g.log.Info("Unified-Identity - Verification: App Key certificate obtained via delegated certification (App Key signed by AK)")
 	}
 
 	// Build SovereignAttestation
@@ -280,12 +280,12 @@ func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.Sover
 		KeylimeAgentUuid:     agentUUID,
 	}
 
-	g.log.Info("Unified-Identity - Phase 3: SovereignAttestation built successfully (quote handled by Keylime Verifier)")
+	g.log.Info("Unified-Identity - Verification: SovereignAttestation built successfully (quote handled by Keylime Verifier)")
 
 	return sovereignAttestation, nil
 }
 
-// Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // httpRequest makes an HTTP request to the TPM plugin server
 func (g *TPMPluginGateway) httpRequest(method, path string, requestBody interface{}, responseBody interface{}) error {
 	// Build URL for UDS (use http://localhost as the host, will be replaced by DialContext)

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Unified-Identity - Phase 1: Wrapper script retained for backwards compatibility
+# Unified-Identity - Setup: Wrapper script retained for backwards compatibility
 
 set -euo pipefail
 

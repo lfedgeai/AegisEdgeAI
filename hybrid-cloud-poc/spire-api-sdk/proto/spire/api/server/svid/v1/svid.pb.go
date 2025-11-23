@@ -551,7 +551,7 @@ type NewX509SVIDParams struct {
 	// CSR is only used to convey the public key; other fields in the CSR are
 	// ignored. The X509-SVID attributes are determined by the entry.
 	Csr []byte `protobuf:"bytes,2,opt,name=csr,proto3" json:"csr,omitempty"`
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional hardware-rooted PoR package for sovereign attestation.
 	SovereignAttestation *types.SovereignAttestation `protobuf:"bytes,20,opt,name=sovereign_attestation,json=sovereignAttestation,proto3" json:"sovereign_attestation,omitempty"`
 	unknownFields        protoimpl.UnknownFields
@@ -615,7 +615,7 @@ type BatchNewX509SVIDResponse_Result struct {
 	Status *types.Status `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	// The newly created X509-SVID. This will be set if the status is OK.
 	Svid *types.X509SVID `protobuf:"bytes,2,opt,name=svid,proto3" json:"svid,omitempty"`
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional. Verified claims from Keylime about host geolocation, integrity, and GPU metrics.
 	AttestedClaims []*types.AttestedClaims `protobuf:"bytes,30,rep,name=attested_claims,json=attestedClaims,proto3" json:"attested_claims,omitempty"`
 	unknownFields  protoimpl.UnknownFields

@@ -45,7 +45,7 @@ cargo build --release
 The easiest way to get started is to run the complete integration test:
 
 ```bash
-./test_phase3_complete.sh --no-pause
+./test_complete.sh --no-pause
 ```
 
 This single command will:
@@ -66,7 +66,7 @@ This single command will:
 After the test completes, inspect the generated SVID:
 
 ```bash
-./dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
+./scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
 ```
 
 ### Clean Up
@@ -74,9 +74,9 @@ After the test completes, inspect the generated SVID:
 Stop all services and clean up state:
 
 ```bash
-./cleanup.sh
+./scripts/cleanup.sh
 # or
-./test_phase3_complete.sh --cleanup-only
+./test_complete.sh --cleanup-only
 ```
 
 ## System Architecture
@@ -171,10 +171,10 @@ export CAMARA_BYPASS=true
 
 ### Scripts & Tools
 
-- **`test_phase3_complete.sh`** - Main end-to-end integration test
-- **`cleanup.sh`** - Stop all services and clean up state
-- **`demo_phase3.sh`** - Generate Sovereign SVID demo
-- **`dump-svid-attested-claims.sh`** - Inspect SVID and AttestedClaims
+- **`test_complete.sh`** - Main end-to-end integration test
+- **`scripts/cleanup.sh`** - Stop all services and clean up state
+- **`scripts/demo.sh`** - Generate Sovereign SVID demo
+- **`scripts/dump-svid-attested-claims.sh`** - Inspect SVID and AttestedClaims
 
 ### Configuration Files
 
@@ -187,7 +187,7 @@ export CAMARA_BYPASS=true
 ### Full Integration Test
 
 ```bash
-./test_phase3_complete.sh --no-pause
+./test_complete.sh --no-pause
 ```
 
 ### Unit Tests
@@ -240,10 +240,11 @@ Check service logs:
 ```
 .
 ├── README.md                          # This file
-├── test_phase3_complete.sh            # Main end-to-end test
-├── cleanup.sh                         # Cleanup script
-├── demo_phase3.sh                     # Demo script
-├── dump-svid-attested-claims.sh       # SVID inspection tool
+├── test_complete.sh                   # Main end-to-end test
+├── scripts/                           # Utility scripts
+│   ├── cleanup.sh                    # Cleanup script
+│   ├── demo.sh                        # Demo script
+│   └── dump-svid-attested-claims.sh  # SVID inspection tool
 │
 ├── spire/                             # SPIRE Server and Agent
 ├── keylime/                           # Keylime Verifier and Registrar

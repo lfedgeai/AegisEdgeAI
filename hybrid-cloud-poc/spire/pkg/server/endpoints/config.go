@@ -113,10 +113,10 @@ type Config struct {
 
 	MaxAttestedNodeInfoStaleness time.Duration
 
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional Keylime client for sovereign attestation verification
 	KeylimeClient *keylime.Client
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional policy engine for evaluating AttestedClaims
 	PolicyEngine *policy.Engine
 }

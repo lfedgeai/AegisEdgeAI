@@ -1,21 +1,27 @@
 #!/bin/bash
-# Unified-Identity - Phase 3: Demo - Generate Sovereign SVID
+# Unified-Identity: Demo - Generate Sovereign SVID
 # This script demonstrates the complete workflow for generating a Sovereign SVID
 # with TPM attestation and geolocation claims.
 # 
 # Prerequisites: All services must be running (SPIRE Server/Agent, Keylime Verifier, rust-keylime Agent)
-# This script can be called standalone or reused by test_phase3_complete.sh
+# This script can be called standalone or reused by test_complete.sh
 #
 # Usage:
-#   ./demo_phase3.sh          # Standalone mode with full output
-#   ./demo_phase3.sh --quiet  # Quiet mode for integration (suppresses header)
+#   ./scripts/demo.sh          # Standalone mode with full output
+#   ./scripts/demo.sh --quiet  # Quiet mode for integration (suppresses header)
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# If this script is in scripts/, go up one level to project root
+if [ "$(basename "${SCRIPT_DIR}")" = "scripts" ]; then
+    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+    PROJECT_ROOT="${SCRIPT_DIR}"
+fi
 # All components are now consolidated in the root directory
-PHASE1_DIR="${SCRIPT_DIR}"
-PHASE2_DIR="${SCRIPT_DIR}"
+PHASE1_DIR="${PROJECT_ROOT}"
+PHASE2_DIR="${PROJECT_ROOT}"
 
 # Check for quiet mode
 QUIET_MODE=false
@@ -40,20 +46,20 @@ fi
 
 if [ "$QUIET_MODE" = false ]; then
     echo "╔════════════════════════════════════════════════════════════════╗"
-    echo "║  Unified-Identity - Phase 3: Sovereign SVID Demo             ║"
+    echo "║  Unified-Identity: Sovereign SVID Demo                       ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
     echo "This demo generates a Sovereign SVID with:"
-    echo "  • TPM App Key attestation (Phase 3)"
+    echo "  • TPM App Key attestation"
     echo "  • Geolocation claims (TPM-bound via PCR 17)"
     echo "  • Unified Identity claims (grc.* format)"
     echo ""
     echo "Workflow:"
     echo "  1. Workload requests SVID with SovereignAttestation"
-    echo "  2. SPIRE Agent TPM plugin generates App Key and Quote (Phase 3)"
-    echo "  3. SPIRE Agent TPM plugin requests certificate from rust-keylime agent (Phase 3)"
+    echo "  2. SPIRE Agent TPM plugin generates App Key and Quote"
+    echo "  3. SPIRE Agent TPM plugin requests certificate from rust-keylime agent"
     echo "  4. SPIRE Agent sends SovereignAttestation to SPIRE Server"
-    echo "  5. SPIRE Server calls Real Keylime Verifier (Phase 2)"
+    echo "  5. SPIRE Server calls Keylime Verifier"
     echo "  6. Keylime Verifier validates and returns AttestedClaims"
     echo "  7. SPIRE Server evaluates policy and returns AttestedClaims"
     echo "  8. Workload receives SVID + AttestedClaims"

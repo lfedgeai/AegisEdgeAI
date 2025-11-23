@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified-Identity - Phase 3: SPIRE API & Policy Staging (Stubbed Keylime)
+Unified-Identity - Verification: SPIRE API & Policy Staging (Stubbed Keylime)
 Python script to fetch Sovereign SVID with AttestedClaims from SPIRE Agent Workload API using gRPC directly.
 
 This script uses gRPC to call the Workload API directly, allowing access to AttestedClaims
@@ -135,7 +135,7 @@ def wait_for_agent_svid_in_logs(agent_log_path="/tmp/spire-agent.log", max_wait_
 
 def fetch_from_workload_api_grpc(max_wait_seconds=60):
     """
-    Unified-Identity - Phase 3: Fetch SVID from SPIRE Agent Workload API using gRPC directly.
+    Unified-Identity - Verification: Fetch SVID from SPIRE Agent Workload API using gRPC directly.
     
     This function uses gRPC to call the Workload API, allowing access to AttestedClaims
     from the protobuf response. It waits for the agent to have an SVID in logs before calling.
@@ -190,7 +190,7 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
         # Create request (empty for FetchX509SVID)
         request = workload_pb2.X509SVIDRequest()
         
-        # Unified-Identity - Phase 3: Add required security header for Workload API
+        # Unified-Identity - Verification: Add required security header for Workload API
         # The SPIRE Agent requires the "workload.spiffe.io" metadata header
         # This is a security measure to ensure the client is aware it's calling the Workload API
         # For streaming RPCs in Python gRPC, metadata is passed as a list of (key, value) tuples
@@ -297,7 +297,7 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
         # Get the first SVID
         svid = response.svids[0]
         
-        # Unified-Identity - Phase 3: Check bundle for agent SVID
+        # Unified-Identity - Verification: Check bundle for agent SVID
         # The bundle field contains the trust domain bundle (root CA)
         # We'll also check if agent SVID might be available elsewhere
         
@@ -309,7 +309,7 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
         cert_der = svid.x509_svid
         bundle_der = svid.bundle if hasattr(svid, 'bundle') and svid.bundle else None
         
-        # Unified-Identity - Phase 3: SPIRE automatically returns the full certificate chain
+        # Unified-Identity - Verification: SPIRE automatically returns the full certificate chain
         # The x509_svid field contains DER-encoded certificate chain:
         #   - Workload SVID (leaf certificate) 
         #   - Agent SVID (intermediate certificate that signed the workload)
@@ -417,7 +417,7 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
             cert_count = len(certs)
             cert = certs[0]  # Use first cert (workload) for claims extraction
             
-            # Unified-Identity - Phase 3: If only workload certificate found, fetch agent SVID
+            # Unified-Identity - Verification: If only workload certificate found, fetch agent SVID
             # According to architecture, the chain should be: Workload SVID + Agent SVID
             # SPIRE's Workload API may not include agent SVID in x509_svid field
             # So we need to fetch it separately and append it to complete the chain
@@ -429,7 +429,7 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
                     print(f"  ⚠ Debug: There may be additional certificates, but parsing failed")
                     print(f"  ⚠ Debug: Remaining bytes: {len(cert_der_bytes) - len(first_cert_der)}")
                 
-                # Unified-Identity - Phase 3: Get agent SVID to complete the chain per architecture
+                # Unified-Identity - Verification: Get agent SVID to complete the chain per architecture
                 # According to architecture doc, the chain should include: Workload SVID + Agent SVID
                 workload_cert = certs[0]
                 workload_issuer = workload_cert.issuer
@@ -517,12 +517,12 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
             print(f"  SPIRE should automatically include agent SVID in the chain")
         print()
         
-        # Unified-Identity - Phase 3: Extract Unified Identity claims from certificate extension
+        # Unified-Identity - Verification: Extract Unified Identity claims from certificate extension
         # Try new Unified Identity extension (OID 1.3.6.1.4.1.99999.2) first, then legacy (1.3.6.1.4.1.99999.1)
         claims_json = None
         extension_claims = None
         try:
-            # Try new Unified Identity extension (Phase 3)
+            # Try new Unified Identity extension (Verification)
             oid = x509.ObjectIdentifier("1.3.6.1.4.1.99999.2")
             ext = cert.extensions.get_extension_for_oid(oid)
             ext_value = ext.value.value if hasattr(ext.value, "value") else ext.value
@@ -537,9 +537,9 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
             except Exception:
                 extension_claims = None
 
-        # Unified-Identity - Phase 3: Prioritize Unified Identity extension claims
+        # Unified-Identity - Verification: Prioritize Unified Identity extension claims
         if extension_claims is not None:
-            # Phase 3: Use Unified Identity claims from certificate extension
+            # Verification: Use Unified Identity claims from certificate extension
             claims_json = extension_claims
         elif response.attested_claims:
             # Fall back to protobuf AttestedClaims (if Unified Identity extension not present)
@@ -591,7 +591,7 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
 
 def main():
     print("=" * 70)
-    print("Unified-Identity - Phase 3: Fetching Sovereign SVID (gRPC)")
+    print("Unified-Identity - Verification: Fetching Sovereign SVID (gRPC)")
     print("=" * 70)
     print()
     print("Note: Using gRPC directly to access AttestedClaims from Workload API")

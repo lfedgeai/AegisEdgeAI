@@ -91,7 +91,7 @@ fn configure_api_v2_1(cfg: &mut web::ServiceConfig) {
 /// Configure the endpoints supported by API version 2.2
 ///
 /// The version 2.2 added the /agent/info endpoint and /delegated_certification endpoint
-/// Unified-Identity - Phase 3: /delegated_certification is only registered if feature flag is enabled
+/// Unified-Identity - Unified-Identity: /delegated_certification is only registered if feature flag is enabled
 fn configure_api_v2_2(cfg: &mut web::ServiceConfig, unified_identity_enabled: bool) {
     // Configure the endpoints shared with version 2.1
     configure_api_v2_1(cfg);
@@ -99,7 +99,7 @@ fn configure_api_v2_2(cfg: &mut web::ServiceConfig, unified_identity_enabled: bo
     // Configure added endpoints
     _ = cfg.service(web::scope("/agent").configure(agent_handler::configure_agent_endpoints));
     
-    // Unified-Identity - Phase 3: Only register delegated certification endpoint if feature flag is enabled
+    // Unified-Identity - Unified-Identity: Only register delegated certification endpoint if feature flag is enabled
     if unified_identity_enabled {
         _ = cfg.service(web::scope("/delegated_certification").configure(
             delegated_certification_handler::configure_delegated_certification_endpoints,
@@ -108,7 +108,7 @@ fn configure_api_v2_2(cfg: &mut web::ServiceConfig, unified_identity_enabled: bo
 }
 
 /// Get a scope configured for the given API version
-/// Unified-Identity - Phase 3: unified_identity_enabled flag controls whether delegated certification endpoint is registered
+/// Unified-Identity - Unified-Identity: unified_identity_enabled flag controls whether delegated certification endpoint is registered
 pub(crate) fn get_api_scope(version: &str, unified_identity_enabled: bool) -> Result<Scope, APIError> {
     match version {
         "2.1" => Ok(web::scope(format!("v{version}").as_ref()).configure(configure_api_v2_1)),

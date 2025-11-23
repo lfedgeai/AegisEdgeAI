@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+Unified-Identity - Verification: Hardware Integration & Delegated Certification
 
 Unit tests for TPM Plugin
 """
@@ -13,19 +13,19 @@ from unittest.mock import Mock, patch, MagicMock
 from tpm_plugin import TPMPlugin, is_unified_identity_enabled
 
 
-# Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+# Unified-Identity - Verification: Hardware Integration & Delegated Certification
 class TestTPMPlugin(unittest.TestCase):
     """Test cases for TPM Plugin"""
     
     def setUp(self):
         """Set up test fixtures"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         self.work_dir = tempfile.mkdtemp()
         os.environ["UNIFIED_IDENTITY_ENABLED"] = "true"
     
     def tearDown(self):
         """Clean up test fixtures"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         import shutil
         if os.path.exists(self.work_dir):
             shutil.rmtree(self.work_dir)
@@ -34,7 +34,7 @@ class TestTPMPlugin(unittest.TestCase):
     
     def test_feature_flag_check(self):
         """Test feature flag check"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         os.environ["UNIFIED_IDENTITY_ENABLED"] = "true"
         self.assertTrue(is_unified_identity_enabled())
         
@@ -44,7 +44,7 @@ class TestTPMPlugin(unittest.TestCase):
     @patch('tpm_plugin.subprocess.run')
     def test_tpm_device_detection(self, mock_run):
         """Test TPM device detection"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         # Test hardware TPM detection
         with patch('os.path.exists', return_value=True):
             plugin = TPMPlugin(work_dir=self.work_dir)
@@ -58,7 +58,7 @@ class TestTPMPlugin(unittest.TestCase):
     @patch('tpm_plugin.subprocess.run')
     def test_generate_app_key_stub(self, mock_run):
         """Test App Key generation (stubbed)"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         # Mock successful TPM commands
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -84,7 +84,7 @@ class TestTPMPlugin(unittest.TestCase):
         self.assertEqual(plugin._normalize_pcr_selection("0,4"), "sha256:0,4")
 
 
-# Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+# Unified-Identity - Verification: Hardware Integration & Delegated Certification
 if __name__ == "__main__":
     unittest.main()
 

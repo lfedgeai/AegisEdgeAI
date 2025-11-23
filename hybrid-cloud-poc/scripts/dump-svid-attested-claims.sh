@@ -1,5 +1,5 @@
 #!/bin/bash
-# Unified-Identity - Phase 3: Dump SVID Certificate and certificate chain
+# Unified-Identity - Verification: Dump SVID Certificate and certificate chain
 # Shows the AttestedClaims extension embedded in the workload SVID and
 # highlights the agent SVID that is now included in the chain for policy enforcement
 # Also verifies the certificate chain against SPIRE server's root CA

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 Python script to fetch Sovereign SVID with AttestedClaims from SPIRE Agent Workload API.
 
 This script communicates ONLY with the SPIRE Agent via the Workload API.
@@ -68,7 +68,7 @@ def fetch_from_workload_api():
             print(f"  SPIFFE ID: {svid.spiffe_id}")
             print()
             
-            # Unified-Identity - Phase 1: AttestedClaims are now passed through by the agent
+            # Unified-Identity - Setup: AttestedClaims are now passed through by the agent
             # The agent receives AttestedClaims from the server and includes them in the Workload API response.
             # However, the Python spiffe library may not yet expose AttestedClaims directly.
             # Check if X509Source exposes AttestedClaims (may require library update)
@@ -83,10 +83,10 @@ def fetch_from_workload_api():
                 print("✓ AttestedClaims received from Workload API (via SVID)")
             else:
                 # Fallback: The agent now passes AttestedClaims through, but the Python library
-                # may need to be updated to expose them. For Phase 1 testing, use mock data.
+                # may need to be updated to expose them. For Setup testing, use mock data.
                 print("⚠ AttestedClaims not exposed by Python spiffe library yet")
                 print("  (The agent passes them through, but library needs update)")
-                print("  Using mock data for Phase 1 demonstration")
+                print("  Using mock data for Setup demonstration")
                 claims_json = {
                     "geolocation": "US-CA-SanFrancisco",
                     "host_integrity_status": "PASSED_ALL_CHECKS",
@@ -118,7 +118,7 @@ def fetch_from_workload_api():
 
 def main():
     print("=" * 70)
-    print("Unified-Identity - Phase 1: Fetching Sovereign SVID")
+    print("Unified-Identity - Setup: Fetching Sovereign SVID")
     print("=" * 70)
     print()
     print("Note: Python app communicates only with SPIRE Agent via Workload API")

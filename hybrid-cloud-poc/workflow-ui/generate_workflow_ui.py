@@ -31,17 +31,17 @@ COMPONENT_NAMES = {
 }
 
 PHASE_DEFINITIONS = {
-    'Phase 1': {
+    'Setup': {
         'name': 'Initial Setup & TPM Preparation',
         'components': ['TPM_PLUGIN', 'RUST_KEYLIME'],
         'keywords': ['App Key', 'registered', 'activated']
     },
-    'Phase 2': {
+    'Attestation': {
         'name': 'SPIRE Agent Attestation (Agent SVID Generation)',
         'components': ['SPIRE_AGENT', 'TPM_PLUGIN', 'RUST_KEYLIME', 'SPIRE_SERVER', 'KEYLIME_VERIFIER', 'MOBILE_SENSOR'],
         'keywords': ['SovereignAttestation', 'TPM Quote', 'certificate', 'Delegated', 'Keylime', 'Agent SVID']
     },
-    'Phase 3': {
+    'Verification': {
         'name': 'Workload SVID Generation',
         'components': ['SPIRE_AGENT', 'SPIRE_SERVER'],
         'keywords': ['Workload', 'python-app', 'BatchNewX509SVID']
@@ -107,7 +107,7 @@ def extract_logs_from_files():
         'TPM_PLUGIN': r'App Key|TPM Quote|Delegated|certificate|request|response|Unified-Identity',
         'SPIRE_AGENT': r'TPM Plugin|SovereignAttestation|TPM Quote|certificate|Agent SVID|Workload|Unified-Identity|attest|python-app|BatchNewX509SVID',
         'SPIRE_SERVER': r'SovereignAttestation|Keylime Verifier|AttestedClaims|Agent SVID|Workload|Unified-Identity|attest|python-app|Skipping.*Keylime',
-        'KEYLIME_VERIFIER': r'Processing|Verifying|certificate|quote|mobile|sensor|Unified-Identity|Phase 3|App Key|Verification successful',
+        'KEYLIME_VERIFIER': r'Processing|Verifying|certificate|quote|mobile|sensor|Unified-Identity|Verification|App Key|Verification successful',
         'RUST_KEYLIME': r'registered|activated|Delegated|certificate|quote|geolocation|Unified-Identity',
         'MOBILE_SENSOR': r'verify|CAMARA|sensor|verification|request|response',
     }
@@ -175,11 +175,11 @@ def categorize_logs(logs):
         # If not assigned, try to assign based on message content
         if not assigned:
             if 'Workload' in message or 'python-app' in message or 'BatchNewX509SVID' in message:
-                phases['Phase 3'].append(log)
+                phases['Verification'].append(log)
             elif 'SovereignAttestation' in message or 'Agent SVID' in message or 'Keylime' in message:
-                phases['Phase 2'].append(log)
+                phases['Attestation'].append(log)
             elif 'App Key' in message or 'registered' in message or 'activated' in message:
-                phases['Phase 1'].append(log)
+                phases['Setup'].append(log)
     
     return phases
 
@@ -549,7 +549,7 @@ def generate_html(phases, all_logs):
         
         // Expand all phases by default
         document.addEventListener('DOMContentLoaded', function() {
-            const phases = ['Phase 1', 'Phase 2', 'Phase 3'];
+            const phases = ['Setup', 'Attestation', 'Verification'];
             phases.forEach(phase => {
                 const content = document.getElementById('content-' + phase);
                 const toggle = document.getElementById('toggle-' + phase);

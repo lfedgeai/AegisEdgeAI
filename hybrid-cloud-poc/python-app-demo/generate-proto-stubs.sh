@@ -1,5 +1,5 @@
 #!/bin/bash
-# Unified-Identity - Phase 1: Generate Python protobuf stubs from workload.proto
+# Unified-Identity - Setup: Generate Python protobuf stubs from workload.proto
 
 set -e
 

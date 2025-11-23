@@ -1,5 +1,5 @@
 #!/bin/bash
-# Unified-Identity - Phase 1: Create registration entry for Python app
+# Unified-Identity - Setup: Create registration entry for Python app
 
 set -e
 

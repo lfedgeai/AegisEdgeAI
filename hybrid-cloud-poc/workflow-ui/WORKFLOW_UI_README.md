@@ -2,12 +2,12 @@
 
 ## Overview
 
-The workflow visualization UI provides an interactive HTML-based visualization of the end-to-end workflow logs from the Phase 3 test suite. It displays logs in a timeline format, grouped by phases, with color-coded components and interactive filtering.
+The workflow visualization UI provides an interactive HTML-based visualization of the end-to-end workflow logs from the Verification test suite. It displays logs in a timeline format, grouped by phases, with color-coded components and interactive filtering.
 
 ## Features
 
 - **Timeline Visualization**: Chronological display of all workflow events
-- **Phase Grouping**: Logs organized by Phase 1 (Setup), Phase 2 (Agent SVID), Phase 3 (Workload SVID)
+- **Phase Grouping**: Logs organized by Setup (Setup), Attestation (Agent SVID), Verification (Workload SVID)
 - **Component Color Coding**: Each component has a distinct color for easy identification
 - **Interactive Filtering**: Filter logs by component type
 - **Expandable Phases**: Click phase headers to expand/collapse sections
@@ -17,7 +17,7 @@ The workflow visualization UI provides an interactive HTML-based visualization o
 
 ### Automatic Generation
 
-The visualization is automatically generated when you run the Phase 3 test suite:
+The visualization is automatically generated when you run the Verification test suite:
 
 ```bash
 ./test_phase3_complete.sh --no-pause

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+Unified-Identity - Verification: Hardware Integration & Delegated Certification
 
 Unit tests for Delegated Certification Client
 """
@@ -16,19 +16,19 @@ from unittest.mock import patch
 from delegated_certification import DelegatedCertificationClient, is_unified_identity_enabled
 
 
-# Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+# Unified-Identity - Verification: Hardware Integration & Delegated Certification
 class TestDelegatedCertificationClient(unittest.TestCase):
     """Test cases for Delegated Certification Client"""
     
     def setUp(self):
         """Set up test fixtures"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         os.environ["UNIFIED_IDENTITY_ENABLED"] = "true"
         self.socket_path = "/tmp/test-keylime-certify.sock"
     
     def tearDown(self):
         """Clean up test fixtures"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         if "UNIFIED_IDENTITY_ENABLED" in os.environ:
             del os.environ["UNIFIED_IDENTITY_ENABLED"]
         if os.path.exists(self.socket_path):
@@ -36,7 +36,7 @@ class TestDelegatedCertificationClient(unittest.TestCase):
     
     def test_feature_flag_check(self):
         """Test feature flag check"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         os.environ["UNIFIED_IDENTITY_ENABLED"] = "true"
         self.assertTrue(is_unified_identity_enabled())
         
@@ -107,7 +107,7 @@ class TestDelegatedCertificationClient(unittest.TestCase):
     
     def test_request_certificate_socket_not_found(self):
         """Test certificate request when socket doesn't exist"""
-        # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+        # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         client = DelegatedCertificationClient(endpoint="unix:///nonexistent/socket")
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.ctx') as f:
@@ -130,7 +130,7 @@ class TestDelegatedCertificationClient(unittest.TestCase):
                 os.remove(ctx_path)
 
 
-# Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
+# Unified-Identity - Verification: Hardware Integration & Delegated Certification
 if __name__ == "__main__":
     unittest.main()
 

@@ -1,4 +1,4 @@
-# Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+# Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 # Python dependencies for the Python app demo
 
 # SPIRE Workload API client library

@@ -82,8 +82,8 @@ type AgentX509SVIDParams struct {
 	ParentChain         []*x509.Certificate
 	PublicKey           crypto.PublicKey
 	SPIFFEID            spiffeid.ID
-	AttestedClaims      *types.AttestedClaims // Unified-Identity - Phase 3: AttestedClaims to embed in certificate
-	UnifiedIdentityJSON []byte                // Unified-Identity - Phase 3: Serialized grc.* claims payload
+	AttestedClaims      *types.AttestedClaims // Unified-Identity - Verification: AttestedClaims to embed in certificate
+	UnifiedIdentityJSON []byte                // Unified-Identity - Verification: Serialized grc.* claims payload
 }
 
 type WorkloadX509SVIDParams struct {
@@ -93,8 +93,8 @@ type WorkloadX509SVIDParams struct {
 	DNSNames            []string
 	TTL                 time.Duration
 	Subject             pkix.Name
-	AttestedClaims      *types.AttestedClaims // Unified-Identity - Phase 3: AttestedClaims to embed in certificate
-	UnifiedIdentityJSON []byte                // Unified-Identity - Phase 3: Serialized grc.* claims payload
+	AttestedClaims      *types.AttestedClaims // Unified-Identity - Verification: AttestedClaims to embed in certificate
+	UnifiedIdentityJSON []byte                // Unified-Identity - Verification: Serialized grc.* claims payload
 }
 
 type WorkloadJWTSVIDParams struct {
@@ -272,7 +272,7 @@ func (b *Builder) BuildAgentX509SVIDTemplate(ctx context.Context, params AgentX5
 		applyX509SVIDAttributes(tmpl, attributes)
 	}
 
-	// Unified-Identity - Phase 3: Embed AttestedClaims in certificate extension
+	// Unified-Identity - Verification: Embed AttestedClaims in certificate extension
 	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
 	if params.AttestedClaims != nil || len(params.UnifiedIdentityJSON) > 0 {
 		ext, err := AttestedClaimsExtension(params.AttestedClaims, params.UnifiedIdentityJSON)
@@ -315,7 +315,7 @@ func (b *Builder) BuildWorkloadX509SVIDTemplate(ctx context.Context, params Work
 		applyX509SVIDAttributes(tmpl, attributes)
 	}
 
-	// Unified-Identity - Phase 3: Embed AttestedClaims in certificate extension
+	// Unified-Identity - Verification: Embed AttestedClaims in certificate extension
 	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
 	if params.AttestedClaims != nil || len(params.UnifiedIdentityJSON) > 0 {
 		ext, err := AttestedClaimsExtension(params.AttestedClaims, params.UnifiedIdentityJSON)

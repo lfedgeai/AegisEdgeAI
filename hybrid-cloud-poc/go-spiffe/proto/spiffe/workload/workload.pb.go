@@ -22,7 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 // A hardware-rooted PoR package produced by the Agent.
 type SovereignAttestation struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -39,7 +39,7 @@ type SovereignAttestation struct {
 	ChallengeNonce string `protobuf:"bytes,4,opt,name=challenge_nonce,json=challengeNonce,proto3" json:"challenge_nonce,omitempty"`
 	// Optional workload code hash used as an additional selector/assertion.
 	WorkloadCodeHash string `protobuf:"bytes,5,opt,name=workload_code_hash,json=workloadCodeHash,proto3" json:"workload_code_hash,omitempty"`
-	// Unified-Identity - Phase 3: rust-keylime agent UUID for delegated certification correlation.
+	// Unified-Identity - Verification: rust-keylime agent UUID for delegated certification correlation.
 	KeylimeAgentUuid string `protobuf:"bytes,6,opt,name=keylime_agent_uuid,json=keylimeAgentUuid,proto3" json:"keylime_agent_uuid,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -117,7 +117,7 @@ func (x *SovereignAttestation) GetKeylimeAgentUuid() string {
 	return ""
 }
 
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 // AttestedClaims contains verified facts from Keylime about the host.
 type AttestedClaims struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -164,11 +164,11 @@ func (x *AttestedClaims) GetGeolocation() string {
 }
 
 // The X509SVIDRequest message conveys parameters for requesting an X.509-SVID.
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 // Added sovereign_attestation field to support Unified Identity flow.
 type X509SVIDRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional hardware-rooted PoR package for sovereign attestation.
 	SovereignAttestation *SovereignAttestation `protobuf:"bytes,20,opt,name=sovereign_attestation,json=sovereignAttestation,proto3" json:"sovereign_attestation,omitempty"`
 	unknownFields        protoimpl.UnknownFields
@@ -215,7 +215,7 @@ func (x *X509SVIDRequest) GetSovereignAttestation() *SovereignAttestation {
 // The X509SVIDResponse message carries X.509-SVIDs and related information,
 // including a set of global CRLs and a list of bundles the workload may use
 // for federating with foreign trust domains.
-// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 // Added attested_claims field to return verified facts from Keylime.
 type X509SVIDResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -228,7 +228,7 @@ type X509SVIDResponse struct {
 	// the workload should trust, keyed by the SPIFFE ID of the foreign trust
 	// domain. Bundles are ASN.1 DER encoded.
 	FederatedBundles map[string][]byte `protobuf:"bytes,3,rep,name=federated_bundles,json=federatedBundles,proto3" json:"federated_bundles,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
+	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional. Verified claims from Keylime about host geolocation.
 	AttestedClaims []*AttestedClaims `protobuf:"bytes,30,rep,name=attested_claims,json=attestedClaims,proto3" json:"attested_claims,omitempty"`
 	unknownFields  protoimpl.UnknownFields

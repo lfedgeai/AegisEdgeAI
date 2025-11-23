@@ -1,5 +1,5 @@
-# Unified-Identity - Phase 2: Minimal Keylime Verifier Configuration for Testing
-# This is a minimal config for testing Phase 1 + Phase 2 integration
+# Unified-Identity - Unified-Identity: Minimal Keylime Verifier Configuration for Testing
+# This is a minimal config for testing Unified-Identity + Unified-Identity integration
 
 [verifier]
 # Basic server configuration
@@ -9,7 +9,7 @@ port = 8881
 # UUID for this verifier instance
 uuid = test-verifier-uuid-12345
 
-# Registrar configuration (not needed for Phase 2 testing, but required)
+# Registrar configuration (not needed for Unified-Identity testing, but required)
 registrar_ip = 127.0.0.1
 registrar_port = 8890
 
@@ -20,7 +20,7 @@ server_key = default
 server_cert = default
 client_key = default
 client_cert = default
-# Set to "all" to disable client certificate requirement for testing (Phase 2 integration)
+# Set to "all" to disable client certificate requirement for testing (Unified-Identity integration)
 # This allows SPIRE Server to connect without providing a client certificate
 trusted_client_ca = all
 trusted_server_ca = default
@@ -33,7 +33,7 @@ severity_labels = ["INFO", "WARN", "ERROR", "CRITICAL"]
 # Severity policy: list of dicts with event_id and severity_label
 severity_policy = [{"event_id": ".*", "severity_label": "CRITICAL"}]
 
-# Enable Unified-Identity Phase 2 feature
+# Enable Unified-Identity Unified-Identity feature
 unified_identity_enabled = true
 
 # Default facts (used when facts not found in database/store)

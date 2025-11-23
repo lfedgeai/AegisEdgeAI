@@ -35,7 +35,7 @@ type Manager interface {
 	MatchingRegistrationEntries(selectors []*common.Selector) []*common.RegistrationEntry
 	FetchJWTSVID(ctx context.Context, entry *common.RegistrationEntry, audience []string) (*client.JWTSVID, error)
 	FetchWorkloadUpdate([]*common.Selector) *cache.WorkloadUpdate
-	// Unified-Identity - Phase 3: Get agent SVID to include in certificate chain
+	// Unified-Identity - Verification: Get agent SVID to include in certificate chain
 	GetCurrentCredentials() svid.State // Returns agent SVID state
 }
 
@@ -407,7 +407,7 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate, manager Manager) (*wo
 		resp.FederatedBundles[td.IDString()] = marshalBundle(federatedBundle.X509Authorities())
 	}
 
-	// Unified-Identity - Phase 3: Get agent SVID to include in certificate chain
+	// Unified-Identity - Verification: Get agent SVID to include in certificate chain
 	// According to architecture, the chain should be: Workload SVID + Agent SVID
 	// The agent handler ensures the complete chain is provided to workloads
 	// The SPIRE server verifies the entire chain before issuing the workload certificate
@@ -421,7 +421,7 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate, manager Manager) (*wo
 		}
 	}
 
-	// Unified-Identity - Phase 1: Collect AttestedClaims from all identities
+	// Unified-Identity - Setup: Collect AttestedClaims from all identities
 	var allAttestedClaims []*workload.AttestedClaims
 	for _, identity := range update.Identities {
 		id := identity.Entry.SpiffeId
@@ -431,7 +431,7 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate, manager Manager) (*wo
 			return nil, fmt.Errorf("marshal key for %v: %w", id, err)
 		}
 
-		// Unified-Identity - Phase 3: Build certificate chain with agent SVID
+		// Unified-Identity - Verification: Build certificate chain with agent SVID
 		// Chain should be: Workload SVID + Agent SVID
 		// The server verifies the entire chain before issuing the workload certificate
 		certChain := identity.SVID
@@ -464,7 +464,7 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate, manager Manager) (*wo
 
 		resp.Svids = append(resp.Svids, svid)
 
-		// Unified-Identity - Phase 1: Convert AttestedClaims from types to workload protobuf
+		// Unified-Identity - Setup: Convert AttestedClaims from types to workload protobuf
 		if len(identity.AttestedClaims) > 0 {
 			for _, claims := range identity.AttestedClaims {
 				if claims == nil {
@@ -493,7 +493,7 @@ func composeX509SVIDResponse(update *cache.WorkloadUpdate, manager Manager) (*wo
 		}
 	}
 
-	// Unified-Identity - Phase 1: Add AttestedClaims to response
+	// Unified-Identity - Setup: Add AttestedClaims to response
 	resp.AttestedClaims = allAttestedClaims
 
 	return resp, nil

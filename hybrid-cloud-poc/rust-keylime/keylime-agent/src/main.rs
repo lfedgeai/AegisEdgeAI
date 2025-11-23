@@ -125,7 +125,7 @@ pub struct QuoteData<'a> {
     sign_alg: keylime::algorithms::SignAlgorithm,
     tpmcontext: Mutex<tpm::Context<'a>>,
     work_dir: PathBuf,
-    // Unified-Identity - Phase 3: Feature flag for unified identity support
+    // Unified-Identity - Unified-Identity: Feature flag for unified identity support
     unified_identity_enabled: bool,
 }
 
@@ -1187,13 +1187,13 @@ async fn main() -> Result<()> {
 
     let port = config.port;
 
-    // Unified-Identity - Phase 3: Support UDS socket for delegated certification
+    // Unified-Identity - Unified-Identity: Support UDS socket for delegated certification
     // Note: Actix-web 4.x doesn't natively support Unix domain sockets.
     // For now, we'll use HTTP over localhost. UDS support can be added later
     // using a custom server implementation or by upgrading to a version that supports it.
     // The endpoint will be accessible via HTTP at http://127.0.0.1:{port}/v2.2/delegated_certification/certify_app_key
 
-    // Unified-Identity - Phase 3: Enable mTLS for verifier communication (Gap #2 fix)
+    // Unified-Identity - Unified-Identity: Enable mTLS for verifier communication (Gap #2 fix)
     // Use HTTPS with mTLS when enabled, fall back to HTTP only if mTLS is disabled
     if config.enable_agent_mtls && ssl_context.is_some() {
         server = actix_server
@@ -1203,12 +1203,12 @@ async fn main() -> Result<()> {
             )?
             .run();
         info!("Listening on https://{ip}:{port}");
-        info!("Unified-Identity - Phase 3: Delegated certification endpoint available at https://{ip}:{port}/v2.2/delegated_certification/certify_app_key");
+        info!("Unified-Identity - Unified-Identity: Delegated certification endpoint available at https://{ip}:{port}/v2.2/delegated_certification/certify_app_key");
     } else {
         warn!("mTLS disabled or SSL context unavailable, using HTTP (insecure)");
         server = actix_server.bind(format!("{ip}:{port}"))?.run();
         info!("Listening on http://{ip}:{port}");
-        info!("Unified-Identity - Phase 3: Delegated certification endpoint available at http://{ip}:{port}/v2.2/delegated_certification/certify_app_key");
+        info!("Unified-Identity - Unified-Identity: Delegated certification endpoint available at http://{ip}:{port}/v2.2/delegated_certification/certify_app_key");
     }
 
     let server_handle = server.handle();

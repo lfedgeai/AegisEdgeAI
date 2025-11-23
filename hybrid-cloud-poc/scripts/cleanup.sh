@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
-# Unified-Identity - Phase 3: Cleanup Script
+# Unified-Identity: Cleanup Script
 # Stops all services and cleans up all data directories, logs, and temporary files
 # Use this script to reset the environment after running tests or deployments
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# If sourced from test script, use PROJECT_ROOT if set, otherwise assume we're in scripts/ and go up one level
+if [ -n "${PROJECT_ROOT:-}" ]; then
+    PROJECT_DIR="${PROJECT_ROOT}"
+elif [ "$(basename "${SCRIPT_DIR}")" = "scripts" ]; then
+    PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+    PROJECT_DIR="${SCRIPT_DIR}"
+fi
 # All components are now consolidated in the root directory
-PHASE1_DIR="${SCRIPT_DIR}"
-PHASE2_DIR="${SCRIPT_DIR}"
-PHASE3_DIR="${SCRIPT_DIR}"
-KEYLIME_DIR="${SCRIPT_DIR}/keylime"
+PHASE1_DIR="${PROJECT_DIR}"
+PHASE2_DIR="${PROJECT_DIR}"
+PHASE3_DIR="${PROJECT_DIR}"
+KEYLIME_DIR="${PROJECT_DIR}/keylime"
 
 # Colors
 GREEN='\033[0;32m'
@@ -32,7 +40,7 @@ fi
 # Only show header when executed directly, not when sourced
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     echo "╔════════════════════════════════════════════════════════════════╗"
-    echo "║  Unified-Identity - Phase 3: Cleanup                           ║"
+    echo "║  Unified-Identity: Cleanup                                    ║"
     echo "║  Stopping all services and cleaning up data                    ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
@@ -231,8 +239,8 @@ stop_all_instances_and_cleanup() {
     # Clean up any Keylime data in /var/lib/keylime (if accessible)
     sudo rm -rf /var/lib/keylime 2>/dev/null || true
     
-    # Clean up Phase 3 TPM data
-    echo "     Removing Phase 3 TPM data..."
+    # Clean up TPM data
+    echo "     Removing TPM data..."
     rm -rf /tmp/phase3-demo-tpm 2>/dev/null || true
     rm -rf "$HOME/.spire/data/agent/tpm-plugin" 2>/dev/null || true
     rm -rf "$HOME/.spire" 2>/dev/null || true
@@ -353,7 +361,7 @@ Usage: $(basename "$0") [options]
 Options:
   -h, --help    Show this help message.
 
-This script stops all Unified-Identity Phase 3 services and cleans up:
+This script stops all Unified-Identity services and cleans up:
   - All running processes (SPIRE Server/Agent, Keylime Verifier/Registrar/Agent, TPM Plugin)
   - All data directories and databases
   - All log files and PID files
