@@ -1,5 +1,177 @@
 # Sovereign Unified Identity Architecture - End-to-End Flow
 
+## End-to-End Flow Visualization
+
+### Quick Reference (Compact View)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                      SOVEREIGN UNIFIED IDENTITY - END-TO-END FLOW                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+SETUP:        [1] rust-keylime Agent → Keylime Registrar [2] TPM Plugin Server → Generate App Key
+
+ATTESTATION:  [3] SPIRE Agent → [4] TPM Plugin → [5] rust-keylime Agent (TPM2_Certify) → [5] TPM Plugin → [3] SPIRE Agent
+              [6] SPIRE Agent → SPIRE Server (SovereignAttestation)
+
+VERIFICATION: [7] SPIRE Server → [8] Keylime Verifier → [9] Keylime Registrar → [9] Keylime Verifier
+              [10] Keylime Verifier → [11] rust-keylime Agent → [12] Mobile Sensor Microservice → [12] rust-keylime Agent → [13] Keylime Verifier
+              [14] Keylime Verifier → SPIRE Server (AttestedClaims)
+
+SVID:         [15] SPIRE Server → SPIRE Agent (Agent SVID)
+
+WORKLOAD:     [16] Workload → [17] SPIRE Agent → [18] SPIRE Server → [19] SPIRE Agent → [20] Workload
+```
+
+### Detailed Flow Diagram (Full View)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                    SOVEREIGN UNIFIED IDENTITY - END-TO-END FLOW                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+SETUP PHASE:
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│ rust-keylime │  [1]    │   Keylime    │         │  TPM Plugin  │
+│    Agent     │────────>│  Registrar   │         │   Server     │
+│              │         │              │         │              │
+│ Generate EK  │         │ Store: UUID, │         │ Generate App │
+│ Generate AK  │         │ IP, Port, AK │         │     Key      │
+└──────────────┘         └──────────────┘         └──────────────┘
+                                                          │
+                                                          │ [2]
+                                                          ▼
+ATTESTATION PHASE:
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│  SPIRE Agent │  [3]    │  TPM Plugin  │  [4]    │ rust-keylime │
+│              │────────>│   Server     │────────>│    Agent     │
+│ Request App  │         │              │         │              │
+│ Key & Cert   │         │ Forward      │         │ TPM2_Certify │
+│              │<────────│ Request      │<────────│ (AK signs    │
+│              │  [5]    │              │  [5]    │  App Key)    │
+└──────────────┘         └──────────────┘         └──────────────┘
+     │
+     │ [6] Build SovereignAttestation
+     │     (App Key, Certificate, Nonce, UUID)
+     │
+     ▼
+┌──────────────┐
+│ SPIRE Server │
+│              │
+│ Receive      │
+│ Attestation  │
+└──────────────┘
+     │
+     │ [7] Extract: App Key, Cert, Nonce, UUID
+     │
+     ▼
+┌──────────────┐
+│ Keylime      │  [8]    ┌──────────────┐
+│ Verifier     │────────>│   Keylime    │
+│              │         │  Registrar   │
+│ Verify App   │<────────│              │
+│ Key Cert     │  [9]    │ Return: IP,  │
+│              │         │ Port, AK,    │
+│              │         │ mTLS Cert    │
+└──────────────┘         └──────────────┘
+     │
+     │ [10] Request TPM Quote
+     │      (with challenge nonce)
+     │
+     ▼
+┌──────────────┐         ┌──────────────┐
+│ rust-keylime │  [11]   │ Mobile Sensor│
+│    Agent     │────────>│ Microservice │
+│              │         │              │
+│ Generate     │         │ Verify       │
+│ TPM Quote    │         │ Location via │
+│ (with geo)   │<────────│ CAMARA APIs  │
+└──────────────┘  [12]   └──────────────┘
+     │
+     │ [13] Return Quote + Geolocation
+     │
+     ▼
+┌──────────────┐
+│ Keylime      │
+│ Verifier     │
+│              │
+│ Verify Quote │
+│ Verify Cert  │
+│ Verify Geo   │
+│              │
+│ Return       │
+│ AttestedClaims│
+└──────────────┘
+     │
+     │ [14] Return AttestedClaims
+     │
+     ▼
+┌──────────────┐
+│ SPIRE Server │
+│              │
+│ Issue Agent  │
+│ SVID with    │
+│ AttestedClaims│
+└──────────────┘
+     │
+     │ [15] Return Agent SVID
+     │
+     ▼
+┌──────────────┐
+│  SPIRE Agent │
+│              │
+│ Receive      │
+│ Agent SVID   │
+└──────────────┘
+     │
+     │ [16] Workload Requests SVID
+     │
+     ▼
+┌──────────────┐         ┌──────────────┐
+│   Workload   │  [17]   │  SPIRE Agent │  [18]   ┌──────────────┐
+│  (Python App)│────────>│              │────────>│ SPIRE Server │
+│              │         │ Match Entry  │         │              │
+│ Request SVID │<────────│              │<────────│ Issue        │
+│              │  [19]   │ Forward      │  [20]   │ Workload SVID│
+│              │         │ Request      │         │ (inherit     │
+│              │         │              │         │ agent claims)│
+└──────────────┘         └──────────────┘         └──────────────┘
+```
+
+### Legend:
+[1]  Agent Registration: EK, AK, UUID, IP, Port, mTLS Cert
+[2]  App Key Generation: TPM App Key created and persisted
+[3]  App Key Request: Agent requests App Key public key and context
+[4]  Delegated Certification Request: TPM Plugin forwards to rust-keylime agent
+[5]  Certificate Response: TPM2_Certify result (AK-signed App Key certificate)
+[6]  Build Attestation: Assemble SovereignAttestation (App Key, Cert, Nonce, UUID)
+[7]  Extract Attestation: Server extracts components from SovereignAttestation
+[8]  Lookup Agent: Verifier queries Registrar for agent info (IP, Port, AK, mTLS Cert)
+[9]  Agent Info: Registrar returns agent details
+[10] Quote Request: Verifier requests fresh TPM quote with challenge nonce
+[11] Geolocation Detection: Agent detects mobile sensor, includes in quote
+[12] Location Verification: Verifier calls mobile sensor microservice (CAMARA APIs)
+[13] Quote Response: Agent returns TPM quote with geolocation data
+[14] Verification Result: Verifier returns AttestedClaims (geolocation, TPM attestation)
+[15] Agent SVID: Server issues agent SVID with AttestedClaims embedded
+[16] Workload Request: Workload connects to Agent Workload API
+[17] Workload API: Workload requests SVID via Agent Workload API
+[18] Forward Request: Agent forwards workload SVID request to Server
+[19] Workload SVID: Server issues workload SVID (inherits agent claims, no Keylime call)
+[20] Return SVID: Agent returns workload SVID to workload
+
+KEY COMPONENTS:
+• rust-keylime Agent: High-privilege TPM operations (EK, AK, Quotes, Certify)
+• TPM Plugin Server: App Key generation, delegated certification client
+• SPIRE Agent: Low-privilege, Workload API, attestation orchestration
+• SPIRE Server: SVID issuance, policy enforcement, Keylime integration
+• Keylime Verifier: TPM attestation verification, geolocation verification
+• Keylime Registrar: Agent registration database
+• Mobile Sensor Microservice: Location verification via CAMARA APIs
+```
+
+---
+
 ## End-to-End Flow: SPIRE Agent Sovereign SVID Attestation
 
 ### Setup: Initial Setup (Before Attestation)
