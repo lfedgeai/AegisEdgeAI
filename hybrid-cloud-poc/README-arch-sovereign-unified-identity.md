@@ -61,11 +61,11 @@ VERIFICATION PHASE:
 SVID ISSUANCE & WORKLOAD SVID:
 ┌──────────────┐  [16] ┌──────────────┐  [17] ┌──────────────┐  [18] ┌──────────────┐  [19] ┌──────────────┐  [20] ┌──────────────┐  [21] ┌──────────────┐
 │ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │──────>│  SPIRE Agent │──────>│ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │
-│ Issue Agent  │       │ Receive       │       │  (Python App)│       │ Match Entry  │       │ Issue        │       │ Forward      │       │ Receive      │
-│ SVID with    │       │ Agent SVID    │       │ Request SVID │       │ Forward      │       │ Workload SVID│       │ Request      │       │ Workload SVID│
+│ Issue Agent  │       │ Receive      │       │  (Python App)│       │ Match Entry  │       │ Issue        │       │ Forward      │       │ Receive      │
+│ SVID with    │       │ Agent SVID   │       │ Request SVID │       │ Forward      │       │ Workload SVID│       │ Request      │       │ Workload SVID│
 │ AttestedClaims│      └──────────────┘       └──────────────┘       └──────────────┘       │ (inherit     │       └──────────────┘       └──────────────┘
-└──────────────┘                                                      │ agent claims)│
-                                                                      └──────────────┘
+└──────────────┘                                                                            │ agent claims)│
+                                                                                            └──────────────┘
 ```
 
 ### Legend:
