@@ -39,16 +39,16 @@ SETUP PHASE:
 └──────────────┘       └──────────────┘                    └──────────────┘
 
 ATTESTATION PHASE:
-┌──────────────┐  [3]  ┌──────────────┐  [4]  ┌──────────────┐  [5]  ┌──────────────┐  [6]  ┌──────────────┐
+┌──────────────┐  [3]  ┌──────────────┐  [4]  ┌──────────────┐  [5]  ┌──────────────┐  [6]  ┌──────────────┐  [7]  ┌──────────────┐
 │  SPIRE Agent │──────>│  TPM Plugin  │──────>│ rust-keylime │──────>│  TPM Plugin  │──────>│  SPIRE Agent │──────>│ SPIRE Server │
 │ Request App  │       │   Server     │       │    Agent     │       │   Server     │       │ Build        │       │ Receive      │
 │ Key & Cert   │       │ Forward      │       │ TPM2_Certify │       │ Return Cert  │       │ Attestation  │       │ Attestation  │
-│              │       │              │       │ (AK signs    │       │              │       │              │       │              │
+│              │       │              │       │ (AK signs    │       │              │       │              │       │ Extract      │
 └──────────────┘       └──────────────┘       │  App Key)    │       └──────────────┘       └──────────────┘       └──────────────┘
                                                └──────────────┘
 
 VERIFICATION PHASE:
-┌──────────────┐  [7]  ┌──────────────┐  [8]  ┌──────────────┐  [9]  ┌──────────────┐  [10] ┌──────────────┐  [11] ┌──────────────┐  [12] ┌──────────────┐  [13] ┌──────────────┐  [14] ┌──────────────┐
+┌──────────────┐  [8]  ┌──────────────┐  [9]  ┌──────────────┐  [10] ┌──────────────┐  [11] ┌──────────────┐  [12] ┌──────────────┐  [13] ┌──────────────┐  [14] ┌──────────────┐  [15] ┌──────────────┐
 │ SPIRE Server │──────>│ Keylime      │──────>│   Keylime    │──────>│ Keylime      │──────>│ rust-keylime │──────>│ Mobile Sensor│──────>│ rust-keylime │──────>│ Keylime      │──────>│ SPIRE Server │
 │ Extract: App │       │ Verifier     │       │  Registrar   │       │ Verifier     │       │    Agent     │       │ Microservice │       │    Agent     │       │ Verifier     │       │ Issue Agent  │
 │ Key, Cert,   │       │ Verify App   │       │ Return: IP,  │       │ Request TPM  │       │ Generate     │       │ Verify       │       │ Return Quote │       │ Verify Quote │       │ SVID with    │
@@ -59,7 +59,7 @@ VERIFICATION PHASE:
                                                                                                                                                                     └──────────────┘
 
 SVID ISSUANCE & WORKLOAD SVID:
-┌──────────────┐  [15] ┌──────────────┐  [16] ┌──────────────┐  [17] ┌──────────────┐  [18] ┌──────────────┐  [19] ┌──────────────┐  [20] ┌──────────────┐
+┌──────────────┐  [16] ┌──────────────┐  [17] ┌──────────────┐  [18] ┌──────────────┐  [19] ┌──────────────┐  [20] ┌──────────────┐  [21] ┌──────────────┐
 │ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │──────>│  SPIRE Agent │──────>│ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │
 │ Issue Agent  │       │ Receive       │       │  (Python App)│       │ Match Entry  │       │ Issue        │       │ Forward      │       │ Receive      │
 │ SVID with    │       │ Agent SVID    │       │ Request SVID │       │ Forward      │       │ Workload SVID│       │ Request      │       │ Workload SVID│
@@ -75,8 +75,8 @@ SVID ISSUANCE & WORKLOAD SVID:
 **[3]** App Key Request: Agent requests App Key public key and context  
 **[4]** Delegated Certification Request: TPM Plugin forwards to rust-keylime agent  
 **[5]** Certificate Response: TPM2_Certify result (AK-signed App Key certificate)  
-**[6]** Build Attestation: Assemble SovereignAttestation (App Key, Cert, Nonce, UUID) → Send to SPIRE Server  
-**[7]** Extract Attestation: Server extracts components from SovereignAttestation → Send to Keylime Verifier  
+**[6]** Build Attestation: Assemble SovereignAttestation (App Key, Cert, Nonce, UUID)  
+**[7]** Send Attestation: SPIRE Agent sends SovereignAttestation to SPIRE Server (Server receives and extracts)  
 **[8]** Lookup Agent: Verifier queries Registrar for agent info (IP, Port, AK, mTLS Cert)  
 **[9]** Agent Info: Registrar returns agent details  
 **[10]** Quote Request: Verifier requests fresh TPM quote with challenge nonce  
