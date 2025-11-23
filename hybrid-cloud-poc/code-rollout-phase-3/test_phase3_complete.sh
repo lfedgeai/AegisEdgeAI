@@ -3,8 +3,8 @@
 # Tests the full workflow: SPIRE Server + Keylime Verifier + rust-keylime Agent -> Sovereign SVID Generation
 # Phase 3: Hardware Integration & Delegated Certification
 
-set -uo pipefail
-# Don't exit on error (-e) - we want to continue even if some steps fail
+set -euo pipefail
+# Exit immediately on error - abort if anything goes wrong
 
 # Unified-Identity - Phase 3: Hardware Integration & Delegated Certification
 # Ensure feature flag is enabled by default (can be overridden by caller)
@@ -46,6 +46,23 @@ if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
     BOLD=""
     NC=""
 fi
+
+# Helper function to abort on critical errors
+abort_on_error() {
+    local message="$1"
+    echo -e "${RED}✗ CRITICAL ERROR: ${message}${NC}" >&2
+    echo -e "${RED}Aborting test execution.${NC}" >&2
+    exit 1
+}
+
+# Helper function to check if a command succeeded, abort if not
+check_critical() {
+    local description="$1"
+    shift
+    if ! "$@"; then
+        abort_on_error "${description} failed"
+    fi
+}
 
 echo "╔════════════════════════════════════════════════════════════════╗"
 echo "║  Unified-Identity - Phase 3: Complete Integration Test         ║"
@@ -102,8 +119,7 @@ start_mobile_sensor_microservice() {
     echo ""
     echo -e "${CYAN}Step 1.5: Starting Mobile Location Verification microservice...${NC}"
     if [ ! -d "${MOBILE_SENSOR_DIR}" ]; then
-        echo -e "${RED}  ✗ Mobile sensor microservice directory not found: ${MOBILE_SENSOR_DIR}${NC}"
-        exit 1
+        abort_on_error "Mobile sensor microservice directory not found: ${MOBILE_SENSOR_DIR}"
     fi
 
     echo "  Preparing mobile sensor service data directory..."
@@ -931,14 +947,12 @@ echo ""
 # Create minimal config if needed
 VERIFIER_CONFIG="${PHASE2_DIR}/verifier.conf.minimal"
 if [ ! -f "${VERIFIER_CONFIG}" ]; then
-    echo -e "${RED}Error: Verifier config not found at ${VERIFIER_CONFIG}${NC}"
-    exit 1
+    abort_on_error "Verifier config not found at ${VERIFIER_CONFIG}"
 fi
 
 # Verify unified_identity_enabled is set to true
 if ! grep -q "unified_identity_enabled = true" "${VERIFIER_CONFIG}"; then
-    echo -e "${RED}Error: unified_identity_enabled must be set to true in ${VERIFIER_CONFIG}${NC}"
-    exit 1
+    abort_on_error "unified_identity_enabled must be set to true in ${VERIFIER_CONFIG}"
 fi
 echo -e "${GREEN}  ✓ unified_identity_enabled = true verified in config${NC}"
 
@@ -1016,8 +1030,7 @@ finally:
 PYTHON_EOF
 
     if [ $? -ne 0 ]; then
-        echo -e "${RED}  ✗ Failed to generate TLS certificates${NC}"
-        exit 1
+        abort_on_error "Failed to generate TLS certificates"
     fi
 else
     echo -e "${GREEN}  ✓ TLS certificates already exist${NC}"
@@ -1064,7 +1077,7 @@ for i in {1..90}; do
         echo -e "${RED}  ✗ Keylime Verifier process died${NC}"
         echo "  Logs:"
         tail -50 /tmp/keylime-verifier.log
-        exit 1
+        abort_on_error "Keylime Verifier process died"
     fi
     # Show progress every 10 seconds
     if [ $((i % 10)) -eq 0 ]; then
@@ -1074,9 +1087,10 @@ for i in {1..90}; do
 done
 
 if [ "$VERIFIER_STARTED" = false ]; then
-    echo -e "${YELLOW}  ⚠ Keylime Verifier may not be fully ready, but continuing...${NC}"
+    echo -e "${RED}  ✗ Keylime Verifier failed to become ready within timeout${NC}"
     echo "  Logs:"
-    tail -30 /tmp/keylime-verifier.log | grep -E "(ERROR|Starting|port|TLS)" || tail -20 /tmp/keylime-verifier.log
+    tail -50 /tmp/keylime-verifier.log | grep -E "(ERROR|Starting|port|TLS)" || tail -30 /tmp/keylime-verifier.log
+    abort_on_error "Keylime Verifier failed to become ready"
 fi
 
 # Verify unified_identity feature flag is enabled
@@ -1096,8 +1110,7 @@ print(app_key_verification.is_unified_identity_enabled())
 if [ "$FEATURE_ENABLED" = "True" ]; then
     echo -e "${GREEN}  ✓ unified_identity feature flag is ENABLED${NC}"
 else
-    echo -e "${RED}  ✗ unified_identity feature flag is DISABLED (expected: True, got: $FEATURE_ENABLED)${NC}"
-    exit 1
+    abort_on_error "unified_identity feature flag is DISABLED (expected: True, got: $FEATURE_ENABLED)"
 fi
 
 pause_at_phase "Step 2 Complete" "Keylime Verifier is running and ready. unified_identity feature is enabled."
@@ -1171,15 +1184,19 @@ for i in {1..30}; do
     fi
     # Check if process is still running
     if ! kill -0 $REGISTRAR_PID 2>/dev/null; then
-        echo -e "${YELLOW}  ⚠ Keylime Registrar process died, but continuing...${NC}"
-        tail -20 /tmp/keylime-registrar.log
-        break
+        echo -e "${RED}  ✗ Keylime Registrar process died${NC}"
+        echo "  Logs:"
+        tail -50 /tmp/keylime-registrar.log
+        abort_on_error "Keylime Registrar process died"
     fi
     sleep 1
 done
 
 if [ "$REGISTRAR_STARTED" = false ]; then
-    echo -e "${YELLOW}  ⚠ Keylime Registrar may not be fully ready, but continuing...${NC}"
+    echo -e "${RED}  ✗ Keylime Registrar failed to become ready within timeout${NC}"
+    echo "  Logs:"
+    tail -50 /tmp/keylime-registrar.log | grep -E "(ERROR|Starting|port|TLS)" || tail -30 /tmp/keylime-registrar.log
+    abort_on_error "Keylime Registrar failed to become ready"
 fi
 
 pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent registration."
@@ -1414,7 +1431,7 @@ UDS_SOCKET_PATH="/tmp/keylime-agent.sock"
 for i in {1..60}; do
     # Check if process is still running first
     if ! kill -0 $RUST_AGENT_PID 2>/dev/null; then
-        echo -e "${YELLOW}  ⚠ rust-keylime Agent process died, checking logs...${NC}"
+        echo -e "${RED}  ✗ rust-keylime Agent process died${NC}"
         echo "  Recent logs:"
         tail -50 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|unix)" || tail -30 /tmp/rust-keylime-agent.log
         # Check if UDS socket exists (agent might have started before dying)
@@ -1423,8 +1440,7 @@ for i in {1..60}; do
             RUST_AGENT_STARTED=true
             break
         fi
-        echo -e "${YELLOW}  ⚠ Continuing without rust-keylime agent (delegated certification may not be available)${NC}"
-        break
+        abort_on_error "rust-keylime Agent process died - delegated certification is required"
     fi
     # Check if UDS socket exists (primary check for Phase 3)
     if [ -S "$UDS_SOCKET_PATH" ]; then
@@ -1458,10 +1474,10 @@ for i in {1..60}; do
 done
 
 if [ "$RUST_AGENT_STARTED" = false ]; then
-    echo -e "${YELLOW}  ⚠ rust-keylime Agent not ready, but continuing...${NC}"
-    echo "  Note: Delegated certification will not be available"
+    echo -e "${RED}  ✗ rust-keylime Agent failed to become ready within timeout${NC}"
     echo "  Recent logs:"
-    tail -30 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register|unix)" || tail -20 /tmp/rust-keylime-agent.log
+    tail -50 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register|unix)" || tail -30 /tmp/rust-keylime-agent.log
+    abort_on_error "rust-keylime Agent failed to become ready - delegated certification is required"
 fi
 
 pause_at_phase "Step 4 Complete" "rust-keylime Agent is running. Ready for registration and attestation."
@@ -1589,7 +1605,7 @@ if [ "$REGISTRAR_REGISTERED" = "true" ]; then
     echo "  Unified-Identity - Phase 3: Verifier will query registrar on-demand when SPIRE Server sends verification requests."
     echo "  TPM Plugin and SPIRE can now be started - geolocation will be available when verifier queries agent."
 elif [ "$AGENT_REGISTERED" = false ]; then
-    echo -e "${RED}  ✗ Agent registration or TPM attested geolocation verification failed${NC}"
+    echo -e "${RED}  ✗ Agent registration failed${NC}"
     echo ""
     echo "  Registration Status:"
     if [ "$REGISTRAR_REGISTERED" = "true" ]; then
@@ -1597,10 +1613,6 @@ elif [ "$AGENT_REGISTERED" = false ]; then
     else
         echo -e "    ${RED}✗ Registrar: Agent NOT registered${NC}"
     fi
-    echo -e "    ${YELLOW}ℹ Verifier: On-demand query (Phase 3 architecture)${NC}"
-    echo ""
-    echo "  Phase 3: Verifier queries registrar on-demand when SPIRE sends verification requests."
-    echo "  Registrar registration is sufficient - verifier will fetch agent TPM AK and verify quotes on-demand."
     echo ""
     echo "  Registrar logs:"
     tail -20 /tmp/keylime-registrar.log | grep -E "(agent|register|error)" | tail -5 || tail -10 /tmp/keylime-registrar.log
@@ -1611,6 +1623,7 @@ elif [ "$AGENT_REGISTERED" = false ]; then
     echo "  Agent logs:"
     tail -50 /tmp/rust-keylime-agent.log | grep -E "(register|registration|geolocation|error|failed|incompatible)" | tail -10 || tail -20 /tmp/rust-keylime-agent.log
     echo ""
+    abort_on_error "Agent registration failed - cannot proceed without registered agent"
     echo "  Troubleshooting:"
     echo "    1. Check if agent UUID matches: ${RUST_AGENT_UUID:-'(unknown)'}"
     echo "    2. Verify registrar is accessible: curl http://localhost:8890/v2.1/agents/"
@@ -1760,7 +1773,7 @@ for i in {1..60}; do
     if ! kill -0 $TPM_PLUGIN_SERVER_PID 2>/dev/null; then
         echo -e "${RED}  ✗ TPM Plugin Server process died${NC}"
         tail -20 /tmp/tpm-plugin-server.log
-        exit 1
+        abort_on_error "TPM Plugin Server process died"
     fi
     # Check logs for socket binding confirmation
     if grep -q "UDS socket bound and listening" /tmp/tpm-plugin-server.log 2>/dev/null; then
@@ -1804,7 +1817,7 @@ if [ "$TPM_SERVER_STARTED" = false ]; then
     else
         echo -e "${RED}  ✗ TPM Plugin Server failed to start${NC}"
         tail -20 /tmp/tpm-plugin-server.log
-        exit 1
+        abort_on_error "TPM Plugin Server failed to start"
     fi
 fi
 
@@ -1949,7 +1962,10 @@ for i in {1..30}; do
         break
     fi
     if [ $i -eq 30 ]; then
-        echo -e "${YELLOW}  ⚠ SPIRE Server may not be fully ready, but continuing...${NC}"
+        echo -e "${RED}  ✗ SPIRE Server failed to become ready within timeout${NC}"
+        echo "  Logs:"
+        tail -50 /tmp/spire-server.log | grep -E "(ERROR|Failed|Starting|port|listening)" || tail -30 /tmp/spire-server.log
+        abort_on_error "SPIRE Server failed to become ready"
     fi
     sleep 1
 done
@@ -1992,8 +2008,9 @@ for i in {1..90}; do
                 fi
                 # Check if attestation failed due to Keylime verification
                 if grep -q "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log 2>/dev/null; then
-                    echo "    ⚠ Attestation request received but verification failed"
+                    echo -e "${RED}    ✗ Attestation request received but verification failed${NC}"
                     grep "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log | tail -1 | sed 's/^/      /'
+                    abort_on_error "SPIRE Agent attestation verification failed"
                 fi
             fi
         fi
@@ -2052,7 +2069,8 @@ if [ -f "./create-registration-entry.sh" ]; then
         echo "  Waiting 10s for registration entry to propagate to agent..."
         sleep 10
     else
-        echo -e "${YELLOW}  ⚠ Registration entry creation had issues, but continuing...${NC}"
+        echo -e "${RED}  ✗ Registration entry creation failed${NC}"
+        abort_on_error "Registration entry creation failed - workload SVID cannot be issued"
     fi
 else
     echo -e "${YELLOW}  ⚠ Registration entry script not found, skipping...${NC}"
