@@ -39,7 +39,7 @@ SETUP PHASE:
 └──────────────┘       └──────────────┘                    └──────────────┘
 
 ATTESTATION PHASE:
-┌──────────────┐  [3]  ┌──────────────┐  [4]  ┌──────────────┐  [5]  ┌──────────────┐  [6]  ┌──────────────┐  [6]  ┌──────────────┐
+┌──────────────┐  [3]  ┌──────────────┐  [4]  ┌──────────────┐  [5]  ┌──────────────┐  [6]  ┌──────────────┐
 │  SPIRE Agent │──────>│  TPM Plugin  │──────>│ rust-keylime │──────>│  TPM Plugin  │──────>│  SPIRE Agent │──────>│ SPIRE Server │
 │ Request App  │       │   Server     │       │    Agent     │       │   Server     │       │ Build        │       │ Receive      │
 │ Key & Cert   │       │ Forward      │       │ TPM2_Certify │       │ Return Cert  │       │ Attestation  │       │ Attestation  │
