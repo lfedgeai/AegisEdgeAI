@@ -1,21 +1,28 @@
-# Unified-Identity - Setup: Python App Demo
+# Unified-Identity: Python App Demo
 
-This demo shows how to fetch and dump a Sovereign SVID with AttestedClaims using a simple Python application.
+This demo shows how a Python workload can fetch and use a Sovereign SVID with AttestedClaims from SPIRE Agent.
 
 ## Overview
 
-This demo includes:
-1. **SPIRE Server** - Issues SVIDs with AttestedClaims
+This demo demonstrates the **workload SVID flow**, where a Python application:
+1. Connects to SPIRE Agent Workload API
+2. Receives a workload SVID with AttestedClaims
+3. The workload SVID inherits TPM attestation claims from the agent SVID
+
+**Components:**
+1. **SPIRE Server** - Issues SVIDs with AttestedClaims (from Keylime Verifier)
 2. **SPIRE Agent** - Provides Workload API to applications
-3. **Keylime Stub** - Returns fixed AttestedClaims (geolocation, host integrity, GPU metrics)
-   - ⚠ **Note**: Multiple GPU support for GPU metrics is work in progress
+3. **Keylime Verifier** - Validates TPM attestation and returns AttestedClaims
 4. **Python App** - Fetches SVID and displays AttestedClaims
 
 ## Prerequisites
 
-- Go installed (for SPIRE and Keylime stub)
+- Go installed (for SPIRE)
 - Python 3 installed
-- SPIRE binaries built (in `../spire/bin/`)
+- SPIRE binaries built
+- All services running (SPIRE Server, SPIRE Agent, Keylime Verifier, rust-keylime Agent)
+
+**Note:** This demo is typically run as part of the main integration test (`../test_complete.sh`), which sets up all required services.
 
 ### Install Python Dependencies
 
@@ -24,41 +31,47 @@ pip install -r requirements.txt
 ```
 
 This installs:
-- `spiffe` - SPIRE Workload API client library
+- `grpcio` - gRPC library for Workload API
+- `protobuf` - Protocol buffer support
 
 ## Quick Start
 
-### Step 1: Setup SPIRE and Keylime
+### As Part of Main Integration Test
+
+The recommended way to run this demo is as part of the complete integration test:
 
 ```bash
-cd /home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-1/python-app-demo
-./setup-spire.sh
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_complete.sh
 ```
 
 This will:
-- Start Keylime Stub (port 8888)
-- Start SPIRE Server
-- Start SPIRE Agent
-- Create necessary directories and sockets
+- Set up all services (SPIRE Server, SPIRE Agent, Keylime Verifier, rust-keylime Agent)
+- Create registration entry for the Python app
+- Fetch workload SVID with AttestedClaims
+- Verify the complete end-to-end flow
 
-> Internally this calls the shared `../scripts/start-unified-identity.sh`, so the same setup can be reused outside of the demo.
+### Standalone Demo
 
-### Step 2: Create Registration Entry
+If you want to run just the Python app demo (assuming services are already running):
+
+#### Step 1: Create Registration Entry
 
 ```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
 ./create-registration-entry.sh
 ```
 
 This creates a registration entry for your Python app based on your Unix UID.
 
-### Step 3: Fetch Sovereign SVID
+#### Step 2: Fetch Sovereign SVID
 
 **Recommended: Use the all-in-one demo script:**
 ```bash
 ./run-demo.sh
 ```
 
-This script orchestrates all steps and uses the gRPC version (`fetch-sovereign-svid-grpc.py`) to get real AttestedClaims.
+This script orchestrates all steps and uses the gRPC version (`fetch-sovereign-svid-grpc.py`) to get AttestedClaims.
 
 **Or manually:**
 ```bash
@@ -68,93 +81,98 @@ python3 fetch-sovereign-svid-grpc.py
 This will:
 - Connect to SPIRE Agent Workload API via gRPC (direct access to AttestedClaims)
 - Agent automatically attests the process and matches to registration entry
-- Agent sends `SovereignAttestation` to server when fetching SVID
-- Server processes via Keylime stub and policy engine
-- Server returns `AttestedClaims` in response
+- Agent requests workload SVID from server (workloads inherit claims from agent SVID)
+- Server returns `AttestedClaims` in response (from agent SVID)
 - Agent passes `AttestedClaims` to the Python app
 - Save the certificate to `/tmp/svid-dump/svid.pem`
-- Save AttestedClaims to `/tmp/svid-dump/attested_claims.json` (real data from Keylime stub)
+- Save AttestedClaims to `/tmp/svid-dump/attested_claims.json`
 
-### Step 4: Dump SVID with AttestedClaims
+#### Step 3: Dump SVID with AttestedClaims
 
 ```bash
-../../code-rollout-phase-2/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
+../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
 ```
 
 ## Files
 
 - `run-demo.sh` - **All-in-one demo script** (recommended - orchestrates all steps)
-- `setup-spire.sh` - Sets up SPIRE Server, Agent, and Keylime Stub
 - `create-registration-entry.sh` - Creates registration entry for the Python app
 - `fetch-sovereign-svid-grpc.py` - **Fetches sovereign SVID with AttestedClaims via gRPC** (recommended)
 - `fetch-sovereign-svid.py` - Alternative using `spiffe` library (fallback)
-- `cleanup.sh` - Cleans up all components
+- `fetch-svid.py` - Basic SVID fetch without AttestedClaims
 - `spire-server.conf` - SPIRE Server configuration
 - `spire-agent.conf` - SPIRE Agent configuration
-
-## Cleanup
-
-To stop all components and clean up:
-
-```bash
-./cleanup.sh
-```
-
-This script delegates to the shared `../scripts/stop-unified-identity.sh` to ensure SPIRE processes, sockets, registration entries, and logs are fully cleaned up.
+- `generate-proto-stubs.sh` - Generates Python protobuf stubs from workload.proto
 
 ## How It Works
 
 1. **SPIRE Server** runs with the `Unified-Identity` feature flag enabled
 2. **SPIRE Agent** connects to the server and provides the Workload API
-3. **Keylime Stub** provides fixed AttestedClaims when SPIRE Server calls it
-4. **Python App** communicates **only with SPIRE Agent** via Workload API (gRPC):
+3. **Python App** communicates **only with SPIRE Agent** via Workload API (gRPC):
    - Connects to Agent's Workload API socket (`/tmp/spire-agent/public/api.sock`)
    - Agent automatically attests the Python process (extracts UID, etc.)
    - Agent matches selectors to registration entry
-   - Agent sends `SovereignAttestation` to server when fetching SVID
-   - Server processes via Keylime stub and policy engine
-   - Server returns `AttestedClaims` in response
+   - Agent requests workload SVID from server (workloads inherit claims from agent SVID)
+   - Server returns `AttestedClaims` from agent SVID (no Keylime verification for workloads)
    - Agent passes `AttestedClaims` to the Python app via Workload API
-5. **dump-svid** script displays the SVID and highlights AttestedClaims
+4. **dump-svid** script displays the SVID and highlights AttestedClaims
 
-**Important**: The Python app does NOT communicate directly with SPIRE Server. All communication goes through the SPIRE Agent Workload API, which is the standard and secure way for workloads to get their SVIDs.
+**Important Notes:**
+- The Python app does NOT communicate directly with SPIRE Server. All communication goes through the SPIRE Agent Workload API.
+- **Workload SVID requests skip Keylime verification** - workloads inherit attested claims from the agent SVID
+- The agent SVID contains TPM attestation claims (geolocation, TPM attestation) from Keylime Verifier
+- The workload SVID certificate chain includes the agent SVID, allowing policy enforcement based on both workload and agent identity
 
-**✅ Verified**: The complete flow is working end-to-end. AttestedClaims are successfully passed from Keylime stub → Server → Agent → Python App.
+**✅ Verified**: The complete flow is working end-to-end. AttestedClaims are successfully passed from Keylime Verifier → SPIRE Server (agent SVID) → SPIRE Agent → Python App (workload SVID).
 
 ## AttestedClaims
 
-The AttestedClaims returned from Keylime stub include:
-- **Geolocation**: `Spain: N40.4168, W3.7038` (from Keylime stub)
-- **Host Integrity Status**: `PASSED_ALL_CHECKS`
-- **GPU Metrics Health**:
-  - Status: `healthy`
-  - Utilization: `15.0%`
-  - Memory: `10240 MB`
-  - ⚠ **Note**: Multiple GPU support is work in progress
+The AttestedClaims in the workload SVID are inherited from the agent SVID, which includes:
 
-These are successfully passed through the complete flow: Keylime Stub → SPIRE Server → SPIRE Agent → Python App.
+- **Geolocation** (`grc.geolocation`):
+  - Type: `mobile` or `gnss`
+  - Sensor ID: e.g., `12d1:1433` (mobile device)
+  - TPM-attested location (bound to PCR 17)
+  - Latitude/Longitude (from mobile sensor verification)
 
-## Automated Test
+- **TPM Attestation** (`grc.tpm-attestation`):
+  - App Key certificate (signed by TPM AK)
+  - App Key public key
+  - Challenge nonce
+  - TPM quote data
 
-An automated regression test validates the entire flow (including agent bootstrap SVID claims, workload SVID, and component logs):
+- **Workload** (`grc.workload`):
+  - Workload ID (SPIFFE ID)
+  - Key source: `tpm-app-key`
 
-```bash
-cd ../scripts
-./test-python-demo.sh
-```
+These claims are embedded in the agent SVID and inherited by workload SVIDs through the certificate chain.
 
-The script will:
-1. Stop any existing setup
-2. Start SPIRE/Keylime using the shared stack scripts
-3. Verify that the agent bootstrap SVID includes AttestedClaims (server + agent logs)
-4. Create the Python app registration entry and fetch the sovereign SVID via gRPC
-5. Validate the generated `svid.pem` and `attested_claims.json`
-6. Confirm relevant Unified-Identity logs for server, agent, and Keylime stub
-7. Tear everything down
+## Integration with Main Test
+
+This demo is integrated into the main integration test (`../test_complete.sh`):
+
+- **Step 8**: Creates registration entry for the workload
+- **Step 10**: Fetches workload SVID with AttestedClaims
+- **Step 12**: Verifies integration and checks logs
+
+The test validates:
+- Agent SVID contains TPM attestation claims
+- Workload SVID inherits claims from agent SVID
+- Complete end-to-end flow (TPM → Keylime → SPIRE → Workload)
 
 ## Troubleshooting
 
-- **Socket not found**: Make sure SPIRE Agent is running (`./setup-spire.sh`)
+- **Socket not found**: Make sure SPIRE Agent is running (check `/tmp/spire-agent/public/api.sock`)
 - **Permission denied**: Check socket permissions (`ls -la /tmp/spire-agent/public/api.sock`)
-- **No AttestedClaims**: Ensure feature flag is enabled and Keylime stub is running
+- **No AttestedClaims**: 
+  - Ensure `Unified-Identity` feature flag is enabled
+  - Verify agent SVID was issued with AttestedClaims (check agent logs)
+  - Ensure Keylime Verifier is running and agent attestation succeeded
+- **Registration entry not found**: Run `./create-registration-entry.sh` to create the entry
+- **Protobuf import errors**: Run `./generate-proto-stubs.sh` to generate Python protobuf stubs
 
+## See Also
+
+- **Main Integration Test**: `../test_complete.sh` - Complete end-to-end test including this demo
+- **Architecture Documentation**: `../README-arch-sovereign-unified-identity.md` - Detailed architecture flow
+- **Main README**: `../README.md` - Project overview and quick start
