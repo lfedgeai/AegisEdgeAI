@@ -1,5 +1,5 @@
 """
-Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
+Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
 
 Unit tests for App Key Certificate validation and TPM Quote verification.
 """
@@ -19,10 +19,10 @@ from keylime import app_key_verification, config
 
 
 class TestAppKeyVerification(unittest.TestCase):
-    """Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)"""
+    """Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)"""
 
     def setUp(self):
-        """Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)"""
+        """Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)"""
         # Generate test keys
         self.ak_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=None)
         self.ak_public_key = self.ak_private_key.public_key()
@@ -56,7 +56,7 @@ class TestAppKeyVerification(unittest.TestCase):
         )
 
     def test_feature_flag_check(self):
-        """Unified-Identity - Unified-Identity: Test feature flag check"""
+        """Unified-Identity: Test feature flag check"""
         with patch.object(config, "getboolean", return_value=True):
             self.assertTrue(app_key_verification.is_unified_identity_enabled())
 
@@ -64,7 +64,7 @@ class TestAppKeyVerification(unittest.TestCase):
             self.assertFalse(app_key_verification.is_unified_identity_enabled())
 
     def test_validate_app_key_certificate_success(self):
-        """Unified-Identity - Unified-Identity: Test successful App Key Certificate validation"""
+        """Unified-Identity: Test successful App Key Certificate validation"""
         valid, cert, error = app_key_verification.validate_app_key_certificate(
             self.app_key_cert_b64, self.ak_public_pem
         )
@@ -75,7 +75,7 @@ class TestAppKeyVerification(unittest.TestCase):
         self.assertIsInstance(cert, x509.Certificate)
 
     def test_validate_app_key_certificate_invalid_base64(self):
-        """Unified-Identity - Unified-Identity: Test certificate validation with invalid base64"""
+        """Unified-Identity: Test certificate validation with invalid base64"""
         valid, cert, error = app_key_verification.validate_app_key_certificate("invalid!!!", self.ak_public_pem)
 
         self.assertFalse(valid)
@@ -84,7 +84,7 @@ class TestAppKeyVerification(unittest.TestCase):
         self.assertIn("decode", error.lower())
 
     def test_validate_app_key_certificate_invalid_signature(self):
-        """Unified-Identity - Unified-Identity: Test certificate validation with invalid signature"""
+        """Unified-Identity: Test certificate validation with invalid signature"""
         # Create a certificate signed by a different key
         other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=None)
         subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test App Key")])
@@ -108,7 +108,7 @@ class TestAppKeyVerification(unittest.TestCase):
         self.assertIsNotNone(error)
 
     def test_extract_app_key_public_from_cert(self):
-        """Unified-Identity - Unified-Identity: Test extracting public key from certificate"""
+        """Unified-Identity: Test extracting public key from certificate"""
         pubkey_pem = app_key_verification.extract_app_key_public_from_cert(self.app_key_cert)
 
         self.assertIsNotNone(pubkey_pem)
@@ -116,7 +116,7 @@ class TestAppKeyVerification(unittest.TestCase):
         self.assertIn("END PUBLIC KEY", pubkey_pem)
 
     def test_verify_app_key_public_matches_cert_success(self):
-        """Unified-Identity - Unified-Identity: Test successful public key matching"""
+        """Unified-Identity: Test successful public key matching"""
         matches, error = app_key_verification.verify_app_key_public_matches_cert(
             self.app_key_public_pem, self.app_key_cert
         )
@@ -125,7 +125,7 @@ class TestAppKeyVerification(unittest.TestCase):
         self.assertIsNone(error)
 
     def test_verify_app_key_public_matches_cert_mismatch(self):
-        """Unified-Identity - Unified-Identity: Test public key mismatch"""
+        """Unified-Identity: Test public key mismatch"""
         # Use a different public key
         other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=None)
         other_public_pem = other_key.public_key().public_bytes(
@@ -139,7 +139,7 @@ class TestAppKeyVerification(unittest.TestCase):
 
     @patch("keylime.app_key_verification.cloud_verifier_common.get_tpm_instance")
     def test_verify_quote_with_app_key_success(self, mock_get_tpm):
-        """Unified-Identity - Unified-Identity: Test successful quote verification"""
+        """Unified-Identity: Test successful quote verification"""
         # Mock TPM instance
         mock_tpm = MagicMock()
         mock_tpm.check_quote.return_value = None  # No failure means success
@@ -164,7 +164,7 @@ class TestAppKeyVerification(unittest.TestCase):
 
     @patch("keylime.app_key_verification.cloud_verifier_common.get_tpm_instance")
     def test_verify_quote_with_app_key_failure(self, mock_get_tpm):
-        """Unified-Identity - Unified-Identity: Test quote verification failure"""
+        """Unified-Identity: Test quote verification failure"""
         # Mock TPM instance with failure
         from keylime.failure import Component, Event, Failure
 

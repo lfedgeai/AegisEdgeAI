@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified-Identity - Unified-Identity: Hardware Integration & Delegated Certification
+Unified-Identity: Hardware Integration & Delegated Certification
 
 Delegated Certification Client
 This module handles the low-privilege side of delegated certification,
@@ -16,7 +16,7 @@ from typing import Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-# Unified-Identity - Unified-Identity: Hardware Integration & Delegated Certification
+# Unified-Identity: Hardware Integration & Delegated Certification
 # Feature flag check
 def is_unified_identity_enabled() -> bool:
     """Check if Unified-Identity feature flag is enabled."""
@@ -25,12 +25,12 @@ def is_unified_identity_enabled() -> bool:
         return env_value in ("true", "1", "yes")
     except Exception as e:
         logger.debug(
-            "Unified-Identity - Unified-Identity: Error checking feature flag: %s", e
+            "Unified-Identity: Error checking feature flag: %s", e
         )
         return False
 
 
-# Unified-Identity - Unified-Identity: Hardware Integration & Delegated Certification
+# Unified-Identity: Hardware Integration & Delegated Certification
 # Interface: SPIRE TPM Plugin → Keylime Agent
 # Status: 🆕 New (Unified-Identity)
 # Transport: JSON over UDS (Unified-Identity)
@@ -62,24 +62,24 @@ class DelegatedCertificationClient:
         """
         if not is_unified_identity_enabled():
             logger.warning(
-                "Unified-Identity - Unified-Identity: Feature flag disabled, delegated certification client will not function"
+                "Unified-Identity: Feature flag disabled, delegated certification client will not function"
             )
 
-        # Unified-Identity - Unified-Identity: Use HTTPS for agent communication (Gap #2 fix - mTLS enabled)
+        # Unified-Identity: Use HTTPS for agent communication (Gap #2 fix - mTLS enabled)
         # Agent now uses mTLS/HTTPS by default
         if endpoint is None:
             endpoint = "https://127.0.0.1:9002"
         elif endpoint == "unix:///tmp/keylime-agent.sock":
             # Convert old UDS default to HTTPS (UDS not yet implemented in agent, Gap #1)
             logger.info(
-                "Unified-Identity - Unified-Identity: Converting old UDS default to HTTPS endpoint (agent uses mTLS)"
+                "Unified-Identity: Converting old UDS default to HTTPS endpoint (agent uses mTLS)"
             )
             endpoint = "https://127.0.0.1:9002"
         elif endpoint.startswith("http://") and ("127.0.0.1" in endpoint or "localhost" in endpoint):
             # Convert HTTP to HTTPS for localhost (agent now uses mTLS, Gap #2 fix)
             endpoint = endpoint.replace("http://", "https://")
             logger.info(
-                "Unified-Identity - Unified-Identity: Converting HTTP to HTTPS (agent uses mTLS)"
+                "Unified-Identity: Converting HTTP to HTTPS (agent uses mTLS)"
             )
 
         # Support both UDS and HTTP endpoints
@@ -89,7 +89,7 @@ class DelegatedCertificationClient:
             self.http_endpoint = None
             if not os.path.exists(self.socket_path):
                 logger.warning(
-                    "Unified-Identity - Unified-Identity: UDS socket path does not exist: %s, falling back to HTTP",
+                    "Unified-Identity: UDS socket path does not exist: %s, falling back to HTTP",
                     self.socket_path,
                 )
                 # Fallback to HTTPS if UDS socket doesn't exist (agent uses mTLS)
@@ -102,7 +102,7 @@ class DelegatedCertificationClient:
             self.http_endpoint = None
             if not os.path.exists(self.socket_path):
                 logger.warning(
-                    "Unified-Identity - Unified-Identity: UDS socket path does not exist: %s, falling back to HTTPS",
+                    "Unified-Identity: UDS socket path does not exist: %s, falling back to HTTPS",
                     self.socket_path,
                 )
                 # Fallback to HTTPS if UDS socket doesn't exist (agent uses mTLS)
@@ -116,7 +116,7 @@ class DelegatedCertificationClient:
             self.http_endpoint = endpoint.rstrip("/")
             protocol = "HTTPS" if endpoint.startswith("https://") else "HTTP"
             logger.info(
-                "Unified-Identity - Unified-Identity: Using %s endpoint: %s (agent uses mTLS/HTTPS)",
+                "Unified-Identity: Using %s endpoint: %s (agent uses mTLS/HTTPS)",
                 protocol,
                 self.http_endpoint
             )
@@ -129,16 +129,16 @@ class DelegatedCertificationClient:
         self.api_path = "/v2.2/delegated_certification/certify_app_key"
 
         logger.info(
-            "Unified-Identity - Unified-Identity: Delegated Certification Client initialized (rust-keylime agent)"
+            "Unified-Identity: Delegated Certification Client initialized (rust-keylime agent)"
         )
         if self.use_uds:
             logger.info(
-                "Unified-Identity - Unified-Identity: Using UNIX socket: %s", self.socket_path
+                "Unified-Identity: Using UNIX socket: %s", self.socket_path
             )
         else:
             protocol = "HTTPS (mTLS)" if self.http_endpoint and self.http_endpoint.startswith("https://") else "HTTP"
             logger.info(
-                "Unified-Identity - Unified-Identity: Using %s endpoint: %s", protocol, self.http_endpoint
+                "Unified-Identity: Using %s endpoint: %s", protocol, self.http_endpoint
             )
 
     def request_certificate(
@@ -156,12 +156,12 @@ class DelegatedCertificationClient:
         """
         if not is_unified_identity_enabled():
             logger.error(
-                "Unified-Identity - Unified-Identity: Feature flag disabled, cannot request certificate"
+                "Unified-Identity: Feature flag disabled, cannot request certificate"
             )
             return (False, None, "Feature flag disabled")
 
         logger.info(
-            "Unified-Identity - Unified-Identity: Requesting App Key certificate from rust-keylime Agent"
+            "Unified-Identity: Requesting App Key certificate from rust-keylime Agent"
         )
 
         request = {
@@ -191,7 +191,7 @@ class DelegatedCertificationClient:
 
             if not response_json:
                 logger.error(
-                    "Unified-Identity - Unified-Identity: Empty response from rust-keylime Agent"
+                    "Unified-Identity: Empty response from rust-keylime Agent"
                 )
                 return (False, None, None, "Empty response")
 
@@ -204,30 +204,30 @@ class DelegatedCertificationClient:
                     agent_uuid = self._fetch_agent_uuid()
                 if cert_b64:
                     logger.info(
-                        "Unified-Identity - Unified-Identity: App Key certificate received successfully from rust-keylime agent"
+                        "Unified-Identity: App Key certificate received successfully from rust-keylime agent"
                     )
                     return (True, cert_b64, agent_uuid, None)
                 logger.error(
-                    "Unified-Identity - Unified-Identity: Certificate missing in response"
+                    "Unified-Identity: Certificate missing in response"
                 )
                 return (False, None, None, "Certificate missing in response")
 
             error_msg = response.get("error", "Unknown error")
             logger.error(
-                "Unified-Identity - Unified-Identity: Certificate request failed: %s",
+                "Unified-Identity: Certificate request failed: %s",
                 error_msg,
             )
             return (False, None, None, error_msg)
 
         except FileNotFoundError:
             logger.error(
-                "Unified-Identity - Unified-Identity: rust-keylime Agent socket not found: %s",
+                "Unified-Identity: rust-keylime Agent socket not found: %s",
                 self.socket_path,
             )
             return (False, None, None, f"Socket not found: {self.socket_path}")
         except ConnectionRefusedError:
             logger.error(
-                "Unified-Identity - Unified-Identity: Connection refused to rust-keylime Agent"
+                "Unified-Identity: Connection refused to rust-keylime Agent"
             )
             return (
                 False,
@@ -237,12 +237,12 @@ class DelegatedCertificationClient:
             )
         except socket.timeout:
             logger.error(
-                "Unified-Identity - Unified-Identity: Timeout connecting to rust-keylime Agent"
+                "Unified-Identity: Timeout connecting to rust-keylime Agent"
             )
             return (False, None, None, "Connection timeout")
         except Exception as e:
             logger.error(
-                "Unified-Identity - Unified-Identity: Error communicating with rust-keylime Agent via UDS: %s",
+                "Unified-Identity: Error communicating with rust-keylime Agent via UDS: %s",
                 e,
             )
             return (False, None, None, f"UDS communication error: {e}")
@@ -260,7 +260,7 @@ class DelegatedCertificationClient:
         sock.connect(self.socket_path)
 
         logger.debug(
-            "Unified-Identity - Unified-Identity: UDS HTTP %s %s via %s",
+            "Unified-Identity: UDS HTTP %s %s via %s",
             method,
             path,
             self.socket_path,
@@ -343,7 +343,7 @@ class DelegatedCertificationClient:
         
         if not os.path.exists(client_cert_path) or not os.path.exists(client_key_path):
             logger.debug(
-                "Unified-Identity - Unified-Identity: Client certificate not found at %s or key at %s",
+                "Unified-Identity: Client certificate not found at %s or key at %s",
                 client_cert_path,
                 client_key_path,
             )
@@ -361,13 +361,13 @@ class DelegatedCertificationClient:
             context.load_cert_chain(client_cert_path, client_key_path)
             
             logger.debug(
-                "Unified-Identity - Unified-Identity: Created mTLS context with client certificate: %s (agent will verify client cert)",
+                "Unified-Identity: Created mTLS context with client certificate: %s (agent will verify client cert)",
                 client_cert_path,
             )
             return context
         except Exception as e:
             logger.warning(
-                "Unified-Identity - Unified-Identity: Failed to create mTLS context: %s",
+                "Unified-Identity: Failed to create mTLS context: %s",
                 e,
             )
             return None
@@ -387,7 +387,7 @@ class DelegatedCertificationClient:
         request_body = body or b""
         
         logger.debug(
-            "Unified-Identity - Unified-Identity: HTTP/HTTPS %s %s",
+            "Unified-Identity: HTTP/HTTPS %s %s",
             method,
             url,
         )
@@ -407,7 +407,7 @@ class DelegatedCertificationClient:
                 else:
                     # Fallback: disable certificate verification if client cert not available
                     logger.warning(
-                        "Unified-Identity - Unified-Identity: Client certificate not available, disabling certificate verification (insecure)"
+                        "Unified-Identity: Client certificate not available, disabling certificate verification (insecure)"
                     )
                     ssl_context = ssl.create_default_context()
                     ssl_context.check_hostname = False
@@ -421,7 +421,7 @@ class DelegatedCertificationClient:
                     return response_json
         except urllib.error.HTTPError as e:
             logger.error(
-                "Unified-Identity - Unified-Identity: HTTP error %d: %s",
+                "Unified-Identity: HTTP error %d: %s",
                 e.code,
                 e.reason,
             )
@@ -434,13 +434,13 @@ class DelegatedCertificationClient:
             return None
         except urllib.error.URLError as e:
             logger.error(
-                "Unified-Identity - Unified-Identity: URL error: %s",
+                "Unified-Identity: URL error: %s",
                 e.reason,
             )
             return None
         except Exception as e:
             logger.error(
-                "Unified-Identity - Unified-Identity: HTTP request error: %s",
+                "Unified-Identity: HTTP request error: %s",
                 e,
             )
             return None
@@ -462,19 +462,19 @@ class DelegatedCertificationClient:
             agent_uuid = payload.get("agent_uuid")
             if agent_uuid:
                 logger.info(
-                    "Unified-Identity - Unified-Identity: Retrieved agent UUID via /agent/info: %s",
+                    "Unified-Identity: Retrieved agent UUID via /agent/info: %s",
                     agent_uuid,
                 )
             return agent_uuid
         except Exception as e:
             logger.debug(
-                "Unified-Identity - Unified-Identity: Could not fetch agent UUID from /agent/info: %s",
+                "Unified-Identity: Could not fetch agent UUID from /agent/info: %s",
                 e,
             )
             return None
 
 
-# Unified-Identity - Unified-Identity: Hardware Integration & Delegated Certification
+# Unified-Identity: Hardware Integration & Delegated Certification
 def create_delegated_cert_client(
     endpoint: Optional[str] = None,
 ) -> Optional[DelegatedCertificationClient]:
@@ -489,7 +489,7 @@ def create_delegated_cert_client(
     """
     if not is_unified_identity_enabled():
         logger.debug(
-            "Unified-Identity - Unified-Identity: Feature flag disabled, not creating delegated cert client"
+            "Unified-Identity: Feature flag disabled, not creating delegated cert client"
         )
         return None
 

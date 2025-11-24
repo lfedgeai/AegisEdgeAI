@@ -55,7 +55,7 @@ var (
 
 const rpcTimeout = 30 * time.Second
 
-// Unified-Identity - Unified-Identity: Hardware Integration & Delegated Certification
+// Unified-Identity: Hardware Integration & Delegated Certification
 type X509SVID struct {
 	CertChain     []byte
 	ExpiresAt     int64
@@ -119,7 +119,7 @@ type client struct {
 	// dialOpts optionally sets gRPC dial options
 	dialOpts []grpc.DialOption
 
-	// Unified-Identity - Unified-Identity: TPM plugin client for real TPM operations
+	// Unified-Identity: TPM plugin client for real TPM operations
 	tpmPlugin *tpmplugin.TPMPluginGateway
 }
 
@@ -133,7 +133,7 @@ func newClient(c *Config) *client {
 		c: c,
 	}
 	
-	// Unified-Identity - Unified-Identity: Initialize TPM plugin client if feature flag is enabled
+	// Unified-Identity: Initialize TPM plugin client if feature flag is enabled
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 		// Try to find TPM plugin CLI in common locations
 		pluginPath := os.Getenv("TPM_PLUGIN_CLI_PATH")
@@ -152,7 +152,7 @@ func newClient(c *Config) *client {
 		}
 		
 		if pluginPath != "" {
-			// Unified-Identity - Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
+			// Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
 			// Default to UDS socket, but allow HTTP endpoint via environment variable
 			tpmPluginEndpoint := os.Getenv("TPM_PLUGIN_ENDPOINT")
 			if tpmPluginEndpoint == "" {
@@ -160,9 +160,9 @@ func newClient(c *Config) *client {
 				tpmPluginEndpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
 			}
 			cl.tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, c.Log)
-			c.Log.Info("Unified-Identity - Unified-Identity: TPM plugin client initialized")
+			c.Log.Info("Unified-Identity: TPM plugin client initialized")
 		} else {
-			c.Log.Warn("Unified-Identity - Unified-Identity: TPM plugin CLI not found, will use stub data")
+			c.Log.Warn("Unified-Identity: TPM plugin CLI not found, will use stub data")
 		}
 	}
 	
@@ -280,7 +280,7 @@ func (c *client) SyncUpdates(ctx context.Context, cachedEntries map[string]*comm
 	}, nil
 }
 
-// Unified-Identity - Unified-Identity: Hardware Integration & Delegated Certification
+// Unified-Identity: Hardware Integration & Delegated Certification
 // Interface: SPIRE Agent → SPIRE Server
 // Status: ✅ Existing (Standard SPIRE) - Extended with SovereignAttestation
 // Transport: mTLS over TCP
@@ -302,7 +302,7 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 		Csr: csr,
 	}
 
-	// Unified-Identity - Unified-Identity: Request nonce from server before building SovereignAttestation
+	// Unified-Identity: Request nonce from server before building SovereignAttestation
 	// Step 2: SPIRE Agent Requests Nonce from SPIRE Server (per architecture doc)
 	var nonce string
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
@@ -324,16 +324,16 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 		challengeNonceBytes := nonceResp.GetChallengeNonce()
 		if len(challengeNonceBytes) > 0 {
 			nonce = hex.EncodeToString(challengeNonceBytes)
-			c.c.Log.WithField("nonce_length", len(nonce)).Info("Unified-Identity - Unified-Identity: Received nonce from SPIRE Server")
+			c.c.Log.WithField("nonce_length", len(nonce)).Info("Unified-Identity: Received nonce from SPIRE Server")
 		} else {
 			// Fallback: generate nonce locally if server doesn't provide one
 			nonceBytes := make([]byte, 32)
 			if _, err := rand.Read(nonceBytes); err != nil {
-				c.c.Log.WithError(err).Warn("Unified-Identity - Unified-Identity: Failed to generate nonce, using stub data")
+				c.c.Log.WithError(err).Warn("Unified-Identity: Failed to generate nonce, using stub data")
 				params.SovereignAttestation = BuildSovereignAttestationStub()
 			} else {
 				nonce = hex.EncodeToString(nonceBytes)
-				c.c.Log.Warn("Unified-Identity - Unified-Identity: Server did not provide nonce, using locally generated nonce (fallback)")
+				c.c.Log.Warn("Unified-Identity: Server did not provide nonce, using locally generated nonce (fallback)")
 			}
 		}
 
@@ -361,10 +361,10 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 		claim := resp.AttestedClaims[0]
 		c.c.Log.WithFields(logrus.Fields{
 			"geolocation": claim.Geolocation,
-		}).Info("Unified-Identity - Unified-Identity: Received AttestedClaims for agent SVID")
+		}).Info("Unified-Identity: Received AttestedClaims for agent SVID")
 	}
 
-	// Unified-Identity - Unified-Identity: Dump agent SVID details to logs
+	// Unified-Identity: Dump agent SVID details to logs
 	if len(resp.Svid.CertChain) > 0 {
 		cert, err := x509.ParseCertificate(resp.Svid.CertChain[0])
 		if err == nil {
@@ -390,19 +390,19 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 				Bytes: cert.Raw,
 			})
 
-			// Unified-Identity - Unified-Identity: Log unified agent SVID with formatted, readable output
+			// Unified-Identity: Log unified agent SVID with formatted, readable output
 			c.c.Log.WithFields(logrus.Fields{
 				"spiffe_id":     spiffeID,
 				"serial_number": cert.SerialNumber.String(),
 				"not_before":    cert.NotBefore.Format(time.RFC3339),
 				"not_after":     cert.NotAfter.Format(time.RFC3339),
-			}).Info("Unified-Identity - Unified-Identity: Agent Unified SVID renewed")
+			}).Info("Unified-Identity: Agent Unified SVID renewed")
 
 			// Log certificate PEM separately for readability
 			c.c.Log.WithFields(logrus.Fields{
 				"spiffe_id": spiffeID,
 				"cert_pem":  string(certPEM),
-			}).Info("Unified-Identity - Unified-Identity: Agent SVID Certificate (PEM)")
+			}).Info("Unified-Identity: Agent SVID Certificate (PEM)")
 
 			// Log Unified Identity claims in formatted JSON if present
 			if len(unifiedIdentityExt) > 0 {
@@ -413,13 +413,13 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 					// Log claims as a multi-line formatted message
 					c.c.Log.WithFields(logrus.Fields{
 						"spiffe_id": spiffeID,
-					}).Infof("Unified-Identity - Unified-Identity: Agent SVID Unified Identity Claims:\n%s", string(claimsFormatted))
+					}).Infof("Unified-Identity: Agent SVID Unified Identity Claims:\n%s", string(claimsFormatted))
 				} else {
 					// Fallback if JSON parsing fails
 					c.c.Log.WithFields(logrus.Fields{
 						"spiffe_id":        spiffeID,
 						"claims_raw":       string(unifiedIdentityExt),
-					}).Warn("Unified-Identity - Unified-Identity: Agent SVID claims (raw, JSON parse failed)")
+					}).Warn("Unified-Identity: Agent SVID claims (raw, JSON parse failed)")
 				}
 			}
 		}
@@ -447,7 +447,7 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 			Csr:     csr,
 		}
 		
-		// Unified-Identity - Unified-Identity: Add SovereignAttestation if feature flag is enabled
+		// Unified-Identity: Add SovereignAttestation if feature flag is enabled
 		if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 			param.SovereignAttestation = BuildSovereignAttestationStub()
 		}
@@ -471,7 +471,7 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 			certChain = append(certChain, cert...)
 		}
 
-		// Unified-Identity - Unified-Identity: Include AttestedClaims from server response
+		// Unified-Identity: Include AttestedClaims from server response
 		svids[entryID] = &X509SVID{
 			CertChain:     certChain,
 			ExpiresAt:     result.Svid.ExpiresAt,
@@ -819,7 +819,7 @@ func (c *client) fetchBundles(ctx context.Context, federatedBundles []string) ([
 	return bundles, nil
 }
 
-// Unified-Identity - Unified-Identity: Hardware Integration & Delegated Certification
+// Unified-Identity: Hardware Integration & Delegated Certification
 // fetchSVIDsResult holds both the SVID and AttestedClaims from the server response
 type fetchSVIDsResult struct {
 	Svid           *types.X509SVID
@@ -853,7 +853,7 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 			}).Warn("Failed to mint X509 SVID")
 		}
 
-		// Unified-Identity - Unified-Identity: Extract AttestedClaims from server response
+		// Unified-Identity: Extract AttestedClaims from server response
 		results = append(results, &fetchSVIDsResult{
 			Svid:           r.Svid,
 			AttestedClaims: r.AttestedClaims,
@@ -863,7 +863,7 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 	return results, nil
 }
 
-// Unified-Identity - Unified-Identity: Build real SovereignAttestation using TPM plugin
+// Unified-Identity: Build real SovereignAttestation using TPM plugin
 // This function uses the real TPM plugin to generate App Keys, Quotes, and Certificates
 // Falls back to stub data if TPM plugin is not available
 func (c *client) BuildSovereignAttestation() *types.SovereignAttestation {
@@ -872,13 +872,13 @@ func (c *client) BuildSovereignAttestation() *types.SovereignAttestation {
 	return BuildSovereignAttestationWithPlugin(c.tpmPlugin, c.c.Log)
 }
 
-// Unified-Identity - Unified-Identity: Build SovereignAttestation with nonce from SPIRE Server
+// Unified-Identity: Build SovereignAttestation with nonce from SPIRE Server
 // This is the preferred method that aligns with the architecture document
 func (c *client) BuildSovereignAttestationWithNonce(nonce string) *types.SovereignAttestation {
 	return BuildSovereignAttestationWithPluginAndNonce(c.tpmPlugin, nonce, c.c.Log)
 }
 
-// Unified-Identity - Unified-Identity: Build real SovereignAttestation using TPM plugin with provided nonce
+// Unified-Identity: Build real SovereignAttestation using TPM plugin with provided nonce
 // This version accepts a nonce parameter (from SPIRE Server) instead of generating one locally
 func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginGateway, nonce string, log logrus.FieldLogger) *types.SovereignAttestation {
 	if tpmPlugin == nil {
@@ -899,7 +899,7 @@ func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginG
 		}
 		
 		if pluginPath != "" {
-			// Unified-Identity - Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
+			// Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
 			tpmPluginEndpoint := os.Getenv("TPM_PLUGIN_ENDPOINT")
 			if tpmPluginEndpoint == "" {
 				// Default to UDS socket
@@ -907,7 +907,7 @@ func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginG
 			}
 			tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, log)
 			if log != nil {
-				log.Info("Unified-Identity - Unified-Identity: TPM plugin client created")
+				log.Info("Unified-Identity: TPM plugin client created")
 			}
 		}
 	}
@@ -917,30 +917,30 @@ func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginG
 		sovereignAttestation, err := tpmPlugin.BuildSovereignAttestation(nonce)
 		if err != nil {
 			if log != nil {
-				log.WithError(err).Warn("Unified-Identity - Unified-Identity: Failed to build real SovereignAttestation, using stub data")
+				log.WithError(err).Warn("Unified-Identity: Failed to build real SovereignAttestation, using stub data")
 			}
 			return BuildSovereignAttestationStub()
 		}
 		
 		if log != nil {
-			log.WithField("nonce", nonce[:16]+"...").Info("Unified-Identity - Unified-Identity: Built real SovereignAttestation using TPM plugin with server nonce")
+			log.WithField("nonce", nonce[:16]+"...").Info("Unified-Identity: Built real SovereignAttestation using TPM plugin with server nonce")
 		}
 		return sovereignAttestation
 	}
 	
 	// Fallback to stub data if TPM plugin is not available
 	if log != nil {
-		log.Warn("Unified-Identity - Unified-Identity: TPM plugin not available or nonce missing, using stub data")
+		log.Warn("Unified-Identity: TPM plugin not available or nonce missing, using stub data")
 	}
 	return BuildSovereignAttestationStub()
 }
 
-// Unified-Identity - Unified-Identity: Build real SovereignAttestation using TPM plugin
+// Unified-Identity: Build real SovereignAttestation using TPM plugin
 // This is a standalone function that can be called from anywhere (e.g., node attestor)
 // It creates a TPM plugin client if one is not provided
 // NOTE: This version generates a nonce locally (fallback) - prefer BuildSovereignAttestationWithPluginAndNonce
 func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginGateway, log logrus.FieldLogger) *types.SovereignAttestation {
-	// Unified-Identity - Unified-Identity: Try to use real TPM plugin if available
+	// Unified-Identity: Try to use real TPM plugin if available
 	if tpmPlugin == nil {
 		// Try to create a TPM plugin client
 		pluginPath := os.Getenv("TPM_PLUGIN_CLI_PATH")
@@ -959,7 +959,7 @@ func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginGateway, 
 		}
 		
 		if pluginPath != "" {
-			// Unified-Identity - Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
+			// Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
 			tpmPluginEndpoint := os.Getenv("TPM_PLUGIN_ENDPOINT")
 			if tpmPluginEndpoint == "" {
 				// Default to UDS socket
@@ -967,7 +967,7 @@ func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginGateway, 
 			}
 			tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, log)
 			if log != nil {
-				log.Info("Unified-Identity - Unified-Identity: TPM plugin client created")
+				log.Info("Unified-Identity: TPM plugin client created")
 			}
 		}
 	}
@@ -979,7 +979,7 @@ func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginGateway, 
 		nonceBytes := make([]byte, 32)
 		if _, err := rand.Read(nonceBytes); err != nil {
 			if log != nil {
-				log.WithError(err).Warn("Unified-Identity - Unified-Identity: Failed to generate nonce, using stub data")
+				log.WithError(err).Warn("Unified-Identity: Failed to generate nonce, using stub data")
 			}
 			return BuildSovereignAttestationStub()
 		}
@@ -988,31 +988,31 @@ func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginGateway, 
 		sovereignAttestation, err := tpmPlugin.BuildSovereignAttestation(nonce)
 		if err != nil {
 			if log != nil {
-				log.WithError(err).Warn("Unified-Identity - Unified-Identity: Failed to build real SovereignAttestation, using stub data")
+				log.WithError(err).Warn("Unified-Identity: Failed to build real SovereignAttestation, using stub data")
 			}
 			return BuildSovereignAttestationStub()
 		}
 		
 		if log != nil {
-			log.Info("Unified-Identity - Unified-Identity: Built real SovereignAttestation using TPM plugin")
+			log.Info("Unified-Identity: Built real SovereignAttestation using TPM plugin")
 		}
 		return sovereignAttestation
 	}
 	
 	// Fallback to stub data if TPM plugin is not available
 	if log != nil {
-		log.Warn("Unified-Identity - Unified-Identity: TPM plugin not available, using stub data")
+		log.Warn("Unified-Identity: TPM plugin not available, using stub data")
 	}
 	return BuildSovereignAttestationStub()
 }
 
-// Unified-Identity - Unified-Identity: Build stub SovereignAttestation
+// Unified-Identity: Build stub SovereignAttestation
 // This is used as a fallback when TPM is not available or TPM plugin fails
 func BuildSovereignAttestationStub() *types.SovereignAttestation {
 	// Stub TPM quote with fixed data (base64-encoded for testing)
 	stubQuote := base64.StdEncoding.EncodeToString([]byte("stub-tpm-quote-phase3"))
 	
-	// Unified-Identity - Unified-Identity: Use valid PEM format for stub public key
+	// Unified-Identity: Use valid PEM format for stub public key
 	// This is a valid PEM-format EC public key for testing (generated with cryptography library)
 	stubAppKeyPublic := `-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEmEfSIT6GJla8CK04AsF4bv9WyoFZ

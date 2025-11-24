@@ -2,7 +2,6 @@
 package svid
 
 import (
-	"context"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -28,45 +27,17 @@ func TestSovereignAttestationIntegration(t *testing.T) {
 	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Create mock Keylime client (stubbed)
 	claims := &keylime.AttestedClaims{
-		Geolocation: "Spain: N40.4168, W3.7038",
+		Geolocation: &keylime.Geolocation{
+			Type:     "mobile",
+			SensorID: "12d1:1433",
+			Value:    "Spain: N40.4168, W3.7038",
+		},
 	}
 
 	mockKeylimeClient := &mockKeylimeClient{
 		returnAttestedClaims: claims,
 	}
 
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Create policy engine with permissive policy
-	policyEngine := policy.NewEngine(policy.PolicyConfig{
-		AllowedGeolocations: []string{"Spain:*"},
-		Logger:              logrus.New(),
-	})
-
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Create service with Keylime client and policy engine
-	// Note: We can't directly assign mockKeylimeClient to keylimeClient field
-	// because Service expects *keylime.Client. For testing, we'll test the logic
-	// that doesn't require the actual client type.
-	service := &Service{
-		keylimeClient: nil, // Will be set via reflection or interface in real implementation
-		policyEngine:  policyEngine,
-	}
-	// For this test, we'll directly test processSovereignAttestation with a mock
-	// In a real scenario, we'd use an interface or dependency injection
-
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Test processing SovereignAttestation
-	sovereignAttestation := &types.SovereignAttestation{
-		TpmSignedAttestation: "dGVzdC1xdW90ZQ==", // base64("test-quote")
-		AppKeyPublic:         "test-public-key",
-		AppKeyCertificate:    []byte("test-cert"),
-		ChallengeNonce:       "test-nonce-123",
-		WorkloadCodeHash:     "test-hash",
-	}
-
-	ctx := context.Background()
-	log := logrus.New()
-	log.SetLevel(logrus.DebugLevel)
 
 	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Since we can't directly inject mockKeylimeClient, we test the mock client directly
@@ -75,7 +46,10 @@ func TestSovereignAttestationIntegration(t *testing.T) {
 	attestedClaims, err := mockKeylimeClient.VerifyEvidence(req)
 	require.NoError(t, err)
 	require.NotNil(t, attestedClaims)
-	assert.Equal(t, "Spain: N40.4168, W3.7038", attestedClaims.Geolocation)
+	require.NotNil(t, attestedClaims.Geolocation)
+	assert.Equal(t, "mobile", attestedClaims.Geolocation.Type)
+	assert.Equal(t, "12d1:1433", attestedClaims.Geolocation.SensorID)
+	assert.Equal(t, "Spain: N40.4168, W3.7038", attestedClaims.Geolocation.Value)
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification
@@ -100,12 +74,17 @@ func TestPolicyFailure(t *testing.T) {
 	defer fflag.Unload()
 
 	claims2 := &keylime.AttestedClaims{
-		Geolocation: "Germany: Berlin",
+		Geolocation: &keylime.Geolocation{
+			Type:     "mobile",
+			SensorID: "12d1:1433",
+			Value:    "Germany: Berlin",
+		},
 	}
 
 	mockKeylimeClient := &mockKeylimeClient{
 		returnAttestedClaims: claims2,
 	}
+	_ = mockKeylimeClient // Use variable
 
 	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Policy only allows Spain
@@ -114,20 +93,23 @@ func TestPolicyFailure(t *testing.T) {
 		Logger:              logrus.New(),
 	})
 
-	service := &Service{
-		keylimeClient: nil, // Mock client tested separately
-		policyEngine:  policyEngine,
-	}
-
 	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Test that policy engine correctly rejects geolocation outside allowed zones
 	// Since we can't directly test processSovereignAttestation without a real client,
 	// we test the policy engine directly
-	allowed := policyEngine.EvaluateGeolocation("Germany: Berlin")
-	assert.False(t, allowed, "Germany should not be allowed when policy only allows Spain")
+	policyClaims := &policy.AttestedClaims{
+		Geolocation: "Germany: Berlin",
+	}
+	result, err := policyEngine.Evaluate(policyClaims)
+	require.NoError(t, err)
+	assert.False(t, result.Allowed, "Germany should not be allowed when policy only allows Spain")
 	
-	allowed = policyEngine.EvaluateGeolocation("Spain: Madrid")
-	assert.True(t, allowed, "Spain should be allowed")
+	policyClaims2 := &policy.AttestedClaims{
+		Geolocation: "Spain: Madrid",
+	}
+	result2, err := policyEngine.Evaluate(policyClaims2)
+	require.NoError(t, err)
+	assert.True(t, result2.Allowed, "Spain should be allowed")
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification

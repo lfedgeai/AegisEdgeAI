@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Unified-Identity - Unified-Identity: Hardware Integration & Delegated Certification
+// Unified-Identity: Hardware Integration & Delegated Certification
 // Copyright 2024 Keylime Authors
 
 use crate::{tpm, Error as KeylimeError, QuoteData};
@@ -43,7 +43,7 @@ pub struct CertifyAppKeyResponse {
     pub error: Option<String>,
 }
 
-/// Unified-Identity - Unified-Identity: Delegated Certification Endpoint
+/// Unified-Identity: Delegated Certification Endpoint
 ///
 /// This endpoint allows the SPIRE TPM Plugin to request a certificate for an App Key
 /// that was generated in the TPM. The certificate is created by using TPM2_Certify to
@@ -57,9 +57,9 @@ async fn certify_app_key(
     body: web::Json<CertifyAppKeyRequest>,
     data: web::Data<QuoteData<'_>>,
 ) -> impl Responder {
-    // Unified-Identity - Unified-Identity: Check feature flag
+    // Unified-Identity: Check feature flag
     if !data.unified_identity_enabled {
-        warn!("Unified-Identity - Unified-Identity: Delegated certification request received but feature flag is disabled");
+        warn!("Unified-Identity: Delegated certification request received but feature flag is disabled");
         return HttpResponse::Forbidden().json(JsonWrapper::error(
             403,
             "Unified-Identity feature is disabled. Enable unified_identity_enabled in agent config.".to_string(),
@@ -67,7 +67,7 @@ async fn certify_app_key(
     }
 
     info!(
-        "Unified-Identity - Unified-Identity: Delegated certification request from {:?}",
+        "Unified-Identity: Delegated certification request from {:?}",
         req.connection_info().peer_addr()
     );
 
@@ -225,7 +225,7 @@ async fn certify_app_key(
     };
 
     info!(
-        "Unified-Identity - Unified-Identity: Delegated certification successful for agent {}",
+        "Unified-Identity: Delegated certification successful for agent {}",
         data.agent_uuid
     );
 

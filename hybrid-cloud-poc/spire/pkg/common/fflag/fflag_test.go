@@ -115,7 +115,8 @@ func TestUnload(t *testing.T) {
 				singleton.loaded = false
 			},
 			want: want{
-				errStr: "feature flags have not been loaded",
+				// Unload now allows unloading even when not loaded (resets to defaults)
+				errStr: "",
 			},
 		},
 		{

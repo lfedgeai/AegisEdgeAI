@@ -142,24 +142,24 @@ def _get_mobile_sensor_settings() -> Optional[Dict[str, Any]]:
     try:
         enabled_raw = config.get("verifier", "mobile_sensor_enabled", fallback="false")
         logger.info(
-            "Unified-Identity - Unified-Identity: Read mobile_sensor_enabled raw value: %s (type: %s)",
+            "Unified-Identity: Read mobile_sensor_enabled raw value: %s (type: %s)",
             enabled_raw,
             type(enabled_raw).__name__,
         )
         enabled = config.getboolean("verifier", "mobile_sensor_enabled", fallback=False)
         logger.info(
-            "Unified-Identity - Unified-Identity: Parsed mobile_sensor_enabled as boolean: %s",
+            "Unified-Identity: Parsed mobile_sensor_enabled as boolean: %s",
             enabled,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "Unified-Identity - Unified-Identity: Failed to read mobile_sensor_enabled config: %s", exc
+            "Unified-Identity: Failed to read mobile_sensor_enabled config: %s", exc
         )
         enabled = False
 
     if not enabled:
         logger.info(
-            "Unified-Identity - Unified-Identity: Mobile sensor verification disabled in config (enabled=%s)",
+            "Unified-Identity: Mobile sensor verification disabled in config (enabled=%s)",
             enabled,
         )
         MOBILE_SENSOR_SETTINGS_CACHE = None
@@ -173,7 +173,7 @@ def _get_mobile_sensor_settings() -> Optional[Dict[str, Any]]:
     endpoint = (endpoint or "").strip()
     if not endpoint:
         logger.error(
-            "Unified-Identity - Unified-Identity: mobile_sensor_enabled is true but 'mobile_sensor_endpoint' missing; disabling mobile sensor verification"
+            "Unified-Identity: mobile_sensor_enabled is true but 'mobile_sensor_endpoint' missing; disabling mobile sensor verification"
         )
         MOBILE_SENSOR_SETTINGS_CACHE = None
         return None
@@ -186,7 +186,7 @@ def _get_mobile_sensor_settings() -> Optional[Dict[str, Any]]:
     timeout = max(timeout, 1.0)
     MOBILE_SENSOR_SETTINGS_CACHE = {"endpoint": endpoint, "timeout": timeout}
     logger.info(
-        "Unified-Identity - Unified-Identity: Mobile sensor verification enabled (endpoint=%s, timeout=%ss)",
+        "Unified-Identity: Mobile sensor verification enabled (endpoint=%s, timeout=%ss)",
         endpoint,
         timeout,
     )
@@ -216,7 +216,7 @@ def _call_mobile_sensor_service(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     url = _build_http_verify_url(endpoint)
     logger.info(
-        "Unified-Identity - Unified-Identity: Calling mobile sensor service at %s with payload: %s",
+        "Unified-Identity: Calling mobile sensor service at %s with payload: %s",
         url,
         payload,
     )
@@ -228,19 +228,19 @@ def _call_mobile_sensor_service(payload: Dict[str, Any]) -> Dict[str, Any]:
             headers={"Accept": "application/json", "Content-Type": "application/json"},
         )
         logger.info(
-            "Unified-Identity - Unified-Identity: Mobile sensor service response: status=%s, body=%s",
+            "Unified-Identity: Mobile sensor service response: status=%s, body=%s",
             response.status_code,
             response.text[:500],
         )
     except requests.RequestException as exc:  # noqa: BLE001
         logger.error(
-            "Unified-Identity - Unified-Identity: Mobile sensor service HTTP request failed: %s", exc
+            "Unified-Identity: Mobile sensor service HTTP request failed: %s", exc
         )
         raise MobileSensorVerificationError(f"mobile sensor service HTTP request failed: {exc}") from exc
 
     if response.status_code != 200:
         logger.error(
-            "Unified-Identity - Unified-Identity: Mobile sensor service returned HTTP %s: %s",
+            "Unified-Identity: Mobile sensor service returned HTTP %s: %s",
             response.status_code,
             response.text[:500],
         )
@@ -251,12 +251,12 @@ def _call_mobile_sensor_service(payload: Dict[str, Any]) -> Dict[str, Any]:
     try:
         result = response.json()
         logger.info(
-            "Unified-Identity - Unified-Identity: Mobile sensor service returned JSON: %s", result
+            "Unified-Identity: Mobile sensor service returned JSON: %s", result
         )
         return result
     except Exception as exc:  # noqa: BLE001
         logger.error(
-            "Unified-Identity - Unified-Identity: Failed to parse mobile sensor service JSON response: %s, body: %s",
+            "Unified-Identity: Failed to parse mobile sensor service JSON response: %s, body: %s",
             exc,
             response.text[:500],
         )
@@ -296,13 +296,13 @@ def _unix_socket_mobile_sensor_request(socket_path: str, payload: Dict[str, Any]
 
 def _verify_mobile_sensor_geolocation(geolocation: Optional[Dict[str, Any]]) -> None:
     logger.info(
-        "Unified-Identity - Unified-Identity: _verify_mobile_sensor_geolocation called with geolocation=%s",
+        "Unified-Identity: _verify_mobile_sensor_geolocation called with geolocation=%s",
         geolocation,
     )
     settings = _get_mobile_sensor_settings()
     if not settings:
         logger.info(
-            "Unified-Identity - Unified-Identity: Mobile sensor settings not available, skipping verification"
+            "Unified-Identity: Mobile sensor settings not available, skipping verification"
         )
         return
 
@@ -310,14 +310,14 @@ def _verify_mobile_sensor_geolocation(geolocation: Optional[Dict[str, Any]]) -> 
     # If geolocation is None (e.g., during SVID renewals without new quotes), skip verification
     if not geolocation or not isinstance(geolocation, dict):
         logger.debug(
-            "Unified-Identity - Unified-Identity: Mobile sensor verification enabled but geolocation is None or not a dict; skipping verification (this is normal for SVID renewals)"
+            "Unified-Identity: Mobile sensor verification enabled but geolocation is None or not a dict; skipping verification (this is normal for SVID renewals)"
         )
         return
 
     geo_type = str(geolocation.get("type", "")).lower()
     if geo_type != "mobile":
         logger.debug(
-            "Unified-Identity - Unified-Identity: Mobile sensor verification enabled but geolocation type is '%s'; skipping microservice call",
+            "Unified-Identity: Mobile sensor verification enabled but geolocation type is '%s'; skipping microservice call",
             geo_type or "<unknown>",
         )
         return
@@ -330,7 +330,7 @@ def _verify_mobile_sensor_geolocation(geolocation: Optional[Dict[str, Any]]) -> 
     verification_result = response.get("verification_result")
     if verification_result is True:
         logger.info(
-            "Unified-Identity - Unified-Identity: Mobile sensor verification succeeded (sensor_id=%s)", sensor_id
+            "Unified-Identity: Mobile sensor verification succeeded (sensor_id=%s)", sensor_id
         )
         return
 
@@ -1720,7 +1720,7 @@ class VerifyEvidenceHandler(BaseHandler):
             return
 
         try:
-            # Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
+            # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
             # Check if this is a tpm-app-key submission
             metadata = json_body.get("metadata", {})
             submission_type = metadata.get("submission_type", "")
@@ -1730,21 +1730,21 @@ class VerifyEvidenceHandler(BaseHandler):
                 and ("tpm-app-key" in submission_type.lower() or "por" in submission_type.lower())
             )
 
-            # Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
+            # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
             # Check feature flag
             if is_tpm_app_key:
                 from keylime import app_key_verification
 
                 if not app_key_verification.is_unified_identity_enabled():
                     logger.warning(
-                        "Unified-Identity - Unified-Identity: tpm-app-key submission received but feature flag is disabled"
+                        "Unified-Identity: tpm-app-key submission received but feature flag is disabled"
                     )
                     web_util.echo_json_response(
                         self, 403, "Unified-Identity feature is disabled. Enable unified_identity_enabled in verifier config."
                     )
                     return
 
-                # Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
+                # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
                 # Handle tpm-app-key flow
                 result = self._tpm_app_key_verify(data, metadata)
                 if result is None:
@@ -1791,7 +1791,7 @@ class VerifyEvidenceHandler(BaseHandler):
             # TODO - should we use different error codes for attestation failures even if we processed correctly?
             web_util.echo_json_response(self, 200, "Success", attestation_response)
         except Exception as e:
-            logger.exception("Unified-Identity - Unified-Identity: Exception in verify/evidence handler")
+            logger.exception("Unified-Identity: Exception in verify/evidence handler")
             web_util.echo_json_response(self, 500, "Internal Server Error: Failed to process attestation data")
 
     def _tpm_verify(self, json_body: dict[str, Any]) -> Failure:
@@ -1923,7 +1923,7 @@ class VerifyEvidenceHandler(BaseHandler):
             logger.warning("Failed to process /verify/evidence data in SEV-SNP verifier: %s", e)
             raise
 
-    # Unified-Identity - Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
+    # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
     def _tpm_app_key_verify(self, data: Dict[str, Any], metadata: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         '''
         Verify TPM App Key-based evidence and return attested claims.
@@ -1940,7 +1940,7 @@ class VerifyEvidenceHandler(BaseHandler):
         from concurrent.futures import ThreadPoolExecutor
         from keylime import app_key_verification, fact_provider
 
-        logger.info('Unified-Identity - Unified-Identity: Processing tpm-app-key verification request')
+        logger.info('Unified-Identity: Processing tpm-app-key verification request')
 
         quote = data.get('quote', '')
         nonce = data.get('nonce', '')
@@ -1956,7 +1956,7 @@ class VerifyEvidenceHandler(BaseHandler):
         agent_mtls_cert = data.get('agent_mtls_cert')
 
         if not nonce:
-            logger.error("Unified-Identity - Unified-Identity: Missing required field 'nonce'")
+            logger.error("Unified-Identity: Missing required field 'nonce'")
             web_util.echo_json_response(self, 400, 'missing required field: data.nonce')
             return None
         
@@ -1988,7 +1988,7 @@ class VerifyEvidenceHandler(BaseHandler):
                         if agent_obj.mtls_cert and agent_obj.mtls_cert != 'disabled':
                             agent_mtls_cert = agent_mtls_cert or agent_obj.mtls_cert
             except Exception as e:  # noqa: BLE001
-                logger.debug('Unified-Identity - Unified-Identity: Could not hydrate agent info from DB: %s', e)
+                logger.debug('Unified-Identity: Could not hydrate agent info from DB: %s', e)
             
         def _hydrate_agent_from_registrar() -> None:
             nonlocal agent_ip, agent_port, agent_uuid, agent_mtls_cert, tpm_ak
@@ -2013,13 +2013,13 @@ class VerifyEvidenceHandler(BaseHandler):
                             logger=logger,
                         )
                 except Exception as e:  # noqa: BLE001
-                    logger.debug('Unified-Identity - Unified-Identity: Could not create TLS context for registrar queries: %s', e)
+                    logger.debug('Unified-Identity: Could not create TLS context for registrar queries: %s', e)
                     
                 def _list_agents(context):
                     try:
                         return registrar_client.doRegistrarList(registrar_ip, registrar_port, context)
                     except Exception as exc:  # noqa: BLE001
-                        logger.debug('Unified-Identity - Unified-Identity: Registrar list failed: %s', exc)
+                        logger.debug('Unified-Identity: Registrar list failed: %s', exc)
                         return None
 
                 agent_list = _list_agents(None)
@@ -2069,7 +2069,7 @@ class VerifyEvidenceHandler(BaseHandler):
                             agent_mtls_cert = reg_cert
                         break
             except Exception as e:  # noqa: BLE001
-                logger.warning('Unified-Identity - Unified-Identity: Could not query registrar for agent data: %s', e)
+                logger.warning('Unified-Identity: Could not query registrar for agent data: %s', e)
 
         if not agent_ip or not agent_port or not agent_mtls_cert or not agent_uuid or not tpm_ak:
             _hydrate_agent_from_db()
@@ -2077,7 +2077,7 @@ class VerifyEvidenceHandler(BaseHandler):
             _hydrate_agent_from_registrar()
 
         if not agent_ip or not agent_port:
-            logger.error('Unified-Identity - Unified-Identity: Agent IP/port unavailable; cannot contact agent for quote')
+            logger.error('Unified-Identity: Agent IP/port unavailable; cannot contact agent for quote')
             web_util.echo_json_response(
                 self, 400, 'missing required fields: agent_ip/agent_port (unable to locate agent endpoint)'
             )
@@ -2089,18 +2089,18 @@ class VerifyEvidenceHandler(BaseHandler):
             agent_port_int = 9002
 
         # Determine if we should use HTTP or HTTPS based on mTLS certificate availability
-        # Unified-Identity - Unified-Identity: Always use mTLS when agent certificate is available (Gap #2 fix)
+        # Unified-Identity: Always use mTLS when agent certificate is available (Gap #2 fix)
         use_https = True
         ssl_context = None
         if not agent_mtls_cert or agent_mtls_cert == 'disabled':
-            logger.warning('Unified-Identity - Unified-Identity: Agent mTLS certificate unavailable; using HTTP fallback')
+            logger.warning('Unified-Identity: Agent mTLS certificate unavailable; using HTTP fallback')
             use_https = False
         else:
             try:
                 ssl_context = web_util.generate_agent_tls_context('verifier', agent_mtls_cert, logger=logger)
-                logger.info('Unified-Identity - Unified-Identity: Using mTLS for agent communication (agent: %s:%s)', agent_ip, agent_port_int)
+                logger.info('Unified-Identity: Using mTLS for agent communication (agent: %s:%s)', agent_ip, agent_port_int)
             except Exception as e:  # noqa: BLE001
-                logger.warning('Unified-Identity - Unified-Identity: Failed to build mTLS context: %s; falling back to HTTP', e)
+                logger.warning('Unified-Identity: Failed to build mTLS context: %s; falling back to HTTP', e)
                 use_https = False
                 ssl_context = None
 
@@ -2115,7 +2115,7 @@ class VerifyEvidenceHandler(BaseHandler):
                 protocol = 'https' if use_https else 'http'
                 quote_url = f"{protocol}://{agent_ip}:{agent_port_int}/v{api_version}/quotes/identity?nonce={nonce}"
                 logger.info(
-                    'Unified-Identity - Unified-Identity: Requesting quote from agent %s:%s via %s',
+                    'Unified-Identity: Requesting quote from agent %s:%s via %s',
                     agent_ip,
                     agent_port_int,
                     quote_url,
@@ -2141,7 +2141,7 @@ class VerifyEvidenceHandler(BaseHandler):
                         response = executor.submit(_run_request).result(timeout=agent_quote_timeout + 5)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
-                        'Unified-Identity - Unified-Identity: Quote request to agent API v%s failed: %s',
+                        'Unified-Identity: Quote request to agent API v%s failed: %s',
                         api_version,
                         exc,
                     )
@@ -2152,7 +2152,7 @@ class VerifyEvidenceHandler(BaseHandler):
 
                 if response.status_code == 404:
                     logger.debug(
-                        'Unified-Identity - Unified-Identity: Agent does not support API v%s (404). Trying next version.',
+                        'Unified-Identity: Agent does not support API v%s (404). Trying next version.',
                         api_version,
                     )
                     continue
@@ -2165,7 +2165,7 @@ class VerifyEvidenceHandler(BaseHandler):
                         except Exception:
                             body_preview = '<binary>'
                     logger.error(
-                        'Unified-Identity - Unified-Identity: Agent quote request failed (API v%s) HTTP %s: %s',
+                        'Unified-Identity: Agent quote request failed (API v%s) HTTP %s: %s',
                         api_version,
                         response.status_code,
                         body_preview,
@@ -2178,7 +2178,7 @@ class VerifyEvidenceHandler(BaseHandler):
                     )
                     quote_response = json.loads(response_body)
                     logger.debug(
-                        'Unified-Identity - Unified-Identity: Parsed quote response (API v%s): code=%s, status=%s, has_results=%s',
+                        'Unified-Identity: Parsed quote response (API v%s): code=%s, status=%s, has_results=%s',
                         api_version,
                         quote_response.get('code'),
                         quote_response.get('status'),
@@ -2186,7 +2186,7 @@ class VerifyEvidenceHandler(BaseHandler):
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.error(
-                        'Unified-Identity - Unified-Identity: Failed to parse agent quote response (API v%s): %s',
+                        'Unified-Identity: Failed to parse agent quote response (API v%s): %s',
                         api_version,
                         exc,
                     )
@@ -2197,19 +2197,19 @@ class VerifyEvidenceHandler(BaseHandler):
                     agent_quote = quote_data.get('quote')
                     if agent_quote:
                         logger.info(
-                            'Unified-Identity - Unified-Identity: Successfully retrieved quote from agent (API v%s), quote length=%d',
+                            'Unified-Identity: Successfully retrieved quote from agent (API v%s), quote length=%d',
                             api_version,
                             len(agent_quote) if agent_quote else 0,
                         )
                         return agent_quote, quote_data.get('hash_alg'), quote_data
                     logger.warning(
-                        'Unified-Identity - Unified-Identity: Agent returned success but quote payload empty (API v%s). Response keys: %s',
+                        'Unified-Identity: Agent returned success but quote payload empty (API v%s). Response keys: %s',
                         api_version,
                         list(quote_data.keys()) if isinstance(quote_data, dict) else 'not a dict',
                     )
                 else:
                     logger.debug(
-                        'Unified-Identity - Unified-Identity: Agent quote request error (API v%s): %s',
+                        'Unified-Identity: Agent quote request error (API v%s): %s',
                         api_version,
                         quote_response.get('error') or quote_response.get('status'),
                     )
@@ -2219,7 +2219,7 @@ class VerifyEvidenceHandler(BaseHandler):
         if not quote:
             agent_quote, quote_hash_alg, quote_payload = _fetch_quote_from_agent()
             if not agent_quote:
-                logger.error('Unified-Identity - Unified-Identity: Unable to retrieve quote from agent for nonce %s', nonce)
+                logger.error('Unified-Identity: Unable to retrieve quote from agent for nonce %s', nonce)
                 web_util.echo_json_response(
                     self,
                     400,
@@ -2230,7 +2230,7 @@ class VerifyEvidenceHandler(BaseHandler):
             if quote_hash_alg:
                 hash_alg = quote_hash_alg
             if quote_payload:
-                # Unified-Identity - Unified-Identity: Extract geolocation from quote payload
+                # Unified-Identity: Extract geolocation from quote payload
                 # Structure: { "geolocation": { "type": "mobile"|"gnss", "sensor_id": "...", "value": "..." } }
                 # value is optional for mobile, mandatory for gnss
                 quote_geolocation_obj = quote_payload.get('geolocation')
@@ -2244,17 +2244,17 @@ class VerifyEvidenceHandler(BaseHandler):
                     app_key_public = quote_payload.get('pubkey')
 
         if not app_key_public:
-            logger.error("Unified-Identity - Unified-Identity: Missing required field 'app_key_public'")
+            logger.error("Unified-Identity: Missing required field 'app_key_public'")
             web_util.echo_json_response(self, 400, "missing required field: data.app_key_public")
             return None
 
         cert_validated = False
         if app_key_certificate and app_key_certificate.strip():
             if not tpm_ak:
-                logger.error("Unified-Identity - Unified-Identity: Cannot verify certificate without TPM AK")
+                logger.error("Unified-Identity: Cannot verify certificate without TPM AK")
                 cert_validated = False
             else:
-                logger.info("Unified-Identity - Unified-Identity: Verifying App Key certificate signature with TPM AK")
+                logger.info("Unified-Identity: Verifying App Key certificate signature with TPM AK")
                 # Convert AK to PEM format if needed (for certificate verification)
                 ak_public_for_cert_verification = tpm_ak
                 if not tpm_ak.strip().startswith("-----BEGIN"):
@@ -2265,9 +2265,9 @@ class VerifyEvidenceHandler(BaseHandler):
                             encoding=serialization.Encoding.PEM,
                             format=serialization.PublicFormat.SubjectPublicKeyInfo,
                         ).decode("utf-8")
-                        logger.debug("Unified-Identity - Unified-Identity: Converted TPM AK from TPM2B_PUBLIC to PEM for certificate verification")
+                        logger.debug("Unified-Identity: Converted TPM AK from TPM2B_PUBLIC to PEM for certificate verification")
                     except Exception as e:  # noqa: BLE001
-                        logger.error("Unified-Identity - Unified-Identity: Failed to convert TPM AK to PEM for certificate verification: %s", e)
+                        logger.error("Unified-Identity: Failed to convert TPM AK to PEM for certificate verification: %s", e)
                         web_util.echo_json_response(
                             self,
                             400,
@@ -2280,7 +2280,7 @@ class VerifyEvidenceHandler(BaseHandler):
                 )
                 if not cert_is_valid:
                     logger.error(
-                        'Unified-Identity - Unified-Identity: App Key certificate signature verification failed: %s',
+                        'Unified-Identity: App Key certificate signature verification failed: %s',
                         cert_error or "unknown error"
                     )
                     web_util.echo_json_response(
@@ -2309,7 +2309,7 @@ class VerifyEvidenceHandler(BaseHandler):
                             # Signature verification already passed, so certificate is cryptographically valid
                             # Unmarshaling failure is likely due to unsupported TPM type in Keylime library
                             logger.warning(
-                                "Unified-Identity - Unified-Identity: Failed to unmarshal TPMS_ATTEST structure for qualifying data verification: %s. "
+                                "Unified-Identity: Failed to unmarshal TPMS_ATTEST structure for qualifying data verification: %s. "
                                 "Certificate signature verification already passed, so certificate is cryptographically valid. "
                                 "Skipping qualifying data verification.",
                                 unmarshal_err
@@ -2357,7 +2357,7 @@ class VerifyEvidenceHandler(BaseHandler):
                             
                             if not qualifying_data_matches:
                                 logger.error(
-                                    "Unified-Identity - Unified-Identity: Qualifying data in certificate does not match App Key public key + nonce"
+                                    "Unified-Identity: Qualifying data in certificate does not match App Key public key + nonce"
                                 )
                                 web_util.echo_json_response(
                                     self,
@@ -2367,23 +2367,23 @@ class VerifyEvidenceHandler(BaseHandler):
                                 )
                                 return None
                             
-                            logger.info("Unified-Identity - Unified-Identity: Certificate qualifying data verified (matches App Key public key + nonce)")
+                            logger.info("Unified-Identity: Certificate qualifying data verified (matches App Key public key + nonce)")
                         else:
-                            logger.info("Unified-Identity - Unified-Identity: Certificate qualifying data verification skipped (unmarshaling failed, but signature verification passed)")
+                            logger.info("Unified-Identity: Certificate qualifying data verification skipped (unmarshaling failed, but signature verification passed)")
                 
                 except Exception as e:  # noqa: BLE001
                     logger.warning(
-                        "Unified-Identity - Unified-Identity: Could not verify qualifying data in certificate (continuing): %s", e
+                        "Unified-Identity: Could not verify qualifying data in certificate (continuing): %s", e
                     )
                     # Continue even if qualifying data verification fails (signature verification is the critical check)
                 
                 cert_validated = True
-                logger.info("Unified-Identity - Unified-Identity: App Key certificate signature verified successfully with AK")
+                logger.info("Unified-Identity: App Key certificate signature verified successfully with AK")
         else:
-            logger.warning("Unified-Identity - Unified-Identity: Missing 'app_key_certificate', proceeding without certificate validation")
+            logger.warning("Unified-Identity: Missing 'app_key_certificate', proceeding without certificate validation")
 
         if not tpm_ak:
-            logger.error("Unified-Identity - Unified-Identity: Missing TPM AK required for quote verification")
+            logger.error("Unified-Identity: Missing TPM AK required for quote verification")
             web_util.echo_json_response(
                 self,
                 400,
@@ -2401,7 +2401,7 @@ class VerifyEvidenceHandler(BaseHandler):
                     format=serialization.PublicFormat.SubjectPublicKeyInfo,
                 ).decode("utf-8")
             except Exception as e:  # noqa: BLE001
-                logger.error("Unified-Identity - Unified-Identity: Failed to convert TPM AK to PEM: %s", e)
+                logger.error("Unified-Identity: Failed to convert TPM AK to PEM: %s", e)
                 web_util.echo_json_response(
                     self,
                     400,
@@ -2409,13 +2409,13 @@ class VerifyEvidenceHandler(BaseHandler):
                 )
                 return None
 
-        logger.info("Unified-Identity - Unified-Identity: Step 2 - Verifying TPM Quote with AK")
+        logger.info("Unified-Identity: Step 2 - Verifying TPM Quote with AK")
         quote_valid, quote_error, quote_failure = app_key_verification.verify_quote_with_ak(
             quote, ak_public_for_verification, nonce, hash_alg
         )
 
         if not quote_valid:
-            logger.error('Unified-Identity - Unified-Identity: TPM Quote verification failed: %s', quote_error)
+            logger.error('Unified-Identity: TPM Quote verification failed: %s', quote_error)
             failures = []
             if quote_failure:
                 for event in quote_failure.events:
@@ -2430,7 +2430,7 @@ class VerifyEvidenceHandler(BaseHandler):
             return None
 
         if len(nonce) < 16:
-            logger.warning('Unified-Identity - Unified-Identity: Nonce appears shorter than expected (len=%s)', len(nonce))
+            logger.warning('Unified-Identity: Nonce appears shorter than expected (len=%s)', len(nonce))
 
         agent_id = agent_uuid
         if not agent_id and (tpm_ak or tpm_ek):
@@ -2445,11 +2445,11 @@ class VerifyEvidenceHandler(BaseHandler):
                         if agent:
                             agent_id = agent.agent_id
             except Exception as e:  # noqa: BLE001
-                logger.debug('Unified-Identity - Unified-Identity: Could not map TPM keys to agent ID: %s', e)
+                logger.debug('Unified-Identity: Could not map TPM keys to agent ID: %s', e)
 
         attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=agent_id)
         
-        # Unified-Identity - Unified-Identity: Add geolocation from quote payload
+        # Unified-Identity: Add geolocation from quote payload
         # Structure: { "type": "mobile"|"gnss", "sensor_id": "...", "value": "..." }
         # value is optional for mobile, mandatory for gnss
         # SPIRE Server expects geolocation as an object (dict), not a JSON string
@@ -2466,10 +2466,10 @@ class VerifyEvidenceHandler(BaseHandler):
                         attested_claims['geolocation'] = parsed_geo
                     else:
                         # If not a dict, skip (invalid format)
-                        logger.warning('Unified-Identity - Unified-Identity: Geolocation string is not a valid JSON object')
+                        logger.warning('Unified-Identity: Geolocation string is not a valid JSON object')
                 except (json.JSONDecodeError, TypeError):
                     # Not valid JSON, skip (SPIRE expects object format)
-                    logger.warning('Unified-Identity - Unified-Identity: Geolocation string is not valid JSON, skipping')
+                    logger.warning('Unified-Identity: Geolocation string is not valid JSON, skipping')
             else:
                 attested_claims['geolocation'] = quote_geolocation
 
@@ -2483,7 +2483,7 @@ class VerifyEvidenceHandler(BaseHandler):
         try:
             _verify_mobile_sensor_geolocation(attested_claims.get('geolocation'))
         except MobileSensorVerificationError as exc:
-            logger.error('Unified-Identity - Unified-Identity: Mobile sensor location verification failed: %s', exc)
+            logger.error('Unified-Identity: Mobile sensor location verification failed: %s', exc)
             web_util.echo_json_response(
                 self,
                 422,
@@ -2508,7 +2508,7 @@ class VerifyEvidenceHandler(BaseHandler):
         }
 
         logger.info(
-            'Unified-Identity - Unified-Identity: Verification successful (agent_uuid=%s, geolocation=%s)',
+            'Unified-Identity: Verification successful (agent_uuid=%s, geolocation=%s)',
             agent_uuid,
             attested_claims.get('geolocation'),
         )

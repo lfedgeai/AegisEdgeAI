@@ -62,7 +62,7 @@ pub static DEFAULT_DEC_PAYLOAD_FILE: &str = "decrypted_payload";
 pub static DEFAULT_ENABLE_AGENT_MTLS: bool = true;
 pub static DEFAULT_ENABLE_INSECURE_PAYLOAD: bool = false;
 pub static DEFAULT_ENABLE_REVOCATION_NOTIFICATIONS: bool = false;
-// Unified-Identity - Unified-Identity: Feature flag for unified identity support (default: true, can be disabled for backward compatibility)
+// Unified-Identity: Feature flag for unified identity support (default: true, can be disabled for backward compatibility)
 pub static DEFAULT_UNIFIED_IDENTITY_ENABLED: bool = true;
 pub static DEFAULT_ENC_KEYNAME: &str = "derived_tci_key";
 pub static DEFAULT_EXTRACT_PAYLOAD_ZIP: bool = true;
@@ -147,7 +147,7 @@ pub struct AgentConfig {
     pub enable_agent_mtls: bool,
     pub enable_insecure_payload: bool,
     pub enable_revocation_notifications: bool,
-    // Unified-Identity - Unified-Identity: Feature flag for unified identity support
+    // Unified-Identity: Feature flag for unified identity support
     pub unified_identity_enabled: bool,
     pub enc_keyname: String,
     pub extract_payload_zip: bool,

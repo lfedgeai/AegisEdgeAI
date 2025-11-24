@@ -1,5 +1,5 @@
-# Unified-Identity - Unified-Identity: Minimal Keylime Verifier Configuration for Testing
-# This is a minimal config for testing Unified-Identity + Unified-Identity integration
+# Unified-Identity: Minimal Keylime Verifier Configuration for Testing
+# This is a minimal config for testing Unified-Identity integration
 
 [verifier]
 # Basic server configuration
@@ -33,7 +33,7 @@ severity_labels = ["INFO", "WARN", "ERROR", "CRITICAL"]
 # Severity policy: list of dicts with event_id and severity_label
 severity_policy = [{"event_id": ".*", "severity_label": "CRITICAL"}]
 
-# Enable Unified-Identity Unified-Identity feature
+# Enable Unified-Identity feature
 unified_identity_enabled = true
 
 # Default facts (used when facts not found in database/store)
