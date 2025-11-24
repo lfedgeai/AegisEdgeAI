@@ -260,11 +260,18 @@ def create_app(db_path: Path) -> Flask:
             LOG.error("Failed to parse JSON payload: %s, raw data: %s", exc, request.get_data())
             return jsonify({"error": "invalid JSON payload"}), 400
 
+        is_healthcheck = not payload or "sensor_id" not in payload
         sensor_id = (
             str(payload.get("sensor_id", DEFAULT_SENSOR_ID)) if payload else DEFAULT_SENSOR_ID
         )
 
-        LOG.info("Received verification request for sensor_id=%s", sensor_id)
+        if is_healthcheck:
+            LOG.info(
+                "Health-check verification request received (no sensor_id supplied, using default %s)",
+                sensor_id,
+            )
+        else:
+            LOG.info("Received verification request for sensor_id=%s", sensor_id)
 
         sensor = database.get_sensor(sensor_id)
         if not sensor:
@@ -368,11 +375,18 @@ def create_app(db_path: Path) -> Flask:
                 LOG.error("CAMARA flow failed: %s", exc)
                 return jsonify({"error": "camara_flow_failed"}), 500
 
-        LOG.info(
-            "Verification completed for sensor_id=%s: result=%s",
-            sensor_id,
-            verification_result,
-        )
+        if is_healthcheck:
+            LOG.info(
+                "Health-check verification completed for sensor_id=%s: result=%s",
+                sensor_id,
+                verification_result,
+            )
+        else:
+            LOG.info(
+                "Verification completed for sensor_id=%s: result=%s",
+                sensor_id,
+                verification_result,
+            )
         return jsonify(
             {
                 "sensor_id": sensor_id,

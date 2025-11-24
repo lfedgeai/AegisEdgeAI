@@ -190,12 +190,13 @@ start_mobile_sensor_microservice() {
         tail -10 "${MOBILE_SENSOR_LOG}" | grep -E "(Starting|latitude|longitude|accuracy|CAMARA_BYPASS|ready)" | sed 's/^/    /' || true
     fi
 
+    echo "    Performing readiness health check against /verify (seed sensor_id used)"
     local started=false
     for i in {1..30}; do
         local status
         status=$(curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" -d '{}' "${MOBILE_SENSOR_BASE_URL}/verify" || true)
         if [ -n "${status}" ] && [ "${status}" != "000" ]; then
-            echo -e "${GREEN}    ✓ Mobile sensor microservice is responding (HTTP ${status})${NC}"
+            echo -e "${GREEN}    ✓ Health check passed (mobile sensor microservice responded HTTP ${status})${NC}"
             started=true
             break
         fi
