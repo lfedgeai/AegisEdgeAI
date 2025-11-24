@@ -81,7 +81,7 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 **[9]** Agent Info: Registrar returns agent details  
 **[10]** Quote Request: Verifier requests fresh TPM quote with challenge nonce  
 **[11]** Geolocation Detection: Agent detects mobile sensor, includes in quote  
-**[12]** Location Verification: Verifier calls mobile sensor microservice (CAMARA APIs)  
+**[12]** Location Verification: Verifier calls mobile sensor microservice (CAMARA APIs)*  
 **[13]** Quote Response: Agent returns TPM quote with geolocation data  
 **[14]** Verification Result: Verifier returns AttestedClaims (geolocation, TPM attestation) → SPIRE Server  
 **[15]** Agent SVID: Server issues agent SVID with AttestedClaims embedded → SPIRE Agent  
@@ -99,7 +99,9 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **SPIRE Server**: SVID issuance, policy enforcement, Keylime integration
 - **Keylime Verifier**: TPM attestation verification, geolocation verification
 - **Keylime Registrar**: Agent registration database
-- **Mobile Sensor Microservice**: Location verification via CAMARA APIs
+- **Mobile Sensor Microservice**: Location verification via CAMARA APIs (invoked only when the TPM quote reports a physical mobile sensor, e.g., USB `lsusb` detection)
+
+*The verifier skips this step entirely when no TPM-reported mobile sensor is present, so Sovereign SVIDs omit `grc.geolocation` in that case.*
 
 ---
 

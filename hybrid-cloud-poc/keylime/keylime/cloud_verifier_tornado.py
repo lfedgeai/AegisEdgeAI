@@ -2488,12 +2488,11 @@ class VerifyEvidenceHandler(BaseHandler):
             else:
                 attested_claims['geolocation'] = quote_geolocation
 
-        if geolocation_from_request and not attested_claims.get('geolocation'):
-            from keylime import fact_provider as fp
-
-            parsed_geo = fp._parse_geolocation_string(geolocation_from_request)
-            if parsed_geo:
-                attested_claims['geolocation'] = parsed_geo
+        if not mobile_geo_from_quote and attested_claims.get('geolocation'):
+            logger.debug(
+                'Unified-Identity: Removing non-TPM geolocation claims (requirement: physical sensor only)'
+            )
+            attested_claims.pop('geolocation', None)
 
         try:
             _verify_mobile_sensor_geolocation(
