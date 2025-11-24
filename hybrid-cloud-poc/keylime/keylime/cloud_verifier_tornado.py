@@ -294,7 +294,9 @@ def _unix_socket_mobile_sensor_request(socket_path: str, payload: Dict[str, Any]
         raise MobileSensorVerificationError("invalid JSON response from mobile sensor service") from exc
 
 
-def _verify_mobile_sensor_geolocation(geolocation: Optional[Dict[str, Any]]) -> None:
+def _verify_mobile_sensor_geolocation(
+    geolocation: Optional[Dict[str, Any]], *, require_tpm_sensor: bool = False
+) -> None:
     logger.info(
         "Unified-Identity: _verify_mobile_sensor_geolocation called with geolocation=%s",
         geolocation,
@@ -303,6 +305,12 @@ def _verify_mobile_sensor_geolocation(geolocation: Optional[Dict[str, Any]]) -> 
     if not settings:
         logger.info(
             "Unified-Identity: Mobile sensor settings not available, skipping verification"
+        )
+        return
+
+    if not require_tpm_sensor:
+        logger.debug(
+            "Unified-Identity: Geolocation was not sourced from TPM quote; skipping mobile sensor verification"
         )
         return
 
@@ -2448,6 +2456,7 @@ class VerifyEvidenceHandler(BaseHandler):
                 logger.debug('Unified-Identity: Could not map TPM keys to agent ID: %s', e)
 
         attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=agent_id)
+        mobile_geo_from_quote = False
         
         # Unified-Identity: Add geolocation from quote payload
         # Structure: { "type": "mobile"|"gnss", "sensor_id": "...", "value": "..." }
@@ -2456,6 +2465,9 @@ class VerifyEvidenceHandler(BaseHandler):
         if quote_geolocation and isinstance(quote_geolocation, dict):
             # Use geolocation from quote payload (detected by rust-keylime agent) as object
             attested_claims['geolocation'] = quote_geolocation
+            geo_type = str(quote_geolocation.get('type', '')).lower()
+            sensor_id = quote_geolocation.get('sensor_id')
+            mobile_geo_from_quote = bool(sensor_id and geo_type == 'mobile')
         elif quote_geolocation and not attested_claims.get('geolocation'):
             # Fallback: if quote_geolocation is a string, try to parse it or use as-is
             if isinstance(quote_geolocation, str):
@@ -2464,6 +2476,9 @@ class VerifyEvidenceHandler(BaseHandler):
                     parsed_geo = json.loads(quote_geolocation)
                     if isinstance(parsed_geo, dict):
                         attested_claims['geolocation'] = parsed_geo
+                        geo_type = str(parsed_geo.get('type', '')).lower()
+                        sensor_id = parsed_geo.get('sensor_id')
+                        mobile_geo_from_quote = bool(sensor_id and geo_type == 'mobile')
                     else:
                         # If not a dict, skip (invalid format)
                         logger.warning('Unified-Identity: Geolocation string is not a valid JSON object')
@@ -2481,7 +2496,10 @@ class VerifyEvidenceHandler(BaseHandler):
                 attested_claims['geolocation'] = parsed_geo
 
         try:
-            _verify_mobile_sensor_geolocation(attested_claims.get('geolocation'))
+            _verify_mobile_sensor_geolocation(
+                attested_claims.get('geolocation'),
+                require_tpm_sensor=mobile_geo_from_quote,
+            )
         except MobileSensorVerificationError as exc:
             logger.error('Unified-Identity: Mobile sensor location verification failed: %s', exc)
             web_util.echo_json_response(
