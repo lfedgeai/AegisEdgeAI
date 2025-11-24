@@ -212,6 +212,7 @@ class CamaraClient:
         longitude: float,
         accuracy: float,
         access_token: str,
+        log_context: str = "",
     ) -> bool:
         payload = {
             "ueId": {"msisdn": msisdn},
@@ -219,12 +220,15 @@ class CamaraClient:
             "longitude": longitude,
             "accuracy": accuracy,
         }
-        LOG.info(
-            "CAMARA verify_location API call: payload=%s, url=%s%s",
-            payload,
-            CAMARA_BASE,
-            VERIFY_PATH,
-        )
+        if log_context == "health-check":
+            LOG.info("Health-check: CAMARA verify_location API call (payload redacted)")
+        else:
+            LOG.info(
+                "CAMARA verify_location API call: payload=%s, url=%s%s",
+                payload,
+                CAMARA_BASE,
+                VERIFY_PATH,
+            )
         resp = requests.post(
             f"{CAMARA_BASE}{VERIFY_PATH}",
             headers=self._bearer_headers(access_token),
@@ -234,7 +238,10 @@ class CamaraClient:
         resp.raise_for_status()
         data = resp.json()
         result = bool(data.get("verificationResult"))
-        LOG.info("CAMARA verify_location API response: %s", data)
+        if log_context == "health-check":
+            LOG.info("Health-check: CAMARA verify_location API response (body redacted) result=%s", result)
+        else:
+            LOG.info("CAMARA verify_location API response: %s", data)
         return result
 
 
@@ -261,15 +268,13 @@ def create_app(db_path: Path) -> Flask:
             return jsonify({"error": "invalid JSON payload"}), 400
 
         is_healthcheck = not payload or "sensor_id" not in payload
+        log_context = "health-check" if is_healthcheck else ""
         sensor_id = (
             str(payload.get("sensor_id", DEFAULT_SENSOR_ID)) if payload else DEFAULT_SENSOR_ID
         )
 
         if is_healthcheck:
-            LOG.info(
-                "Health-check verification request received (no sensor_id supplied, using default %s)",
-                sensor_id,
-            )
+            LOG.info("Health-check verification request received (readiness probe)")
         else:
             LOG.info("Received verification request for sensor_id=%s", sensor_id)
 
@@ -289,40 +294,64 @@ def create_app(db_path: Path) -> Flask:
         if not msisdn.startswith("+") or not msisdn[1:].replace(" ", "").isdigit():
             LOG.warning("MSISDN format may be invalid for sensor_id=%s: %s (proceeding anyway)", sensor_id, msisdn)
         
-        LOG.info(
-            "Resolved sensor_id=%s to msisdn=%s (from database), lat=%.6f, lon=%.6f, accuracy=%.1f",
-            sensor_id,
-            msisdn,
-            latitude,
-            longitude,
-            accuracy,
-        )
+        if is_healthcheck:
+            LOG.info("Health-check using default seeded sensor profile from database")
+        else:
+            LOG.info(
+                "Resolved sensor_id=%s to msisdn=%s (from database), lat=%.6f, lon=%.6f, accuracy=%.1f",
+                sensor_id,
+                msisdn,
+                latitude,
+                longitude,
+                accuracy,
+            )
 
         if bypass_camara:
-            LOG.info(
-                "CAMARA_BYPASS enabled: automatically approving sensor_id=%s for testing", sensor_id
-            )
+            if is_healthcheck:
+                LOG.info("Health-check: CAMARA_BYPASS enabled – automatically approving")
+            else:
+                LOG.info(
+                    "CAMARA_BYPASS enabled: automatically approving sensor_id=%s for testing", sensor_id
+                )
             verification_result = True
         else:
-            LOG.info("Starting CAMARA API flow for sensor_id=%s", sensor_id)
-            try:
+            if is_healthcheck:
+                LOG.info("Health-check: Starting CAMARA API flow (readiness probe)")
+                LOG.info("Health-check: Step 1: Calling CAMARA authorize API...")
+            else:
+                LOG.info("Starting CAMARA API flow for sensor_id=%s", sensor_id)
                 LOG.info("Step 1: Calling CAMARA authorize API...")
+            try:
                 auth_req_id = camara_client.authorize(msisdn)  # type: ignore[union-attr]
-                LOG.info("Step 1: Received auth_req_id=%s", auth_req_id)
-                LOG.info("Step 2: Calling CAMARA token API...")
+                if is_healthcheck:
+                    LOG.info("Health-check: Step 1: Received auth_req_id (length=%d)", len(auth_req_id) if auth_req_id else 0)
+                    LOG.info("Health-check: Step 2: Calling CAMARA token API...")
+                else:
+                    LOG.info("Step 1: Received auth_req_id=%s", auth_req_id)
+                    LOG.info("Step 2: Calling CAMARA token API...")
                 access_token = camara_client.request_access_token(auth_req_id)  # type: ignore[union-attr]
-                LOG.info("Step 2: Received access_token (length=%d)", len(access_token) if access_token else 0)
-                LOG.info(
-                    "Step 3: Calling CAMARA location verify API with msisdn=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
-                    msisdn,
-                    latitude,
-                    longitude,
-                    accuracy,
-                )
+                if is_healthcheck:
+                    LOG.info(
+                        "Health-check: Step 2: Received access_token (length=%d)",
+                        len(access_token) if access_token else 0,
+                    )
+                    LOG.info("Health-check: Step 3: Calling CAMARA location verify API (readiness probe)")
+                else:
+                    LOG.info("Step 2: Received access_token (length=%d)", len(access_token) if access_token else 0)
+                    LOG.info(
+                        "Step 3: Calling CAMARA location verify API with msisdn=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
+                        msisdn,
+                        latitude,
+                        longitude,
+                        accuracy,
+                    )
                 verification_result = camara_client.verify_location(  # type: ignore[union-attr]
-                    msisdn, latitude, longitude, accuracy, access_token
+                    msisdn, latitude, longitude, accuracy, access_token, log_context=log_context
                 )
-                LOG.info("Step 3: CAMARA verification result=%s", verification_result)
+                if is_healthcheck:
+                    LOG.info("Health-check: Step 3: CAMARA verification result=%s", verification_result)
+                else:
+                    LOG.info("Step 3: CAMARA verification result=%s", verification_result)
             except requests.HTTPError as http_err:
                 # Extract status code - try multiple ways in case response is None
                 status_code = None
@@ -376,11 +405,7 @@ def create_app(db_path: Path) -> Flask:
                 return jsonify({"error": "camara_flow_failed"}), 500
 
         if is_healthcheck:
-            LOG.info(
-                "Health-check verification completed for sensor_id=%s: result=%s",
-                sensor_id,
-                verification_result,
-            )
+            LOG.info("Health-check verification completed (readiness probe) result=%s", verification_result)
         else:
             LOG.info(
                 "Verification completed for sensor_id=%s: result=%s",
