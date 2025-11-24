@@ -18,9 +18,9 @@ VERIFICATION: [7] SPIRE Server → [8] Keylime Verifier → [9] Keylime Registra
               [10] Keylime Verifier → [11] rust-keylime Agent → [12] Mobile Sensor Microservice → [12] rust-keylime Agent → [13] Keylime Verifier
               [14] Keylime Verifier → SPIRE Server (AttestedClaims)
 
-SVID:         [15] SPIRE Server → SPIRE Agent (Agent SVID)
+AGENT SVID:   [15] SPIRE Server → SPIRE Agent (Agent SVID)
 
-WORKLOAD:     [16] Workload → [17] SPIRE Agent → [18] SPIRE Server → [19] SPIRE Agent → [20] Workload
+WORKLOAD SVID:[16] Workload → [17] SPIRE Agent → [18] SPIRE Server → [19] SPIRE Agent → [20] Workload
 ```
 
 ### Detailed Flow Diagram (Full View)
@@ -38,7 +38,7 @@ SETUP PHASE:
 │ Generate AK  │       │ IP, Port, AK │                    │     Key      │
 └──────────────┘       └──────────────┘                    └──────────────┘
 
-ATTESTATION PHASE:
+SPIRE AGENT ATTESTATION PHASE:
 ┌──────────────┐  [3]  ┌──────────────┐  [4]  ┌──────────────┐  [5]  ┌──────────────┐  [6]  ┌──────────────┐  [7]  ┌──────────────┐
 │  SPIRE Agent │──────>│  TPM Plugin  │──────>│ rust-keylime │──────>│  TPM Plugin  │──────>│  SPIRE Agent │──────>│ SPIRE Server │
 │ Request App  │       │   Server     │       │    Agent     │       │   Server     │       │ Build        │       │ Receive      │
@@ -47,7 +47,7 @@ ATTESTATION PHASE:
 └──────────────┘       └──────────────┘       │  App Key)    │       └──────────────┘       └──────────────┘       └──────────────┘
                                               └──────────────┘
 
-VERIFICATION PHASE:
+SPIRE SERVER VERIFICATION PHASE:
 ┌──────────────┐  [8]  ┌──────────────┐  [9]  ┌──────────────┐  [10] ┌──────────────┐  [11] ┌──────────────┐  [12] ┌──────────────┐  [13] ┌──────────────┐  [14] ┌──────────────┐  [15] ┌──────────────┐
 │ SPIRE Server │──────>│ Keylime      │──────>│   Keylime    │──────>│ Keylime      │──────>│ rust-keylime │──────>│ Mobile Sensor│──────>│ rust-keylime │──────>│ Keylime      │──────>│ SPIRE Server │
 │ Extract: App │       │ Verifier     │       │  Registrar   │       │ Verifier     │       │    Agent     │       │ Microservice │       │    Agent     │       │ Verifier     │       │ Issue Agent  │
@@ -58,7 +58,7 @@ VERIFICATION PHASE:
                                                                                                                                                                     │ AttestedClaims│
                                                                                                                                                                     └──────────────┘
 
-SVID ISSUANCE & WORKLOAD SVID:
+SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 ┌──────────────┐  [16] ┌──────────────┐  [17] ┌──────────────┐  [18] ┌──────────────┐  [19] ┌──────────────┐  [20] ┌──────────────┐  [21] ┌──────────────┐
 │ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │──────>│  SPIRE Agent │──────>│ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │
 │ Issue Agent  │       │ Receive      │       │  (Python App)│       │ Match Entry  │       │ Issue        │       │ Forward      │       │ Receive      │

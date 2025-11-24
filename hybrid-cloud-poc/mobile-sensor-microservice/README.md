@@ -18,6 +18,18 @@ This standalone microservice implements the flow described in the Sovereign Unif
   The microservice looks up the MSISDN and default latitude/longitude/accuracy from SQLite and returns `{"sensor_id": "...", "verification_result": true/false, "latitude": ..., "longitude": ..., "accuracy": ...}`.
 - Designed to run over a UNIX Domain Socket (UDS) so that the Keylime Verifier can consume it securely.
 
+### Quick Setup
+Before starting the microservice make sure the Python dependencies are installed (Flask is required for the HTTP server and `requests` is used for the CAMARA APIs):
+
+```bash
+cd /home/mw/AegisEdgeAI/hybrid-cloud-poc      # repo root
+python3 -m venv .venv                         # optional but recommended
+source .venv/bin/activate
+pip install -r mobile-sensor-microservice/requirements.txt
+```
+
+This installs both runtime dependencies (Flask, requests) and the `pytest` tooling used by the bundled unit tests. If you skip the install step you'll see errors such as `ModuleNotFoundError: No module named 'flask'`.
+
 ### Configuration
 | Environment Variable | Description | Default |
 |----------------------|-------------|---------|
