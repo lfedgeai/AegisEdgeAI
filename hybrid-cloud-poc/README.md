@@ -1,8 +1,10 @@
 # Unified Identity for Sovereign AI
 
-**Status: ✅ Complete and Verified**
+**Implementation Status: Proof of Concept**
 
-A complete implementation of Unified Identity architecture that provides TPM-based attestation and geolocation claims for sovereign AI workloads. This system integrates SPIRE (workload identity), Keylime (attestation verification), and TPM hardware to generate X.509 SVIDs with attested claims including geolocation, host integrity, and GPU metrics.
+An implementation of Unified Identity architecture that provides TPM-based attestation and geolocation claims for sovereign AI workloads. This system integrates SPIRE (workload identity), Keylime (attestation verification), and TPM hardware to generate X.509 SVIDs with attested claims including geolocation, host integrity, and GPU metrics.
+
+Key reference: https://github.com/lfedgeai/AegisEdgeAI/blob/main/docs/Zero-trust%20Sovereign%20AI-public.pdf
 
 ## The Story
 
