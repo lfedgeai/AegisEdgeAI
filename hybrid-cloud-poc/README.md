@@ -1,14 +1,6 @@
 # Unified Identity for Sovereign AI
 
-**Implementation Status: Proof of Concept**
-
-An implementation of Unified Identity architecture that provides TPM-based attestation and geolocation claims for sovereign AI workloads. This system integrates SPIRE (workload identity), Keylime (attestation verification), and TPM hardware to generate X.509 SVIDs with attested claims including geolocation, host integrity, and GPU metrics.
-
-Key reference: https://github.com/lfedgeai/AegisEdgeAI/blob/main/docs/Zero-trust%20Sovereign%20AI-public.pdf
-
-## The Story
-
-This project implements a **Unified Identity** system that extends SPIFFE/SPIRE with sovereign attestation capabilities. Workloads can obtain X.509 certificates (SVIDs) that include not just identity, but also **attested claims** about the host's location, integrity status, and hardware metrics - all cryptographically bound to the TPM.
+This project implements a **Unified Identity** system that provides TPM-based attestation and geolocation claims for sovereign AI workloads.This extends SPIFFE/SPIRE with sovereign attestation capabilities. Workloads can obtain X.509 certificates (SVIDs) that include not just identity, but also **attested claims** about the host's location - all cryptographically bound to the TPM.
 
 The system works in three integrated phases:
 
@@ -17,6 +9,12 @@ The system works in three integrated phases:
 3. **Hardware Integration** - Real TPM operations with delegated certification between SPIRE Agent and Keylime Agent
 
 The end result: workloads receive SVIDs that prove not just *who* they are, but also *where* they are and *what* state their host is in - all verified by TPM hardware.
+
+Key references: 
+- [Zero-trust Sovereign AI](https://github.com/lfedgeai/AegisEdgeAI/blob/main/docs/Zero-trust%20Sovereign%20AI-public.pdf)
+- [Sovereign Unified Identity Architecture - End-to-End Flow](https://github.com/lfedgeai/AegisEdgeAI/blob/main/hybrid-cloud-poc/README-arch-sovereign-unified-identity.md)
+
+Implementation Status: Proof of Concept
 
 ## Quick Start
 
