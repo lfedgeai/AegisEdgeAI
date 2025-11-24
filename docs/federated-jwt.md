@@ -387,7 +387,7 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
           "type": "object",
           "description": "Hardware sensor information used to determine location",
           "properties": {
-            "sensor-type": {
+            "type": {
               "type": "string",
               "enum": ["GNSS", "Mobile"],
               "description": "Type of location sensor: GNSS (Global Navigation Satellite System) or Mobile (cellular network-based)"
@@ -412,7 +412,7 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
               "examples": ["310150123456789"]
             }
           },
-          "required": ["sensor-type", "serial-number"],
+          "required": ["type", "serial-number"],
           "additionalProperties": false,
           "allOf": [
             {
@@ -535,7 +535,7 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
             "maxLength": 128,
             "examples": ["550e8400-e29b-41d4-a716-446655440000", "linux-boot-policy-v1", "secure-boot-baseline-2024"]
           },
-          "app-key-public": {
+          "tpm-app-key-public": {
             "type": "string",
             "description": "The App Key public key in PEM format (preferred) or base64-encoded. Must parse as valid public key when present",
             "examples": [
@@ -543,7 +543,7 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
               "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
             ]
           },
-          "app-key-certificate": {
+          "tpm-app-key-certificate": {
             "type": "string",
             "description": "Base64-encoded DER or PEM certificate proving the App Key was issued/signed by the host Attestation Key (AK). MUST be Base64-encoded when transmitted over JSON/REST. Must parse to valid X.509 certificate when present",
             "examples": [
@@ -551,7 +551,7 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
               "MIIBkTCB+wIJAK..."
             ]
           },
-          "ak-public": {
+          "tpm-ak-public": {
             "type": "string",
             "description": "Attestation Key (AK) public key in PEM format (preferred) or base64-encoded",
             "examples": [
@@ -559,7 +559,7 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
               "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE..."
             ]
           },
-          "ek-public": { // optional for peer verification
+          "tpm-ek-public": { // optional for peer verification
             "type": "string",
             "description": "Endorsement Key (EK) public key in PEM format (preferred) or base64-encoded",
             "examples": [
