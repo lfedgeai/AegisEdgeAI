@@ -47,6 +47,8 @@ hybrid-cloud-poc/**/server-cert.crt
 hybrid-cloud-poc/**/client-cert.crt
 hybrid-cloud-poc/**/cacrl.der
 hybrid-cloud-poc/**/cacrl.pem
+# Generated database files
+hybrid-cloud-poc/keylime/cv_data.sqlite
 # But allow test data certificates (test fixtures)
 !hybrid-cloud-poc/**/testdata/*.pem
 !hybrid-cloud-poc/**/testdata/*.crt
