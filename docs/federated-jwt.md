@@ -732,15 +732,6 @@ This pattern introduces latency, cost, and operational overhead everywhere—not
 - **Eliminate the STS exchange:** Instead of minting a new short-lived credential, validate the external token inline at the gateway or workload boundary.
 - **Use a PDP (like OPA) for authorization:** Evaluate policies locally and return allow/deny decisions instead of issuing another token.
 
-### Benefits Across Cloud Providers
-
-| Cloud Provider | Standard WIF Flow | Optimized Flow | Outcome |
-| --- | --- | --- | --- |
-| AWS | JWT → STS → SLC | JWT → API Gateway OIDC + OPA | No STS, no SLC |
-| GCP | JWT → GCP STS → Access Token | JWT → Cloud Endpoint OIDC + OPA | No STS, no extra token |
-| Azure | JWT → Azure AD OAuth2 → Access Token | JWT → API Management OIDC + OPA | No OAuth2 exchange |
-| Kubernetes | JWT → TokenReview API → ServiceAccount Token | JWT → Envoy OIDC + OPA | No ServiceAccount token |
-
 ### General Principle
 
 Across AWS, GCP, Azure, Kubernetes, or any WIF-enabled system, efficiency comes from:
@@ -750,6 +741,20 @@ Across AWS, GCP, Azure, Kubernetes, or any WIF-enabled system, efficiency comes 
 3. Avoiding minting new credentials (STS tokens, OAuth2 access tokens, service account tokens).
 
 This keeps the system token minimal, latency optimized, and audit friendly. In other words, WIF inefficiency is universal, and the OIDC validation + PDP sidecar pattern is a reliable solution.
+
+OIDC and OAuth2 are protocols which can leverage this idea. 
+
+SPIFFE SVID ID token/certificate is short lived with auto refresh making it secure and efficient.
+
+### Benefits Across Cloud Providers
+
+| Cloud Provider | Standard WIF Flow | Optimized Flow | Outcome |
+| --- | --- | --- | --- |
+| AWS | JWT → STS → SLC | JWT → API Gateway OIDC + OPA | No STS, no SLC |
+| GCP | JWT → GCP STS → Access Token | JWT → Cloud Endpoint OIDC + OPA | No STS, no extra token |
+| Azure | JWT → Azure AD OAuth2 → Access Token | JWT → API Management OIDC + OPA | No OAuth2 exchange |
+| OCI | JWT → OCI IAM STS → Access Token | JWT → API Gateway OIDC + OPA | No STS, no extra token |
+| Kubernetes | JWT → TokenReview API → ServiceAccount Token | JWT → Envoy OIDC + OPA | No ServiceAccount token |
 
 ### Advanced Security: mTLS with SPIFFE X.509 SVIDs
 
