@@ -51,7 +51,11 @@ const (
 	defaultDefaultAllBundlesName       = "ALL"
 	defaultDisableSPIFFECertValidation = false
 
-	minimumAvailabilityTarget = 24 * time.Hour
+	// Unified-Identity: Flexible availability target minimum
+	// When Unified-Identity is enabled, allow 30s minimum for testing
+	// Otherwise, maintain backward compatibility with 24h minimum
+	minimumAvailabilityTargetLegacy = 24 * time.Hour
+	minimumAvailabilityTargetFlexible = 30 * time.Second
 )
 
 // Config contains all available configurables, arranged by section
@@ -589,6 +593,16 @@ func NewAgentConfig(c *Config, logOptions []log.Option, allowUnknownConfig bool)
 		if err != nil {
 			return nil, fmt.Errorf("unable to parse availability_target: %w", err)
 		}
+		
+		// Unified-Identity: Use flexible minimum (30s) when feature flag is enabled
+		// Otherwise, use legacy minimum (24h) for backward compatibility
+		var minimumAvailabilityTarget time.Duration
+		if fflag.IsSet(fflag.FlagUnifiedIdentity) {
+			minimumAvailabilityTarget = minimumAvailabilityTargetFlexible
+		} else {
+			minimumAvailabilityTarget = minimumAvailabilityTargetLegacy
+		}
+		
 		if t < minimumAvailabilityTarget {
 			return nil, fmt.Errorf("availability_target must be at least %s", minimumAvailabilityTarget.String())
 		}

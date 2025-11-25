@@ -60,6 +60,7 @@ This single command will:
 - `--cleanup-only` - Stop services and reset state, then exit
 - `--skip-cleanup` - Reuse existing environment
 - `--no-pause` - Run non-interactively (recommended for automation)
+- `--test-spire-agent-svid-renewal` - Test SPIRE agent SVID renewal (see [SPIRE Agent SVID Renewal Testing](#spire-agent-svid-renewal-testing))
 
 ### Inspect Generated SVID
 
@@ -171,10 +172,25 @@ export CAMARA_BYPASS=true
 
 ### Scripts & Tools
 
+**Main Test Script:**
 - **`test_complete.sh`** - Main end-to-end integration test
+  - `--test-spire-agent-svid-renewal` - Test SPIRE agent SVID renewal (monitors for 5 minutes by default)
+  - `--cleanup-only` - Stop services and reset state
+  - `--skip-cleanup` - Reuse existing environment (skip initial cleanup)
+  - `--no-pause` - Run non-interactively (for automation)
+  - `--help` - Show usage information
+
+**Utility Scripts:**
 - **`scripts/cleanup.sh`** - Stop all services and clean up state
 - **`scripts/demo.sh`** - Generate Sovereign SVID demo
 - **`scripts/dump-svid-attested-claims.sh`** - Inspect SVID and AttestedClaims
+
+**Python App Demo Scripts:**
+- **`python-app-demo/setup-spire.sh`** - Set up SPIRE server and agent
+- **`python-app-demo/run-demo.sh`** - Run Python workload demo
+- **`python-app-demo/create-registration-entry.sh`** - Create workload registration entries
+- **`python-app-demo/cleanup.sh`** - Clean up Python app demo resources
+- **`python-app-demo/generate-proto-stubs.sh`** - Generate Python protobuf stubs
 
 ### Configuration Files
 
@@ -205,6 +221,67 @@ python3 -m pytest tests/ -v
 ### Manual Component Testing
 
 See individual component READMEs for component-specific testing instructions.
+
+### SPIRE Agent SVID Renewal Testing
+
+The system supports automatic SPIRE agent SVID renewal with configurable intervals. This is useful for testing renewal behavior and ensuring continuous operation.
+
+#### Quick Test (5 minutes)
+
+Run a 5-minute renewal test with all components running persistently:
+
+```bash
+export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30  # 30 seconds (minimum)
+export UNIFIED_IDENTITY_ENABLED=true
+./test_complete.sh --test-spire-agent-svid-renewal --no-pause
+```
+
+This will:
+- Start all components (SPIRE Server/Agent, Keylime Verifier/Registrar, rust-keylime Agent, TPM Plugin)
+- Configure agent SVID renewal interval to 30 seconds
+- Monitor agent SVID renewals for 5 minutes (default)
+- Keep all components running after the test completes
+
+**Note:** All components continue running after the script exits. Use `./scripts/cleanup.sh` to stop them.
+
+#### Extended Monitoring (15+ minutes)
+
+For longer observation periods, run the test and then monitor logs manually:
+
+```bash
+# Start the test
+export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30
+export UNIFIED_IDENTITY_ENABLED=true
+./test_complete.sh --skip-cleanup --test-spire-agent-svid-renewal --no-pause
+
+# In another terminal, monitor renewals
+tail -f /tmp/spire-agent.log | grep "Agent Unified SVID renewed"
+```
+
+#### Configuration
+
+The renewal interval is controlled by the `SPIRE_AGENT_SVID_RENEWAL_INTERVAL` environment variable:
+
+- **Default:** 86400 seconds (24 hours) - SPIRE default
+- **Minimum:** 30 seconds (when `Unified-Identity` feature flag is enabled)
+- **Format:** Duration in seconds
+
+The agent's `availability_target` configuration is automatically updated based on this environment variable. The server's `agent_ttl` is also configured to 60 seconds when Unified-Identity is enabled to ensure effective renewal testing.
+
+#### Monitoring Logs
+
+Monitor renewal activity in real-time:
+
+```bash
+# SPIRE Agent renewals
+tail -f /tmp/spire-agent.log | grep "Agent Unified SVID renewed"
+
+# SPIRE Server activity
+tail -f /tmp/spire-server.log
+
+# Count total renewals
+grep -c "Agent Unified SVID renewed" /tmp/spire-agent.log
+```
 
 ## Troubleshooting
 

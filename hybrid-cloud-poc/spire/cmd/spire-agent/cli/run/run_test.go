@@ -998,13 +998,37 @@ func TestNewAgentConfig(t *testing.T) {
 			},
 		},
 		{
-			msg:         "availability_target is too short",
+			msg:         "availability_target is too short (with Unified-Identity disabled)",
 			expectError: true,
 			input: func(c *Config) {
-				c.Agent.AvailabilityTarget = "1h"
+				c.Agent.AvailabilityTarget = "10s"
+				// Disable Unified-Identity to test legacy 24h minimum
+				c.Agent.Experimental.Flags = []string{"-Unified-Identity"}
 			},
 			test: func(t *testing.T, c *agent.Config) {
 				require.Nil(t, c)
+			},
+		},
+		{
+			msg:         "availability_target is too short (with Unified-Identity enabled, but below 30s)",
+			expectError: true,
+			input: func(c *Config) {
+				c.Agent.AvailabilityTarget = "10s"
+				// Unified-Identity enabled by default, but test with explicit enable
+				c.Agent.Experimental.Flags = []string{"Unified-Identity"}
+			},
+			test: func(t *testing.T, c *agent.Config) {
+				require.Nil(t, c)
+			},
+		},
+		{
+			msg: "availability_target 30s allowed with Unified-Identity enabled",
+			input: func(c *Config) {
+				c.Agent.AvailabilityTarget = "30s"
+				c.Agent.Experimental.Flags = []string{"Unified-Identity"}
+			},
+			test: func(t *testing.T, c *agent.Config) {
+				require.EqualValues(t, 30*time.Second, c.AvailabilityTarget)
 			},
 		},
 

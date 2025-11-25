@@ -8,7 +8,7 @@ server {
     default_x509_svid_ttl = "1h"
     # Unified-Identity: Set agent SVID lifetime to 60s for effective renewal testing
     # With availability_target = 30s, renewals will occur every ~30 seconds
-    agent_ttl = "1m"
+    agent_ttl = "60s"
     ca_ttl = "24h"
     
     ca_subject {

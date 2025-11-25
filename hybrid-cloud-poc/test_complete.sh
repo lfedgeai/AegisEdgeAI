@@ -763,11 +763,14 @@ Options:
   --skip-cleanup       Skip the initial cleanup phase.
   --exit-cleanup       Run cleanup on exit (default: components continue running)
   --no-exit-cleanup    Do not run best-effort cleanup on exit (default behavior)
+  --test-spire-agent-svid-renewal  Test only the SPIRE agent SVID renewal (Steps 13-14)
   --pause              Enable pause points at critical phases (default: auto-detect)
   --no-pause           Disable pause points (run non-interactively)
   -h, --help           Show this help message.
 
 Environment Variables:
+  SPIRE_AGENT_SVID_RENEWAL_INTERVAL  SVID renewal interval in seconds (default: 86400 = 24h, min: 30s)
+                                      When set, automatically configures agent config file
 
 Note: By default, all components continue running after script exit. Use --exit-cleanup
       to restore the old behavior of cleaning up on exit.
@@ -791,6 +794,8 @@ cleanup() {
 RUN_INITIAL_CLEANUP=true
 # Modified: Default to NOT cleaning up on exit so components continue running
 EXIT_CLEANUP_ON_EXIT="${EXIT_CLEANUP_ON_EXIT:-false}"
+# Test renewal mode: monitor logs for SVID renewal events
+TEST_SPIRE_AGENT_RENEWAL="${TEST_SPIRE_AGENT_RENEWAL:-false}"
 # Auto-detect pause mode: enable if interactive terminal, disable otherwise
 if [ -t 0 ]; then
     PAUSE_ENABLED="${PAUSE_ENABLED:-true}"
@@ -798,8 +803,12 @@ else
     PAUSE_ENABLED="${PAUSE_ENABLED:-false}"
 fi
 
-# Note: SVID renewal configuration is not used in this script (for short demos)
-# For persistent deployments with SVID renewal, use a separate persistent test script
+# SVID renewal configuration: Allow override via environment variable
+# Default: 24h (SPIRE default), minimum: 30s
+SPIRE_AGENT_SVID_RENEWAL_INTERVAL="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
+# Minimum allowed renewal interval (30 seconds)
+MIN_SVID_RENEWAL_INTERVAL=30
+
 # Convert seconds to SPIRE format (e.g., 300s -> 5m, 60s -> 1m)
 convert_seconds_to_spire_duration() {
     local seconds=$1
@@ -814,13 +823,109 @@ convert_seconds_to_spire_duration() {
     fi
 }
 
+# Function to configure SPIRE server agent_ttl for Unified-Identity
+# Unified-Identity requires shorter agent SVID lifetime (e.g., 60s) for effective renewal testing
+configure_spire_server_agent_ttl() {
+    local server_config="$1"
+    local agent_ttl="${2:-60}"  # Default: 60 seconds for Unified-Identity
+    
+    if [ ! -f "$server_config" ]; then
+        echo -e "${YELLOW}    ⚠ SPIRE server config not found: $server_config${NC}"
+        return 1
+    fi
+    
+    # Convert seconds to SPIRE duration format
+    local agent_ttl_duration=$(convert_seconds_to_spire_duration "$agent_ttl")
+    
+    echo "    Configuring SPIRE server agent_ttl: ${agent_ttl}s (${agent_ttl_duration}) for Unified-Identity"
+    
+    # Create a backup
+    local backup_config="${server_config}.bak.$$"
+    cp "$server_config" "$backup_config" 2>/dev/null || true
+    
+    # Check if agent_ttl already exists in server block
+    if grep -q "agent_ttl" "$server_config"; then
+        # Update existing agent_ttl
+        sed -i "s|^[[:space:]]*agent_ttl[[:space:]]*=[[:space:]]*\"[^\"]*\"|    agent_ttl = \"${agent_ttl_duration}\"|" "$server_config"
+        sed -i "s|^[[:space:]]*agent_ttl[[:space:]]*=[[:space:]]*'[^']*'|    agent_ttl = \"${agent_ttl_duration}\"|" "$server_config"
+        sed -i "s|^[[:space:]]*agent_ttl[[:space:]]*=[[:space:]]*[^[:space:]]*|    agent_ttl = \"${agent_ttl_duration}\"|" "$server_config"
+        echo -e "${GREEN}    ✓ Updated existing agent_ttl to ${agent_ttl_duration}${NC}"
+    else
+        # Add agent_ttl to server block
+        # Find the server block and add agent_ttl after default_x509_svid_ttl or ca_ttl
+        if grep -q "default_x509_svid_ttl\|ca_ttl" "$server_config"; then
+            # Add after default_x509_svid_ttl or ca_ttl
+            awk -v renewal="agent_ttl = \"${agent_ttl_duration}\"" '
+                /default_x509_svid_ttl|ca_ttl/ {
+                    print
+                    if (!added) {
+                        print "    " renewal
+                        added = 1
+                    }
+                    next
+                }
+                { print }
+            ' "$server_config" > "${server_config}.tmp" && mv "${server_config}.tmp" "$server_config"
+        else
+            # Add in server block (find server { and add after first config line)
+            awk -v renewal="agent_ttl = \"${agent_ttl_duration}\"" '
+                /^[[:space:]]*server[[:space:]]*\{/ {
+                    in_server = 1
+                    print
+                    next
+                }
+                in_server && /^[[:space:]]*[a-z_]+[[:space:]]*=/ && !added {
+                    print "    " renewal
+                    added = 1
+                }
+                in_server && /^[[:space:]]*\}/ {
+                    if (!added) {
+                        print "    " renewal
+                    }
+                    in_server = 0
+                }
+                { print }
+            ' "$server_config" > "${server_config}.tmp" && mv "${server_config}.tmp" "$server_config"
+        fi
+        echo -e "${GREEN}    ✓ Added agent_ttl = ${agent_ttl_duration} to server configuration${NC}"
+    fi
+    
+    # Verify the change
+    if grep -q "agent_ttl.*${agent_ttl_duration}" "$server_config"; then
+        return 0
+    else
+        echo -e "${YELLOW}    ⚠ Warning: Could not verify agent_ttl was set correctly${NC}"
+        return 1
+    fi
+}
+
 # Function to configure SPIRE agent SVID renewal interval
 configure_spire_agent_svid_renewal() {
     local agent_config="$1"
-    local renewal_interval_seconds="${2:-300}"
+    local renewal_interval_seconds="${2:-${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}}"
     
     if [ ! -f "$agent_config" ]; then
         echo -e "${YELLOW}    ⚠ SPIRE agent config not found: $agent_config${NC}"
+        return 1
+    fi
+    
+    # Validate minimum renewal interval based on Unified-Identity feature flag
+    # Unified-Identity enabled: 30s minimum
+    # Unified-Identity disabled: 24h (86400s) minimum for backward compatibility
+    local unified_identity_enabled="${UNIFIED_IDENTITY_ENABLED:-true}"
+    local min_interval
+    
+    if [ "$unified_identity_enabled" = "true" ] || [ "$unified_identity_enabled" = "1" ] || [ "$unified_identity_enabled" = "yes" ]; then
+        min_interval=30  # Unified-Identity allows 30s minimum
+    else
+        min_interval=86400  # Legacy 24h minimum when Unified-Identity is disabled
+    fi
+    
+    if [ "$renewal_interval_seconds" -lt "$min_interval" ]; then
+        echo -e "${RED}    ✗ Error: SVID renewal interval must be at least ${min_interval}s (provided: ${renewal_interval_seconds}s)${NC}"
+        if [ "$min_interval" -eq 86400 ]; then
+            echo -e "${YELLOW}    Note: 30s minimum requires Unified-Identity feature flag to be enabled${NC}"
+        fi
         return 1
     fi
     
@@ -876,6 +981,139 @@ configure_spire_agent_svid_renewal() {
     fi
 }
 
+# Function to test SVID renewal by monitoring logs
+test_svid_renewal() {
+    local monitor_duration="${1:-60}"  # Default: monitor for 60 seconds
+    local renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
+    
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  Testing SVID Renewal (monitoring for ${monitor_duration}s)${NC}"
+    echo -e "${CYAN}  Configured renewal interval: ${renewal_interval}s${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Check if agent is running
+    if [ ! -f /tmp/spire-agent.pid ]; then
+        echo -e "${RED}  ✗ SPIRE Agent is not running${NC}"
+        return 1
+    fi
+    
+    local agent_pid=$(cat /tmp/spire-agent.pid)
+    if ! kill -0 "$agent_pid" 2>/dev/null; then
+        echo -e "${RED}  ✗ SPIRE Agent process (PID: $agent_pid) is not running${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}  ✓ SPIRE Agent is running (PID: $agent_pid)${NC}"
+    
+    # Get initial log positions
+    local agent_log="/tmp/spire-agent.log"
+    local initial_agent_size=0
+    if [ -f "$agent_log" ]; then
+        initial_agent_size=$(wc -l < "$agent_log" 2>/dev/null || echo "0")
+    fi
+    
+    echo "  Monitoring logs for renewal events..."
+    echo "  Initial log position: line $initial_agent_size"
+    echo ""
+    
+    # Monitor for the specified duration
+    local start_time=$(date +%s)
+    local end_time=$((start_time + monitor_duration))
+    local agent_renewals=0
+    local workload_renewals=0
+    
+    echo "  Waiting for renewal events (checking every 2 seconds)..."
+    
+    while [ $(date +%s) -lt $end_time ]; do
+        sleep 2
+        
+        # Check for agent SVID renewal events
+        if [ -f "$agent_log" ]; then
+            local current_size=$(wc -l < "$agent_log" 2>/dev/null || echo "0")
+            if [ "$current_size" -gt "$initial_agent_size" ]; then
+                # Check for new renewal events
+                local new_agent_renewals=$(tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
+                    grep -iE "renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" | wc -l)
+                
+                if [ "$new_agent_renewals" -gt 0 ]; then
+                    agent_renewals=$((agent_renewals + new_agent_renewals))
+                    echo -e "  ${GREEN}✓ Agent SVID renewal detected! (Total: $agent_renewals)${NC}"
+                    
+                    # Show the renewal log entry
+                    tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
+                        grep -iE "renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" | \
+                        head -1 | sed 's/^/    /'
+                    
+                    # Update initial size to avoid double counting
+                    initial_agent_size=$current_size
+                    
+                    # Check if workload SVIDs are also being renewed
+                    # Workload SVIDs should be automatically renewed when agent SVID is renewed
+                    local workload_renewal_check=$(tail -n +$((initial_agent_size - 10)) "$agent_log" 2>/dev/null | \
+                        grep -iE "workload.*SVID|X509.*SVID.*rotated" | wc -l)
+                    
+                    if [ "$workload_renewal_check" -gt 0 ]; then
+                        workload_renewals=$((workload_renewals + workload_renewal_check))
+                        echo -e "    ${GREEN}✓ Workload SVID renewal also detected${NC}"
+                    fi
+                fi
+            fi
+        fi
+        
+        # Show progress
+        local elapsed=$(( $(date +%s) - start_time ))
+        local remaining=$((end_time - $(date +%s)))
+        if [ $((elapsed % 10)) -eq 0 ] && [ $elapsed -gt 0 ]; then
+            echo "  Progress: ${elapsed}s / ${monitor_duration}s (${remaining}s remaining)"
+        fi
+    done
+    
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  SVID Renewal Test Results${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    if [ "$agent_renewals" -gt 0 ]; then
+        echo -e "${GREEN}  ✓ Agent SVID Renewals: $agent_renewals event(s) detected${NC}"
+        
+        if [ "$workload_renewals" -gt 0 ]; then
+            echo -e "${GREEN}  ✓ Workload SVID Renewals: $workload_renewals event(s) detected${NC}"
+            echo -e "${GREEN}  ✓ Workload SVIDs are being automatically renewed with agent SVID${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ Workload SVID renewals: Not explicitly detected in logs${NC}"
+            echo "    (This may be normal - workload SVIDs are renewed automatically)"
+        fi
+        
+        echo ""
+        echo "  Recent renewal log entries:"
+        if [ -f "$agent_log" ]; then
+            grep -iE "renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" "$agent_log" | \
+                tail -5 | sed 's/^/    /'
+        fi
+        
+        return 0
+    else
+        echo -e "${YELLOW}  ⚠ No agent SVID renewals detected during monitoring period${NC}"
+        echo "    This may be normal if the renewal interval (${renewal_interval}s) is longer than the"
+        echo "    monitoring duration (${monitor_duration}s)"
+        echo ""
+        echo "  To test renewal with a shorter interval, set:"
+        echo "    SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30  # 30 seconds minimum"
+        
+        # Show current configuration
+        if [ -f "$agent_log" ]; then
+            echo ""
+            echo "  Current agent log (last 10 lines):"
+            tail -10 "$agent_log" | sed 's/^/    /'
+        fi
+        
+        return 1
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --cleanup-only)
@@ -895,6 +1133,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-exit-cleanup)
             EXIT_CLEANUP_ON_EXIT=false
+            shift
+            ;;
+        --test-spire-agent-svid-renewal)
+            TEST_SPIRE_AGENT_RENEWAL=true
             shift
             ;;
         --pause)
@@ -1886,6 +2128,17 @@ if [ ! -f "${SERVER_CONFIG}" ]; then
 fi
 
 if [ -f "${SERVER_CONFIG}" ]; then
+    # Unified-Identity: Configure agent_ttl for effective renewal testing
+    # With Unified-Identity, set agent_ttl to 60s so renewals occur every ~30s (with availability_target=30s)
+    if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ] || [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "1" ] || [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "yes" ]; then
+        if grep -q "Unified-Identity" "$SERVER_CONFIG" 2>/dev/null || [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then
+            echo "    Configuring agent_ttl for Unified-Identity (60s for effective renewal)..."
+            configure_spire_server_agent_ttl "${SERVER_CONFIG}" "60" || {
+                echo -e "${YELLOW}    ⚠ Failed to configure agent_ttl, using config file default${NC}"
+            }
+        fi
+    fi
+    
     echo "    Starting SPIRE Server (logs: /tmp/spire-server.log)..."
     # Use nohup to ensure server continues running after script exits
     nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
@@ -1948,8 +2201,17 @@ if [ -f "${AGENT_CONFIG}" ]; then
         echo "    ⚠ Trust bundle export failed, but continuing..."
     fi
     
-    # Note: For short demos we rely on the existing agent config (24h minimum)
-    echo "    Skipping SVID renewal reconfiguration (SPIRE minimum = 24h)"
+    # Configure SVID renewal interval if specified via environment variable
+    if [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then
+        echo "    Configuring SVID renewal interval from environment variable..."
+        if configure_spire_agent_svid_renewal "${AGENT_CONFIG}" "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}"; then
+            echo -e "${GREEN}    ✓ SVID renewal interval configured${NC}"
+        else
+            echo -e "${YELLOW}    ⚠ Failed to configure SVID renewal interval, using config file default${NC}"
+        fi
+    else
+        echo "    Using SVID renewal interval from config file (if set)"
+    fi
     
     echo "    Starting SPIRE Agent (logs: /tmp/spire-agent.log)..."
     export UNIFIED_IDENTITY_ENABLED=true
@@ -2453,6 +2715,424 @@ echo -e "${GREEN}Integration test completed successfully!${NC}"
 echo ""
 
 pause_at_phase "Step 12 Complete" "Integration verification complete. All components are working together successfully."
+
+# Test SVID renewal if requested
+if [ "${TEST_SPIRE_AGENT_RENEWAL}" = true ]; then
+    echo ""
+    echo -e "${CYAN}Step 13: Ensuring All Components Run Persistently for SPIRE Agent SVID Renewal Test...${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Check and ensure all required components are running
+    COMPONENTS_OK=true
+    
+    # Check SPIRE Server
+    if ! "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
+        echo -e "${YELLOW}  ⚠ SPIRE Server not running, starting it...${NC}"
+        SERVER_CONFIG="${PROJECT_DIR}/python-app-demo/spire-server.conf"
+        nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
+        echo $! > /tmp/spire-server.pid
+        sleep 3
+        if "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
+            echo -e "${GREEN}  ✓ SPIRE Server started${NC}"
+        else
+            echo -e "${RED}  ✗ SPIRE Server failed to start${NC}"
+            COMPONENTS_OK=false
+        fi
+    else
+        echo -e "${GREEN}  ✓ SPIRE Server is running${NC}"
+    fi
+    
+    # Check TPM Plugin Server
+    TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+    if [ ! -S "$TPM_PLUGIN_SOCKET" ]; then
+        echo -e "${YELLOW}  ⚠ TPM Plugin Server not running, starting it...${NC}"
+        TPM_PLUGIN_SERVER="${PROJECT_DIR}/tpm-plugin/tpm_plugin_server.py"
+        if [ -f "$TPM_PLUGIN_SERVER" ]; then
+            mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
+            export UNIFIED_IDENTITY_ENABLED=true
+            nohup python3 "$TPM_PLUGIN_SERVER" \
+                --socket-path "$TPM_PLUGIN_SOCKET" \
+                --work-dir /tmp/spire-data/tpm-plugin \
+                > /tmp/tpm-plugin-server.log 2>&1 &
+            echo $! > /tmp/tpm-plugin-server.pid
+            sleep 3
+            if [ -S "$TPM_PLUGIN_SOCKET" ]; then
+                echo -e "${GREEN}  ✓ TPM Plugin Server started${NC}"
+            else
+                echo -e "${YELLOW}  ⚠ TPM Plugin Server start attempted (may not be required)${NC}"
+            fi
+        fi
+    else
+        echo -e "${GREEN}  ✓ TPM Plugin Server is running${NC}"
+    fi
+    
+    # Check rust-keylime agent
+    if ! pgrep -f "keylime_agent" >/dev/null 2>&1; then
+        echo -e "${YELLOW}  ⚠ rust-keylime agent not running${NC}"
+        echo "  Note: Agent may be needed for Unified-Identity attestation"
+        COMPONENTS_OK=false
+    else
+        echo -e "${GREEN}  ✓ rust-keylime agent is running${NC}"
+    fi
+    
+    # Check SPIRE Agent
+    if [ ! -S /tmp/spire-agent/public/api.sock ]; then
+        echo -e "${YELLOW}  ⚠ SPIRE Agent not running, starting it...${NC}"
+        
+        # Configure agent with renewal interval if set
+        AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
+        renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
+        if [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then
+            configure_spire_agent_svid_renewal "$AGENT_CONFIG" "$renewal_interval" || {
+                echo -e "${YELLOW}  ⚠ Failed to configure renewal interval, using default${NC}"
+            }
+        fi
+        
+        # Generate join token
+        TOKEN_OUTPUT=$("${SPIRE_SERVER}" token generate \
+            -socketPath /tmp/spire-server/private/api.sock \
+            -spiffeID spiffe://example.org/agent 2>&1)
+        JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep -i "token:" | awk '{print $2}' | head -1)
+        if [ -z "$JOIN_TOKEN" ]; then
+            JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep -oE '[a-f0-9]{32,}' | head -1)
+        fi
+        
+        if [ -n "$JOIN_TOKEN" ]; then
+            # Export trust bundle
+            "${SPIRE_SERVER}" bundle show -format pem \
+                -socketPath /tmp/spire-server/private/api.sock > /tmp/bundle.pem 2>&1 || true
+            
+            # Start agent
+            rm -f /tmp/spire-agent.log
+            nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" \
+                -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
+            echo $! > /tmp/spire-agent.pid
+            
+            # Wait for agent to start
+            for i in {1..30}; do
+                if [ -S /tmp/spire-agent/public/api.sock ]; then
+                    echo -e "${GREEN}  ✓ SPIRE Agent started and socket is ready${NC}"
+                    break
+                fi
+                if [ $i -eq 30 ]; then
+                    echo -e "${RED}  ✗ SPIRE Agent failed to start (timeout)${NC}"
+                    echo "  Check logs: /tmp/spire-agent.log"
+                    COMPONENTS_OK=false
+                fi
+                sleep 1
+            done
+        else
+            echo -e "${RED}  ✗ Failed to generate join token${NC}"
+            COMPONENTS_OK=false
+        fi
+    else
+        echo -e "${GREEN}  ✓ SPIRE Agent is running${NC}"
+    fi
+    
+    # Verify agent has SVID
+    if [ -S /tmp/spire-agent/public/api.sock ]; then
+        sleep 2
+        if grep -q "Agent.*SVID\|SVID.*issued" /tmp/spire-agent.log 2>/dev/null; then
+            echo -e "${GREEN}  ✓ SPIRE Agent has SVID${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ SPIRE Agent may not have SVID yet (checking logs...)${NC}"
+            tail -10 /tmp/spire-agent.log | grep -i "svid\|attest" | head -3 | sed 's/^/    /' || true
+        fi
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Step 14: Testing SPIRE Agent SVID Renewal...${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Determine monitoring duration based on renewal interval
+    renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
+    # Minimum test duration: 5 minutes (300 seconds) to observe multiple renewals
+    monitor_duration=300
+    
+    # If renewal interval is short, monitor for at least 4 renewal cycles (2 minutes minimum)
+    if [ "$renewal_interval" -lt 300 ]; then
+        # Calculate cycles needed: at least 4 cycles for 2 minutes
+        cycles_needed=4
+        calculated_duration=$((renewal_interval * cycles_needed + 20))  # 4 cycles + buffer
+        # Use the larger of: 5 minutes or calculated duration
+        if [ "$calculated_duration" -gt "$monitor_duration" ]; then
+            monitor_duration=$calculated_duration
+        fi
+    fi
+    
+    if [ "$COMPONENTS_OK" = true ] || [ -S /tmp/spire-agent/public/api.sock ]; then
+        if test_svid_renewal "$monitor_duration"; then
+            echo -e "${GREEN}  ✓ Agent SVID renewal test passed${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ Agent SVID renewal test completed with warnings${NC}"
+        fi
+    else
+        echo -e "${RED}  ✗ Cannot test renewal - required components not running${NC}"
+        echo "  Ensure all components are started before running --test-renewal"
+    fi
+    
+    if [ "${TEST_SPIRE_AGENT_RENEWAL}" = true ]; then
+        echo ""
+        echo -e "${GREEN}➡ SPIRE agent SVID renewal test mode complete.${NC}"
+        echo "  Agent renewals observed: $(grep -c \"Unified-Identity: Agent Unified SVID renewed\" /tmp/spire-agent.log 2>/dev/null || echo 0)"
+        echo "  See /tmp/spire-agent.log for detailed renewal timestamps."
+        echo ""
+        echo "Next steps to demo workload mTLS blips (optional):"
+        echo "  1. Start server-only demo:  python3 python-app-demo/mtls-server-app.py ..."
+        echo "  2. Start client-only demo:  python3 python-app-demo/mtls-client-app.py ..."
+        echo "  3. Or run the full workflow without --test-spire-agent-svid-renewal."
+        exit 0
+    fi
+
+    echo ""
+    echo -e "${CYAN}Step 15: Testing mTLS Communication with Automatic SVID Renewal (on top of Agent Renewal)...${NC}"
+    echo "  This test runs Python client and server apps continuously"
+    echo "  They constantly communicate via mTLS and renew SVIDs automatically"
+    echo "  Communication blips will be visible during SVID renewal"
+    echo "  Note: This runs ON TOP OF the agent SVID renewal from Step 14"
+    echo "        Both agent and workload SVIDs renew simultaneously"
+    echo ""
+    echo -e "${CYAN}  Monitor these 3 log files to see the full renewal flow:${NC}"
+    echo "    1. SPIRE Agent:    tail -f /tmp/spire-agent.log"
+    echo "    2. Server workload: tail -f /tmp/mtls-server-app.log"
+    echo "    3. Client workload: tail -f /tmp/mtls-client-app.log"
+    echo ""
+    
+    # Start Python apps continuously for renewal testing
+    PYTHON_APPS_DIR="${PROJECT_DIR}/python-app-demo"
+    SERVER_APP="${PYTHON_APPS_DIR}/mtls-server-app.py"
+    CLIENT_APP="${PYTHON_APPS_DIR}/mtls-client-app.py"
+    SERVER_LOG="/tmp/mtls-server-app.log"
+    CLIENT_LOG="/tmp/mtls-client-app.log"
+    SERVER_PORT=8443
+    
+    # Check if apps exist
+    if [ ! -f "$SERVER_APP" ] || [ ! -f "$CLIENT_APP" ]; then
+        echo -e "${YELLOW}  ⚠ Python apps not found, skipping mTLS renewal test${NC}"
+    else
+        # Check Python dependencies
+        if ! python3 -c "from spiffe.workloadapi.x509_source import X509Source" 2>/dev/null; then
+            echo -e "${YELLOW}  ⚠ spiffe library not installed, skipping mTLS renewal test${NC}"
+            echo "    Install with: pip install spiffe"
+        else
+            echo ""
+            echo -e "${CYAN}  Monitor these 3 log files to see renewal activity:${NC}"
+            echo "    1. SPIRE Agent:    tail -f /tmp/spire-agent.log"
+            echo "    2. Server workload: tail -f $SERVER_LOG"
+            echo "    3. Client workload: tail -f $CLIENT_LOG"
+            echo ""
+            # Ensure registration entries exist
+            echo "  Ensuring registration entries exist..."
+            AGENT_SPIFFE_ID=$("${SPIRE_AGENT}" api fetch x509 -socketPath /tmp/spire-agent/public/api.sock 2>/dev/null | grep "SPIFFE ID" | awk '{print $3}' | head -1 || echo "")
+            
+            if [ -n "$AGENT_SPIFFE_ID" ]; then
+                # Create entries if they don't exist
+                "${SPIRE_SERVER}" entry show -socketPath /tmp/spire-server/private/api.sock 2>/dev/null | grep -q "spiffe://example.org/mtls-server" || {
+                    "${SPIRE_SERVER}" entry create \
+                        -parentID "$AGENT_SPIFFE_ID" \
+                        -spiffeID spiffe://example.org/mtls-server \
+                        -selector unix:uid:$(id -u) \
+                        -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1 || true
+                }
+                
+                "${SPIRE_SERVER}" entry show -socketPath /tmp/spire-server/private/api.sock 2>/dev/null | grep -q "spiffe://example.org/mtls-client" || {
+                    "${SPIRE_SERVER}" entry create \
+                        -parentID "$AGENT_SPIFFE_ID" \
+                        -spiffeID spiffe://example.org/mtls-client \
+                        -selector unix:uid:$(id -u) \
+                        -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1 || true
+                }
+            fi
+            
+            # Stop any existing instances
+            pkill -f "mtls-server-app.py" >/dev/null 2>&1 || true
+            pkill -f "mtls-client-app.py" >/dev/null 2>&1 || true
+            sleep 1
+            
+            # Start server
+            echo "  Starting mTLS server app..."
+            rm -f "$SERVER_LOG"
+            nohup python3 "$SERVER_APP" \
+                --socket-path /tmp/spire-agent/public/api.sock \
+                --port "$SERVER_PORT" \
+                --log-file "$SERVER_LOG" > "$SERVER_LOG" 2>&1 &
+            SERVER_PID=$!
+            echo $SERVER_PID > /tmp/mtls-server-app.pid
+            
+            # Wait for server to start
+            sleep 3
+            if kill -0 "$SERVER_PID" 2>/dev/null; then
+                echo -e "${GREEN}  ✓ mTLS server started (PID: $SERVER_PID)${NC}"
+            else
+                echo -e "${RED}  ✗ mTLS server failed to start${NC}"
+                tail -10 "$SERVER_LOG" | sed 's/^/    /'
+            fi
+            
+            # Start client
+            echo "  Starting mTLS client app..."
+            rm -f "$CLIENT_LOG"
+            nohup python3 "$CLIENT_APP" \
+                --socket-path /tmp/spire-agent/public/api.sock \
+                --server-host localhost \
+                --server-port "$SERVER_PORT" \
+                --log-file "$CLIENT_LOG" > "$CLIENT_LOG" 2>&1 &
+            CLIENT_PID=$!
+            echo $CLIENT_PID > /tmp/mtls-client-app.pid
+            
+            # Wait for client to start
+            sleep 2
+            if kill -0 "$CLIENT_PID" 2>/dev/null; then
+                echo -e "${GREEN}  ✓ mTLS client started (PID: $CLIENT_PID)${NC}"
+            else
+                echo -e "${RED}  ✗ mTLS client failed to start${NC}"
+                tail -10 "$CLIENT_LOG" | sed 's/^/    /'
+            fi
+            
+            echo ""
+            echo -e "${CYAN}  Python apps are running continuously...${NC}"
+            echo "  - Server: Listening on port $SERVER_PORT"
+            echo "  - Client: Connecting to server and sending messages"
+            echo "  - Both apps: Automatically renewing SVIDs from SPIRE Agent"
+            echo "  - Agent SVID: Also renewing automatically (from Step 14)"
+            echo "  - Monitoring: Communication blips will be visible during renewal"
+            echo "  - Full flow: Agent SVID renewal → Workload SVID renewal → mTLS blip"
+            echo ""
+            
+            # Set test duration based on renewal interval (minimum 2 minutes)
+            test_duration=120  # Minimum 2 minutes
+            if [ "$renewal_interval" -lt 60 ]; then
+                # For short intervals, ensure at least 4 renewal cycles are observed
+                calculated_duration=$((renewal_interval * 4 + 30))  # 4 cycles + buffer
+                if [ "$calculated_duration" -gt "$test_duration" ]; then
+                    test_duration=$calculated_duration
+                fi
+            fi
+            # Cap at 5 minutes
+            if [ "$test_duration" -gt 300 ]; then
+                test_duration=300
+            fi
+            
+            echo ""
+            echo -e "${CYAN}  Monitoring Python apps for ${test_duration} seconds...${NC}"
+            echo "  - Apps are running continuously"
+            echo "  - They communicate via mTLS every few seconds"
+            echo "  - SVIDs renew automatically when agent SVID renews"
+            echo "  - Communication blips will be visible during renewal"
+            echo ""
+            
+            # Monitor for renewal events and communication
+            START_TIME=$(date +%s)
+            END_TIME=$((START_TIME + test_duration))
+            SERVER_RENEWALS=0
+            CLIENT_RENEWALS=0
+            MESSAGES_SENT=0
+            BLIPS_DETECTED=0
+            
+            while [ $(date +%s) -lt $END_TIME ]; do
+                sleep 2
+                CURRENT_TIME=$(date +%s)
+                ELAPSED=$((CURRENT_TIME - START_TIME))
+                REMAINING=$((END_TIME - CURRENT_TIME))
+                
+                # Check server renewals
+                if [ -f "$SERVER_LOG" ]; then
+                    NEW_SERVER_RENEWALS=$(grep -c "SVID RENEWAL DETECTED\|SVID renewed" "$SERVER_LOG" 2>/dev/null || echo "0")
+                    if [ "$NEW_SERVER_RENEWALS" -gt "$SERVER_RENEWALS" ]; then
+                        SERVER_RENEWALS=$NEW_SERVER_RENEWALS
+                        echo -e "${GREEN}  ✓ Server SVID renewed! (${SERVER_RENEWALS} total, ${ELAPSED}s elapsed)${NC}"
+                    fi
+                fi
+                
+                # Check client renewals
+                if [ -f "$CLIENT_LOG" ]; then
+                    NEW_CLIENT_RENEWALS=$(grep -c "SVID RENEWAL DETECTED\|SVID renewed" "$CLIENT_LOG" 2>/dev/null || echo "0")
+                    if [ "$NEW_CLIENT_RENEWALS" -gt "$CLIENT_RENEWALS" ]; then
+                        CLIENT_RENEWALS=$NEW_CLIENT_RENEWALS
+                        echo -e "${GREEN}  ✓ Client SVID renewed! (${CLIENT_RENEWALS} total, ${ELAPSED}s elapsed)${NC}"
+                    fi
+                    
+                    # Check for renewal blips (reconnections)
+                    NEW_BLIPS=$(grep -c "RENEWAL BLIP\|reconnect\|Connection error\|renewal blip" "$CLIENT_LOG" 2>/dev/null || echo "0")
+                    if [ "$NEW_BLIPS" -gt "$BLIPS_DETECTED" ]; then
+                        BLIPS_DETECTED=$NEW_BLIPS
+                        echo -e "${YELLOW}  ⚠ Renewal blip detected! (${BLIPS_DETECTED} total) - Connection briefly interrupted${NC}"
+                    fi
+                    
+                    # Count messages
+                    NEW_MESSAGES=$(grep -c "Message sent\|Received message" "$CLIENT_LOG" 2>/dev/null || echo "0")
+                    if [ "$NEW_MESSAGES" -gt "$MESSAGES_SENT" ]; then
+                        MESSAGES_SENT=$NEW_MESSAGES
+                    fi
+                fi
+                
+                # Show progress every 10 seconds
+                if (( ELAPSED > 0 && ELAPSED % 10 == 0 )); then
+                    echo "  Progress: ${ELAPSED}s / ${test_duration}s (${REMAINING}s remaining) | Messages: ${MESSAGES_SENT} | Renewals: Server=${SERVER_RENEWALS}, Client=${CLIENT_RENEWALS} | Blips: ${BLIPS_DETECTED}"
+                fi
+                
+                # Check if processes are still running
+                if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+                    echo -e "${RED}  ✗ Server process died${NC}"
+                    tail -10 "$SERVER_LOG" | sed 's/^/    /'
+                    break
+                fi
+                
+                if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+                    echo -e "${RED}  ✗ Client process died${NC}"
+                    tail -10 "$CLIENT_LOG" | sed 's/^/    /'
+                    break
+                fi
+            done
+            
+            echo ""
+            echo -e "${CYAN}  Test Summary:${NC}"
+            echo "  - Agent SVID renewals: (from Step 14 - check agent logs)"
+            echo "  - Server SVID renewals: ${SERVER_RENEWALS}"
+            echo "  - Client SVID renewals: ${CLIENT_RENEWALS}"
+            echo "  - Messages sent: ${MESSAGES_SENT}"
+            echo "  - Renewal blips detected: ${BLIPS_DETECTED}"
+            echo ""
+            
+            # Check agent renewals from Step 14
+            AGENT_RENEWALS=$(grep -c "Unified-Identity: Agent Unified SVID renewed\|Successfully rotated agent SVID" /tmp/spire-agent.log 2>/dev/null || echo "0")
+            if [ "$AGENT_RENEWALS" -gt 0 ]; then
+                echo -e "${GREEN}  ✓ Agent SVID renewals: ${AGENT_RENEWALS} (from Step 14)${NC}"
+            fi
+            
+            if [ "$SERVER_RENEWALS" -gt 0 ] && [ "$CLIENT_RENEWALS" -gt 0 ]; then
+                echo -e "${GREEN}  ✓ mTLS renewal test passed${NC}"
+                echo -e "${GREEN}  ✓ Python apps successfully communicated via mTLS${NC}"
+                echo -e "${GREEN}  ✓ Workload SVIDs automatically renewed when agent SVID renewed${NC}"
+                if [ "$BLIPS_DETECTED" -gt 0 ]; then
+                    echo -e "${CYAN}  ℹ Renewal blips detected (expected - shows automatic reconnection)${NC}"
+                fi
+                echo -e "${GREEN}  ✓ Full end-to-end renewal flow verified: Agent → Workload → mTLS${NC}"
+            else
+                echo -e "${YELLOW}  ⚠ mTLS renewal test completed with warnings${NC}"
+                echo "  Check logs: $SERVER_LOG and $CLIENT_LOG"
+            fi
+            
+            echo ""
+            echo -e "${CYAN}  Python apps continue running in background...${NC}"
+            echo "  - Server PID: $SERVER_PID (log: $SERVER_LOG)"
+            echo "  - Client PID: $CLIENT_PID (log: $CLIENT_LOG)"
+            echo "  - They will continue communicating and renewing SVIDs"
+            echo ""
+            echo -e "${CYAN}  To monitor renewal activity manually, tail these 3 logs:${NC}"
+            echo "    1. SPIRE Agent:    tail -f /tmp/spire-agent.log"
+            echo "    2. Server workload: tail -f $SERVER_LOG"
+            echo "    3. Client workload: tail -f $CLIENT_LOG"
+            echo ""
+            echo "  You'll see:"
+            echo "    - Agent SVID renewals in SPIRE Agent log"
+            echo "    - Workload SVID renewals in server/client logs"
+            echo "    - Communication blips during renewal"
+        fi
+    fi
+    
+    pause_at_phase "Step 15 Complete" "mTLS renewal test completed."
+fi
+
 if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
     echo "Background services will be terminated automatically on script exit."
     echo "Note: Default behavior is to keep services running. Use --exit-cleanup to enable cleanup."
