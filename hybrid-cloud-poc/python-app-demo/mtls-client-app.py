@@ -235,7 +235,7 @@ class SPIREmTLSClient:
                         self.message_count += 1
                         
                         # Send message
-                        message = f"HELLO #{message_num}"
+                        message = f"HELLO #{self.message_count}"
                         self.log(f"📤 Sending: {message}")
                         tls_socket.sendall(message.encode('utf-8'))
                         

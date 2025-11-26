@@ -34,6 +34,8 @@ class SPIREmTLSServer:
         self.bundle_path = None  # Keep bundle file path for SSL context lifetime
         self.active_connections = []  # Track active client connections for renewal blips
         self.connections_lock = threading.Lock()  # Lock for thread-safe access
+        self.context_lock = threading.Lock()
+        self.context = None
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -141,6 +143,28 @@ class SPIREmTLSServer:
         except Exception as e:
             self.log(f"Error in certificate verification: {e}")
             return False
+
+    def _load_server_certificate(self, context, svid):
+        """Load the provided SVID into the TLS context."""
+        from cryptography.hazmat.primitives import serialization
+        import tempfile
+        cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
+        key_pem = svid.private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
+            cert_file.write(cert_pem)
+            cert_file.write(key_pem)
+            cert_path = cert_file.name
+        try:
+            context.load_cert_chain(cert_path)
+        finally:
+            try:
+                os.unlink(cert_path)
+            except OSError:
+                pass
     
     def setup_tls_context(self):
         """Setup TLS context with SPIRE SVID source."""
@@ -212,67 +236,8 @@ class SPIREmTLSServer:
                 self.log(f"  ⚠ No bundle path available, using CERT_NONE (no peer verification)")
                 context.verify_mode = ssl.CERT_NONE  # Don't verify if no bundle
             
-            # Set up certificate callback for automatic renewal
-            def get_cert(ssl_socket, server_name=None):
-                """Get certificate from SPIRE source (auto-renewed)."""
-                try:
-                    svid = self.source.svid
-                    if not svid:
-                        return None
-                    
-                    # Check if SVID was renewed
-                    current_serial = svid.leaf.serial_number
-                    if self.last_svid_serial and current_serial != self.last_svid_serial:
-                        self.log(f"✓ SVID renewed! Old serial: {self.last_svid_serial}, New serial: {current_serial}")
-                        self.renewal_count += 1
-                    
-                    self.last_svid_serial = current_serial
-                    
-                    # Convert to TLS certificate
-                    from cryptography.hazmat.primitives import serialization
-                    cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
-                    key_pem = svid.private_key.private_bytes(
-                        encoding=serialization.Encoding.PEM,
-                        format=serialization.PrivateFormat.PKCS8,
-                        encryption_algorithm=serialization.NoEncryption()
-                    )
-                    
-                    # Load into context
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
-                        cert_file.write(cert_pem)
-                        cert_file.write(key_pem)
-                        cert_path = cert_file.name
-                    
-                    context_temp = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-                    context_temp.load_cert_chain(cert_path)
-                    os.unlink(cert_path)
-                    
-                    # Return the certificate tuple
-                    return context_temp.get_cert_chain()[0]
-                    
-                except Exception as e:
-                    self.log(f"Error getting certificate in callback: {e}")
-                    return None
-            
-            # Use a simpler approach: periodically update the certificate
-            # Load initial certificate
-            from cryptography.hazmat.primitives import serialization
-            cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
-            key_pem = svid.private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption()
-            )
-            
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
-                cert_file.write(cert_pem)
-                cert_file.write(key_pem)
-                cert_path = cert_file.name
-            
-            context.load_cert_chain(cert_path)
-            os.unlink(cert_path)
+            # Load initial certificate into context
+            self._load_server_certificate(context, svid)
             
             # Monitor for renewal and update context
             def monitor_and_update():
@@ -323,8 +288,9 @@ class SPIREmTLSServer:
                             with self.connections_lock:
                                 self.active_connections.clear()
                             
-                            # Note: In production, you'd update the context here
-                            # For now, new connections will use the updated cert
+                            with self.context_lock:
+                                self._load_server_certificate(self.context, new_svid)
+                                self.log("  ✓ TLS context updated with renewed certificate")
                     except Exception as e:
                         if self.running:
                             self.log(f"Error checking renewal: {e}")
@@ -420,6 +386,8 @@ class SPIREmTLSServer:
         try:
             # Setup TLS context with SPIRE SVID
             context = self.setup_tls_context()
+            with self.context_lock:
+                self.context = context
             
             # Create server socket
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -441,7 +409,9 @@ class SPIREmTLSServer:
                     
                     # Wrap with TLS
                     try:
-                        tls_socket = context.wrap_socket(client_socket, server_side=True)
+                        with self.context_lock:
+                            active_context = self.context
+                        tls_socket = active_context.wrap_socket(client_socket, server_side=True)
                         
                         self.log(f"✓ New TLS client connected from {address[0]}:{address[1]}")
                         if self.renewal_count > 0:

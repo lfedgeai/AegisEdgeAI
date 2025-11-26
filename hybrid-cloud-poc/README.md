@@ -66,8 +66,10 @@ This single command will:
 - `--cleanup-only` - Stop services and reset state, then exit
 - `--skip-cleanup` - Reuse existing environment
 - `--no-pause` - Run non-interactively (recommended for automation)
-- `--test-svid-renewal` - Launch the Python mTLS workloads after the default agent-renewal demo (see [SPIRE Agent SVID Renewal Testing](#spire-agent-svid-renewal-testing))
 - `--exit-cleanup` - Stop background services automatically when the script exits (default is to keep them running)
+
+For the workload mTLS renewal demonstration run `./test_workload_svid_renewal.sh`
+after the main script finishes (details below).
 
 ### Inspect Generated SVID
 
@@ -181,12 +183,12 @@ export CAMARA_BYPASS=true
 
 **Main Test Script:**
 - **`test_complete.sh`** - Main end-to-end integration test
-  - `--test-svid-renewal` - Run the Python mTLS workload renewal demo (Step 15) after the default agent-renewal monitoring
   - `--cleanup-only` - Stop services and reset state
   - `--skip-cleanup` - Reuse existing environment (skip initial cleanup)
   - `--no-pause` - Run non-interactively (for automation)
   - `--exit-cleanup` - Stop services automatically when the script exits (default is to keep them running)
   - `--help` - Show usage information
+- **`test_workload_svid_renewal.sh`** - Workload (Python mTLS) SVID renewal demo. Requires `test_complete.sh` to have been run first.
 
 **Utility Scripts:**
 - **`scripts/cleanup.sh`** - Stop all services and clean up state
@@ -297,19 +299,16 @@ tail -f /tmp/spire-server.log
 grep -c "Agent Unified SVID renewed" /tmp/spire-agent.log
 ```
 
-#### Workload mTLS Renewal Demo (`--test-svid-renewal`)
+#### Workload mTLS Renewal Demo (`test_workload_svid_renewal.sh`)
 
 To test end-to-end renewal (agent + Python mTLS client/server) with visible communication blips:
 
 ```bash
-./test_complete.sh --no-pause --test-svid-renewal
+./test_complete.sh --no-pause         # start/verify all components (leave running)
+WORKLOAD_RENEWAL_MONITOR_SECONDS=300 ./test_workload_svid_renewal.sh
 ```
 
-This option runs the default agent renewal monitoring (Steps 13–14) **and then**
-launches the Python mTLS server/client (Step 15). They keep running after the
-script exits so you can monitor renewals live. (Set
-`SPIRE_AGENT_SVID_RENEWAL_INTERVAL` before running if you want a different
-interval than the default 30 seconds.)
+The workload script restarts the Python apps, recreates 60-second TTL entries, and monitors the logs for SVID renewals/blips while keeping the apps running afterward. Set `WORKLOAD_RENEWAL_MONITOR_SECONDS` to control how long it watches (default 180 s).
 
 Monitor the three log files to observe the full flow:
 
