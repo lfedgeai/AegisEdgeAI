@@ -1367,6 +1367,7 @@ cd "${KEYLIME_DIR}"
 # Start verifier with explicit config - use nohup to ensure it stays running
 nohup python3 -m keylime.cmd.verifier > /tmp/keylime-verifier.log 2>&1 &
 KEYLIME_PID=$!
+disown $KEYLIME_PID 2>/dev/null || true
 echo $KEYLIME_PID > /tmp/keylime-verifier.pid
 echo "    Verifier PID: $KEYLIME_PID"
 # Give it a moment to start
@@ -1483,6 +1484,7 @@ echo "    Database URL: ${KEYLIME_REGISTRAR_DATABASE_URL:-sqlite}"
 # Use nohup to ensure registrar continues running after script exits
 nohup python3 -m keylime.cmd.registrar > /tmp/keylime-registrar.log 2>&1 &
 REGISTRAR_PID=$!
+disown $REGISTRAR_PID 2>/dev/null || true
 echo $REGISTRAR_PID > /tmp/keylime-registrar.pid
 
 # Wait for registrar to start
@@ -1749,6 +1751,8 @@ else
     fi
     # Use nohup to ensure agent continues running after script exits
     nohup env RUST_LOG=keylime=debug,keylime_agent=debug UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
+    RUST_AGENT_PID=$!
+    disown $RUST_AGENT_PID 2>/dev/null || true
     RUST_AGENT_PID=$!
 fi
 echo $RUST_AGENT_PID > /tmp/rust-keylime-agent.pid
@@ -2072,6 +2076,7 @@ nohup python3 "$TPM_PLUGIN_SERVER" \
     --work-dir /tmp/spire-data/tpm-plugin \
     > /tmp/tpm-plugin-server.log 2>&1 &
 TPM_PLUGIN_SERVER_PID=$!
+disown $TPM_PLUGIN_SERVER_PID 2>/dev/null || true
 echo $TPM_PLUGIN_SERVER_PID > /tmp/tpm-plugin-server.pid
 
 # Wait for server to start (check if socket exists or process is running)
@@ -2203,7 +2208,9 @@ if [ -f "${SERVER_CONFIG}" ]; then
     echo "    Starting SPIRE Server (logs: /tmp/spire-server.log)..."
     # Use nohup to ensure server continues running after script exits
     nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
-    echo $! > /tmp/spire-server.pid
+    SPIRE_SERVER_PID=$!
+    disown $SPIRE_SERVER_PID 2>/dev/null || true
+    echo $SPIRE_SERVER_PID > /tmp/spire-server.pid
     sleep 3
 fi
 
@@ -2298,7 +2305,9 @@ if [ -f "${AGENT_CONFIG}" ]; then
     else
         nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
     fi
-    echo $! > /tmp/spire-agent.pid
+    SPIRE_AGENT_PID=$!
+    disown $SPIRE_AGENT_PID 2>/dev/null || true
+    echo $SPIRE_AGENT_PID > /tmp/spire-agent.pid
     sleep 3
 fi
 
@@ -2840,7 +2849,9 @@ COMPONENTS_OK=true
         echo -e "${YELLOW}  ⚠ SPIRE Server not running, starting it...${NC}"
         SERVER_CONFIG="${PROJECT_DIR}/python-app-demo/spire-server.conf"
         nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
-        echo $! > /tmp/spire-server.pid
+        SPIRE_SERVER_PID=$!
+        disown $SPIRE_SERVER_PID 2>/dev/null || true
+        echo $SPIRE_SERVER_PID > /tmp/spire-server.pid
         sleep 3
         if "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
             echo -e "${GREEN}  ✓ SPIRE Server started${NC}"
@@ -2864,7 +2875,9 @@ COMPONENTS_OK=true
                 --socket-path "$TPM_PLUGIN_SOCKET" \
                 --work-dir /tmp/spire-data/tpm-plugin \
                 > /tmp/tpm-plugin-server.log 2>&1 &
-            echo $! > /tmp/tpm-plugin-server.pid
+            TPM_PLUGIN_PID=$!
+            disown $TPM_PLUGIN_PID 2>/dev/null || true
+            echo $TPM_PLUGIN_PID > /tmp/tpm-plugin-server.pid
             sleep 3
             if [ -S "$TPM_PLUGIN_SOCKET" ]; then
                 echo -e "${GREEN}  ✓ TPM Plugin Server started${NC}"
@@ -2920,10 +2933,16 @@ COMPONENTS_OK=true
         if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
             echo "    Starting SPIRE Agent with TPM-based proof of residency (unified_identity)..."
             nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
+            SPIRE_AGENT_PID=$!
+            disown $SPIRE_AGENT_PID 2>/dev/null || true
+            echo $SPIRE_AGENT_PID > /tmp/spire-agent.pid
         elif [ -n "$JOIN_TOKEN" ]; then
             echo "    Starting SPIRE Agent with join token..."
             nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" \
                 -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
+            SPIRE_AGENT_PID=$!
+            disown $SPIRE_AGENT_PID 2>/dev/null || true
+            echo $SPIRE_AGENT_PID > /tmp/spire-agent.pid
         else
             echo -e "${RED}  ✗ No join token and Unified-Identity disabled${NC}"
             COMPONENTS_OK=false
