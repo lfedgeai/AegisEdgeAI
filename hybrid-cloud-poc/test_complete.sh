@@ -696,7 +696,7 @@ generate_workflow_log_file() {
             echo "  [0] Workload SVID: spiffe://example.org/python-app"
             openssl crl2pkcs7 -nocrl -certfile /tmp/svid-dump/svid.pem 2>/dev/null | openssl pkcs7 -print_certs -text -noout 2>/dev/null | grep -E "Subject:|Issuer:|URI:spiffe|Not After" | head -4 | sed 's/^/    /'
             echo ""
-            echo "  [1] Agent SVID: spiffe://example.org/spire/agent/join_token/..."
+            echo "  [1] Agent SVID: spiffe://example.org/spire/agent/unified_identity/..."
             openssl crl2pkcs7 -nocrl -certfile /tmp/svid-dump/svid.pem 2>/dev/null | openssl pkcs7 -print_certs -text -noout 2>/dev/null | grep -E "Subject:|Issuer:|URI:spiffe|Not After" | tail -4 | sed 's/^/    /'
             echo ""
         fi
@@ -1070,17 +1070,36 @@ test_svid_renewal() {
             local current_size=$(wc -l < "$agent_log" 2>/dev/null || echo "0")
             if [ "$current_size" -gt "$initial_agent_size" ]; then
                 # Check for new renewal events
-                local new_agent_renewals=$(tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
-                    grep -iE "renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" | wc -l)
+                # unified_identity uses reattestation only (no rotation)
+                if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+                    local new_agent_renewals=$(tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
+                        grep -c "Successfully reattested node" 2>/dev/null || echo 0)
+                    # Sanitize: ensure we have a single integer value
+                    new_agent_renewals=$(printf '%s' "$new_agent_renewals" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+                    new_agent_renewals="${new_agent_renewals:-0}"
+                else
+                    local new_agent_renewals=$(tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
+                        grep -iE "Successfully rotated agent SVID|renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" | wc -l)
+                    # Sanitize: ensure we have a single integer value
+                    new_agent_renewals=$(printf '%s' "$new_agent_renewals" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+                    new_agent_renewals="${new_agent_renewals:-0}"
+                fi
                 
-                if [ "$new_agent_renewals" -gt 0 ]; then
+                if [ "$new_agent_renewals" -gt 0 ] 2>/dev/null; then
                     agent_renewals=$((agent_renewals + new_agent_renewals))
-                    echo -e "  ${GREEN}✓ Agent SVID renewal detected! (Total: $agent_renewals)${NC}"
-                    
-                    # Show the renewal log entry
-                    tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
-                        grep -iE "renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" | \
-                        head -1 | sed 's/^/    /'
+                    if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+                        echo -e "  ${GREEN}✓ Agent SVID reattestation detected! (Total: $agent_renewals)${NC}"
+                        # Show the reattestation log entry
+                        tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
+                            grep "Successfully reattested node" | \
+                            head -1 | sed 's/^/    /'
+                    else
+                        echo -e "  ${GREEN}✓ Agent SVID renewal detected! (Total: $agent_renewals)${NC}"
+                        # Show the renewal log entry
+                        tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
+                            grep -iE "Successfully rotated agent SVID|renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" | \
+                            head -1 | sed 's/^/    /'
+                    fi
                     
                     # Update initial size to avoid double counting
                     initial_agent_size=$current_size
@@ -1089,8 +1108,11 @@ test_svid_renewal() {
                     # Workload SVIDs should be automatically renewed when agent SVID is renewed
                     local workload_renewal_check=$(tail -n +$((initial_agent_size - 10)) "$agent_log" 2>/dev/null | \
                         grep -iE "workload.*SVID|X509.*SVID.*rotated" | wc -l)
+                    # Sanitize: ensure we have a single integer value
+                    workload_renewal_check=$(printf '%s' "$workload_renewal_check" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+                    workload_renewal_check="${workload_renewal_check:-0}"
                     
-                    if [ "$workload_renewal_check" -gt 0 ]; then
+                    if [ "$workload_renewal_check" -gt 0 ] 2>/dev/null; then
                         workload_renewals=$((workload_renewals + workload_renewal_check))
                         echo -e "    ${GREEN}✓ Workload SVID renewal also detected${NC}"
                     fi
@@ -1126,8 +1148,11 @@ test_svid_renewal() {
         echo ""
         echo "  Recent renewal log entries:"
         if [ -f "$agent_log" ]; then
-            grep -iE "renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" "$agent_log" | \
-                tail -5 | sed 's/^/    /'
+            if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+                grep "Successfully reattested node" "$agent_log" | tail -5 | sed 's/^/    /'
+            else
+                grep -iE "Successfully rotated agent SVID|renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" "$agent_log" | tail -5 | sed 's/^/    /'
+            fi
         fi
         
         return 0
@@ -2202,8 +2227,8 @@ if [ -f "${AGENT_CONFIG}" ]; then
     pkill -f "spire-agent.*run" >/dev/null 2>&1 || true
     sleep 1
     
-    # Wait for server to be ready before generating join token
-    echo "    Waiting for SPIRE Server to be ready for join token generation..."
+    # Wait for server to be ready
+    echo "    Waiting for SPIRE Server to be ready..."
     for i in {1..30}; do
         if "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
             break
@@ -2211,21 +2236,27 @@ if [ -f "${AGENT_CONFIG}" ]; then
         sleep 1
     done
     
-    # Generate join token for agent attestation (tokens are single-use, so generate fresh each time)
-    echo "    Generating join token for SPIRE Agent..."
-    TOKEN_OUTPUT=$("${SPIRE_SERVER}" token generate \
-        -socketPath /tmp/spire-server/private/api.sock 2>&1)
-    JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep "Token:" | awk '{print $2}')
+    # Unified-Identity: TPM-based proof of residency - no join token needed
+    JOIN_TOKEN=""
+    if [ "${UNIFIED_IDENTITY_ENABLED:-false}" != "true" ]; then
+        # Generate join token for agent attestation (only if Unified-Identity is disabled)
+        echo "    Generating join token for SPIRE Agent..."
+        TOKEN_OUTPUT=$("${SPIRE_SERVER}" token generate \
+            -socketPath /tmp/spire-server/private/api.sock 2>&1)
+        JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep "Token:" | awk '{print $2}')
 
-    if [ -z "$JOIN_TOKEN" ]; then
-        echo "    ⚠ Join token generation failed"
-        echo "    Token generation output:"
-        echo "$TOKEN_OUTPUT" | sed 's/^/      /'
-        echo "    Agent may not attest properly without join token"
+        if [ -z "$JOIN_TOKEN" ]; then
+            echo "    ⚠ Join token generation failed"
+            echo "    Token generation output:"
+            echo "$TOKEN_OUTPUT" | sed 's/^/      /'
+            echo "    Agent may not attest properly without join token"
+        else
+            echo "    ✓ Join token generated: ${JOIN_TOKEN:0:20}..."
+            # Small delay to ensure token is ready before agent uses it
+            sleep 1
+        fi
     else
-        echo "    ✓ Join token generated: ${JOIN_TOKEN:0:20}..."
-        # Small delay to ensure token is ready before agent uses it
-        sleep 1
+        echo "    ✓ Unified-Identity enabled: Using TPM-based proof of residency (no join token needed)"
     fi
     
     # Export trust bundle before starting agent
@@ -2250,14 +2281,19 @@ if [ -f "${AGENT_CONFIG}" ]; then
     fi
     
     echo "    Starting SPIRE Agent (logs: /tmp/spire-agent.log)..."
-    export UNIFIED_IDENTITY_ENABLED=true
+    export UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
     # Ensure TPM_PLUGIN_ENDPOINT is set for agent (must match TPM Plugin Server socket)
     if [ -z "${TPM_PLUGIN_ENDPOINT:-}" ]; then
         export TPM_PLUGIN_ENDPOINT="unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
     fi
     echo "    TPM_PLUGIN_ENDPOINT=${TPM_PLUGIN_ENDPOINT}"
+    echo "    UNIFIED_IDENTITY_ENABLED=${UNIFIED_IDENTITY_ENABLED}"
     # Use nohup to ensure agent continues running after script exits
-    if [ -n "$JOIN_TOKEN" ]; then
+    # Unified-Identity: No join token needed - agent uses TPM-based proof of residency
+    if [ "${UNIFIED_IDENTITY_ENABLED}" = "true" ]; then
+        echo "    Using TPM-based proof of residency (unified_identity node attestor)"
+        nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
+    elif [ -n "$JOIN_TOKEN" ]; then
         nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
     else
         nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
@@ -2314,14 +2350,17 @@ for i in {1..90}; do
             break
         fi
     fi
-    # Check if join token was successfully used (even if attestation later fails)
-    # This helps distinguish between "token not used" vs "token used but attestation failed"
+    # Check if attestation request was received (Unified-Identity or join token)
     if [ $i -eq 1 ] || [ $((i % 15)) -eq 0 ]; then
         if [ -f /tmp/spire-server.log ]; then
-            # Check if server received attestation request with the token
-            if grep -q "Received.*SovereignAttestation.*agent bootstrap request" /tmp/spire-server.log 2>/dev/null; then
+            # Check if server received attestation request with SovereignAttestation (Unified-Identity)
+            if grep -q "Received.*SovereignAttestation.*agent bootstrap request\|Derived agent ID from TPM evidence" /tmp/spire-server.log 2>/dev/null; then
                 if [ $i -eq 1 ]; then
-                    echo "    ℹ Join token was successfully used (checking attestation result)..."
+                    if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+                        echo "    ℹ TPM-based attestation request received (checking attestation result)..."
+                    else
+                        echo "    ℹ Join token was successfully used (checking attestation result)..."
+                    fi
                 fi
                 # Check if attestation failed due to Keylime verification
                 if grep -q "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log 2>/dev/null; then
@@ -2702,14 +2741,30 @@ echo ""
 echo "  Checking SPIRE Agent logs for SVID renewal activity..."
 if [ -f /tmp/spire-agent.log ]; then
     # Look for renewal-related log entries
-    RENEWAL_LOGS=$(grep -iE "renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | wc -l)
-    if [ "$RENEWAL_LOGS" -gt 0 ]; then
-        echo -e "${GREEN}  ✓ Found $RENEWAL_LOGS SVID renewal-related log entries${NC}"
-        echo "  Recent renewal activity:"
-        grep -iE "renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | tail -5 | sed 's/^/    /'
+    # unified_identity: agent SVID uses reattestation only (no rotation)
+    # Workload SVIDs use rotation (separate from agent SVID)
+    if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+        # unified_identity: agent SVID reattestation only
+        RENEWAL_LOGS=$(grep -iE "Successfully reattested node|renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | wc -l)
+        if [ "$RENEWAL_LOGS" -gt 0 ]; then
+            echo -e "${GREEN}  ✓ Found $RENEWAL_LOGS SVID reattestation-related log entries${NC}"
+            echo "  Recent reattestation activity:"
+            grep -iE "Successfully reattested node|renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | tail -5 | sed 's/^/    /'
+        else
+            echo -e "${YELLOW}  ⚠ No SVID reattestation activity found in agent logs (may occur after 15s interval)${NC}"
+            echo "  Note: Agent SVID reattestation is configured for 15s intervals for demo purposes"
+        fi
     else
-        echo -e "${YELLOW}  ⚠ No SVID renewal activity found in agent logs (may occur after 15s interval)${NC}"
-        echo "  Note: Renewal is configured for 15s intervals for demo purposes"
+        # Non-reattestable: agent SVID rotation
+        RENEWAL_LOGS=$(grep -iE "Successfully rotated agent SVID|renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | wc -l)
+        if [ "$RENEWAL_LOGS" -gt 0 ]; then
+            echo -e "${GREEN}  ✓ Found $RENEWAL_LOGS SVID rotation-related log entries${NC}"
+            echo "  Recent rotation activity:"
+            grep -iE "Successfully rotated agent SVID|renew|SVID.*updated|SVID.*refreshed|availability_target" /tmp/spire-agent.log | tail -5 | sed 's/^/    /'
+        else
+            echo -e "${YELLOW}  ⚠ No SVID renewal activity found in agent logs (may occur after 15s interval)${NC}"
+            echo "  Note: Renewal is configured for 15s intervals for demo purposes"
+        fi
     fi
     # Check if availability_target was set
     if grep -q "availability_target" /tmp/spire-agent.log 2>/dev/null; then
@@ -2736,12 +2791,32 @@ if [ -f "${SPIRE_SERVER}" ]; then
         echo -e "${GREEN}  ✓ Sovereign SVID generated with AttestedClaims${NC}"
     fi
     # Show SVID renewal configuration
+    # unified_identity: Agent SVID uses reattestation only (no rotation)
+    # Workload SVIDs use rotation (separate from agent SVID)
     if [ -f /tmp/spire-agent.log ]; then
-        RENEWAL_COUNT=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
-        if [ "$RENEWAL_COUNT" -gt 0 ]; then
-            echo -e "${GREEN}  ✓ SPIRE Agent SVID renewal active ($RENEWAL_COUNT renewal events logged)${NC}"
+        if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+            # unified_identity: agent SVID reattestation only (workload SVIDs use rotation)
+            REATTEST_COUNT=$(grep -c "Successfully reattested node" /tmp/spire-agent.log 2>/dev/null || echo 0)
+            # Sanitize: ensure we have a single integer value
+            REATTEST_COUNT=$(printf '%s' "$REATTEST_COUNT" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+            REATTEST_COUNT="${REATTEST_COUNT:-0}"
+            if [ "$REATTEST_COUNT" -gt 0 ] 2>/dev/null; then
+                echo -e "${GREEN}  ✓ SPIRE Agent SVID reattestation active ($REATTEST_COUNT reattestations)${NC}"
+                echo -e "${CYAN}    Note: Workload SVIDs use rotation (separate from agent SVID)${NC}"
+            else
+                echo -e "${CYAN}  ℹ SPIRE Agent SVID reattestation configured (15s interval for demo)${NC}"
+            fi
         else
-            echo -e "${CYAN}  ℹ SPIRE Agent SVID renewal configured (15s interval for demo)${NC}"
+            # Non-reattestable: agent SVID rotation
+            ROTATE_COUNT=$(grep -c "Successfully rotated agent SVID" /tmp/spire-agent.log 2>/dev/null || echo 0)
+            # Sanitize: ensure we have a single integer value
+            ROTATE_COUNT=$(printf '%s' "$ROTATE_COUNT" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+            ROTATE_COUNT="${ROTATE_COUNT:-0}"
+            if [ "$ROTATE_COUNT" -gt 0 ] 2>/dev/null; then
+                echo -e "${GREEN}  ✓ SPIRE Agent SVID rotation active ($ROTATE_COUNT rotations)${NC}"
+            else
+                echo -e "${CYAN}  ℹ SPIRE Agent SVID rotation configured (15s interval for demo)${NC}"
+            fi
         fi
     fi
 fi
@@ -2823,24 +2898,38 @@ COMPONENTS_OK=true
             }
         fi
         
-        # Generate join token
-        TOKEN_OUTPUT=$("${SPIRE_SERVER}" token generate \
-            -socketPath /tmp/spire-server/private/api.sock \
-            -spiffeID spiffe://example.org/agent 2>&1)
-        JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep -i "token:" | awk '{print $2}' | head -1)
-        if [ -z "$JOIN_TOKEN" ]; then
-            JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep -oE '[a-f0-9]{32,}' | head -1)
+        # Unified-Identity: TPM-based proof of residency - no join token needed
+        JOIN_TOKEN=""
+        if [ "${UNIFIED_IDENTITY_ENABLED:-true}" != "true" ]; then
+            # Generate join token (only if Unified-Identity is disabled)
+            TOKEN_OUTPUT=$("${SPIRE_SERVER}" token generate \
+                -socketPath /tmp/spire-server/private/api.sock \
+                -spiffeID spiffe://example.org/agent 2>&1)
+            JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep -i "token:" | awk '{print $2}' | head -1)
+            if [ -z "$JOIN_TOKEN" ]; then
+                JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep -oE '[a-f0-9]{32,}' | head -1)
+            fi
         fi
         
-        if [ -n "$JOIN_TOKEN" ]; then
-            # Export trust bundle
-            "${SPIRE_SERVER}" bundle show -format pem \
-                -socketPath /tmp/spire-server/private/api.sock > /tmp/bundle.pem 2>&1 || true
-            
-            # Start agent
-            rm -f /tmp/spire-agent.log
+        # Export trust bundle
+        "${SPIRE_SERVER}" bundle show -format pem \
+            -socketPath /tmp/spire-server/private/api.sock > /tmp/bundle.pem 2>&1 || true
+        
+        # Start agent
+        rm -f /tmp/spire-agent.log
+        if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+            echo "    Starting SPIRE Agent with TPM-based proof of residency (unified_identity)..."
+            nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
+        elif [ -n "$JOIN_TOKEN" ]; then
+            echo "    Starting SPIRE Agent with join token..."
             nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" \
                 -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
+        else
+            echo -e "${RED}  ✗ No join token and Unified-Identity disabled${NC}"
+            COMPONENTS_OK=false
+        fi
+        
+        if [ "$COMPONENTS_OK" != false ]; then
             echo $! > /tmp/spire-agent.pid
             
             # Wait for agent to start
@@ -2856,9 +2945,6 @@ COMPONENTS_OK=true
                 fi
                 sleep 1
             done
-        else
-            echo -e "${RED}  ✗ Failed to generate join token${NC}"
-            COMPONENTS_OK=false
         fi
     else
         echo -e "${GREEN}  ✓ SPIRE Agent is running${NC}"
@@ -2907,7 +2993,22 @@ fi
 
 echo ""
 echo -e "${GREEN}➡ SPIRE agent SVID renewal monitoring complete.${NC}"
-echo "  Agent renewals observed: $(grep -c \"Unified-Identity: Agent Unified SVID renewed\" /tmp/spire-agent.log 2>/dev/null || echo 0)"
+# unified_identity: Agent SVID uses reattestation only (no rotation)
+# Workload SVIDs use rotation (separate from agent SVID)
+if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+    REATTEST_COUNT=$(grep -c "Successfully reattested node" /tmp/spire-agent.log 2>/dev/null || echo 0)
+    # Sanitize: ensure we have a single integer value
+    REATTEST_COUNT=$(printf '%s' "$REATTEST_COUNT" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+    REATTEST_COUNT="${REATTEST_COUNT:-0}"
+    echo "  Agent SVID reattestations observed: $REATTEST_COUNT"
+    echo "    (unified_identity: Agent SVID uses reattestation only; Workload SVIDs use rotation)"
+else
+    ROTATE_COUNT=$(grep -c "Successfully rotated agent SVID" /tmp/spire-agent.log 2>/dev/null || echo 0)
+    # Sanitize: ensure we have a single integer value
+    ROTATE_COUNT=$(printf '%s' "$ROTATE_COUNT" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+    ROTATE_COUNT="${ROTATE_COUNT:-0}"
+    echo "  Agent SVID rotations observed: $ROTATE_COUNT"
+fi
 echo "  See /tmp/spire-agent.log for detailed renewal timestamps."
 echo ""
 echo "Next steps to demo workload mTLS blips (optional):"
@@ -2919,7 +3020,6 @@ echo ""
 echo -e "${CYAN}For workload mTLS renewal demos:${NC}"
 echo "  Run ./test_workload_svid_renewal.sh (see README)."
 echo ""
-fi
 
 if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
     echo "Background services will be terminated automatically on script exit."

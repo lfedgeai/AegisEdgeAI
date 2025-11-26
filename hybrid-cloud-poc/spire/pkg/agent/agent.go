@@ -26,6 +26,7 @@ import (
 	"github.com/spiffe/spire/pkg/agent/svid/store"
 	"github.com/spiffe/spire/pkg/common/backoff"
 	"github.com/spiffe/spire/pkg/common/diskutil"
+	"github.com/spiffe/spire/pkg/common/fflag"
 	"github.com/spiffe/spire/pkg/common/health"
 	"github.com/spiffe/spire/pkg/common/nodeutil"
 	"github.com/spiffe/spire/pkg/common/profiling"
@@ -109,9 +110,18 @@ func (a *Agent) Run(ctx context.Context) error {
 	taskRunner := util.NewTaskRunner(ctx, cancel)
 	taskRunner.StartTasks(metrics.ListenAndServe)
 
-	nodeAttestor := nodeattestor.JoinToken(a.c.Log, a.c.JoinToken)
-	if a.c.JoinToken == "" {
+	// Unified-Identity: Use TPM-based proof of residency when Unified-Identity is enabled
+	// and no join_token is provided. The agent config should specify unified_identity node attestor.
+	var nodeAttestor nodeattestor.NodeAttestor
+	if a.c.JoinToken != "" {
+		// Use join_token if provided (for backward compatibility)
+		nodeAttestor = nodeattestor.JoinToken(a.c.Log, a.c.JoinToken)
+	} else {
+		// Use node attestor from config (should be unified_identity when Unified-Identity is enabled)
 		nodeAttestor = cat.GetNodeAttestor()
+		if fflag.IsSet(fflag.FlagUnifiedIdentity) && nodeAttestor != nil && nodeAttestor.Name() == "unified_identity" {
+			a.c.Log.Info("Unified-Identity: Using TPM-based proof of residency for node attestation")
+		}
 	}
 
 	var as *node_attestor.AttestationResult

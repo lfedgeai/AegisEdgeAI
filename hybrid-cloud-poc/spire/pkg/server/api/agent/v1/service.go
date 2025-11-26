@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -326,12 +328,56 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 
 	log = log.WithField(telemetry.NodeAttestorType, params.Data.Type)
 
-	// attest
+	// Unified-Identity: TPM-based proof of residency - derive agent ID from TPM evidence
+	// If Unified-Identity is enabled and SovereignAttestation is present, use TPM-based attestation
+	// instead of join_token or other node attestors
 	var attestResult *nodeattestor.AttestResult
-	if params.Data.Type == "join_token" {
-		attestResult, err = s.attestJoinToken(ctx, string(params.Data.Payload))
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) && params.Params != nil && params.Params.SovereignAttestation != nil {
+		// Unified-Identity: Derive agent ID from TPM evidence (AK/EK via keylime_agent_uuid or App Key)
+		agentIDStr, err := s.deriveAgentIDFromTPM(ctx, log, params.Params.SovereignAttestation)
 		if err != nil {
-			return err
+			return api.MakeErr(log, codes.Internal, "failed to derive agent ID from TPM evidence", err)
+		}
+		attestResult = &nodeattestor.AttestResult{
+			AgentID:     agentIDStr,
+			CanReattest: true, // TPM-based attestation is re-attestable
+		}
+		log.WithField("agent_id", agentIDStr).Info("Unified-Identity: Derived agent ID from TPM evidence")
+	} else if params.Data.Type == "join_token" {
+		// Unified-Identity: If Unified-Identity is enabled and SovereignAttestation is present,
+		// ignore join_token and use TPM-based attestation instead
+		if fflag.IsSet(fflag.FlagUnifiedIdentity) && params.Params != nil && params.Params.SovereignAttestation != nil {
+			// Derive agent ID from TPM evidence instead of join_token
+			agentIDStr, err := s.deriveAgentIDFromTPM(ctx, log, params.Params.SovereignAttestation)
+			if err != nil {
+				return api.MakeErr(log, codes.Internal, "failed to derive agent ID from TPM evidence", err)
+			}
+			attestResult = &nodeattestor.AttestResult{
+				AgentID:     agentIDStr,
+				CanReattest: true,
+			}
+			log.WithField("agent_id", agentIDStr).Info("Unified-Identity: Ignored join_token, derived agent ID from TPM evidence")
+		} else {
+			attestResult, err = s.attestJoinToken(ctx, string(params.Data.Payload))
+			if err != nil {
+				return err
+			}
+		}
+	} else if params.Data.Type == "unified_identity" {
+		// Unified-Identity node attestor type - derive agent ID from TPM evidence
+		// This handles the case where agent explicitly uses unified_identity node attestor
+		if params.Params != nil && params.Params.SovereignAttestation != nil {
+			agentIDStr, err := s.deriveAgentIDFromTPM(ctx, log, params.Params.SovereignAttestation)
+			if err != nil {
+				return api.MakeErr(log, codes.Internal, "failed to derive agent ID from TPM evidence", err)
+			}
+			attestResult = &nodeattestor.AttestResult{
+				AgentID:     agentIDStr,
+				CanReattest: true,
+			}
+			log.WithField("agent_id", agentIDStr).Info("Unified-Identity: Derived agent ID from TPM evidence (unified_identity type)")
+		} else {
+			return api.MakeErr(log, codes.InvalidArgument, "unified_identity node attestor requires SovereignAttestation", nil)
 		}
 	} else {
 		attestResult, err = s.attestChallengeResponse(ctx, stream, params)
@@ -797,6 +843,36 @@ func (s *Service) getSelectorsFromAgentID(ctx context.Context, agentID string) (
 	}
 
 	return api.ProtoFromSelectors(selectors), nil
+}
+
+// Unified-Identity: Derive agent ID from TPM evidence (AK/EK)
+// Uses keylime_agent_uuid if available, otherwise derives from App Key public key
+func (s *Service) deriveAgentIDFromTPM(ctx context.Context, log logrus.FieldLogger, sovereignAttestation *types.SovereignAttestation) (string, error) {
+	// Prefer keylime_agent_uuid if available (stable identifier from Keylime registrar)
+	if sovereignAttestation.KeylimeAgentUuid != "" {
+		agentPath := fmt.Sprintf("/spire/agent/unified_identity/%s", sovereignAttestation.KeylimeAgentUuid)
+		agentID, err := idutil.AgentID(s.td, agentPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to create agent ID from keylime_agent_uuid: %w", err)
+		}
+		return agentID.String(), nil
+	}
+
+	// Fallback: Derive from App Key public key (TPM-bound)
+	if sovereignAttestation.AppKeyPublic != "" {
+		// Hash the App Key public key to create a stable identifier
+		hash := sha256.Sum256([]byte(sovereignAttestation.AppKeyPublic))
+		fingerprint := hex.EncodeToString(hash[:])[:16] // Use first 16 chars for readability
+		agentPath := fmt.Sprintf("/spire/agent/unified_identity/appkey-%s", fingerprint)
+		agentID, err := idutil.AgentID(s.td, agentPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to create agent ID from App Key: %w", err)
+		}
+		log.WithField("fingerprint", fingerprint).Debug("Unified-Identity: Derived agent ID from App Key public key")
+		return agentID.String(), nil
+	}
+
+	return "", errors.New("unable to derive agent ID: missing keylime_agent_uuid and App Key public key")
 }
 
 func (s *Service) attestJoinToken(ctx context.Context, token string) (*nodeattestor.AttestResult, error) {
