@@ -54,14 +54,20 @@ This single command will:
 - Generate a Sovereign SVID with AttestedClaims
 - Run all unit and integration tests
 - Generate workflow visualization
+- Keep every component running in the background when the script exits
+
+> By default the script exports `UNIFIED_IDENTITY_ENABLED=true` and configures
+> `SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30`, so SPIRE Agent/workloads automatically
+> renew their SVIDs every ~30s for a clear renewal demo. Use `--exit-cleanup` if
+> you want everything to stop when the script finishes.
 
 **Test Options:**
 - `--help` - Show usage information
 - `--cleanup-only` - Stop services and reset state, then exit
 - `--skip-cleanup` - Reuse existing environment
 - `--no-pause` - Run non-interactively (recommended for automation)
-- `--test-spire-agent-svid-renewal` - Test SPIRE agent SVID renewal (see [SPIRE Agent SVID Renewal Testing](#spire-agent-svid-renewal-testing))
-- `--test-svid-renewal` - Full agent + workload mTLS renewal test (see [SPIRE Agent SVID Renewal Testing](#spire-agent-svid-renewal-testing))
+- `--test-svid-renewal` - Launch the Python mTLS workloads after the default agent-renewal demo (see [SPIRE Agent SVID Renewal Testing](#spire-agent-svid-renewal-testing))
+- `--exit-cleanup` - Stop background services automatically when the script exits (default is to keep them running)
 
 ### Inspect Generated SVID
 
@@ -175,11 +181,11 @@ export CAMARA_BYPASS=true
 
 **Main Test Script:**
 - **`test_complete.sh`** - Main end-to-end integration test
-  - `--test-spire-agent-svid-renewal` - Test SPIRE agent SVID renewal (monitors for 5 minutes by default)
-  - `--test-svid-renewal` - Run agent renewal + Python mTLS workloads (Step 15)
+  - `--test-svid-renewal` - Run the Python mTLS workload renewal demo (Step 15) after the default agent-renewal monitoring
   - `--cleanup-only` - Stop services and reset state
   - `--skip-cleanup` - Reuse existing environment (skip initial cleanup)
   - `--no-pause` - Run non-interactively (for automation)
+  - `--exit-cleanup` - Stop services automatically when the script exits (default is to keep them running)
   - `--help` - Show usage information
 
 **Utility Scripts:**
@@ -226,49 +232,55 @@ See individual component READMEs for component-specific testing instructions.
 
 ### SPIRE Agent SVID Renewal Testing
 
-The system supports automatic SPIRE agent SVID renewal with configurable intervals. This is useful for testing renewal behavior and ensuring continuous operation.
+The system now enables SPIRE Agent SVID renewal on **every** run of
+`test_complete.sh`. No extra flags are required—Steps 13–14 automatically verify
+that renewals occur and keep every component running afterward.
 
-#### Quick Test (5 minutes)
-
-Run a 5-minute renewal test with all components running persistently:
+#### Quick Test (default ~30 second renewals)
 
 ```bash
-export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30  # 30 seconds (minimum)
-export UNIFIED_IDENTITY_ENABLED=true
-./test_complete.sh --test-spire-agent-svid-renewal --no-pause
+./test_complete.sh --no-pause
 ```
 
 This will:
-- Start all components (SPIRE Server/Agent, Keylime Verifier/Registrar, rust-keylime Agent, TPM Plugin)
-- Configure agent SVID renewal interval to 30 seconds
-- Monitor agent SVID renewals for 5 minutes (default)
-- Keep all components running after the test completes
+- Start all components (SPIRE Server/Agent, Keylime Verifier/Registrar,
+  rust-keylime Agent, TPM Plugin, etc.)
+- Configure `UNIFIED_IDENTITY_ENABLED=true` and
+  `SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30` (minimum interval) so renewals happen
+  roughly every 30 seconds
+- Monitor agent renewals automatically (Step 14) and summarize the results
+- Leave all services running so you can continue observing renewals
 
-**Note:** All components continue running after the script exits. Use `./scripts/cleanup.sh` to stop them.
-
-#### Extended Monitoring (15+ minutes)
-
-For longer observation periods, run the test and then monitor logs manually:
+To reuse the existing environment for faster reruns:
 
 ```bash
-# Start the test
-export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30
-export UNIFIED_IDENTITY_ENABLED=true
-./test_complete.sh --skip-cleanup --test-spire-agent-svid-renewal --no-pause
+./test_complete.sh --skip-cleanup --no-pause
+```
 
-# In another terminal, monitor renewals
+#### Extended Monitoring
+
+Simply leave the services running and tail the agent log:
+
+```bash
 tail -f /tmp/spire-agent.log | grep "Agent Unified SVID renewed"
 ```
 
+Because the script keeps everything alive, you can monitor for as long as you
+need. Run `./scripts/cleanup.sh` (or `./test_complete.sh --cleanup-only`) when
+you’re done.
+
 #### Configuration
 
-The renewal interval is controlled by the `SPIRE_AGENT_SVID_RENEWAL_INTERVAL` environment variable:
+The renewal interval is controlled by the `SPIRE_AGENT_SVID_RENEWAL_INTERVAL`
+environment variable:
 
-- **Default:** 86400 seconds (24 hours) - SPIRE default
-- **Minimum:** 30 seconds (when `Unified-Identity` feature flag is enabled)
-- **Format:** Duration in seconds
+- **Default (script)**: 30 seconds for a fast demo
+- **Minimum**: 30 seconds (when `Unified-Identity` is enabled)
+- **Format**: Duration in seconds (e.g., `300` for 5 minutes)
 
-The agent's `availability_target` configuration is automatically updated based on this environment variable. The server's `agent_ttl` is also configured to 60 seconds when Unified-Identity is enabled to ensure effective renewal testing.
+The script automatically writes this interval into the agent configuration
+(`availability_target`) and also sets the server’s `agent_ttl` to 60 seconds so
+renewals occur predictably.
 
 #### Monitoring Logs
 
@@ -290,12 +302,14 @@ grep -c "Agent Unified SVID renewed" /tmp/spire-agent.log
 To test end-to-end renewal (agent + Python mTLS client/server) with visible communication blips:
 
 ```bash
-export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30
-export UNIFIED_IDENTITY_ENABLED=true
-./test_complete.sh --skip-cleanup --test-svid-renewal --no-pause
+./test_complete.sh --no-pause --test-svid-renewal
 ```
 
-This option first runs the agent-only test (Steps 13-14) and then automatically launches the Python mTLS server/client (Step 15). They keep running after the script exits so you can monitor renewals live.
+This option runs the default agent renewal monitoring (Steps 13–14) **and then**
+launches the Python mTLS server/client (Step 15). They keep running after the
+script exits so you can monitor renewals live. (Set
+`SPIRE_AGENT_SVID_RENEWAL_INTERVAL` before running if you want a different
+interval than the default 30 seconds.)
 
 Monitor the three log files to observe the full flow:
 

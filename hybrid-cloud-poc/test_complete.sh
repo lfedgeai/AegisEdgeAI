@@ -763,8 +763,7 @@ Options:
   --skip-cleanup       Skip the initial cleanup phase.
   --exit-cleanup       Run cleanup on exit (default: components continue running)
   --no-exit-cleanup    Do not run best-effort cleanup on exit (default behavior)
-  --test-spire-agent-svid-renewal  Test only the SPIRE agent SVID renewal (Steps 13-14)
-  --test-svid-renewal             Full agent + workload mTLS renewal demo (builds on --test-spire-agent-svid-renewal)
+  --test-svid-renewal  Launch Python mTLS workloads to demo workload renewal blips (Steps 15+)
   --pause              Enable pause points at critical phases (default: auto-detect)
   --no-pause           Disable pause points (run non-interactively)
   -h, --help           Show this help message.
@@ -780,6 +779,11 @@ EOF
 
 # Cleanup function (called on exit)
 cleanup() {
+    if [ "${EXIT_CLEANUP_ON_EXIT}" != true ]; then
+        echo ""
+        echo -e "${YELLOW}Skipping exit cleanup (services remain running). Use --exit-cleanup to change this behavior.${NC}"
+        return
+    fi
     echo ""
     echo -e "${YELLOW}Cleaning up on exit...${NC}"
     stop_mobile_sensor_microservice
@@ -794,11 +798,9 @@ cleanup() {
 
 RUN_INITIAL_CLEANUP=true
 # Modified: Default to NOT cleaning up on exit so components continue running
-EXIT_CLEANUP_ON_EXIT="${EXIT_CLEANUP_ON_EXIT:-false}"
-# Test renewal mode: monitor logs for SVID renewal events
-TEST_SPIRE_AGENT_RENEWAL="${TEST_SPIRE_AGENT_RENEWAL:-false}"
+EXIT_CLEANUP_ON_EXIT=false
 # Extended workload SVID/mTLS renewal mode (builds on agent renewal)
-TEST_SVID_RENEWAL="${TEST_SVID_RENEWAL:-false}"
+RUN_WORKLOAD_RENEWAL=false
 # Auto-detect pause mode: enable if interactive terminal, disable otherwise
 if [ -t 0 ]; then
     PAUSE_ENABLED="${PAUSE_ENABLED:-true}"
@@ -807,8 +809,9 @@ else
 fi
 
 # SVID renewal configuration: Allow override via environment variable
-# Default: 24h (SPIRE default), minimum: 30s
-SPIRE_AGENT_SVID_RENEWAL_INTERVAL="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
+# Default: 30s for fast demo renewals, minimum: 30s
+SPIRE_AGENT_SVID_RENEWAL_INTERVAL="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-30}"
+export SPIRE_AGENT_SVID_RENEWAL_INTERVAL
 # Minimum allowed renewal interval (30 seconds)
 MIN_SVID_RENEWAL_INTERVAL=30
 
@@ -1171,18 +1174,17 @@ while [[ $# -gt 0 ]]; do
             EXIT_CLEANUP_ON_EXIT=false
             shift
             ;;
-        --test-spire-agent-svid-renewal)
-            TEST_SPIRE_AGENT_RENEWAL=true
-            shift
-            ;;
         --test-svid-renewal)
-            TEST_SVID_RENEWAL=true
-            TEST_SPIRE_AGENT_RENEWAL=true
+            RUN_WORKLOAD_RENEWAL=true
             shift
             ;;
         --pause)
             PAUSE_ENABLED=true
             shift
+            ;;
+        --)
+            shift
+            break
             ;;
         --no-pause)
             PAUSE_ENABLED=false
@@ -2757,14 +2759,13 @@ echo ""
 
 pause_at_phase "Step 12 Complete" "Integration verification complete. All components are working together successfully."
 
-# Test SVID renewal if requested
-if [ "${TEST_SPIRE_AGENT_RENEWAL}" = true ] || [ "${TEST_SVID_RENEWAL}" = true ]; then
-    echo ""
-    echo -e "${CYAN}Step 13: Ensuring All Components Run Persistently for SPIRE Agent SVID Renewal Test...${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
-    # Check and ensure all required components are running
-    COMPONENTS_OK=true
+# Step 13: Keep everything running for renewal monitoring
+echo ""
+echo -e "${CYAN}Step 13: Ensuring All Components Run Persistently for SPIRE Agent SVID Renewal Test...${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Check and ensure all required components are running
+COMPONENTS_OK=true
     
     # Check SPIRE Server
     if ! "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
@@ -2822,7 +2823,7 @@ if [ "${TEST_SPIRE_AGENT_RENEWAL}" = true ] || [ "${TEST_SVID_RENEWAL}" = true ]
         
         # Configure agent with renewal interval if set
         AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
-        renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
+        renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-30}"
         if [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then
             configure_spire_agent_svid_renewal "$AGENT_CONFIG" "$renewal_interval" || {
                 echo -e "${YELLOW}  ⚠ Failed to configure renewal interval, using default${NC}"
@@ -2881,50 +2882,47 @@ if [ "${TEST_SPIRE_AGENT_RENEWAL}" = true ] || [ "${TEST_SVID_RENEWAL}" = true ]
         fi
     fi
     
-    echo ""
-    echo -e "${CYAN}Step 14: Testing SPIRE Agent SVID Renewal...${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
-    # Determine monitoring duration based on renewal interval
-    renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
-    # Minimum test duration: 60 seconds
-    monitor_duration=60
-    
-    # If renewal interval is short, monitor for 1 renewal cycle + buffer
-    if [ "$renewal_interval" -lt 60 ]; then
-        # Calculate duration: 1 renewal cycle + 10s buffer
-        calculated_duration=$((renewal_interval + 10))
-        # Use the larger of: 60 seconds or calculated duration
-        if [ "$calculated_duration" -gt "$monitor_duration" ]; then
-            monitor_duration=$calculated_duration
-        fi
-    fi
-    
-    if [ "$COMPONENTS_OK" = true ] || [ -S /tmp/spire-agent/public/api.sock ]; then
-        if test_svid_renewal "$monitor_duration"; then
-            echo -e "${GREEN}  ✓ Agent SVID renewal test passed${NC}"
-        else
-            echo -e "${YELLOW}  ⚠ Agent SVID renewal test completed with warnings${NC}"
-        fi
-    else
-        echo -e "${RED}  ✗ Cannot test renewal - required components not running${NC}"
-        echo "  Ensure all components are started before running --test-spire-agent-svid-renewal or --test-svid-renewal"
-    fi
-    
-    if [ "${TEST_SVID_RENEWAL}" != true ]; then
-        echo ""
-        echo -e "${GREEN}➡ SPIRE agent SVID renewal test mode complete.${NC}"
-        echo "  Agent renewals observed: $(grep -c \"Unified-Identity: Agent Unified SVID renewed\" /tmp/spire-agent.log 2>/dev/null || echo 0)"
-        echo "  See /tmp/spire-agent.log for detailed renewal timestamps."
-        echo ""
-        echo "Next steps to demo workload mTLS blips (optional):"
-        echo "  1. Start server-only demo:  python3 python-app-demo/mtls-server-app.py ..."
-        echo "  2. Start client-only demo:  python3 python-app-demo/mtls-client-app.py ..."
-        echo "  3. Or run the full workflow without --test-spire-agent-svid-renewal."
-        exit 0
-    fi
+echo ""
+echo -e "${CYAN}Step 14: Testing SPIRE Agent SVID Renewal...${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    if [ "${TEST_SVID_RENEWAL}" = true ]; then
+# Determine monitoring duration based on renewal interval
+renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-30}"
+# Minimum test duration: 60 seconds
+monitor_duration=60
+
+# If renewal interval is short, monitor for 1 renewal cycle + buffer
+if [ "$renewal_interval" -lt 60 ]; then
+    # Calculate duration: 1 renewal cycle + 10s buffer
+    calculated_duration=$((renewal_interval + 10))
+    # Use the larger of: 60 seconds or calculated duration
+    if [ "$calculated_duration" -gt "$monitor_duration" ]; then
+        monitor_duration=$calculated_duration
+    fi
+fi
+
+if [ "$COMPONENTS_OK" = true ] || [ -S /tmp/spire-agent/public/api.sock ]; then
+    if test_svid_renewal "$monitor_duration"; then
+        echo -e "${GREEN}  ✓ Agent SVID renewal test passed${NC}"
+    else
+        echo -e "${YELLOW}  ⚠ Agent SVID renewal test completed with warnings${NC}"
+    fi
+else
+    echo -e "${RED}  ✗ Cannot test renewal - required components not running${NC}"
+    echo "  Ensure all components are started before re-running the renewal demonstration"
+fi
+
+echo ""
+echo -e "${GREEN}➡ SPIRE agent SVID renewal monitoring complete.${NC}"
+echo "  Agent renewals observed: $(grep -c \"Unified-Identity: Agent Unified SVID renewed\" /tmp/spire-agent.log 2>/dev/null || echo 0)"
+echo "  See /tmp/spire-agent.log for detailed renewal timestamps."
+echo ""
+echo "Next steps to demo workload mTLS blips (optional):"
+echo "  1. Start server-only demo:  python3 python-app-demo/mtls-server-app.py ..."
+echo "  2. Start client-only demo:  python3 python-app-demo/mtls-client-app.py ..."
+echo "  3. Or run this script with --test-svid-renewal to launch both workloads automatically."
+
+if [ "${RUN_WORKLOAD_RENEWAL}" = true ]; then
     echo ""
     echo -e "${CYAN}Step 15: Testing mTLS Communication with Automatic SVID Renewal (on top of Agent Renewal)...${NC}"
     echo "  This test runs Python client and server apps continuously"
@@ -3000,10 +2998,36 @@ if [ "${TEST_SPIRE_AGENT_RENEWAL}" = true ] || [ "${TEST_SVID_RENEWAL}" = true ]
             echo ""
             # Ensure registration entries exist with short TTL for renewal testing
             echo "  Ensuring registration entries exist with 1m TTL for renewal testing..."
-            AGENT_SPIFFE_ID=$("${SPIRE_AGENT}" api fetch x509 -socketPath /tmp/spire-agent/public/api.sock 2>/dev/null | grep "SPIFFE ID" | awk '{print $3}' | head -1 || echo "")
+            # Get agent SPIFFE ID from server agent list (more reliable than agent api fetch)
+            AGENT_SPIFFE_ID=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>/dev/null | grep -i "spiffe id" | head -1 | sed 's/.*SPIFFE ID[[:space:]]*:[[:space:]]*\(spiffe:\/\/[^[:space:]]*\).*/\1/' | head -1 || echo "")
             
             if [ -n "$AGENT_SPIFFE_ID" ]; then
-                # Delete existing entries to ensure they have the correct TTL
+                # Update python-app entry (used by both server and client) to have 1m TTL
+                PYTHON_APP_ENTRY_ID=$("${SPIRE_SERVER}" entry show -socketPath /tmp/spire-server/private/api.sock -spiffeID spiffe://example.org/python-app 2>/dev/null | grep "Entry ID" | awk '{print $3}' | head -1 || echo "")
+                if [ -n "$PYTHON_APP_ENTRY_ID" ]; then
+                    echo "  Updating python-app entry to 1m TTL (60 seconds)..."
+                    "${SPIRE_SERVER}" entry delete -entryID "$PYTHON_APP_ENTRY_ID" -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1 || true
+                    sleep 0.5
+                    # Recreate with 1m TTL (60 seconds) - use -x509SVIDTTL flag
+                    "${SPIRE_SERVER}" entry create \
+                        -parentID "$AGENT_SPIFFE_ID" \
+                        -spiffeID spiffe://example.org/python-app \
+                        -selector unix:uid:$(id -u) \
+                        -x509SVIDTTL 60 \
+                        -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1 || true
+                    echo "  ✓ python-app entry updated with 1m TTL (60 seconds)"
+                else
+                    # Create if it doesn't exist
+                    "${SPIRE_SERVER}" entry create \
+                        -parentID "$AGENT_SPIFFE_ID" \
+                        -spiffeID spiffe://example.org/python-app \
+                        -selector unix:uid:$(id -u) \
+                        -x509SVIDTTL 60 \
+                        -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1 || true
+                    echo "  ✓ python-app entry created with 1m TTL (60 seconds)"
+                fi
+                
+                # Also create mtls-server and mtls-client entries for completeness
                 SERVER_ENTRY_ID=$("${SPIRE_SERVER}" entry show -socketPath /tmp/spire-server/private/api.sock -spiffeID spiffe://example.org/mtls-server 2>/dev/null | grep "Entry ID" | awk '{print $3}' | head -1 || echo "")
                 if [ -n "$SERVER_ENTRY_ID" ]; then
                     "${SPIRE_SERVER}" entry delete -entryID "$SERVER_ENTRY_ID" -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1 || true
@@ -3016,22 +3040,22 @@ if [ "${TEST_SPIRE_AGENT_RENEWAL}" = true ] || [ "${TEST_SVID_RENEWAL}" = true ]
                     sleep 0.5
                 fi
                 
-                # Create entries with 1m TTL to align with agent renewal
+                # Create entries with 1m TTL (60 seconds) to align with agent renewal
                 "${SPIRE_SERVER}" entry create \
                     -parentID "$AGENT_SPIFFE_ID" \
                     -spiffeID spiffe://example.org/mtls-server \
                     -selector unix:uid:$(id -u) \
-                    -ttl 1m \
+                    -x509SVIDTTL 60 \
                     -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1 || true
                 
                 "${SPIRE_SERVER}" entry create \
                     -parentID "$AGENT_SPIFFE_ID" \
                     -spiffeID spiffe://example.org/mtls-client \
                     -selector unix:uid:$(id -u) \
-                    -ttl 1m \
+                    -x509SVIDTTL 60 \
                     -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1 || true
                 
-                echo "  ✓ Registration entries created with 1m TTL (workload SVIDs will renew every ~30s)"
+                echo "  ✓ Registration entries configured with 1m TTL (workload SVIDs will renew every ~30s)"
             fi
             
             # Stop any existing instances (additional cleanup, main cleanup already done above)
@@ -3280,7 +3304,6 @@ if [ "${TEST_SPIRE_AGENT_RENEWAL}" = true ] || [ "${TEST_SVID_RENEWAL}" = true ]
     fi
     
     pause_at_phase "Step 15 Complete" "mTLS renewal test completed."
-    fi
 fi
 
 if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
@@ -3294,7 +3317,7 @@ else
     echo "  SPIRE Agent: PID $(cat /tmp/spire-agent.pid 2>/dev/null || echo 'N/A')"
     echo ""
     echo -e "${CYAN}SPIRE Agent SVID Renewal:${NC}"
-    echo "  Configured for 15s intervals (demo purposes)"
+    echo "  Configured for ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}s intervals (demo purposes)"
     if [ -f /tmp/spire-agent.log ]; then
         RENEWAL_COUNT=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
         if [ "$RENEWAL_COUNT" -gt 0 ]; then
