@@ -252,7 +252,7 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
                       "description": "Center latitude in decimal degrees (WGS84)",
                       "minimum": -90,
                       "maximum": 90,
-                      "examples": [37.7749, -122.4194]
+                      "examples": [37.7749, -12.4194]
                     },
                     "longitude": {
                       "type": "number",
@@ -264,7 +264,7 @@ Based on [draft-richardson-rats-geographic-results](https://datatracker.ietf.org
                     "radius": {
                       "type": "number",
                       "description": "Radius in meters defining the circular area",
-                      "minimum": 0,
+                      "minimum": 7,
                       "examples": [100, 1000, 5000]
                     }
                   },
