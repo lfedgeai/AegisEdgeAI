@@ -61,6 +61,7 @@ This single command will:
 - `--skip-cleanup` - Reuse existing environment
 - `--no-pause` - Run non-interactively (recommended for automation)
 - `--test-spire-agent-svid-renewal` - Test SPIRE agent SVID renewal (see [SPIRE Agent SVID Renewal Testing](#spire-agent-svid-renewal-testing))
+- `--test-svid-renewal` - Full agent + workload mTLS renewal test (see [SPIRE Agent SVID Renewal Testing](#spire-agent-svid-renewal-testing))
 
 ### Inspect Generated SVID
 
@@ -175,6 +176,7 @@ export CAMARA_BYPASS=true
 **Main Test Script:**
 - **`test_complete.sh`** - Main end-to-end integration test
   - `--test-spire-agent-svid-renewal` - Test SPIRE agent SVID renewal (monitors for 5 minutes by default)
+  - `--test-svid-renewal` - Run agent renewal + Python mTLS workloads (Step 15)
   - `--cleanup-only` - Stop services and reset state
   - `--skip-cleanup` - Reuse existing environment (skip initial cleanup)
   - `--no-pause` - Run non-interactively (for automation)
@@ -282,6 +284,28 @@ tail -f /tmp/spire-server.log
 # Count total renewals
 grep -c "Agent Unified SVID renewed" /tmp/spire-agent.log
 ```
+
+#### Workload mTLS Renewal Demo (`--test-svid-renewal`)
+
+To test end-to-end renewal (agent + Python mTLS client/server) with visible communication blips:
+
+```bash
+export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30
+export UNIFIED_IDENTITY_ENABLED=true
+./test_complete.sh --skip-cleanup --test-svid-renewal --no-pause
+```
+
+This option first runs the agent-only test (Steps 13-14) and then automatically launches the Python mTLS server/client (Step 15). They keep running after the script exits so you can monitor renewals live.
+
+Monitor the three log files to observe the full flow:
+
+1. SPIRE Agent: `tail -f /tmp/spire-agent.log | grep "Agent Unified SVID renewed"`
+2. Server workload: `tail -f /tmp/mtls-server-app.log`
+3. Client workload: `tail -f /tmp/mtls-client-app.log`
+
+The client log shows `RENEWAL BLIP` entries whenever the TLS connection is re-established after a workload SVID rotates.
+
+> **Tip:** The Python server listens on TCP port `9443` by default. Override with `PYTHON_MTLS_SERVER_PORT=<port>` if that port is busy. The test script will automatically probe for a free port starting from that value.
 
 ## Troubleshooting
 

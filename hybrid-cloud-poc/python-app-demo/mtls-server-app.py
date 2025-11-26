@@ -31,6 +31,9 @@ class SPIREmTLSServer:
         self.connection_count = 0
         self.last_svid_serial = None
         self.source = None
+        self.bundle_path = None  # Keep bundle file path for SSL context lifetime
+        self.active_connections = []  # Track active client connections for renewal blips
+        self.connections_lock = threading.Lock()  # Lock for thread-safe access
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -158,10 +161,56 @@ class SPIREmTLSServer:
             self.log("  Monitoring for automatic SVID renewal...")
             self.last_svid_serial = svid.leaf.serial_number
             
+            # Get trust bundle for peer certificate verification
+            trust_domain = svid.spiffe_id.trust_domain
+            bundle = None
+            try:
+                # Wait a moment for bundle to be available
+                import time
+                time.sleep(0.5)
+                
+                bundle = self.source.get_bundle_for_trust_domain(trust_domain)
+                if bundle:
+                    # Load CA certificates from bundle into SSL context
+                    from cryptography.hazmat.primitives import serialization
+                    import tempfile
+                    x509_authorities = bundle.x509_authorities  # Property, not method
+                    if x509_authorities and len(x509_authorities) > 0:
+                        bundle_pem = b""
+                        for cert in x509_authorities:
+                            bundle_pem += cert.public_bytes(serialization.Encoding.PEM)
+                        
+                        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as bundle_file:
+                            bundle_file.write(bundle_pem)
+                            self.bundle_path = bundle_file.name  # Store as instance variable
+                        
+                        self.log(f"  ✓ Loaded trust bundle with {len(x509_authorities)} CA certificate(s)")
+                        self.log(f"  Bundle file: {self.bundle_path}")
+                    else:
+                        self.log(f"  ⚠ Warning: Bundle has no X509 authorities")
+                else:
+                    self.log(f"  ⚠ Warning: Could not get bundle for trust domain: {trust_domain}")
+            except Exception as e:
+                self.log(f"  ⚠ Warning: Could not load trust bundle: {e}")
+                import traceback
+                self.log(f"  Traceback: {traceback.format_exc()}")
+            
             # Create TLS context
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            context.verify_mode = ssl.CERT_OPTIONAL  # Request client cert but don't require it for now
             context.check_hostname = False
+            
+            # Load trust bundle for peer verification
+            if self.bundle_path:
+                try:
+                    context.load_verify_locations(self.bundle_path)
+                    context.verify_mode = ssl.CERT_OPTIONAL  # Request client cert and verify it
+                    self.log(f"  ✓ Trust bundle loaded into SSL context")
+                except Exception as e:
+                    self.log(f"  ⚠ Error loading bundle into SSL context: {e}")
+                    context.verify_mode = ssl.CERT_NONE  # Fallback: don't verify if bundle load fails
+            else:
+                self.log(f"  ⚠ No bundle path available, using CERT_NONE (no peer verification)")
+                context.verify_mode = ssl.CERT_NONE  # Don't verify if no bundle
             
             # Set up certificate callback for automatic renewal
             def get_cert(ssl_socket, server_name=None):
@@ -255,6 +304,25 @@ class SPIREmTLSServer:
                             self.renewal_count += 1
                             self.last_svid_serial = new_svid.leaf.serial_number
                             
+                            # DEMO: Close existing connections to force renewal blip
+                            # This makes the renewal visible to clients
+                            self.log("  🔄 Closing existing connections to demonstrate renewal blip...")
+                            with self.connections_lock:
+                                connections_to_close = list(self.active_connections)
+                            for conn in connections_to_close:
+                                try:
+                                    # Properly shutdown and close connection
+                                    conn.shutdown(socket.SHUT_RDWR)
+                                except:
+                                    pass
+                                try:
+                                    conn.close()
+                                    self.log(f"  ✓ Closed connection to force client reconnection (renewal blip)")
+                                except:
+                                    pass
+                            with self.connections_lock:
+                                self.active_connections.clear()
+                            
                             # Note: In production, you'd update the context here
                             # For now, new connections will use the updated cert
                     except Exception as e:
@@ -277,6 +345,10 @@ class SPIREmTLSServer:
         self.connection_count += 1
         conn_id = self.connection_count
         self.log(f"Client {conn_id} connected from {address}")
+        
+        # Track this connection for renewal blip handling
+        with self.connections_lock:
+            self.active_connections.append(client_socket)
         
         try:
             # Receive and echo messages
@@ -325,6 +397,10 @@ class SPIREmTLSServer:
         except Exception as e:
             self.log(f"Error in client handler {conn_id}: {e}")
         finally:
+            # Remove from active connections
+            with self.connections_lock:
+                if client_socket in self.active_connections:
+                    self.active_connections.remove(client_socket)
             try:
                 client_socket.close()
             except:
@@ -403,13 +479,19 @@ class SPIREmTLSServer:
         finally:
             if self.source:
                 self.source.close()
+            # Clean up bundle file
+            if self.bundle_path and os.path.exists(self.bundle_path):
+                try:
+                    os.unlink(self.bundle_path)
+                except:
+                    pass
             self.log("Server shutting down...")
             self.log(f"Total renewals: {self.renewal_count}")
             self.log(f"Total connections: {self.connection_count}")
 
 def main():
     socket_path = os.environ.get('SPIRE_AGENT_SOCKET', '/tmp/spire-agent/public/api.sock')
-    port = int(os.environ.get('SERVER_PORT', '8443'))
+    port = int(os.environ.get('SERVER_PORT', '9443'))
     log_file = os.environ.get('SERVER_LOG', '/tmp/mtls-server-app.log')
     
     server = SPIREmTLSServer(socket_path, port, log_file)
