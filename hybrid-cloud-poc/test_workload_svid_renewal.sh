@@ -3,8 +3,20 @@
 # Workload SVID renewal demo (Python mTLS client/server)
 # Requires test_complete.sh to have been executed so that SPIRE, Keylime, etc.
 # are already running in the background.
+#
+# Usage:
+#   ./test_workload_svid_renewal.sh                    # Run in background (default)
+#   ./test_workload_svid_renewal.sh --foreground       # Run in foreground
+#   ./test_workload_svid_renewal.sh -f                 # Run in foreground (short form)
+#   WORKLOAD_RENEWAL_MONITOR_SECONDS=3600 ./test_workload_svid_renewal.sh  # 1 hour test in background
 
 set -euo pipefail
+
+# Parse arguments - default is background mode
+RUN_IN_BACKGROUND=true
+if [[ "${1:-}" == "--foreground" ]] || [[ "${1:-}" == "-f" ]]; then
+    RUN_IN_BACKGROUND=false
+fi
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_APPS_DIR="${PROJECT_DIR}/python-app-demo"
@@ -128,6 +140,7 @@ start_server() {
         --port "$SERVER_PORT" \
         --log-file "$SERVER_LOG" > "$SERVER_LOG" 2>&1 &
     SERVER_PID=$!
+    disown $SERVER_PID 2>/dev/null || true
     echo "$SERVER_PID" > /tmp/mtls-server-app.pid
     sleep 3
     kill -0 "$SERVER_PID" 2>/dev/null || (tail -20 "$SERVER_LOG"; abort "mTLS server failed to start")
@@ -142,6 +155,7 @@ start_client() {
         --server-port "$SERVER_PORT" \
         --log-file "$CLIENT_LOG" > "$CLIENT_LOG" 2>&1 &
     CLIENT_PID=$!
+    disown $CLIENT_PID 2>/dev/null || true
     echo "$CLIENT_PID" > /tmp/mtls-client-app.pid
     sleep 2
     kill -0 "$CLIENT_PID" 2>/dev/null || (tail -20 "$CLIENT_LOG"; abort "mTLS client failed to start")
@@ -204,12 +218,49 @@ monitor_loop() {
 
 trap 'log "Stopping Python apps..."; cleanup_python_apps' INT TERM
 
-log "Workload SVID renewal demo starting..."
-ensure_prereqs
-ensure_registration_entries
-log "Cleaning up any existing Python demo instances..."
-cleanup_existing_instances
-start_server
-start_client
-monitor_loop "${WORKLOAD_RENEWAL_MONITOR_SECONDS:-180}"
+main() {
+    log "Workload SVID renewal demo starting..."
+    ensure_prereqs
+    ensure_registration_entries
+    log "Cleaning up any existing Python demo instances..."
+    cleanup_existing_instances
+    start_server
+    start_client
+    
+    if [ "$RUN_IN_BACKGROUND" = true ]; then
+        log "Running in background mode..."
+        log "Monitoring for ${WORKLOAD_RENEWAL_MONITOR_SECONDS:-180} seconds"
+        log "Server PID: $SERVER_PID (log: $SERVER_LOG)"
+        log "Client PID: $CLIENT_PID (log: $CLIENT_LOG)"
+        log ""
+        log "To monitor progress:"
+        log "  tail -f /tmp/test_workload_svid_renewal.log"
+        log "  tail -f $SERVER_LOG"
+        log "  tail -f $CLIENT_LOG"
+        log ""
+        log "To stop:"
+        log "  pkill -f 'mtls-(server|client)-app.py'"
+        log "  or: kill $SERVER_PID $CLIENT_PID"
+        log ""
+        
+        # Run monitor loop in background and redirect all output to log file
+        (
+            monitor_loop "${WORKLOAD_RENEWAL_MONITOR_SECONDS:-180}"
+        ) >> /tmp/test_workload_svid_renewal.log 2>&1 &
+        MONITOR_PID=$!
+        disown $MONITOR_PID 2>/dev/null || true
+        echo $MONITOR_PID > /tmp/test_workload_svid_renewal.pid
+        echo $SERVER_PID > /tmp/mtls-server-app.pid
+        echo $CLIENT_PID > /tmp/mtls-client-app.pid
+        
+        log "Background monitoring started (PID: $MONITOR_PID)"
+        log "All processes running in background. Script exiting - you can safely disconnect."
+        log "Check /tmp/test_workload_svid_renewal.log for monitoring output."
+    else
+        log "Running in foreground mode..."
+        monitor_loop "${WORKLOAD_RENEWAL_MONITOR_SECONDS:-180}"
+    fi
+}
+
+main "$@"
 
