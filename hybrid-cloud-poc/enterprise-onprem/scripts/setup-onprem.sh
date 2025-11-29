@@ -41,8 +41,33 @@ fi
 # Install Envoy
 if ! command -v envoy &> /dev/null; then
     echo -e "${YELLOW}Installing Envoy...${NC}"
-    curl -sL 'https://getenvoy.io/gpg' | sudo apt-key add -
-    curl -sL 'https://getenvoy.io/install.sh' | sudo bash -s -- -b /usr/local/bin
+    echo -e "${YELLOW}Note: Envoy installation methods vary by distribution.${NC}"
+    echo -e "${YELLOW}Please install Envoy manually using one of these methods:${NC}"
+    echo ""
+    echo "Option 1: Using apt (Ubuntu/Debian):"
+    echo "  curl -sL 'https://getenvoy.io/gpg' | sudo gpg --dearmor -o /usr/share/keyrings/getenvoy.gpg"
+    echo "  echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/getenvoy.gpg] https://deb.dl.getenvoy.io/public/deb/ubuntu focal main' | sudo tee /etc/apt/sources.list.d/getenvoy.list"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install -y getenvoy-envoy"
+    echo ""
+    echo "Option 2: Download binary directly:"
+    echo "  wget https://github.com/envoyproxy/envoy/releases/download/v1.28.0/envoy-1.28.0-linux-x86_64"
+    echo "  sudo mv envoy-1.28.0-linux-x86_64 /usr/local/bin/envoy"
+    echo "  sudo chmod +x /usr/local/bin/envoy"
+    echo ""
+    echo "Option 3: Using Docker:"
+    echo "  docker pull envoyproxy/envoy:v1.28-latest"
+    echo ""
+    read -p "Press Enter after installing Envoy, or 's' to skip (you can install later): " answer
+    if [ "$answer" = "s" ]; then
+        echo -e "${YELLOW}Skipping Envoy installation. Please install it manually before starting Envoy proxy.${NC}"
+    else
+        if command -v envoy &> /dev/null; then
+            echo -e "${GREEN}✓ Envoy found${NC}"
+        else
+            echo -e "${YELLOW}⚠ Envoy not found. Please install it manually.${NC}"
+        fi
+    fi
 fi
 
 # 2. Create directories
