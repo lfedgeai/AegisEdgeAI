@@ -3040,6 +3040,33 @@ echo -e "${CYAN}For workload mTLS renewal demos:${NC}"
 echo "  Run ./test_workload_svid_renewal.sh (see README)."
 echo ""
 
+# Step 15: Extract SPIRE Trust Bundle
+echo ""
+echo -e "${CYAN}Step 15: Extracting SPIRE Trust Bundle...${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if [ -f "${SCRIPT_DIR}/fetch-spire-bundle.py" ]; then
+    echo "  Extracting SPIRE trust bundle for use with standard cert servers..."
+    export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
+    export BUNDLE_OUTPUT_PATH="/tmp/spire-bundle.pem"
+    
+    if python3 "${SCRIPT_DIR}/fetch-spire-bundle.py" 2>&1; then
+        echo -e "${GREEN}  ✓ SPIRE trust bundle extracted successfully${NC}"
+        echo "  Bundle location: ${BUNDLE_OUTPUT_PATH}"
+        echo "  Use this bundle for standard cert servers that need to verify SPIRE clients:"
+        echo "    export CA_CERT_PATH=\"${BUNDLE_OUTPUT_PATH}\""
+    else
+        echo -e "${YELLOW}  ⚠ Failed to extract SPIRE trust bundle (SPIRE Agent may not be ready)${NC}"
+        echo "  You can extract it manually later with:"
+        echo "    python3 ${SCRIPT_DIR}/fetch-spire-bundle.py"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ fetch-spire-bundle.py not found at ${SCRIPT_DIR}/fetch-spire-bundle.py${NC}"
+    echo "  Skipping SPIRE bundle extraction"
+fi
+
+echo ""
+
 if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
     echo "Background services will be terminated automatically on script exit."
     echo "Note: Default behavior is to keep services running. Use --exit-cleanup to enable cleanup."

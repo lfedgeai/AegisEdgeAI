@@ -194,6 +194,7 @@ export CAMARA_BYPASS=true
 - **`scripts/cleanup.sh`** - Stop all services and clean up state
 - **`scripts/demo.sh`** - Generate Sovereign SVID demo
 - **`scripts/dump-svid-attested-claims.sh`** - Inspect SVID and AttestedClaims
+- **`fetch-spire-bundle.py`** - Extract SPIRE trust bundle (CA certificates) for use with standard cert servers
 
 **Python App Demo Scripts:**
 - **`python-app-demo/setup-spire.sh`** - Set up SPIRE server and agent

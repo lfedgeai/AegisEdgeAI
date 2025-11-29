@@ -1,0 +1,226 @@
+admin:
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901
+
+static_resources:
+  listeners:
+  - name: mtls_listener
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 8080
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          access_log:
+          - name: envoy.access_loggers.stdout
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+              log_format:
+                text_format: |
+                  [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
+                  %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
+                  %DURATION% %RESP(X-REQUEST-ID)% "%REQ(:AUTHORITY)%" "%REQ(USER-AGENT)%"
+                  "sensor_id=%REQ(X-SENSOR-ID)%"
+          http_filters:
+          - name: envoy.filters.http.lua
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+              inline_code: |
+                function envoy_on_request(request_handle)
+                  -- Get client certificate from TLS connection
+                  local cert = request_handle:connection():ssl():peerCertificate()
+                  
+                  if not cert then
+                    request_handle:logErr("No client certificate found")
+                    request_handle:respond({[":status"] = "403", ["body"] = "Client certificate required"}, "")
+                    return
+                  end
+                  
+                  -- Get certificate URI SAN (SPIFFE ID)
+                  local uris = cert:getUriSan()
+                  if not uris or #uris == 0 then
+                    request_handle:logErr("No URI SAN found in certificate")
+                    request_handle:respond({[":status"] = "403", ["body"] = "Invalid certificate: no SPIFFE ID"}, "")
+                    return
+                  end
+                  
+                  -- Get certificate DER bytes for extraction
+                  local cert_der = cert:getDerEncoded()
+                  if not cert_der then
+                    request_handle:logErr("Could not get certificate DER")
+                    request_handle:respond({[":status"] = "403", ["body"] = "Invalid certificate: could not encode"}, "")
+                    return
+                  end
+                  
+                  -- Base64 encode DER for JSON
+                  local cert_b64 = cert_der:base64()
+                  
+                  -- Call sensor ID extractor service with DER certificate
+                  local extractor_headers = {
+                    [":method"] = "POST",
+                    [":path"] = "/extract",
+                    [":authority"] = "localhost:5001",
+                    ["content-type"] = "application/json"
+                  }
+                  
+                  local extractor_body = '{"cert_der_b64":"' .. cert_b64 .. '"}'
+                  
+                  local extractor_response = request_handle:httpCall(
+                    "sensor_id_extractor",
+                    extractor_headers,
+                    extractor_body,
+                    2000
+                  )
+                  
+                  if extractor_response:status() ~= 200 then
+                    request_handle:logErr("Failed to extract sensor ID: " .. extractor_response:status())
+                    request_handle:respond({[":status"] = "403", ["body"] = "Invalid certificate: could not extract sensor ID"}, "")
+                    return
+                  end
+                  
+                  local extractor_body_text = extractor_response:body()
+                  local sensor_id = nil
+                  
+                  -- Simple JSON parsing for sensor_id
+                  local sensor_id_match = string.match(extractor_body_text, '"sensor_id"%s*:%s*"([^"]+)"')
+                  if sensor_id_match then
+                    sensor_id = sensor_id_match
+                  end
+                  
+                  if not sensor_id then
+                    request_handle:logErr("No sensor ID found in certificate")
+                    request_handle:respond({[":status"] = "403", ["body"] = "Invalid certificate: no sensor ID"}, "")
+                    return
+                  end
+                  
+                  -- Call mobile location service
+                  local mobile_headers = {
+                    [":method"] = "POST",
+                    [":path"] = "/verify",
+                    [":authority"] = "localhost:5000",
+                    ["content-type"] = "application/json"
+                  }
+                  
+                  local mobile_body = '{"sensor_id":"' .. sensor_id .. '"}'
+                  
+                  local mobile_response = request_handle:httpCall(
+                    "mobile_location_service",
+                    mobile_headers,
+                    mobile_body,
+                    5000
+                  )
+                  
+                  if mobile_response:status() ~= 200 then
+                    request_handle:logErr("Mobile location service returned status: " .. mobile_response:status())
+                    request_handle:respond({[":status"] = "403", ["body"] = "Sensor verification failed"}, "")
+                    return
+                  end
+                  
+                  local mobile_body_text = mobile_response:body()
+                  local verification_result = false
+                  
+                  -- Check for verification_result: true
+                  if string.find(mobile_body_text, '"verification_result"%s*:%s*true') then
+                    verification_result = true
+                  end
+                  
+                  if not verification_result then
+                    request_handle:logErr("Sensor verification failed for sensor_id: " .. sensor_id)
+                    request_handle:respond({[":status"] = "403", ["body"] = "Sensor verification failed"}, "")
+                    return
+                  end
+                  
+                  -- Add sensor ID to request header for backend
+                  request_handle:headers():add("X-Sensor-ID", sensor_id)
+                  request_handle:logInfo("Sensor verified successfully: " .. sensor_id)
+                end
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match:
+                  prefix: "/"
+                route:
+                  cluster: mtls_backend
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          require_client_certificate: true
+          common_tls_context:
+            tls_certificates:
+            - certificate_chain:
+                filename: /opt/envoy/certs/server-cert.pem
+              private_key:
+                filename: /opt/envoy/certs/server-key.pem
+            validation_context:
+              trusted_ca:
+                filename: /opt/envoy/certs/spire-bundle.pem
+              verify_certificate_spki:
+              - ""
+
+  clusters:
+  - name: sensor_id_extractor
+    connect_timeout: 2s
+    type: strict_dns
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: sensor_id_extractor
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 5001
+  - name: mobile_location_service
+    connect_timeout: 5s
+    type: strict_dns
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: mobile_location_service
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 5000
+  - name: mtls_backend
+    connect_timeout: 5s
+    type: strict_dns
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: mtls_backend
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 9443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        common_tls_context:
+          tls_certificates:
+          - certificate_chain:
+              filename: /opt/envoy/certs/server-cert.pem
+            private_key:
+              filename: /opt/envoy/certs/server-key.pem
+          validation_context:
+            trusted_ca:
+              filename: /opt/envoy/certs/server-cert.pem
+
