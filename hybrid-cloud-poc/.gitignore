@@ -1,0 +1,46 @@
+# Rust build artifacts
+**/target/
+**/Cargo.lock
+
+# Python virtual environments
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+
+# Database files
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Backup files
+**/*.bak
+**/*.bak.*
+**/*~
+
+# Log files
+**/*.log
+**/logs/
+
+# IDE and editor files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/.DS_Store
+
+# Temporary files
+**/tmp/
+**/temp/
+**/*.tmp
+
+# Environment files with secrets
+**/.env.local
+**/.env.*.local
+
+# OS files
+**/Thumbs.db
+
