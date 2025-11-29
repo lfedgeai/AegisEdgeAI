@@ -32,6 +32,82 @@ if [ "$EUID" -ne 0 ]; then
     echo -e "${YELLOW}Warning: Not running as root. Some operations may require sudo.${NC}"
 fi
 
+# Check if running on test machine (10.1.0.10)
+CURRENT_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1)
+IS_TEST_MACHINE=false
+if [ "$CURRENT_IP" = "10.1.0.10" ] || [ "$(hostname)" = "mwserver12" ]; then
+    IS_TEST_MACHINE=true
+    echo -e "${GREEN}Running on test machine (10.1.0.10) - cleanup and auto-start enabled${NC}"
+fi
+
+# Cleanup function - stops all services and frees up ports (only for test machine)
+cleanup_existing_services() {
+    echo -e "\n${YELLOW}Cleaning up existing services and ports...${NC}"
+    
+    # Temporarily disable exit on error for cleanup
+    set +e
+    
+    # Stop Envoy
+    echo "  Stopping Envoy..."
+    sudo pkill -f "envoy.*envoy.yaml" >/dev/null 2>&1
+    sudo pkill -f "^envoy " >/dev/null 2>&1
+    
+    # Stop mTLS server
+    echo "  Stopping mTLS server..."
+    pkill -f "mtls-server-app.py" >/dev/null 2>&1
+    
+    # Stop mobile location service
+    echo "  Stopping mobile location service..."
+    pkill -f "service.py.*5000" >/dev/null 2>&1
+    pkill -f "python3.*service.py" >/dev/null 2>&1
+    
+    # Free up ports using fuser (if available)
+    echo "  Freeing up ports..."
+    for port in 5000 9443 8080; do
+        if command -v fuser &> /dev/null; then
+            sudo fuser -k ${port}/tcp >/dev/null 2>&1
+        elif command -v lsof &> /dev/null; then
+            PIDS=$(sudo lsof -ti:${port} 2>/dev/null)
+            if [ -n "$PIDS" ]; then
+                echo "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
+            fi
+        else
+            # Fallback: try to find and kill processes using netstat/ss
+            if command -v ss &> /dev/null; then
+                PIDS=$(sudo ss -tlnp 2>/dev/null | grep ":${port}" | grep -oP 'pid=\K[0-9]+' 2>/dev/null | head -1)
+                if [ -n "$PIDS" ]; then
+                    echo "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
+                fi
+            elif command -v netstat &> /dev/null; then
+                PIDS=$(sudo netstat -tlnp 2>/dev/null | grep ":${port}" | awk '{print $7}' | cut -d'/' -f1 | head -1)
+                if [ -n "$PIDS" ] && [ "$PIDS" != "-" ]; then
+                    echo "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
+                fi
+            fi
+        fi
+    done
+    
+    # Wait a moment for processes to terminate
+    sleep 2
+    
+    # Clean up log files
+    echo "  Cleaning up log files..."
+    sudo rm -f /opt/envoy/logs/envoy.log /tmp/mobile-sensor.log /tmp/mtls-server.log >/dev/null 2>&1
+    sudo mkdir -p /opt/envoy/logs >/dev/null 2>&1
+    sudo touch /opt/envoy/logs/envoy.log >/dev/null 2>&1
+    sudo chmod 666 /opt/envoy/logs/envoy.log >/dev/null 2>&1
+    
+    # Re-enable exit on error
+    set -e
+    
+    echo -e "${GREEN}  ✓ Cleanup complete${NC}"
+}
+
+# Run cleanup at the start (only on test machine)
+if [ "$IS_TEST_MACHINE" = "true" ]; then
+    cleanup_existing_services
+fi
+
 # 1. Install dependencies
 echo -e "\n${GREEN}[1/6] Installing dependencies...${NC}"
 
@@ -258,8 +334,18 @@ echo "    cd $REPO_ROOT/mobile-sensor-microservice"
 echo "    source .venv/bin/activate"
 echo "    python3 service.py --port 5000 --host 0.0.0.0"
 
-# 5. Build WASM filter (sensor ID extraction is done in WASM, no separate service needed)
-echo -e "\n${GREEN}[5/6] Building WASM filter for sensor verification...${NC}"
+# 5. Setup mTLS server dependencies
+echo -e "\n${GREEN}[5/7] Setting up mTLS server dependencies...${NC}"
+cd "$REPO_ROOT/python-app-demo"
+# Install cryptography and other required dependencies for mTLS server
+pip3 install -q cryptography spiffe grpcio grpcio-tools protobuf 2>/dev/null || {
+    echo -e "${YELLOW}  ⚠ Failed to install some dependencies via pip3, trying with --user flag...${NC}"
+    pip3 install -q --user cryptography spiffe grpcio grpcio-tools protobuf 2>/dev/null || true
+}
+echo -e "${GREEN}  ✓ mTLS server dependencies installed${NC}"
+
+# 6. Build WASM filter (sensor ID extraction is done in WASM, no separate service needed)
+echo -e "\n${GREEN}[6/7] Building WASM filter for sensor verification...${NC}"
 cd "$ONPREM_DIR/wasm-plugin"
 if [ -f "build.sh" ]; then
     if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
@@ -274,8 +360,8 @@ else
     echo -e "${YELLOW}  ⚠ WASM plugin directory not found${NC}"
 fi
 
-# 6. Setup Envoy
-echo -e "\n${GREEN}[6/6] Setting up Envoy proxy...${NC}"
+# 7. Setup Envoy
+echo -e "\n${GREEN}[7/7] Setting up Envoy proxy...${NC}"
 
 # Copy Envoy configuration
 if [ ! -f "$ONPREM_DIR/envoy/envoy.yaml" ]; then
@@ -309,28 +395,197 @@ echo "    sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &
 echo -e "\n${GREEN}=========================================="
 echo "Setup complete!"
 echo "==========================================${NC}"
+
+# Only auto-start services on test machine (10.1.0.10)
+if [ "$IS_TEST_MACHINE" = "true" ]; then
+    # Start all services in the background
+    echo -e "\n${GREEN}Starting all services in the background...${NC}"
+    
+    # Temporarily disable exit on error for service startup
+    set +e
+    
+    # Set CAMARA_BASIC_AUTH for mobile location service (test machine only)
+    CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
+
+# Create environment file for mobile sensor service
+if [ -n "$CAMARA_BASIC_AUTH" ]; then
+    echo "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
+    echo -e "${GREEN}  ✓ Mobile sensor service environment configured${NC}"
+fi
+
+# Start Mobile Location Service
+echo "  Starting Mobile Location Service (port 5000)..."
+cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
+if [ -d ".venv" ] && [ -f "service.py" ]; then
+    source .venv/bin/activate
+    if [ -n "$CAMARA_BASIC_AUTH" ]; then
+        export CAMARA_BASIC_AUTH
+        python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
+    else
+        export CAMARA_BYPASS=true
+        python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
+    fi
+    MOBILE_PID=$!
+    sleep 2
+    if ps -p $MOBILE_PID > /dev/null 2>&1; then
+        echo -e "${GREEN}    ✓ Mobile Location Service started (PID: $MOBILE_PID)${NC}"
+    else
+        echo -e "${YELLOW}    ⚠ Mobile Location Service may have failed - check /tmp/mobile-sensor.log${NC}"
+    fi
+else
+    echo -e "${YELLOW}    ⚠ Virtual environment or service.py not found - skipping mobile service startup${NC}"
+fi
+
+# Start mTLS Server
+echo "  Starting mTLS Server (port 9443)..."
+cd "$REPO_ROOT/python-app-demo" 2>/dev/null
+if [ -f "mtls-server-app.py" ]; then
+    export SERVER_USE_SPIRE="false"
+    export SERVER_PORT="9443"
+    export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
+    python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
+    MTLS_PID=$!
+    sleep 2
+    if ps -p $MTLS_PID > /dev/null 2>&1; then
+        echo -e "${GREEN}    ✓ mTLS Server started (PID: $MTLS_PID)${NC}"
+    else
+        echo -e "${YELLOW}    ⚠ mTLS Server may have failed - check /tmp/mtls-server.log${NC}"
+    fi
+else
+    echo -e "${YELLOW}    ⚠ mtls-server-app.py not found - skipping mTLS server startup${NC}"
+fi
+
+# Ensure backend server cert is available for Envoy
+if [ ! -f /opt/envoy/certs/server-cert.pem ] && [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
+    sudo cp "$HOME/.mtls-demo/server-cert.pem" /opt/envoy/certs/server-cert.pem 2>/dev/null
+    sudo chmod 644 /opt/envoy/certs/server-cert.pem 2>/dev/null
+    echo -e "${GREEN}    ✓ Backend server certificate copied for Envoy${NC}"
+fi
+
+# Start Envoy
+echo "  Starting Envoy Proxy (port 8080)..."
+if command -v envoy &> /dev/null; then
+    sudo mkdir -p /opt/envoy/logs 2>/dev/null
+    sudo touch /opt/envoy/logs/envoy.log 2>/dev/null
+    sudo chmod 666 /opt/envoy/logs/envoy.log 2>/dev/null
+    sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &
+    ENVOY_PID=$!
+    sleep 3
+    if ps -p $ENVOY_PID > /dev/null 2>&1; then
+        echo -e "${GREEN}    ✓ Envoy started (PID: $ENVOY_PID)${NC}"
+    else
+        echo -e "${YELLOW}    ⚠ Envoy may have failed - check /opt/envoy/logs/envoy.log${NC}"
+    fi
+else
+    echo -e "${YELLOW}    ⚠ Envoy not found - please install and start manually${NC}"
+fi
+
+# Re-enable exit on error
+set -e
+
+# Verify services are running
 echo ""
-echo "To start all services manually (in separate terminals):"
+echo -e "${GREEN}Verifying services...${NC}"
+sleep 2
+
+# Temporarily disable exit on error for verification
+set +e
+
+SERVICES_OK=0
+if command -v ss &> /dev/null; then
+    if sudo ss -tlnp 2>/dev/null | grep -q ':5000'; then
+        echo -e "${GREEN}  ✓ Mobile Location Service listening on port 5000${NC}"
+        SERVICES_OK=$((SERVICES_OK + 1))
+    else
+        echo -e "${YELLOW}  ⚠ Mobile Location Service not listening on port 5000${NC}"
+    fi
+    
+    if sudo ss -tlnp 2>/dev/null | grep -q ':9443'; then
+        echo -e "${GREEN}  ✓ mTLS Server listening on port 9443${NC}"
+        SERVICES_OK=$((SERVICES_OK + 1))
+    else
+        echo -e "${YELLOW}  ⚠ mTLS Server not listening on port 9443${NC}"
+    fi
+    
+    if sudo ss -tlnp 2>/dev/null | grep -q ':8080'; then
+        echo -e "${GREEN}  ✓ Envoy listening on port 8080${NC}"
+        SERVICES_OK=$((SERVICES_OK + 1))
+    else
+        echo -e "${YELLOW}  ⚠ Envoy not listening on port 8080${NC}"
+    fi
+elif command -v netstat &> /dev/null; then
+    if sudo netstat -tlnp 2>/dev/null | grep -q ':5000'; then
+        echo -e "${GREEN}  ✓ Mobile Location Service listening on port 5000${NC}"
+        SERVICES_OK=$((SERVICES_OK + 1))
+    else
+        echo -e "${YELLOW}  ⚠ Mobile Location Service not listening on port 5000${NC}"
+    fi
+    
+    if sudo netstat -tlnp 2>/dev/null | grep -q ':9443'; then
+        echo -e "${GREEN}  ✓ mTLS Server listening on port 9443${NC}"
+        SERVICES_OK=$((SERVICES_OK + 1))
+    else
+        echo -e "${YELLOW}  ⚠ mTLS Server not listening on port 9443${NC}"
+    fi
+    
+    if sudo netstat -tlnp 2>/dev/null | grep -q ':8080'; then
+        echo -e "${GREEN}  ✓ Envoy listening on port 8080${NC}"
+        SERVICES_OK=$((SERVICES_OK + 1))
+    else
+        echo -e "${YELLOW}  ⚠ Envoy not listening on port 8080${NC}"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ Cannot verify ports (ss/netstat not available)${NC}"
+fi
+
+# Re-enable exit on error
+set -e
+
 echo ""
-echo "Terminal 1 - Mobile Location Service:"
-echo "  cd $REPO_ROOT/mobile-sensor-microservice"
-echo "  source .venv/bin/activate"
-echo "  python3 service.py --port 5000 --host 0.0.0.0"
-echo ""
-echo "Terminal 2 - mTLS Server:"
-echo "  cd $REPO_ROOT/python-app-demo"
-echo "  export SERVER_USE_SPIRE=\"false\""
-echo "  export SERVER_PORT=\"9443\""
-echo "  export CA_CERT_PATH=\"/opt/envoy/certs/spire-bundle.pem\""
-echo "  python3 mtls-server-app.py"
-echo ""
-echo "Terminal 3 - Envoy:"
-echo "  sudo envoy -c /opt/envoy/envoy.yaml"
-echo ""
-echo "Or start all in background:"
-echo "  cd $REPO_ROOT/mobile-sensor-microservice && source .venv/bin/activate && python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &"
-echo "  cd $REPO_ROOT/python-app-demo && export SERVER_USE_SPIRE=\"false\" SERVER_PORT=\"9443\" && python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &"
-echo "  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &"
-echo ""
-echo "Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!"
+if [ $SERVICES_OK -eq 3 ]; then
+    echo -e "${GREEN}✓ All services are running!${NC}"
+else
+    echo -e "${YELLOW}⚠ Some services may not be running. Check logs:${NC}"
+    echo "  - Mobile Location Service: tail -f /tmp/mobile-sensor.log"
+    echo "  - mTLS Server: tail -f /tmp/mtls-server.log"
+    echo "  - Envoy: tail -f /opt/envoy/logs/envoy.log"
+fi
+
+    echo ""
+    echo "Service Management:"
+    echo "  To stop all services: sudo pkill -f 'envoy.*envoy.yaml'; pkill -f 'mtls-server-app.py'; pkill -f 'service.py.*5000'"
+    echo "  To view logs:"
+    echo "    tail -f /tmp/mobile-sensor.log"
+    echo "    tail -f /tmp/mtls-server.log"
+    echo "    tail -f /opt/envoy/logs/envoy.log"
+    echo ""
+    echo "Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!"
+else
+    # Not on test machine - show manual startup instructions
+    echo ""
+    echo "To start all services manually (in separate terminals):"
+    echo ""
+    echo "Terminal 1 - Mobile Location Service:"
+    echo "  cd $REPO_ROOT/mobile-sensor-microservice"
+    echo "  source .venv/bin/activate"
+    echo "  export CAMARA_BYPASS=true  # or set CAMARA_BASIC_AUTH"
+    echo "  python3 service.py --port 5000 --host 0.0.0.0"
+    echo ""
+    echo "Terminal 2 - mTLS Server:"
+    echo "  cd $REPO_ROOT/python-app-demo"
+    echo "  export SERVER_USE_SPIRE=\"false\""
+    echo "  export SERVER_PORT=\"9443\""
+    echo "  export CA_CERT_PATH=\"/opt/envoy/certs/spire-bundle.pem\""
+    echo "  python3 mtls-server-app.py"
+    echo ""
+    echo "Terminal 3 - Envoy:"
+    echo "  sudo envoy -c /opt/envoy/envoy.yaml"
+    echo ""
+    echo "Or start all in background:"
+    echo "  cd $REPO_ROOT/mobile-sensor-microservice && source .venv/bin/activate && export CAMARA_BYPASS=true && python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &"
+    echo "  cd $REPO_ROOT/python-app-demo && export SERVER_USE_SPIRE=\"false\" SERVER_PORT=\"9443\" && python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &"
+    echo "  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &"
+    echo ""
+    echo "Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!"
+fi
 

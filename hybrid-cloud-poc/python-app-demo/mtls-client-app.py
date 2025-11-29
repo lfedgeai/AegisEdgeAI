@@ -213,7 +213,8 @@ class SPIREmTLSClient:
             
             self.log(f"Got initial SVID: {svid.spiffe_id}")
             self.log(f"  Initial Certificate Serial: {svid.leaf.serial_number}")
-            self.log(f"  Certificate Expires: {svid.leaf.not_valid_after}")
+            expiry = svid.leaf.not_valid_after_utc if hasattr(svid.leaf, 'not_valid_after_utc') else svid.leaf.not_valid_after
+            self.log(f"  Certificate Expires: {expiry}")
             self.log("  Monitoring for automatic SVID renewal...")
             self.last_svid_serial = svid.leaf.serial_number
             
@@ -286,9 +287,34 @@ class SPIREmTLSClient:
                     self.log(f"  ⚠ No bundle path available, using CERT_NONE (no peer verification)")
                     context.verify_mode = ssl.CERT_NONE  # Don't verify if no bundle
             
-            # Load initial certificate
+            # Load certificate chain (leaf + intermediates)
+            # The Unified Identity extension is in the intermediate certificate (agent SVID)
             from cryptography.hazmat.primitives import serialization
             cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
+            
+            # SPIRE X509Source provides the full chain via the underlying workload API
+            # The chain includes: workload SVID (leaf) + agent SVID (intermediate)
+            # Check if svid has a chain attribute or if we need to get it from the source
+            try:
+                # Try to get the full chain from the source's underlying data
+                # The python-spiffe library may store intermediates separately
+                if hasattr(self.source, '_x509_svid') and self.source._x509_svid:
+                    x509_svid = self.source._x509_svid
+                    # Check if there are additional certificates in the chain
+                    if hasattr(x509_svid, 'cert_chain') and x509_svid.cert_chain:
+                        for cert in x509_svid.cert_chain:
+                            if cert != svid.leaf:
+                                cert_pem += cert.public_bytes(serialization.Encoding.PEM)
+                    # Alternative: check for intermediates in the raw response
+                    elif hasattr(x509_svid, 'certificates') and x509_svid.certificates:
+                        for cert in x509_svid.certificates[1:]:  # Skip first (leaf)
+                            cert_pem += cert.public_bytes(serialization.Encoding.PEM)
+            except Exception as e:
+                # If we can't get intermediates, log but continue with leaf only
+                # The WASM filter will check what's available in the chain
+                self.log(f"  ⚠ Could not extract intermediate certificates: {e}")
+                self.log(f"  ℹ Note: Unified Identity extension should be in intermediate cert")
+            
             key_pem = svid.private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.PKCS8,
@@ -509,16 +535,60 @@ class SPIREmTLSClient:
                         message_num += 1
                         self.message_count += 1
                         
-                        # Send message
+                        # Send HTTP request
                         message = f"HELLO #{self.message_count}"
-                        self.log(f"📤 Sending: {message}")
-                        tls_socket.sendall(message.encode('utf-8'))
+                        http_request = (
+                            f"GET /hello HTTP/1.1\r\n"
+                            f"Host: {self.server_host}:{self.server_port}\r\n"
+                            f"User-Agent: mTLS-Client/1.0\r\n"
+                            f"X-Message: {message}\r\n"
+                            f"Connection: keep-alive\r\n"
+                            f"\r\n"
+                        )
+                        self.log(f"📤 Sending HTTP request: {message}")
+                        tls_socket.sendall(http_request.encode('utf-8'))
                         
-                        # Receive response
+                        # Receive HTTP response
                         try:
-                            response = tls_socket.recv(1024)
-                            if response:
-                                self.log(f"📥 Received: {response.decode('utf-8')}")
+                            response_data = b""
+                            while True:
+                                chunk = tls_socket.recv(4096)
+                                if not chunk:
+                                    break
+                                response_data += chunk
+                                # Check if we've received the full HTTP response
+                                if b"\r\n\r\n" in response_data:
+                                    # Try to read body if Content-Length is specified
+                                    headers_end = response_data.find(b"\r\n\r\n")
+                                    headers = response_data[:headers_end].decode('utf-8', errors='replace')
+                                    body_start = headers_end + 4
+                                    
+                                    # Check for Content-Length
+                                    content_length = 0
+                                    for line in headers.split('\r\n'):
+                                        if line.lower().startswith('content-length:'):
+                                            try:
+                                                content_length = int(line.split(':', 1)[1].strip())
+                                                break
+                                            except:
+                                                pass
+                                    
+                                    if content_length > 0:
+                                        body_received = len(response_data) - body_start
+                                        if body_received >= content_length:
+                                            break
+                                    else:
+                                        # No Content-Length, assume response is complete
+                                        break
+                            
+                            if response_data:
+                                response_text = response_data.decode('utf-8', errors='replace')
+                                # Extract body from HTTP response
+                                if "\r\n\r\n" in response_text:
+                                    body = response_text.split("\r\n\r\n", 1)[1]
+                                    self.log(f"📥 Received HTTP response: {body.strip()}")
+                                else:
+                                    self.log(f"📥 Received: {response_text[:200]}")
                         except ssl.SSLError as e:
                             err_str = str(e)
                             if "certificate" in err_str.lower() or "renewal" in err_str.lower():

@@ -404,7 +404,7 @@ class SPIREmTLSServer:
                             old_serial = self.last_svid_serial
                             new_serial = new_svid.leaf.serial_number
                             old_expiry = None
-                            new_expiry = new_svid.leaf.not_valid_after
+                            new_expiry = new_svid.leaf.not_valid_after_utc if hasattr(new_svid.leaf, 'not_valid_after_utc') else new_svid.leaf.not_valid_after
                             
                             if old_serial:
                                 self.log("")
@@ -502,22 +502,98 @@ class SPIREmTLSServer:
             # Receive and echo messages
             while self.running:
                 try:
-                    data = client_socket.recv(1024)
-                    if not data:
+                    # Receive HTTP request
+                    request_data = b""
+                    while True:
+                        chunk = client_socket.recv(4096)
+                        if not chunk:
+                            break
+                        request_data += chunk
+                        # Check if we've received the full HTTP request headers
+                        if b"\r\n\r\n" in request_data:
+                            # Try to read body if Content-Length is specified
+                            headers_end = request_data.find(b"\r\n\r\n")
+                            headers = request_data[:headers_end].decode('utf-8', errors='replace')
+                            
+                            # Check for Content-Length
+                            content_length = 0
+                            for line in headers.split('\r\n'):
+                                if line.lower().startswith('content-length:'):
+                                    try:
+                                        content_length = int(line.split(':', 1)[1].strip())
+                                        break
+                                    except:
+                                        pass
+                            
+                            if content_length > 0:
+                                body_start = headers_end + 4
+                                body_received = len(request_data) - body_start
+                                if body_received >= content_length:
+                                    break
+                            else:
+                                # No Content-Length, assume request is complete
+                                break
+                    
+                    if not request_data:
                         break
                     
-                    message = data.decode('utf-8', errors='replace').strip()
-                    self.log(f"🔊 Client {conn_id} says: {message}")
+                    # Parse HTTP request
+                    request_text = request_data.decode('utf-8', errors='replace')
+                    request_lines = request_text.split('\r\n')
+                    if not request_lines:
+                        break
                     
-                    # Echo back
-                    response = f"SERVER ACK: {message}"
-                    client_socket.sendall(response.encode('utf-8'))
-                    self.log(f"✅ Responded to client {conn_id}: {response}")
+                    # Parse request line
+                    request_line = request_lines[0]
+                    parts = request_line.split()
+                    if len(parts) < 2:
+                        break
+                    method = parts[0]
+                    path = parts[1]
                     
-                    # Special command to check renewal status
-                    if message.upper() == "STATUS":
-                        status = f"Renewals: {self.renewal_count}, Connections: {self.connection_count}"
-                        client_socket.sendall(status.encode('utf-8'))
+                    # Extract message from X-Message header or path
+                    message = path
+                    sensor_id = None
+                    for line in request_lines[1:]:
+                        if line.lower().startswith('x-sensor-id:'):
+                            sensor_id = line.split(':', 1)[1].strip()
+                            self.log(f"🔊 Client {conn_id} sensor ID (from X-Sensor-ID header): {sensor_id}")
+                        elif line.lower().startswith('x-message:'):
+                            message = line.split(':', 1)[1].strip()
+                            break
+                    
+                    if sensor_id:
+                        self.log(f"🔊 Client {conn_id} HTTP {method} {path}: {message} [Sensor ID: {sensor_id}]")
+                    else:
+                        self.log(f"🔊 Client {conn_id} HTTP {method} {path}: {message} [No Sensor ID header]")
+                    
+                    # Prepare HTTP response
+                    response_body = f"SERVER ACK: {message}"
+                    http_response = (
+                        f"HTTP/1.1 200 OK\r\n"
+                        f"Content-Type: text/plain\r\n"
+                        f"Content-Length: {len(response_body)}\r\n"
+                        f"Connection: keep-alive\r\n"
+                        f"X-Connection-ID: {conn_id}\r\n"
+                        f"\r\n"
+                        f"{response_body}"
+                    )
+                    
+                    client_socket.sendall(http_response.encode('utf-8'))
+                    self.log(f"✅ Responded to client {conn_id} with HTTP 200: {response_body}")
+                    
+                    # Special status endpoint
+                    if path == "/status" or message.upper() == "STATUS":
+                        status_body = f"Renewals: {self.renewal_count}, Connections: {self.connection_count}"
+                        status_response = (
+                            f"HTTP/1.1 200 OK\r\n"
+                            f"Content-Type: text/plain\r\n"
+                            f"Content-Length: {len(status_body)}\r\n"
+                            f"Connection: keep-alive\r\n"
+                            f"\r\n"
+                            f"{status_body}"
+                        )
+                        client_socket.sendall(status_response.encode('utf-8'))
                         
                 except ssl.SSLError as e:
                     if "certificate" in str(e).lower() or "renewal" in str(e).lower():

@@ -15,16 +15,51 @@ if ! command -v cargo &> /dev/null; then
     source "$HOME/.cargo/env"
 fi
 
-# Install wasm32 target if not present
-rustup target add wasm32-wasi 2>/dev/null || true
+# Source cargo env if it exists
+if [ -f "$HOME/.cargo/env" ]; then
+    source "$HOME/.cargo/env"
+fi
+
+# Check which WASM target is available
+WASM_TARGET=""
+if rustup target list --installed 2>/dev/null | grep -q "^wasm32-wasi$"; then
+    WASM_TARGET="wasm32-wasi"
+    echo "Using wasm32-wasi target"
+elif rustup target list --installed 2>/dev/null | grep -q "^wasm32-wasip1$"; then
+    WASM_TARGET="wasm32-wasip1"
+    echo "Using wasm32-wasip1 target (wasm32-wasi not available)"
+else
+    # Try to install wasm32-wasi first
+    echo "Installing wasm32-wasi target..."
+    if rustup target add wasm32-wasi 2>&1 | grep -q "error\|Error"; then
+        # If that fails, try wasm32-wasip1
+        echo "wasm32-wasi not available, trying wasm32-wasip1..."
+        if rustup target add wasm32-wasip1 2>&1 | grep -q "error\|Error"; then
+            echo "Error: Could not install wasm32-wasi or wasm32-wasip1 target"
+            echo "Available WASM targets:"
+            rustc --print target-list 2>/dev/null | grep wasm || echo "Could not list targets"
+            exit 1
+        else
+            WASM_TARGET="wasm32-wasip1"
+        fi
+    else
+        WASM_TARGET="wasm32-wasi"
+    fi
+fi
+
+if [ -z "$WASM_TARGET" ]; then
+    echo "Error: No suitable WASM target found or installed."
+    exit 1
+fi
 
 # Build WASM module
-cargo build --target wasm32-wasi --release
+echo "Building for target: $WASM_TARGET"
+cargo build --target "$WASM_TARGET" --release
 
 # Copy to Envoy plugins directory
 OUTPUT_DIR="/opt/envoy/plugins"
 sudo mkdir -p "$OUTPUT_DIR"
-sudo cp target/wasm32-wasi/release/sensor_verification_wasm.wasm "$OUTPUT_DIR/"
+sudo cp "target/$WASM_TARGET/release/sensor_verification_wasm.wasm" "$OUTPUT_DIR/"
 sudo chmod 644 "$OUTPUT_DIR/sensor_verification_wasm.wasm"
 
 echo "✓ WASM filter built and installed to $OUTPUT_DIR/sensor_verification_wasm.wasm"

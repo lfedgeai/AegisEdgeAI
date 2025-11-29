@@ -249,7 +249,16 @@ def create_app(db_path: Path) -> Flask:
     app = Flask(__name__)
     database = SensorDatabase(db_path)
     bypass_camara = _camara_bypass_enabled()
-    camara_client = None if bypass_camara else CamaraClient(os.getenv("CAMARA_BASIC_AUTH", ""))
+    # Only create CamaraClient if bypass is disabled AND auth is provided
+    camara_client = None
+    if not bypass_camara:
+        camara_auth = os.getenv("CAMARA_BASIC_AUTH", "")
+        if camara_auth:
+            camara_client = CamaraClient(camara_auth)
+        else:
+            # If bypass is not explicitly enabled but no auth provided, enable bypass as fallback
+            LOG.warning("CAMARA_BASIC_AUTH not set and CAMARA_BYPASS not enabled. Enabling bypass mode as fallback.")
+            bypass_camara = True
 
     @app.route("/verify", methods=["POST"])
     def verify_sensor():
