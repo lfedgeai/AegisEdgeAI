@@ -101,26 +101,134 @@ sudo mkdir -p /opt/mtls-server
 
 # 3. Setup certificates
 echo -e "\n${GREEN}[3/6] Setting up certificates...${NC}"
-echo -e "${YELLOW}Note: You need to copy the following files:${NC}"
-echo "  - SPIRE CA bundle: /tmp/spire-bundle.pem -> /opt/envoy/certs/spire-bundle.pem"
-echo "  - Server cert: ~/.mtls-demo/server-cert.pem -> /opt/envoy/certs/server-cert.pem"
-echo "  - Server key: ~/.mtls-demo/server-key.pem -> /opt/envoy/certs/server-key.pem"
+
+# Create certs directory
+sudo mkdir -p /opt/envoy/certs
+
+# Generate separate certificates for Envoy
+# Envoy uses these certificates for:
+#   1. Downstream TLS: Presenting to SPIRE clients (port 8080)
+#   2. Upstream TLS: Connecting to backend mTLS server (port 9443)
+echo "  Generating Envoy-specific certificates..."
+if [ ! -f /opt/envoy/certs/envoy-cert.pem ] || [ ! -f /opt/envoy/certs/envoy-key.pem ]; then
+    sudo openssl req -x509 -newkey rsa:2048 \
+        -keyout /opt/envoy/certs/envoy-key.pem \
+        -out /opt/envoy/certs/envoy-cert.pem \
+        -days 365 -nodes \
+        -subj "/CN=envoy-proxy.10.1.0.10/O=Enterprise On-Prem/C=US" 2>/dev/null
+    
+    if [ -f /opt/envoy/certs/envoy-cert.pem ] && [ -f /opt/envoy/certs/envoy-key.pem ]; then
+        sudo chmod 644 /opt/envoy/certs/envoy-cert.pem
+        sudo chmod 600 /opt/envoy/certs/envoy-key.pem
+        echo -e "${GREEN}  ✓ Envoy certificates generated${NC}"
+        echo "     Certificate: /opt/envoy/certs/envoy-cert.pem"
+        echo "     Key: /opt/envoy/certs/envoy-key.pem"
+    else
+        echo -e "${RED}  ✗ Failed to generate Envoy certificates${NC}"
+        exit 1
+    fi
+else
+    echo -e "${GREEN}  ✓ Envoy certificates already exist${NC}"
+fi
+
+# Copy Envoy certificate to client machine (10.1.0.11) so client can verify Envoy
+SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
+SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
+echo "  Copying Envoy certificate to client (${SPIRE_CLIENT_HOST}) for verification..."
+if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+    /opt/envoy/certs/envoy-cert.pem \
+    "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem" 2>/dev/null; then
+    echo -e "${GREEN}  ✓ Envoy certificate copied to ${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem${NC}"
+    echo "     Client should use this cert via CA_CERT_PATH for Envoy verification"
+else
+    echo -e "${YELLOW}  ⚠ Could not copy Envoy certificate to ${SPIRE_CLIENT_HOST}${NC}"
+    echo "     You can manually copy it later:"
+    echo "       scp /opt/envoy/certs/envoy-cert.pem ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem"
+    echo "     Then on client, set: export CA_CERT_PATH=~/.mtls-demo/envoy-cert.pem"
+fi
+
+# Note: Backend mTLS server will use its own certificates from ~/.mtls-demo/
+# These are separate from Envoy's certificates for clarity
+
+# Fetch SPIRE bundle from 10.1.0.11
+echo "  Fetching SPIRE CA bundle from 10.1.0.11..."
+SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
+SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
+
+# Try to fetch from 10.1.0.11
+if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+    "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem" \
+    /tmp/spire-bundle.pem 2>/dev/null; then
+    echo -e "${GREEN}  ✓ SPIRE bundle fetched from ${SPIRE_CLIENT_HOST}${NC}"
+    sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem
+    sudo chmod 644 /opt/envoy/certs/spire-bundle.pem
+    echo -e "${GREEN}  ✓ SPIRE bundle copied to /opt/envoy/certs/${NC}"
+elif [ -f /tmp/spire-bundle.pem ]; then
+    # If scp failed but file exists locally, use it
+    echo -e "${YELLOW}  ⚠ Could not fetch from ${SPIRE_CLIENT_HOST}, using local /tmp/spire-bundle.pem${NC}"
+    sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem
+    sudo chmod 644 /opt/envoy/certs/spire-bundle.pem
+    echo -e "${GREEN}  ✓ SPIRE bundle copied from local file${NC}"
+else
+    echo -e "${YELLOW}  ⚠ Could not fetch SPIRE bundle from ${SPIRE_CLIENT_HOST}${NC}"
+    echo "     You can manually copy it later:"
+    echo "       scp ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem"
+    echo "     Or extract it on ${SPIRE_CLIENT_HOST} first:"
+    echo "       cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py"
+    echo ""
+    read -p "Press Enter to continue (you can add the bundle later), or 'q' to quit: " answer
+    if [ "$answer" = "q" ]; then
+        exit 1
+    fi
+fi
+
+# Copy backend mTLS server certificate for Envoy to verify upstream connections
+# Envoy needs the backend server's cert to verify it when connecting upstream
+if [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
+    echo "  Copying backend server certificate for Envoy upstream verification..."
+    sudo cp "$HOME/.mtls-demo/server-cert.pem" /opt/envoy/certs/server-cert.pem
+    sudo chmod 644 /opt/envoy/certs/server-cert.pem
+    echo -e "${GREEN}  ✓ Backend server certificate copied (for Envoy upstream verification)${NC}"
+else
+    echo -e "${YELLOW}  ⚠ Backend server certificate not found at ~/.mtls-demo/server-cert.pem${NC}"
+    echo "     It will be auto-generated when the mTLS server starts"
+    echo "     You'll need to copy it to /opt/envoy/certs/server-cert.pem for Envoy upstream verification"
+fi
+
+# Verify required certificates
 echo ""
-read -p "Press Enter after copying certificates, or 's' to skip: " answer
-if [ "$answer" != "s" ]; then
-    if [ ! -f /opt/envoy/certs/spire-bundle.pem ]; then
-        echo -e "${RED}Error: /opt/envoy/certs/spire-bundle.pem not found${NC}"
-        exit 1
-    fi
-    if [ ! -f /opt/envoy/certs/server-cert.pem ]; then
-        echo -e "${RED}Error: /opt/envoy/certs/server-cert.pem not found${NC}"
-        exit 1
-    fi
-    if [ ! -f /opt/envoy/certs/server-key.pem ]; then
-        echo -e "${RED}Error: /opt/envoy/certs/server-key.pem not found${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}✓ Certificates found${NC}"
+echo "  Verifying certificates..."
+MISSING_CERTS=0
+if [ ! -f /opt/envoy/certs/spire-bundle.pem ]; then
+    echo -e "${YELLOW}  ⚠ Missing: /opt/envoy/certs/spire-bundle.pem (for verifying SPIRE clients)${NC}"
+    MISSING_CERTS=$((MISSING_CERTS + 1))
+fi
+if [ ! -f /opt/envoy/certs/envoy-cert.pem ]; then
+    echo -e "${YELLOW}  ⚠ Missing: /opt/envoy/certs/envoy-cert.pem (Envoy's own certificate)${NC}"
+    MISSING_CERTS=$((MISSING_CERTS + 1))
+fi
+if [ ! -f /opt/envoy/certs/envoy-key.pem ]; then
+    echo -e "${YELLOW}  ⚠ Missing: /opt/envoy/certs/envoy-key.pem (Envoy's own key)${NC}"
+    MISSING_CERTS=$((MISSING_CERTS + 1))
+fi
+if [ ! -f /opt/envoy/certs/server-cert.pem ]; then
+    echo -e "${YELLOW}  ⚠ Missing: /opt/envoy/certs/server-cert.pem (for verifying backend server)${NC}"
+    echo "     This is the backend mTLS server's certificate"
+    MISSING_CERTS=$((MISSING_CERTS + 1))
+fi
+
+if [ $MISSING_CERTS -eq 0 ]; then
+    echo -e "${GREEN}  ✓ All Envoy certificates in place${NC}"
+    echo "     - Envoy cert/key: For Envoy's own TLS connections"
+    echo "     - SPIRE bundle: For verifying SPIRE clients"
+    echo "     - Backend server cert: For verifying backend server"
+elif [ $MISSING_CERTS -lt 4 ]; then
+    echo -e "${YELLOW}  ⚠ Some certificates are missing but setup will continue${NC}"
+    echo "     Envoy cert/key: Auto-generated above"
+    echo "     Backend server cert: Will be auto-generated when mTLS server starts"
+    echo "     SPIRE bundle: Can be added later"
+else
+    echo -e "${YELLOW}  ⚠ Certificates will be generated/added as needed${NC}"
 fi
 
 # 4. Setup mobile location service

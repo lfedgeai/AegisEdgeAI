@@ -35,6 +35,10 @@ mTLS Server (10.1.0.10:9443)
   - Verifies SPIRE certificate signatures using SPIRE CA bundle
   - Uses Lua filter to extract sensor ID and verify with mobile location service
   - Forwards verified requests to backend mTLS server
+- **Certificates**:
+  - Uses its own certificates (`envoy-cert.pem`, `envoy-key.pem`) for TLS connections
+  - Uses SPIRE bundle to verify SPIRE client certificates
+  - Uses backend server certificate to verify backend server when connecting upstream
 
 ### 2. Sensor ID Extractor (`sensor-id-extractor/`)
 - **Port**: 5001
@@ -101,9 +105,20 @@ If you prefer manual setup:
 2. **Copy certificates**:
    ```bash
    sudo mkdir -p /opt/envoy/certs
+   # SPIRE bundle for verifying SPIRE clients
    sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/
+   # Backend server cert for Envoy to verify backend (upstream)
    sudo cp ~/.mtls-demo/server-cert.pem /opt/envoy/certs/
-   sudo cp ~/.mtls-demo/server-key.pem /opt/envoy/certs/
+   # Generate Envoy's own certificates (separate from backend)
+   sudo openssl req -x509 -newkey rsa:2048 \
+       -keyout /opt/envoy/certs/envoy-key.pem \
+       -out /opt/envoy/certs/envoy-cert.pem \
+       -days 365 -nodes \
+       -subj "/CN=envoy-proxy.10.1.0.10/O=Enterprise On-Prem/C=US"
+   sudo chmod 644 /opt/envoy/certs/envoy-cert.pem
+   sudo chmod 600 /opt/envoy/certs/envoy-key.pem
+   # Copy Envoy cert to client for verification
+   scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
    ```
 
 3. **Start mobile location service**:
@@ -148,8 +163,14 @@ export CLIENT_USE_SPIRE="true"
 export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
 export SERVER_HOST="10.1.0.10"  # Envoy on on-prem
 export SERVER_PORT="8080"        # Envoy port
-export CA_CERT_PATH="~/.mtls-demo/server-cert.pem"  # Server cert for verification
+export CA_CERT_PATH="~/.mtls-demo/envoy-cert.pem"  # Envoy cert for verification (auto-copied by setup script)
 python3 mtls-client-app.py
+```
+
+**Note:** The setup script on 10.1.0.10 automatically copies the Envoy certificate to `~/.mtls-demo/envoy-cert.pem` on the client machine. If the automatic copy fails, you can manually copy it:
+```bash
+# From 10.1.0.10:
+scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
 ```
 
 ### Verify Flow

@@ -161,9 +161,9 @@ static_resources:
           common_tls_context:
             tls_certificates:
             - certificate_chain:
-                filename: /opt/envoy/certs/server-cert.pem
+                filename: /opt/envoy/certs/envoy-cert.pem
               private_key:
-                filename: /opt/envoy/certs/server-key.pem
+                filename: /opt/envoy/certs/envoy-key.pem
             validation_context:
               trusted_ca:
                 filename: /opt/envoy/certs/spire-bundle.pem
@@ -217,9 +217,9 @@ static_resources:
         common_tls_context:
           tls_certificates:
           - certificate_chain:
-              filename: /opt/envoy/certs/server-cert.pem
+              filename: /opt/envoy/certs/envoy-cert.pem
             private_key:
-              filename: /opt/envoy/certs/server-key.pem
+              filename: /opt/envoy/certs/envoy-key.pem
           validation_context:
             trusted_ca:
               filename: /opt/envoy/certs/server-cert.pem
