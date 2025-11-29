@@ -1,6 +1,6 @@
 #!/bin/bash
 # Setup script for enterprise on-prem (10.1.0.10)
-# Sets up: Envoy proxy, mTLS server, mobile location service, sensor ID extractor
+# Sets up: Envoy proxy, mTLS server, mobile location service, WASM filter
 
 set -e
 
@@ -276,8 +276,31 @@ fi
 
 # 6. Setup Envoy
 echo -e "\n${GREEN}[6/6] Setting up Envoy proxy...${NC}"
+
+# Copy Envoy configuration
+if [ ! -f "$ONPREM_DIR/envoy/envoy.yaml" ]; then
+    echo -e "${RED}  ✗ Envoy configuration file not found: $ONPREM_DIR/envoy/envoy.yaml${NC}"
+    exit 1
+fi
+
 sudo cp "$ONPREM_DIR/envoy/envoy.yaml" /opt/envoy/envoy.yaml
-echo -e "${GREEN}  ✓ Envoy configuration ready${NC}"
+sudo chmod 644 /opt/envoy/envoy.yaml
+echo -e "${GREEN}  ✓ Envoy configuration copied to /opt/envoy/envoy.yaml${NC}"
+
+# Validate Envoy configuration if envoy command is available
+if command -v envoy &> /dev/null; then
+    echo "  Validating Envoy configuration..."
+    if sudo envoy --config-path /opt/envoy/envoy.yaml --mode validate &>/dev/null; then
+        echo -e "${GREEN}  ✓ Envoy configuration is valid${NC}"
+    else
+        echo -e "${YELLOW}  ⚠ Envoy configuration validation failed${NC}"
+        echo "     Run manually to see errors: sudo envoy --config-path /opt/envoy/envoy.yaml --mode validate"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ Envoy not found - skipping configuration validation${NC}"
+fi
+
+echo ""
 echo "  To start Envoy manually:"
 echo "    sudo envoy -c /opt/envoy/envoy.yaml"
 echo "  Or run in background:"
