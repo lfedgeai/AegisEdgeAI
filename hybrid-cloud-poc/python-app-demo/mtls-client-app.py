@@ -46,6 +46,8 @@ class SPIREmTLSClient:
         self.last_svid_serial = None
         self.source = None
         self.bundle_path = None  # Keep bundle file path for SSL context lifetime
+        # Track logging so we don't spam on repeated renewal blips
+        self.last_logged_renewal_id = 0
         
         # Certificate mode configuration
         if use_spire is None:
@@ -346,26 +348,22 @@ class SPIREmTLSClient:
             new_svid = self.source.svid
             if new_svid and self.last_svid_serial:
                 if new_svid.leaf.serial_number != self.last_svid_serial:
-                    # DEMO: Show renewal blip clearly
+                    # Detected a new SVID (renewal event)
                     old_serial = self.last_svid_serial
                     new_serial = new_svid.leaf.serial_number
                     new_expiry = new_svid.leaf.not_valid_after
-                    
-                    self.log("")
-                    self.log("╔════════════════════════════════════════════════════════════════╗")
-                    self.log("║  🔄 SVID RENEWAL DETECTED - RENEWAL BLIP EVENT                  ║")
-                    self.log("╚════════════════════════════════════════════════════════════════╝")
-                    self.log(f"  Old Certificate Serial: {old_serial}")
-                    self.log(f"  New Certificate Serial: {new_serial}")
-                    self.log(f"  New Certificate Expires: {new_expiry}")
-                    self.log(f"  SPIFFE ID: {new_svid.spiffe_id}")
-                    self.log("  ⚠️  RENEWAL BLIP: Current connection will be re-established")
-                    self.log("  ✓  Reconnecting with renewed certificate...")
-                    self.log("")
-                    
+
                     self.renewal_count += 1
-                    self.last_svid_serial = new_svid.leaf.serial_number
-                    # DEMO: Signal that connection should be closed for renewal blip
+                    self.last_svid_serial = new_serial
+
+                    # Log a single concise line per renewal
+                    self.log(
+                        f"SVID renewed #{self.renewal_count}: "
+                        f"serial {old_serial} -> {new_serial}, expires {new_expiry}, "
+                        f"id={new_svid.spiffe_id}"
+                    )
+
+                    # Signal that the current connection should be rebuilt
                     return True
             elif new_svid:
                     self.last_svid_serial = new_svid.leaf.serial_number
@@ -423,11 +421,14 @@ class SPIREmTLSClient:
                     try:
                         # Check for renewal periodically
                         if self.check_renewal():
-                            # DEMO: Show renewal detected during active connection
-                            self.log("  ⚠️  SVID renewed during active connection!")
-                            self.log("  ⚠️  RENEWAL BLIP: Current connection will close and reconnect")
-                            self.log("  🔄 Closing current connection to use renewed certificate...")
-                            # Close current connection to force reconnection with new cert (renewal blip)
+                            # Renewal detected during active connection
+                            if self.renewal_count > self.last_logged_renewal_id:
+                                self.last_logged_renewal_id = self.renewal_count
+                                self.log(
+                                    f"SVID renewed #{self.renewal_count} during active connection; "
+                                    "closing and reconnecting with new certificate"
+                                )
+                            # Close current connection to force reconnection with new cert
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -452,13 +453,15 @@ class SPIREmTLSClient:
                             if response:
                                 self.log(f"📥 Received: {response.decode('utf-8')}")
                         except ssl.SSLError as e:
-                            if "certificate" in str(e).lower() or "renewal" in str(e).lower():
-                                # DEMO: Show renewal blip in action
-                                self.log("")
-                                self.log("  ⚠️  RENEWAL BLIP: TLS error detected (certificate renewal)")
-                                self.log(f"     Error: {str(e)[:100]}")
-                                self.log("     Connection will be re-established with renewed certificate...")
-                                self.log("")
+                            err_str = str(e)
+                            if "certificate" in err_str.lower() or "renewal" in err_str.lower():
+                                # Concise log once per renewal event
+                                if self.renewal_count > self.last_logged_renewal_id:
+                                    self.last_logged_renewal_id = self.renewal_count
+                                    self.log(
+                                        f"TLS error during SVID renewal (will reconnect): "
+                                        f"{err_str[:120]}"
+                                    )
                                 raise  # Reconnect
                             else:
                                 raise
@@ -474,15 +477,22 @@ class SPIREmTLSClient:
                         time.sleep(interval)
                         
                     except (ssl.SSLError, ConnectionError, BrokenPipeError) as e:
-                        # DEMO: Show reconnection due to renewal blip
-                        if self.renewal_count > 0:
-                            self.log("")
-                            self.log("  🔄 RENEWAL BLIP: Reconnecting due to certificate renewal...")
-                            self.log(f"     Reason: {str(e)[:80]}")
-                            self.log("     This is expected behavior during SVID renewal")
-                            self.log("")
+                        # Reconnection due to error (possibly renewal-related)
+                        err_str = str(e)
+                        if self.renewal_count > 0 and (
+                            "certificate" in err_str.lower()
+                            or "renewal" in err_str.lower()
+                            or "unknown ca" in err_str.lower()
+                        ):
+                            # Only log once per renewal cycle
+                            if self.renewal_count > self.last_logged_renewal_id:
+                                self.last_logged_renewal_id = self.renewal_count
+                                self.log(
+                                    f"Renewal blip: reconnecting after TLS error: "
+                                    f"{err_str[:120]}"
+                                )
                         else:
-                            self.log(f"Connection error: {e}")
+                            self.log(f"Connection error: {err_str}")
                         self.reconnect_count += 1
                         try:
                             tls_socket.close()

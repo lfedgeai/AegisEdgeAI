@@ -143,7 +143,7 @@ cd python-app-demo
 
 # Set environment variables
 export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
-export SERVER_HOST="localhost"    # Or remote server IP/hostname (e.g., 10.0.0.5)
+export SERVER_HOST="localhost"    # Or remote server IP/hostname (default: 10.1.0.10 for mixed mode)
 export SERVER_PORT="9443"
 export CLIENT_LOG="/tmp/mtls-client-app.log"
 # Optional: explicitly enable SPIRE mode
@@ -155,9 +155,13 @@ python3 mtls-client-app.py
 
 **Running Across Different Machines:**
 - Start the server on the remote host (it binds to `0.0.0.0` by default and listens on `SERVER_PORT`).
-- On the client machine, set `SERVER_HOST` to the server's IP/hostname (e.g., `10.0.0.5`).
+- On the client machine, set `SERVER_HOST` to the server's IP/hostname (default: `10.1.0.10` for mixed mode).
+- Default IP addresses for mixed mode:
+  - **Server**: `10.1.0.10`
+  - **Client**: `10.1.0.11`
 - Ensure firewall rules allow inbound connections to `SERVER_PORT` (default `9443`) on the server host.
 - In mixed mode, also ensure `CA_CERT_PATH` on the client points to the correct server certificate file when verifying a remote server.
+- Copy the server's certificate from the server machine to the client machine: `scp user@10.1.0.10:~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-cert.pem`
 
 **Option B: Standard Certificate Mode (No SPIRE Required)**
 
@@ -220,11 +224,17 @@ If you want the server to strictly verify SPIRE-issued client certificates, firs
 cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
 
 # Extract SPIRE trust bundle
+# Default: connect to SPIRE Agent via Unix socket on the same machine
 python3 fetch-spire-bundle.py
 
 # This will create /tmp/spire-bundle.pem by default
 # Or specify custom path:
 # BUNDLE_OUTPUT_PATH="/path/to/spire-bundle.pem" python3 fetch-spire-bundle.py
+
+# Advanced: If SPIRE Agent is reachable over TCP on another machine:
+#   export SPIRE_AGENT_SOCKET="tcp://<AGENT_IP>:<PORT>"
+#   python3 fetch-spire-bundle.py
+# (Only recommended if your SPIRE deployment exposes the Workload API over TCP securely)
 ```
 
 **Step 2: Start the Server (Standard Cert Mode)**
@@ -328,6 +338,61 @@ export CA_CERT_PATH="~/.mtls-demo/server-cert.pem"
 # Run the client
 python3 mtls-client-app.py
 ```
+
+**Client and Server on Different Machines:**
+
+For the mixed mode scenario where the client and server run on different machines, use the following configuration:
+
+**On Server Machine (IP: 10.1.0.10):**
+
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+
+# Set environment variables
+export SERVER_USE_SPIRE="false"
+export SERVER_PORT="9443"
+export SERVER_LOG="/tmp/mtls-server-app.log"
+
+# Optional: For strict SPIRE client verification, provide SPIRE CA bundle
+# First, copy the SPIRE bundle to this machine (from a machine with SPIRE Agent):
+#   scp user@CLIENT_IP:/tmp/spire-bundle.pem /tmp/spire-bundle.pem
+# Then:
+export CA_CERT_PATH="/tmp/spire-bundle.pem"
+
+# Run the server
+python3 mtls-server-app.py
+```
+
+**On Client Machine (IP: 10.1.0.11):**
+
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+
+# First, copy the server's certificate from the server machine:
+mkdir -p ~/.mtls-demo
+scp user@10.1.0.10:~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-cert.pem
+
+# Set environment variables
+export CLIENT_USE_SPIRE="true"
+export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
+export SERVER_HOST="10.1.0.10"  # Server machine IP
+export SERVER_PORT="9443"
+export CLIENT_LOG="/tmp/mtls-client-app.log"
+
+# IMPORTANT: Provide server's CA certificate for verification
+export CA_CERT_PATH="~/.mtls-demo/server-cert.pem"
+
+# Run the client
+python3 mtls-client-app.py
+```
+
+**Key Points for Different Machines:**
+- **Server IP**: Default `10.1.0.10` (set `SERVER_HOST` on client to this IP)
+- **Client IP**: Default `10.1.0.11` (where SPIRE Agent runs)
+- **Server certificate**: Must be copied from server machine (`~/.mtls-demo/server-cert.pem`) to client machine
+- **SPIRE bundle**: Must be extracted on a machine with SPIRE Agent, then copied to server machine for strict client verification
+- **Firewall**: Ensure port `9443` (or your `SERVER_PORT`) is open on the server machine
+- **Both sides need to trust each other**: Client needs server cert, server needs SPIRE bundle (for strict verification)
 
 **Expected Client Output:**
 ```
@@ -735,7 +800,33 @@ python3 mtls-server-app.py
 cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
 export CLIENT_USE_SPIRE="true"
 export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
-export SERVER_HOST="localhost"
+export SERVER_HOST="localhost"  # Use "10.1.0.10" if server is on different machine
+export SERVER_PORT="9443"
+export CLIENT_LOG="/tmp/mtls-client-app.log"
+export CA_CERT_PATH="~/.mtls-demo/server-cert.pem"  # Required for server verification
+python3 mtls-client-app.py
+```
+
+**For Client and Server on Different Machines:**
+
+**Server Machine (IP: 10.1.0.10):**
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+# First copy spire bundle cert: scp mw@10.1.0.11:~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo/tmp/spire-bundle.pem ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo/tmp/spire-bundle.pem
+export SERVER_USE_SPIRE="false"
+export SERVER_PORT="9443"
+export SERVER_LOG="/tmp/mtls-server-app.log"
+export CA_CERT_PATH="/tmp/spire-bundle.pem"  # Copy from client machine
+python3 mtls-server-app.py
+```
+
+**Client Machine (IP: 10.1.0.11):**
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+# First copy server cert: scp mw@10.1.0.10:~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-cert.pem
+export CLIENT_USE_SPIRE="true"
+export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
+export SERVER_HOST="10.1.0.10"  # Server machine IP
 export SERVER_PORT="9443"
 export CLIENT_LOG="/tmp/mtls-client-app.log"
 export CA_CERT_PATH="~/.mtls-demo/server-cert.pem"  # Required for server verification

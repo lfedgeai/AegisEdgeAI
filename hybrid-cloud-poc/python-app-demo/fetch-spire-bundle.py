@@ -16,14 +16,22 @@ except ImportError:
     sys.exit(1)
 
 def main():
-    socket_path = os.environ.get('SPIRE_AGENT_SOCKET', '/tmp/spire-agent/public/api.sock')
+    # SPIRE_AGENT_SOCKET can be either:
+    # - A bare Unix socket path (e.g., /tmp/spire-agent/public/api.sock)
+    # - A full endpoint URI (e.g., unix:///tmp/spire-agent/public/api.sock or tcp://10.0.0.5:8081)
+    raw_socket = os.environ.get('SPIRE_AGENT_SOCKET', '/tmp/spire-agent/public/api.sock')
     output_path = os.environ.get('BUNDLE_OUTPUT_PATH', '/tmp/spire-bundle.pem')
     
-    print(f"Fetching SPIRE trust bundle from: {socket_path}")
+    # If the value already contains a scheme (://), use it as-is.
+    # Otherwise, assume a Unix domain socket path and prefix with unix://
+    if "://" in raw_socket:
+        socket_path_with_scheme = raw_socket
+    else:
+        socket_path_with_scheme = f"unix://{raw_socket}"
+
+    print(f"Fetching SPIRE trust bundle from: {socket_path_with_scheme}")
     print(f"Output path: {output_path}")
     print("")
-    
-    socket_path_with_scheme = f"unix://{socket_path}"
     
     try:
         # Create X509Source to access bundle
