@@ -21,11 +21,18 @@ echo "=========================================="
 echo "Enterprise On-Prem Setup (10.1.0.10)"
 echo "=========================================="
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Colors (only use if output is to a terminal)
+if [ -t 1 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    NC='\033[0m' # No Color
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    NC=''
+fi
 
 # Check if running as root or with sudo
 if [ "$EUID" -ne 0 ]; then 
@@ -484,7 +491,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     set -e
 
     # Verify services are running
-    echo ""
+    echo
     echo -e "${GREEN}Verifying services...${NC}"
     sleep 2
 
@@ -541,7 +548,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Re-enable exit on error
     set -e
 
-    echo ""
+    echo
     if [ $SERVICES_OK -eq 3 ]; then
         echo -e "${GREEN}✓ All services are running!${NC}"
     else
@@ -551,14 +558,14 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         echo "  - Envoy: tail -f /opt/envoy/logs/envoy.log"
     fi
 
-    echo ""
+    echo
     echo "Service Management:"
     echo "  To stop all services: sudo pkill -f 'envoy.*envoy.yaml'; pkill -f 'mtls-server-app.py'; pkill -f 'service.py.*5000'"
     echo "  To view logs:"
     echo "    tail -f /tmp/mobile-sensor.log"
     echo "    tail -f /tmp/mtls-server.log"
     echo "    tail -f /opt/envoy/logs/envoy.log"
-    echo ""
+    echo
     echo "Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!"
 else
     # Not on test machine - show manual startup instructions
