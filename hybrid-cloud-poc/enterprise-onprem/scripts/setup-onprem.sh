@@ -34,8 +34,21 @@ fi
 
 # 1. Install dependencies
 echo -e "\n${GREEN}[1/6] Installing dependencies...${NC}"
+
+# Clean up any problematic Envoy repository that might have been added previously
 if command -v apt-get &> /dev/null; then
-    sudo apt-get update
+    if [ -f /etc/apt/sources.list.d/getenvoy.list ]; then
+        echo -e "${YELLOW}  Removing existing Envoy repository (will be configured manually if needed)...${NC}"
+        sudo rm -f /etc/apt/sources.list.d/getenvoy.list
+    fi
+    if [ -f /usr/share/keyrings/getenvoy.gpg ]; then
+        sudo rm -f /usr/share/keyrings/getenvoy.gpg
+    fi
+    if [ -f /etc/apt/trusted.gpg.d/getenvoy.gpg ]; then
+        sudo rm -f /etc/apt/trusted.gpg.d/getenvoy.gpg
+    fi
+    
+    sudo apt-get update || true
     sudo apt-get install -y \
         python3 python3-pip python3-venv \
         curl wget \
