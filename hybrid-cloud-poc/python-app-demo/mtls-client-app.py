@@ -25,7 +25,7 @@ try:
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.x509.oid import NameOID
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     HAS_CRYPTOGRAPHY = True
 except ImportError:
     HAS_CRYPTOGRAPHY = False
@@ -372,6 +372,37 @@ class SPIREmTLSClient:
                 self.log(f"Error checking renewal: {e}")
         return False
     
+    def check_svid_expired(self):
+        """Check if current SVID is expired or about to expire (SPIRE mode only)."""
+        if not self.use_spire or not self.source:
+            return False
+        
+        try:
+            svid = self.source.svid
+            if not svid:
+                return False
+            
+            # Get expiration time (handle both naive and timezone-aware datetimes)
+            expiry = svid.leaf.not_valid_after_utc if hasattr(svid.leaf, 'not_valid_after_utc') else svid.leaf.not_valid_after
+            if expiry.tzinfo is None:
+                # Naive datetime - assume UTC
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            
+            now = datetime.now(timezone.utc)
+            
+            # Check if expired or expires within next 5 seconds
+            if expiry <= now or (expiry - now).total_seconds() < 5:
+                # SVID is expired or about to expire - need to refresh
+                if expiry <= now:
+                    self.log(f"⚠️  SVID expired at {expiry}, refreshing context...")
+                else:
+                    self.log(f"⚠️  SVID expires soon ({expiry}), refreshing context proactively...")
+                return True
+        except Exception as e:
+            if self.running:
+                self.log(f"Error checking SVID expiration: {e}")
+        return False
+    
     def connect_and_communicate(self, context, interval=2):
         """Connect to server and send periodic messages."""
         self.log(f"Connecting to {self.server_host}:{self.server_port}...")
@@ -385,6 +416,13 @@ class SPIREmTLSClient:
                     context = self.setup_tls_context()
                     self.log("  ✓ TLS context recreated successfully")
                     self.log("  🔌 Reconnecting to server with new certificate...")
+                # Also check if SVID is expired or about to expire
+                elif self.check_svid_expired():
+                    # SVID expired - refresh context proactively
+                    self.log("  🔧 Recreating TLS context (SVID expired/expiring)...")
+                    context = self.setup_tls_context()
+                    self.log("  ✓ TLS context recreated successfully")
+                    self.log("  🔌 Reconnecting to server with refreshed certificate...")
                 
                 # Create socket
                 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
