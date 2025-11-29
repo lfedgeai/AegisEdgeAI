@@ -51,40 +51,40 @@ cleanup_existing_services() {
     set +e
     
     # Stop Envoy
-    echo "  Stopping Envoy..."
+    printf '  Stopping Envoy...\n'
     sudo pkill -f "envoy.*envoy.yaml" >/dev/null 2>&1
     sudo pkill -f "^envoy " >/dev/null 2>&1
     
     # Stop mTLS server
-    echo "  Stopping mTLS server..."
+    printf '  Stopping mTLS server...\n'
     pkill -f "mtls-server-app.py" >/dev/null 2>&1
     
     # Stop mobile location service
-    echo "  Stopping mobile location service..."
+    printf '  Stopping mobile location service...\n'
     pkill -f "service.py.*5000" >/dev/null 2>&1
     pkill -f "python3.*service.py" >/dev/null 2>&1
     
     # Free up ports using fuser (if available)
-    echo "  Freeing up ports..."
+    printf '  Freeing up ports...\n'
     for port in 5000 9443 8080; do
         if command -v fuser &> /dev/null; then
             sudo fuser -k ${port}/tcp >/dev/null 2>&1
         elif command -v lsof &> /dev/null; then
             PIDS=$(sudo lsof -ti:${port} 2>/dev/null)
             if [ -n "$PIDS" ]; then
-                echo "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
+                printf '%s\n' "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
             fi
         else
             # Fallback: try to find and kill processes using netstat/ss
             if command -v ss &> /dev/null; then
                 PIDS=$(sudo ss -tlnp 2>/dev/null | grep ":${port}" | grep -oP 'pid=\K[0-9]+' 2>/dev/null | head -1)
                 if [ -n "$PIDS" ]; then
-                    echo "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
+                    printf '%s\n' "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
                 fi
             elif command -v netstat &> /dev/null; then
                 PIDS=$(sudo netstat -tlnp 2>/dev/null | grep ":${port}" | awk '{print $7}' | cut -d'/' -f1 | head -1)
                 if [ -n "$PIDS" ] && [ "$PIDS" != "-" ]; then
-                    echo "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
+                    printf '%s\n' "$PIDS" | xargs -r sudo kill -9 >/dev/null 2>&1
                 fi
             fi
         fi
@@ -145,19 +145,19 @@ if ! command -v envoy &> /dev/null; then
     echo -e "${YELLOW}Note: Envoy installation methods vary by distribution.${NC}"
     echo -e "${YELLOW}Please install Envoy manually using one of these methods:${NC}"
     printf '\n'
-    echo "Option 1: Using apt (Ubuntu/Debian):"
-    echo "  curl -sL 'https://getenvoy.io/gpg' | sudo gpg --dearmor -o /usr/share/keyrings/getenvoy.gpg"
-    echo "  echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/getenvoy.gpg] https://deb.dl.getenvoy.io/public/deb/ubuntu focal main' | sudo tee /etc/apt/sources.list.d/getenvoy.list"
-    echo "  sudo apt-get update"
-    echo "  sudo apt-get install -y getenvoy-envoy"
+    printf 'Option 1: Using apt (Ubuntu/Debian):\n'
+    printf '  curl -sL '\''https://getenvoy.io/gpg'\'' | sudo gpg --dearmor -o /usr/share/keyrings/getenvoy.gpg\n'
+    printf '  echo '\''deb [arch=amd64 signed-by=/usr/share/keyrings/getenvoy.gpg] https://deb.dl.getenvoy.io/public/deb/ubuntu focal main'\'' | sudo tee /etc/apt/sources.list.d/getenvoy.list\n'
+    printf '  sudo apt-get update\n'
+    printf '  sudo apt-get install -y getenvoy-envoy\n'
     printf '\n'
-    echo "Option 2: Download binary directly:"
-    echo "  wget https://github.com/envoyproxy/envoy/releases/download/v1.28.0/envoy-1.28.0-linux-x86_64"
-    echo "  sudo mv envoy-1.28.0-linux-x86_64 /usr/local/bin/envoy"
-    echo "  sudo chmod +x /usr/local/bin/envoy"
+    printf 'Option 2: Download binary directly:\n'
+    printf '  wget https://github.com/envoyproxy/envoy/releases/download/v1.28.0/envoy-1.28.0-linux-x86_64\n'
+    printf '  sudo mv envoy-1.28.0-linux-x86_64 /usr/local/bin/envoy\n'
+    printf '  sudo chmod +x /usr/local/bin/envoy\n'
     printf '\n'
-    echo "Option 3: Using Docker:"
-    echo "  docker pull envoyproxy/envoy:v1.28-latest"
+    printf 'Option 3: Using Docker:\n'
+    printf '  docker pull envoyproxy/envoy:v1.28-latest\n'
     printf '\n'
     read -p "Press Enter after installing Envoy, or 's' to skip (you can install later): " answer
     if [ "$answer" = "s" ]; then
@@ -201,7 +201,7 @@ sudo mkdir -p /opt/envoy/certs
 # Envoy uses these certificates for:
 #   1. Downstream TLS: Presenting to SPIRE clients (port 8080)
 #   2. Upstream TLS: Connecting to backend mTLS server (port 9443)
-echo "  Generating Envoy-specific certificates..."
+printf '  Generating Envoy-specific certificates...\n'
 if [ ! -f /opt/envoy/certs/envoy-cert.pem ] || [ ! -f /opt/envoy/certs/envoy-key.pem ]; then
     sudo openssl req -x509 -newkey rsa:2048 \
         -keyout /opt/envoy/certs/envoy-key.pem \
@@ -213,8 +213,8 @@ if [ ! -f /opt/envoy/certs/envoy-cert.pem ] || [ ! -f /opt/envoy/certs/envoy-key
         sudo chmod 644 /opt/envoy/certs/envoy-cert.pem
         sudo chmod 600 /opt/envoy/certs/envoy-key.pem
         echo -e "${GREEN}  ✓ Envoy certificates generated${NC}"
-        echo "     Certificate: /opt/envoy/certs/envoy-cert.pem"
-        echo "     Key: /opt/envoy/certs/envoy-key.pem"
+        printf '     Certificate: /opt/envoy/certs/envoy-cert.pem\n'
+        printf '     Key: /opt/envoy/certs/envoy-key.pem\n'
     else
         echo -e "${RED}  ✗ Failed to generate Envoy certificates${NC}"
         exit 1
@@ -226,24 +226,24 @@ fi
 # Copy Envoy certificate to client machine (10.1.0.11) so client can verify Envoy
 SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
-echo "  Copying Envoy certificate to client (${SPIRE_CLIENT_HOST}) for verification..."
+printf '  Copying Envoy certificate to client (${SPIRE_CLIENT_HOST}) for verification...\n'
 if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
     /opt/envoy/certs/envoy-cert.pem \
     "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem" 2>/dev/null; then
     echo -e "${GREEN}  ✓ Envoy certificate copied to ${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem${NC}"
-    echo "     Client should use this cert via CA_CERT_PATH for Envoy verification"
+    printf '     Client should use this cert via CA_CERT_PATH for Envoy verification\n'
 else
     echo -e "${YELLOW}  ⚠ Could not copy Envoy certificate to ${SPIRE_CLIENT_HOST}${NC}"
-    echo "     You can manually copy it later:"
-    echo "       scp /opt/envoy/certs/envoy-cert.pem ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem"
-    echo "     Then on client, set: export CA_CERT_PATH=~/.mtls-demo/envoy-cert.pem"
+    printf '     You can manually copy it later:\n'
+    printf '       scp /opt/envoy/certs/envoy-cert.pem ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem\n'
+    printf '     Then on client, set: export CA_CERT_PATH=~/.mtls-demo/envoy-cert.pem\n'
 fi
 
 # Note: Backend mTLS server will use its own certificates from ~/.mtls-demo/
 # These are separate from Envoy's certificates for clarity
 
 # Fetch SPIRE bundle from 10.1.0.11
-echo "  Fetching SPIRE CA bundle from 10.1.0.11..."
+printf '  Fetching SPIRE CA bundle from 10.1.0.11...\n'
 SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
 
@@ -263,10 +263,10 @@ elif [ -f /tmp/spire-bundle.pem ]; then
     echo -e "${GREEN}  ✓ SPIRE bundle copied from local file${NC}"
 else
     echo -e "${YELLOW}  ⚠ Could not fetch SPIRE bundle from ${SPIRE_CLIENT_HOST}${NC}"
-    echo "     You can manually copy it later:"
-    echo "       scp ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem"
-    echo "     Or extract it on ${SPIRE_CLIENT_HOST} first:"
-    echo "       cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py"
+    printf '     You can manually copy it later:\n'
+    printf '       scp ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem\n'
+    printf '     Or extract it on ${SPIRE_CLIENT_HOST} first:\n'
+    printf '       cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py\n'
     printf '\n'
     read -p "Press Enter to continue (you can add the bundle later), or 'q' to quit: " answer
     if [ "$answer" = "q" ]; then
@@ -277,19 +277,19 @@ fi
 # Copy backend mTLS server certificate for Envoy to verify upstream connections
 # Envoy needs the backend server's cert to verify it when connecting upstream
 if [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
-    echo "  Copying backend server certificate for Envoy upstream verification..."
+    printf '  Copying backend server certificate for Envoy upstream verification...\n'
     sudo cp "$HOME/.mtls-demo/server-cert.pem" /opt/envoy/certs/server-cert.pem
     sudo chmod 644 /opt/envoy/certs/server-cert.pem
     echo -e "${GREEN}  ✓ Backend server certificate copied (for Envoy upstream verification)${NC}"
 else
     echo -e "${YELLOW}  ⚠ Backend server certificate not found at ~/.mtls-demo/server-cert.pem${NC}"
-    echo "     It will be auto-generated when the mTLS server starts"
-    echo "     You'll need to copy it to /opt/envoy/certs/server-cert.pem for Envoy upstream verification"
+    printf '     It will be auto-generated when the mTLS server starts\n'
+    printf '     You'\''ll need to copy it to /opt/envoy/certs/server-cert.pem for Envoy upstream verification\n'
 fi
 
 # Verify required certificates
 printf '\n'
-echo "  Verifying certificates..."
+printf '  Verifying certificates...\n'
 MISSING_CERTS=0
 if [ ! -f /opt/envoy/certs/spire-bundle.pem ]; then
     echo -e "${YELLOW}  ⚠ Missing: /opt/envoy/certs/spire-bundle.pem (for verifying SPIRE clients)${NC}"
@@ -305,20 +305,20 @@ if [ ! -f /opt/envoy/certs/envoy-key.pem ]; then
 fi
 if [ ! -f /opt/envoy/certs/server-cert.pem ]; then
     echo -e "${YELLOW}  ⚠ Missing: /opt/envoy/certs/server-cert.pem (for verifying backend server)${NC}"
-    echo "     This is the backend mTLS server's certificate"
+    printf '     This is the backend mTLS server'\''s certificate\n'
     MISSING_CERTS=$((MISSING_CERTS + 1))
 fi
 
 if [ $MISSING_CERTS -eq 0 ]; then
     echo -e "${GREEN}  ✓ All Envoy certificates in place${NC}"
-    echo "     - Envoy cert/key: For Envoy's own TLS connections"
-    echo "     - SPIRE bundle: For verifying SPIRE clients"
-    echo "     - Backend server cert: For verifying backend server"
+    printf '     - Envoy cert/key: For Envoy'\''s own TLS connections\n'
+    printf '     - SPIRE bundle: For verifying SPIRE clients\n'
+    printf '     - Backend server cert: For verifying backend server\n'
 elif [ $MISSING_CERTS -lt 4 ]; then
     echo -e "${YELLOW}  ⚠ Some certificates are missing but setup will continue${NC}"
-    echo "     Envoy cert/key: Auto-generated above"
-    echo "     Backend server cert: Will be auto-generated when mTLS server starts"
-    echo "     SPIRE bundle: Can be added later"
+    printf '     Envoy cert/key: Auto-generated above\n'
+    printf '     Backend server cert: Will be auto-generated when mTLS server starts\n'
+    printf '     SPIRE bundle: Can be added later\n'
 else
     echo -e "${YELLOW}  ⚠ Certificates will be generated/added as needed${NC}"
 fi
@@ -332,10 +332,10 @@ fi
 source .venv/bin/activate
 pip install -q -r requirements.txt
 echo -e "${GREEN}  ✓ Mobile location service dependencies installed${NC}"
-echo "  To start manually:"
-echo "    cd $REPO_ROOT/mobile-sensor-microservice"
-echo "    source .venv/bin/activate"
-echo "    python3 service.py --port 5000 --host 0.0.0.0"
+printf '  To start manually:\n'
+printf '    cd $REPO_ROOT/mobile-sensor-microservice\n'
+printf '    source .venv/bin/activate\n'
+printf '    python3 service.py --port 5000 --host 0.0.0.0\n'
 
 # 5. Setup mTLS server dependencies
 echo -e "\n${GREEN}[5/7] Setting up mTLS server dependencies...${NC}"
@@ -353,7 +353,7 @@ cd "$ONPREM_DIR/wasm-plugin"
 if [ -f "build.sh" ]; then
     if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
         echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
-        echo "  Sensor ID extraction is done directly in WASM filter - no separate service needed"
+        printf '  Sensor ID extraction is done directly in WASM filter - no separate service needed\n'
     else
         echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
         echo -e "${YELLOW}  Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
@@ -378,27 +378,27 @@ echo -e "${GREEN}  ✓ Envoy configuration copied to /opt/envoy/envoy.yaml${NC}"
 
 # Validate Envoy configuration if envoy command is available
 if command -v envoy &> /dev/null; then
-    echo "  Validating Envoy configuration..."
+    printf '  Validating Envoy configuration...\n'
     if sudo envoy --config-path /opt/envoy/envoy.yaml --mode validate &>/dev/null; then
         echo -e "${GREEN}  ✓ Envoy configuration is valid${NC}"
     else
         echo -e "${YELLOW}  ⚠ Envoy configuration validation failed${NC}"
-        echo "     Run manually to see errors: sudo envoy --config-path /opt/envoy/envoy.yaml --mode validate"
+        printf '     Run manually to see errors: sudo envoy --config-path /opt/envoy/envoy.yaml --mode validate\n'
     fi
 else
     echo -e "${YELLOW}  ⚠ Envoy not found - skipping configuration validation${NC}"
 fi
 
 printf '\n'
-echo "  To start Envoy manually:"
-echo "    sudo envoy -c /opt/envoy/envoy.yaml"
-echo "  Or run in background:"
-echo "    sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &"
+printf '  To start Envoy manually:\n'
+printf '    sudo envoy -c /opt/envoy/envoy.yaml\n'
+printf '  Or run in background:\n'
+printf '    sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &\n'
 
 echo
-echo "=========================================="
-echo "Setup complete!"
-echo "=========================================="
+printf '==========================================\n'
+printf 'Setup complete!\n'
+printf '==========================================\n'
 
 # Only auto-start services on test machine (10.1.0.10)
 if [ "$IS_TEST_MACHINE" = "true" ]; then
@@ -417,12 +417,12 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 
     # Create environment file for mobile sensor service
     if [ -n "$CAMARA_BASIC_AUTH" ]; then
-        echo "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
-        echo "  [OK] Mobile sensor service environment configured"
+        printf '%s\n' "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
+        printf '  [OK] Mobile sensor service environment configured\n'
     fi
 
     # Start Mobile Location Service
-    echo "  Starting Mobile Location Service (port 5000)..."
+    printf '  Starting Mobile Location Service (port 5000)...\n'
     cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
     if [ -d ".venv" ] && [ -f "service.py" ]; then
         source .venv/bin/activate
