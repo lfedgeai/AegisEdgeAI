@@ -390,13 +390,15 @@ class SPIREmTLSClient:
             
             now = datetime.now(timezone.utc)
             
-            # Check if expired or expires within next 5 seconds
-            if expiry <= now or (expiry - now).total_seconds() < 5:
-                # SVID is expired or about to expire - need to refresh
-                if expiry <= now:
-                    self.log(f"⚠️  SVID expired at {expiry}, refreshing context...")
-                else:
-                    self.log(f"⚠️  SVID expires soon ({expiry}), refreshing context proactively...")
+            # Check if expired or expires within next 10 seconds (more buffer for proactive refresh)
+            time_until_expiry = (expiry - now).total_seconds()
+            if expiry <= now:
+                # SVID is expired - need to refresh immediately
+                self.log(f"⚠️  SVID expired at {expiry}, refreshing context...")
+                return True
+            elif time_until_expiry < 10:
+                # SVID expires soon - refresh proactively
+                self.log(f"⚠️  SVID expires in {time_until_expiry:.1f}s ({expiry}), refreshing context proactively...")
                 return True
         except Exception as e:
             if self.running:
@@ -420,8 +422,16 @@ class SPIREmTLSClient:
                 elif self.check_svid_expired():
                     # SVID expired - refresh context proactively
                     self.log("  🔧 Recreating TLS context (SVID expired/expiring)...")
+                    # Close old source if it exists to force fresh SVID fetch
+                    if self.source:
+                        try:
+                            self.source.close()
+                        except:
+                            pass
                     context = self.setup_tls_context()
                     self.log("  ✓ TLS context recreated successfully")
+                    # Small delay to ensure new SVID is fully loaded
+                    time.sleep(0.5)
                     self.log("  🔌 Reconnecting to server with refreshed certificate...")
                 
                 # Create socket
@@ -467,6 +477,25 @@ class SPIREmTLSClient:
                                     "closing and reconnecting with new certificate"
                                 )
                             # Close current connection to force reconnection with new cert
+                            try:
+                                tls_socket.shutdown(socket.SHUT_RDWR)
+                            except:
+                                pass
+                            try:
+                                tls_socket.close()
+                            except:
+                                pass
+                            break  # Exit inner loop to reconnect
+                        # Also check if SVID expired during active connection
+                        elif self.check_svid_expired():
+                            # SVID expired during active connection - close and refresh
+                            if self.renewal_count > self.last_logged_renewal_id:
+                                self.last_logged_renewal_id = self.renewal_count
+                                self.log(
+                                    f"SVID expired during active connection; "
+                                    "closing and reconnecting with refreshed certificate"
+                                )
+                            # Close current connection to force reconnection with refreshed cert
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
