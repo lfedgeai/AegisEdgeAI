@@ -2,6 +2,7 @@
 """
 mTLS Client App with SPIRE SVID and Automatic Renewal
 This client connects to the mTLS server using SPIRE SVIDs and automatically renews when agent SVID renews.
+Can also work with standard certificates (no SPIRE required).
 """
 
 import os
@@ -10,18 +11,30 @@ import time
 import socket
 import ssl
 import signal
+import ipaddress
 from pathlib import Path
 
 try:
     from spiffe.workloadapi.x509_source import X509Source
     HAS_SPIFFE = True
 except ImportError:
-    print("Error: spiffe library not installed")
-    print("Install it with: pip install spiffe")
-    sys.exit(1)
+    HAS_SPIFFE = False
+
+try:
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    from datetime import datetime, timedelta
+    HAS_CRYPTOGRAPHY = True
+except ImportError:
+    HAS_CRYPTOGRAPHY = False
+    print("Warning: cryptography library not installed. Standard cert mode will not work.")
+    print("Install it with: pip install cryptography")
 
 class SPIREmTLSClient:
-    def __init__(self, socket_path, server_host, server_port, log_file=None):
+    def __init__(self, socket_path, server_host, server_port, log_file=None,
+                 use_spire=None, client_cert_path=None, client_key_path=None, ca_cert_path=None):
         self.socket_path = socket_path
         self.server_host = server_host
         self.server_port = server_port
@@ -33,6 +46,18 @@ class SPIREmTLSClient:
         self.last_svid_serial = None
         self.source = None
         self.bundle_path = None  # Keep bundle file path for SSL context lifetime
+        
+        # Certificate mode configuration
+        if use_spire is None:
+            # Auto-detect: use SPIRE if socket exists and spiffe is available, otherwise use standard
+            self.use_spire = HAS_SPIFFE and os.path.exists(socket_path) if socket_path else False
+        else:
+            self.use_spire = use_spire
+        
+        # Standard cert paths
+        self.client_cert_path = client_cert_path
+        self.client_key_path = client_key_path
+        self.ca_cert_path = ca_cert_path
         
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -53,8 +78,126 @@ class SPIREmTLSClient:
             with open(self.log_file, 'a') as f:
                 f.write(log_msg + '\n')
     
+    def generate_self_signed_cert(self, cert_path, key_path):
+        """Generate a self-signed certificate and key for standard cert mode."""
+        if not HAS_CRYPTOGRAPHY:
+            raise Exception("cryptography library required for standard cert mode")
+        
+        self.log("Generating self-signed client certificate...")
+        
+        # Generate private key
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
+        
+        # Create certificate
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "CA"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, "San Francisco"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "mTLS Demo"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "mtls-client"),
+        ])
+        
+        cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            private_key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.utcnow()
+        ).not_valid_after(
+            datetime.utcnow() + timedelta(days=365)
+        ).add_extension(
+            x509.SubjectAlternativeName([
+                x509.DNSName("localhost"),
+                x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+            ]),
+            critical=False,
+        ).sign(private_key, hashes.SHA256())
+        
+        # Write certificate
+        with open(cert_path, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+        
+        # Write private key
+        with open(key_path, "wb") as f:
+            f.write(private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            ))
+        
+        self.log(f"  ✓ Client certificate saved to {cert_path}")
+        self.log(f"  ✓ Client key saved to {key_path}")
+        return cert_path, key_path
+    
+    def setup_tls_context_standard(self):
+        """Setup TLS context with standard certificates (no SPIRE)."""
+        if not HAS_CRYPTOGRAPHY:
+            raise Exception("cryptography library required for standard cert mode")
+        
+        self.log("Setting up TLS context with standard certificates...")
+        
+        # Determine certificate paths
+        if self.client_cert_path and self.client_key_path:
+            cert_path = self.client_cert_path
+            key_path = self.client_key_path
+            if not os.path.exists(cert_path) or not os.path.exists(key_path):
+                raise Exception(f"Certificate files not found: {cert_path} or {key_path}")
+            self.log(f"  Using provided certificates: {cert_path}, {key_path}")
+        else:
+            # Generate self-signed certificates
+            cert_dir = os.path.join(os.path.expanduser("~"), ".mtls-demo")
+            os.makedirs(cert_dir, mode=0o700, exist_ok=True)
+            cert_path = os.path.join(cert_dir, "client-cert.pem")
+            key_path = os.path.join(cert_dir, "client-key.pem")
+            
+            if not os.path.exists(cert_path) or not os.path.exists(key_path):
+                self.generate_self_signed_cert(cert_path, key_path)
+            else:
+                self.log(f"  Using existing certificates: {cert_path}, {key_path}")
+        
+        # Create TLS context
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.check_hostname = False
+        context.load_cert_chain(cert_path, key_path)
+        
+        # Load CA certificate for server verification
+        if self.ca_cert_path and os.path.exists(self.ca_cert_path):
+            context.load_verify_locations(self.ca_cert_path)
+            context.verify_mode = ssl.CERT_REQUIRED
+            self.log(f"  ✓ CA certificate loaded for server verification: {self.ca_cert_path}")
+        else:
+            # Try to find server cert as CA (for self-signed server)
+            server_cert_path = os.path.join(os.path.expanduser("~"), ".mtls-demo", "server-cert.pem")
+            if os.path.exists(server_cert_path):
+                context.load_verify_locations(server_cert_path)
+                context.verify_mode = ssl.CERT_REQUIRED
+                self.log(f"  ✓ Using server certificate as CA for verification")
+            else:
+                context.verify_mode = ssl.CERT_NONE  # No server verification
+                self.log(f"  ⚠ No CA certificate found, server verification disabled")
+        
+        self.log("  ✓ Standard TLS context configured")
+        return context
+    
     def setup_tls_context(self):
+        """Setup TLS context - either SPIRE or standard cert mode."""
+        if self.use_spire:
+            return self.setup_tls_context_spire()
+        else:
+            return self.setup_tls_context_standard()
+    
+    def setup_tls_context_spire(self):
         """Setup TLS context with SPIRE SVID source."""
+        if not HAS_SPIFFE:
+            raise Exception("SPIRE mode requires spiffe library. Install with: pip install spiffe")
+        
         socket_path_with_scheme = f"unix://{self.socket_path}"
         
         try:
@@ -114,14 +257,32 @@ class SPIREmTLSClient:
             if self.bundle_path:
                 try:
                     context.load_verify_locations(self.bundle_path)
+                    self.log(f"  ✓ SPIRE trust bundle loaded into SSL context")
+                    
+                    # Also load additional CA cert if provided (for mixed mode: SPIRE client + standard cert server)
+                    if self.ca_cert_path:
+                        expanded_ca_path = os.path.expanduser(self.ca_cert_path)
+                        if os.path.exists(expanded_ca_path):
+                            context.load_verify_locations(expanded_ca_path)
+                            self.log(f"  ✓ Additional CA certificate loaded: {expanded_ca_path}")
+                            self.log(f"  ℹ Mixed mode: SPIRE client can verify standard cert servers")
+                        else:
+                            self.log(f"  ⚠ CA certificate path not found: {expanded_ca_path}")
+                            self.log(f"  ⚠ Server verification may fail for standard cert servers")
+                    
                     context.verify_mode = ssl.CERT_REQUIRED  # Verify server certificate using trust bundle
-                    self.log(f"  ✓ Trust bundle loaded into SSL context")
                 except Exception as e:
                     self.log(f"  ⚠ Error loading bundle into SSL context: {e}")
                     context.verify_mode = ssl.CERT_NONE  # Fallback: don't verify if bundle load fails
             else:
-                self.log(f"  ⚠ No bundle path available, using CERT_NONE (no peer verification)")
-                context.verify_mode = ssl.CERT_NONE  # Don't verify if no bundle
+                # If no SPIRE bundle, try to use CA cert if provided
+                if self.ca_cert_path and os.path.exists(self.ca_cert_path):
+                    context.load_verify_locations(self.ca_cert_path)
+                    context.verify_mode = ssl.CERT_REQUIRED
+                    self.log(f"  ✓ CA certificate loaded for server verification: {self.ca_cert_path}")
+                else:
+                    self.log(f"  ⚠ No bundle path available, using CERT_NONE (no peer verification)")
+                    context.verify_mode = ssl.CERT_NONE  # Don't verify if no bundle
             
             # Load initial certificate
             from cryptography.hazmat.primitives import serialization
@@ -149,8 +310,38 @@ class SPIREmTLSClient:
             traceback.print_exc()
             raise
     
+    def _detect_peer_cert_type(self, tls_socket):
+        """Detect if peer certificate is SPIRE-issued or standard."""
+        try:
+            # Get server certificate
+            cert_der = tls_socket.getpeercert_chain()[0] if hasattr(tls_socket, 'getpeercert_chain') else None
+            if not cert_der:
+                # Try alternative method
+                cert_der = tls_socket.getpeercert(binary_form=True)
+            
+            if cert_der:
+                from cryptography import x509
+                from cryptography.hazmat.backends import default_backend
+                cert = x509.load_der_x509_certificate(cert_der, default_backend())
+                
+                # Check for SPIFFE ID in SAN
+                for ext in cert.extensions:
+                    if ext.oid._name == 'subjectAltName':
+                        for name in ext.value:
+                            if hasattr(name, 'value') and isinstance(name.value, str):
+                                if name.value.startswith('spiffe://'):
+                                    return 'SPIRE'
+            
+            return 'standard'
+        except Exception as e:
+            self.log(f"  ⚠ Could not detect peer cert type: {e}")
+            return None
+    
     def check_renewal(self):
-        """Check if SVID was renewed."""
+        """Check if SVID was renewed (SPIRE mode only)."""
+        if not self.use_spire:
+            return False  # No renewal in standard cert mode
+        
         try:
             new_svid = self.source.svid
             if new_svid and self.last_svid_serial:
@@ -203,6 +394,22 @@ class SPIREmTLSClient:
                 # Wrap with TLS and connect
                 tls_socket = context.wrap_socket(client_socket, server_hostname=self.server_host)
                 tls_socket.connect((self.server_host, self.server_port))
+                
+                # Detect and log server certificate type
+                server_cert_type = self._detect_peer_cert_type(tls_socket)
+                if server_cert_type:
+                    if server_cert_type == 'standard' and self.use_spire:
+                        self.log(f"  ℹ Mixed mode detected: Server using standard certificate, Client using SPIRE certificate")
+                        if not self.ca_cert_path:
+                            self.log(f"  ⚠ Warning: Server verification may fail without CA_CERT_PATH")
+                            self.log(f"  ℹ Provide server's CA via CA_CERT_PATH for proper verification")
+                        else:
+                            self.log(f"  ✓ Server CA provided - verification should succeed")
+                    elif server_cert_type == 'SPIRE' and not self.use_spire:
+                        self.log(f"  ℹ Mixed mode detected: Server using SPIRE certificate, Client using standard certificate")
+                        self.log(f"  ℹ This is supported - client can connect to SPIRE servers")
+                    else:
+                        self.log(f"  ℹ Server certificate type: {server_cert_type} (matches client mode)")
                 
                 # DEMO: Show successful connection (especially after renewal)
                 if self.reconnect_count > 0:
@@ -306,10 +513,15 @@ class SPIREmTLSClient:
     def run(self):
         """Run the mTLS client."""
         self.log("")
-        self.log("╔════════════════════════════════════════════════════════════════╗")
-        self.log("║  mTLS Client Starting with Automatic SVID Renewal              ║")
-        self.log("╚════════════════════════════════════════════════════════════════╝")
-        self.log(f"SPIRE Agent socket: {self.socket_path}")
+        if self.use_spire:
+            self.log("╔════════════════════════════════════════════════════════════════╗")
+            self.log("║  mTLS Client Starting with SPIRE SVID (Automatic Renewal)      ║")
+            self.log("╚════════════════════════════════════════════════════════════════╝")
+            self.log(f"SPIRE Agent socket: {self.socket_path}")
+        else:
+            self.log("╔════════════════════════════════════════════════════════════════╗")
+            self.log("║  mTLS Client Starting with Standard Certificates               ║")
+            self.log("╚════════════════════════════════════════════════════════════════╝")
         self.log(f"Server: {self.server_host}:{self.server_port}")
         self.log("")
         
@@ -346,7 +558,36 @@ def main():
     server_port = int(os.environ.get('SERVER_PORT', '9443'))
     log_file = os.environ.get('CLIENT_LOG', '/tmp/mtls-client-app.log')
     
-    client = SPIREmTLSClient(socket_path, server_host, server_port, log_file)
+    # Certificate mode configuration
+    use_spire_env = os.environ.get('CLIENT_USE_SPIRE', '').lower()
+    if use_spire_env == 'true' or use_spire_env == '1':
+        use_spire = True
+    elif use_spire_env == 'false' or use_spire_env == '0':
+        use_spire = False
+    else:
+        use_spire = None  # Auto-detect
+    
+    # Standard cert paths (optional) - expand ~ in paths
+    client_cert_path = os.environ.get('CLIENT_CERT_PATH')
+    if client_cert_path:
+        client_cert_path = os.path.expanduser(client_cert_path)
+    client_key_path = os.environ.get('CLIENT_KEY_PATH')
+    if client_key_path:
+        client_key_path = os.path.expanduser(client_key_path)
+    ca_cert_path = os.environ.get('CA_CERT_PATH')
+    if ca_cert_path:
+        ca_cert_path = os.path.expanduser(ca_cert_path)
+    
+    client = SPIREmTLSClient(
+        socket_path,
+        server_host,
+        server_port,
+        log_file,
+        use_spire=use_spire,
+        client_cert_path=client_cert_path,
+        client_key_path=client_key_path,
+        ca_cert_path=ca_cert_path
+    )
     client.run()
 
 if __name__ == '__main__':
