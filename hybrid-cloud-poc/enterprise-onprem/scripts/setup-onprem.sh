@@ -407,149 +407,149 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Set CAMARA_BASIC_AUTH for mobile location service (test machine only)
     CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
 
-# Create environment file for mobile sensor service
-if [ -n "$CAMARA_BASIC_AUTH" ]; then
-    echo "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
-    echo -e "${GREEN}  ✓ Mobile sensor service environment configured${NC}"
-fi
-
-# Start Mobile Location Service
-echo "  Starting Mobile Location Service (port 5000)..."
-cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
-if [ -d ".venv" ] && [ -f "service.py" ]; then
-    source .venv/bin/activate
+    # Create environment file for mobile sensor service
     if [ -n "$CAMARA_BASIC_AUTH" ]; then
-        export CAMARA_BASIC_AUTH
-        python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
-    else
-        export CAMARA_BYPASS=true
-        python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
+        echo "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
+        echo -e "${GREEN}  ✓ Mobile sensor service environment configured${NC}"
     fi
-    MOBILE_PID=$!
+
+    # Start Mobile Location Service
+    echo "  Starting Mobile Location Service (port 5000)..."
+    cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
+    if [ -d ".venv" ] && [ -f "service.py" ]; then
+        source .venv/bin/activate
+        if [ -n "$CAMARA_BASIC_AUTH" ]; then
+            export CAMARA_BASIC_AUTH
+            python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
+        else
+            export CAMARA_BYPASS=true
+            python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
+        fi
+        MOBILE_PID=$!
+        sleep 2
+        if ps -p $MOBILE_PID > /dev/null 2>&1; then
+            echo -e "${GREEN}    ✓ Mobile Location Service started (PID: $MOBILE_PID)${NC}"
+        else
+            echo -e "${YELLOW}    ⚠ Mobile Location Service may have failed - check /tmp/mobile-sensor.log${NC}"
+        fi
+    else
+        echo -e "${YELLOW}    ⚠ Virtual environment or service.py not found - skipping mobile service startup${NC}"
+    fi
+
+    # Start mTLS Server
+    echo "  Starting mTLS Server (port 9443)..."
+    cd "$REPO_ROOT/python-app-demo" 2>/dev/null
+    if [ -f "mtls-server-app.py" ]; then
+        export SERVER_USE_SPIRE="false"
+        export SERVER_PORT="9443"
+        export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
+        python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
+        MTLS_PID=$!
+        sleep 2
+        if ps -p $MTLS_PID > /dev/null 2>&1; then
+            echo -e "${GREEN}    ✓ mTLS Server started (PID: $MTLS_PID)${NC}"
+        else
+            echo -e "${YELLOW}    ⚠ mTLS Server may have failed - check /tmp/mtls-server.log${NC}"
+        fi
+    else
+        echo -e "${YELLOW}    ⚠ mtls-server-app.py not found - skipping mTLS server startup${NC}"
+    fi
+
+    # Ensure backend server cert is available for Envoy
+    if [ ! -f /opt/envoy/certs/server-cert.pem ] && [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
+        sudo cp "$HOME/.mtls-demo/server-cert.pem" /opt/envoy/certs/server-cert.pem 2>/dev/null
+        sudo chmod 644 /opt/envoy/certs/server-cert.pem 2>/dev/null
+        echo -e "${GREEN}    ✓ Backend server certificate copied for Envoy${NC}"
+    fi
+
+    # Start Envoy
+    echo "  Starting Envoy Proxy (port 8080)..."
+    if command -v envoy &> /dev/null; then
+        sudo mkdir -p /opt/envoy/logs 2>/dev/null
+        sudo touch /opt/envoy/logs/envoy.log 2>/dev/null
+        sudo chmod 666 /opt/envoy/logs/envoy.log 2>/dev/null
+        sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &
+        ENVOY_PID=$!
+        sleep 3
+        if ps -p $ENVOY_PID > /dev/null 2>&1; then
+            echo -e "${GREEN}    ✓ Envoy started (PID: $ENVOY_PID)${NC}"
+        else
+            echo -e "${YELLOW}    ⚠ Envoy may have failed - check /opt/envoy/logs/envoy.log${NC}"
+        fi
+    else
+        echo -e "${YELLOW}    ⚠ Envoy not found - please install and start manually${NC}"
+    fi
+
+    # Re-enable exit on error
+    set -e
+
+    # Verify services are running
+    echo ""
+    echo -e "${GREEN}Verifying services...${NC}"
     sleep 2
-    if ps -p $MOBILE_PID > /dev/null 2>&1; then
-        echo -e "${GREEN}    ✓ Mobile Location Service started (PID: $MOBILE_PID)${NC}"
-    else
-        echo -e "${YELLOW}    ⚠ Mobile Location Service may have failed - check /tmp/mobile-sensor.log${NC}"
-    fi
-else
-    echo -e "${YELLOW}    ⚠ Virtual environment or service.py not found - skipping mobile service startup${NC}"
-fi
 
-# Start mTLS Server
-echo "  Starting mTLS Server (port 9443)..."
-cd "$REPO_ROOT/python-app-demo" 2>/dev/null
-if [ -f "mtls-server-app.py" ]; then
-    export SERVER_USE_SPIRE="false"
-    export SERVER_PORT="9443"
-    export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
-    python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
-    MTLS_PID=$!
-    sleep 2
-    if ps -p $MTLS_PID > /dev/null 2>&1; then
-        echo -e "${GREEN}    ✓ mTLS Server started (PID: $MTLS_PID)${NC}"
-    else
-        echo -e "${YELLOW}    ⚠ mTLS Server may have failed - check /tmp/mtls-server.log${NC}"
-    fi
-else
-    echo -e "${YELLOW}    ⚠ mtls-server-app.py not found - skipping mTLS server startup${NC}"
-fi
+    # Temporarily disable exit on error for verification
+    set +e
 
-# Ensure backend server cert is available for Envoy
-if [ ! -f /opt/envoy/certs/server-cert.pem ] && [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
-    sudo cp "$HOME/.mtls-demo/server-cert.pem" /opt/envoy/certs/server-cert.pem 2>/dev/null
-    sudo chmod 644 /opt/envoy/certs/server-cert.pem 2>/dev/null
-    echo -e "${GREEN}    ✓ Backend server certificate copied for Envoy${NC}"
-fi
-
-# Start Envoy
-echo "  Starting Envoy Proxy (port 8080)..."
-if command -v envoy &> /dev/null; then
-    sudo mkdir -p /opt/envoy/logs 2>/dev/null
-    sudo touch /opt/envoy/logs/envoy.log 2>/dev/null
-    sudo chmod 666 /opt/envoy/logs/envoy.log 2>/dev/null
-    sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &
-    ENVOY_PID=$!
-    sleep 3
-    if ps -p $ENVOY_PID > /dev/null 2>&1; then
-        echo -e "${GREEN}    ✓ Envoy started (PID: $ENVOY_PID)${NC}"
+    SERVICES_OK=0
+    if command -v ss &> /dev/null; then
+        if sudo ss -tlnp 2>/dev/null | grep -q ':5000'; then
+            echo -e "${GREEN}  ✓ Mobile Location Service listening on port 5000${NC}"
+            SERVICES_OK=$((SERVICES_OK + 1))
+        else
+            echo -e "${YELLOW}  ⚠ Mobile Location Service not listening on port 5000${NC}"
+        fi
+        
+        if sudo ss -tlnp 2>/dev/null | grep -q ':9443'; then
+            echo -e "${GREEN}  ✓ mTLS Server listening on port 9443${NC}"
+            SERVICES_OK=$((SERVICES_OK + 1))
+        else
+            echo -e "${YELLOW}  ⚠ mTLS Server not listening on port 9443${NC}"
+        fi
+        
+        if sudo ss -tlnp 2>/dev/null | grep -q ':8080'; then
+            echo -e "${GREEN}  ✓ Envoy listening on port 8080${NC}"
+            SERVICES_OK=$((SERVICES_OK + 1))
+        else
+            echo -e "${YELLOW}  ⚠ Envoy not listening on port 8080${NC}"
+        fi
+    elif command -v netstat &> /dev/null; then
+        if sudo netstat -tlnp 2>/dev/null | grep -q ':5000'; then
+            echo -e "${GREEN}  ✓ Mobile Location Service listening on port 5000${NC}"
+            SERVICES_OK=$((SERVICES_OK + 1))
+        else
+            echo -e "${YELLOW}  ⚠ Mobile Location Service not listening on port 5000${NC}"
+        fi
+        
+        if sudo netstat -tlnp 2>/dev/null | grep -q ':9443'; then
+            echo -e "${GREEN}  ✓ mTLS Server listening on port 9443${NC}"
+            SERVICES_OK=$((SERVICES_OK + 1))
+        else
+            echo -e "${YELLOW}  ⚠ mTLS Server not listening on port 9443${NC}"
+        fi
+        
+        if sudo netstat -tlnp 2>/dev/null | grep -q ':8080'; then
+            echo -e "${GREEN}  ✓ Envoy listening on port 8080${NC}"
+            SERVICES_OK=$((SERVICES_OK + 1))
+        else
+            echo -e "${YELLOW}  ⚠ Envoy not listening on port 8080${NC}"
+        fi
     else
-        echo -e "${YELLOW}    ⚠ Envoy may have failed - check /opt/envoy/logs/envoy.log${NC}"
+        echo -e "${YELLOW}  ⚠ Cannot verify ports (ss/netstat not available)${NC}"
     fi
-else
-    echo -e "${YELLOW}    ⚠ Envoy not found - please install and start manually${NC}"
-fi
 
-# Re-enable exit on error
-set -e
+    # Re-enable exit on error
+    set -e
 
-# Verify services are running
-echo ""
-echo -e "${GREEN}Verifying services...${NC}"
-sleep 2
-
-# Temporarily disable exit on error for verification
-set +e
-
-SERVICES_OK=0
-if command -v ss &> /dev/null; then
-    if sudo ss -tlnp 2>/dev/null | grep -q ':5000'; then
-        echo -e "${GREEN}  ✓ Mobile Location Service listening on port 5000${NC}"
-        SERVICES_OK=$((SERVICES_OK + 1))
+    echo ""
+    if [ $SERVICES_OK -eq 3 ]; then
+        echo -e "${GREEN}✓ All services are running!${NC}"
     else
-        echo -e "${YELLOW}  ⚠ Mobile Location Service not listening on port 5000${NC}"
+        echo -e "${YELLOW}⚠ Some services may not be running. Check logs:${NC}"
+        echo "  - Mobile Location Service: tail -f /tmp/mobile-sensor.log"
+        echo "  - mTLS Server: tail -f /tmp/mtls-server.log"
+        echo "  - Envoy: tail -f /opt/envoy/logs/envoy.log"
     fi
-    
-    if sudo ss -tlnp 2>/dev/null | grep -q ':9443'; then
-        echo -e "${GREEN}  ✓ mTLS Server listening on port 9443${NC}"
-        SERVICES_OK=$((SERVICES_OK + 1))
-    else
-        echo -e "${YELLOW}  ⚠ mTLS Server not listening on port 9443${NC}"
-    fi
-    
-    if sudo ss -tlnp 2>/dev/null | grep -q ':8080'; then
-        echo -e "${GREEN}  ✓ Envoy listening on port 8080${NC}"
-        SERVICES_OK=$((SERVICES_OK + 1))
-    else
-        echo -e "${YELLOW}  ⚠ Envoy not listening on port 8080${NC}"
-    fi
-elif command -v netstat &> /dev/null; then
-    if sudo netstat -tlnp 2>/dev/null | grep -q ':5000'; then
-        echo -e "${GREEN}  ✓ Mobile Location Service listening on port 5000${NC}"
-        SERVICES_OK=$((SERVICES_OK + 1))
-    else
-        echo -e "${YELLOW}  ⚠ Mobile Location Service not listening on port 5000${NC}"
-    fi
-    
-    if sudo netstat -tlnp 2>/dev/null | grep -q ':9443'; then
-        echo -e "${GREEN}  ✓ mTLS Server listening on port 9443${NC}"
-        SERVICES_OK=$((SERVICES_OK + 1))
-    else
-        echo -e "${YELLOW}  ⚠ mTLS Server not listening on port 9443${NC}"
-    fi
-    
-    if sudo netstat -tlnp 2>/dev/null | grep -q ':8080'; then
-        echo -e "${GREEN}  ✓ Envoy listening on port 8080${NC}"
-        SERVICES_OK=$((SERVICES_OK + 1))
-    else
-        echo -e "${YELLOW}  ⚠ Envoy not listening on port 8080${NC}"
-    fi
-else
-    echo -e "${YELLOW}  ⚠ Cannot verify ports (ss/netstat not available)${NC}"
-fi
-
-# Re-enable exit on error
-set -e
-
-echo ""
-if [ $SERVICES_OK -eq 3 ]; then
-    echo -e "${GREEN}✓ All services are running!${NC}"
-else
-    echo -e "${YELLOW}⚠ Some services may not be running. Check logs:${NC}"
-    echo "  - Mobile Location Service: tail -f /tmp/mobile-sensor.log"
-    echo "  - mTLS Server: tail -f /tmp/mtls-server.log"
-    echo "  - Envoy: tail -f /opt/envoy/logs/envoy.log"
-fi
 
     echo ""
     echo "Service Management:"
