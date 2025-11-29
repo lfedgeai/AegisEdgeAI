@@ -96,8 +96,21 @@ fi
 echo -e "\n${GREEN}[2/6] Creating directories...${NC}"
 sudo mkdir -p /opt/envoy/{certs,plugins,logs}
 sudo mkdir -p /opt/mobile-sensor-service
-sudo mkdir -p /opt/sensor-id-extractor
 sudo mkdir -p /opt/mtls-server
+
+# Build and install WASM filter for sensor verification
+echo -e "${GREEN}  Building WASM filter...${NC}"
+cd "$ONPREM_DIR/wasm-plugin"
+if [ -f "build.sh" ]; then
+    if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
+        echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
+    else
+        echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
+        echo -e "${YELLOW}  You may need to install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ WASM plugin directory not found${NC}"
+fi
 
 # 3. Setup certificates
 echo -e "\n${GREEN}[3/6] Setting up certificates...${NC}"
@@ -239,98 +252,62 @@ if [ ! -d ".venv" ]; then
 fi
 source .venv/bin/activate
 pip install -q -r requirements.txt
+echo -e "${GREEN}  ✓ Mobile location service dependencies installed${NC}"
+echo "  To start manually:"
+echo "    cd $REPO_ROOT/mobile-sensor-microservice"
+echo "    source .venv/bin/activate"
+echo "    python3 service.py --port 5000 --host 0.0.0.0"
 
-# Create systemd service
-sudo tee /etc/systemd/system/mobile-sensor-service.service > /dev/null <<EOF
-[Unit]
-Description=Mobile Location Verification Service
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$REPO_ROOT/mobile-sensor-microservice
-Environment="PATH=$REPO_ROOT/mobile-sensor-microservice/.venv/bin:$PATH"
-ExecStart=$REPO_ROOT/mobile-sensor-microservice/.venv/bin/python3 service.py --port 5000 --host 0.0.0.0
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# 5. Setup sensor ID extractor
-echo -e "\n${GREEN}[5/6] Setting up sensor ID extractor...${NC}"
-cd "$ONPREM_DIR/sensor-id-extractor"
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
+# 5. Build WASM filter (sensor ID extraction is done in WASM, no separate service needed)
+echo -e "\n${GREEN}[5/6] Building WASM filter for sensor verification...${NC}"
+cd "$ONPREM_DIR/wasm-plugin"
+if [ -f "build.sh" ]; then
+    if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
+        echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
+        echo "  Sensor ID extraction is done directly in WASM filter - no separate service needed"
+    else
+        echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
+        echo -e "${YELLOW}  Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+        echo -e "${YELLOW}  Then run: cd $ONPREM_DIR/wasm-plugin && bash build.sh${NC}"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ WASM plugin directory not found${NC}"
 fi
-source .venv/bin/activate
-pip install -q flask cryptography
-
-# Create systemd service
-sudo tee /etc/systemd/system/sensor-id-extractor.service > /dev/null <<EOF
-[Unit]
-Description=Sensor ID Extractor Service
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$ONPREM_DIR/sensor-id-extractor
-Environment="PATH=$ONPREM_DIR/sensor-id-extractor/.venv/bin:$PATH"
-ExecStart=$ONPREM_DIR/sensor-id-extractor/.venv/bin/python3 extract_sensor_id.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
 
 # 6. Setup Envoy
 echo -e "\n${GREEN}[6/6] Setting up Envoy proxy...${NC}"
 sudo cp "$ONPREM_DIR/envoy/envoy.yaml" /opt/envoy/envoy.yaml
-
-# Create systemd service
-sudo tee /etc/systemd/system/envoy-proxy.service > /dev/null <<EOF
-[Unit]
-Description=Envoy Proxy
-After=network.target mobile-sensor-service.service sensor-id-extractor.service
-
-[Service]
-Type=simple
-User=root
-ExecStart=/usr/local/bin/envoy -c /opt/envoy/envoy.yaml --log-path /opt/envoy/logs/envoy.log
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable and start services
-echo -e "\n${GREEN}Enabling and starting services...${NC}"
-sudo systemctl daemon-reload
-sudo systemctl enable mobile-sensor-service
-sudo systemctl enable sensor-id-extractor
-sudo systemctl enable envoy-proxy
+echo -e "${GREEN}  ✓ Envoy configuration ready${NC}"
+echo "  To start Envoy manually:"
+echo "    sudo envoy -c /opt/envoy/envoy.yaml"
+echo "  Or run in background:"
+echo "    sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &"
 
 echo -e "\n${GREEN}=========================================="
 echo "Setup complete!"
 echo "==========================================${NC}"
 echo ""
-echo "To start services:"
-echo "  sudo systemctl start mobile-sensor-service"
-echo "  sudo systemctl start sensor-id-extractor"
-echo "  sudo systemctl start envoy-proxy"
+echo "To start all services manually (in separate terminals):"
 echo ""
-echo "To check status:"
-echo "  sudo systemctl status mobile-sensor-service"
-echo "  sudo systemctl status sensor-id-extractor"
-echo "  sudo systemctl status envoy-proxy"
+echo "Terminal 1 - Mobile Location Service:"
+echo "  cd $REPO_ROOT/mobile-sensor-microservice"
+echo "  source .venv/bin/activate"
+echo "  python3 service.py --port 5000 --host 0.0.0.0"
 echo ""
-echo "To view logs:"
-echo "  sudo journalctl -u mobile-sensor-service -f"
-echo "  sudo journalctl -u sensor-id-extractor -f"
-echo "  sudo journalctl -u envoy-proxy -f"
+echo "Terminal 2 - mTLS Server:"
+echo "  cd $REPO_ROOT/python-app-demo"
+echo "  export SERVER_USE_SPIRE=\"false\""
+echo "  export SERVER_PORT=\"9443\""
+echo "  export CA_CERT_PATH=\"/opt/envoy/certs/spire-bundle.pem\""
+echo "  python3 mtls-server-app.py"
+echo ""
+echo "Terminal 3 - Envoy:"
+echo "  sudo envoy -c /opt/envoy/envoy.yaml"
+echo ""
+echo "Or start all in background:"
+echo "  cd $REPO_ROOT/mobile-sensor-microservice && source .venv/bin/activate && python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &"
+echo "  cd $REPO_ROOT/python-app-demo && export SERVER_USE_SPIRE=\"false\" SERVER_PORT=\"9443\" && python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &"
+echo "  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &"
+echo ""
+echo "Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!"
 

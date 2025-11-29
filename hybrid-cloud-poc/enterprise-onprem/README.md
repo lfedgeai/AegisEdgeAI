@@ -18,7 +18,7 @@ Envoy Proxy (10.1.0.10:8080)
     |
     | 1. Terminates mTLS
     | 2. Verifies SPIRE cert signature (using SPIRE CA bundle)
-    | 3. Extracts sensor ID (via sensor-id-extractor service)
+    | 3. Extracts sensor ID directly from cert (WASM filter)
     | 4. Calls mobile location service
     | 5. Verifies response is "yes"
     |
@@ -33,17 +33,15 @@ mTLS Server (10.1.0.10:9443)
 - **Function**: 
   - Terminates mTLS from SPIRE clients
   - Verifies SPIRE certificate signatures using SPIRE CA bundle
-  - Uses Lua filter to extract sensor ID and verify with mobile location service
+  - Uses WASM filter to extract sensor ID directly from certificate and verify with mobile location service
   - Forwards verified requests to backend mTLS server
 - **Certificates**:
   - Uses its own certificates (`envoy-cert.pem`, `envoy-key.pem`) for TLS connections
   - Uses SPIRE bundle to verify SPIRE client certificates
   - Uses backend server certificate to verify backend server when connecting upstream
-
-### 2. Sensor ID Extractor (`sensor-id-extractor/`)
-- **Port**: 5001
-- **Function**: Extracts sensor ID from SPIRE certificate Unified Identity extension
-- **API**: `POST /extract` with `{"cert_der_b64": "..."}` or `{"cert_pem": "..."}`
+- **WASM Filter**: 
+  - Extracts sensor ID directly from SPIRE certificate Unified Identity extension (OID 1.3.6.1.4.1.99999.2)
+  - No separate service needed - all extraction logic is in the WASM module
 
 ### 3. Mobile Location Service
 - **Port**: 5000
@@ -51,7 +49,7 @@ mTLS Server (10.1.0.10:9443)
 - **Function**: Verifies sensor ID via CAMARA API
 - **API**: `POST /verify` with `{"sensor_id": "12d1:1433"}`
 
-### 4. mTLS Server
+### 3. mTLS Server
 - **Port**: 9443
 - **Location**: `../python-app-demo/mtls-server-app.py`
 - **Function**: Backend server using standard certificates (no SPIRE)
@@ -130,14 +128,12 @@ If you prefer manual setup:
    python3 service.py --port 5000 --host 0.0.0.0 &
    ```
 
-4. **Start sensor ID extractor**:
+4. **Build WASM filter** (if not done during setup):
    ```bash
-   cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem/sensor-id-extractor
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install flask cryptography
-   python3 extract_sensor_id.py &
+   cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem/wasm-plugin
+   bash build.sh
    ```
+   This builds the WASM filter that extracts sensor ID directly from certificates.
 
 5. **Start mTLS server**:
    ```bash
@@ -148,7 +144,7 @@ If you prefer manual setup:
    python3 mtls-server-app.py &
    ```
 
-6. **Start Envoy**:
+6. **Start Envoy** (WASM filter will be loaded automatically):
    ```bash
    sudo envoy -c ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem/envoy/envoy.yaml
    ```
@@ -200,8 +196,10 @@ scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
 - Verify Envoy config: `envoy --config-path envoy.yaml --mode validate`
 
 ### Sensor ID extraction fails
-- Check sensor-id-extractor service is running: `curl http://localhost:5001/health`
+- Check WASM filter is loaded: Look for "sensor_verification" in Envoy logs
+- Verify WASM file exists: `/opt/envoy/plugins/sensor_verification_wasm.wasm`
 - Verify SPIRE cert has Unified Identity extension with geolocation data
+- Rebuild WASM filter if needed: `cd enterprise-onprem/wasm-plugin && bash build.sh`
 
 ### Mobile location service fails
 - Check service is running: `curl http://localhost:5000/verify -X POST -H "Content-Type: application/json" -d '{}'`
@@ -214,6 +212,6 @@ scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
 ## Files
 
 - `envoy/envoy.yaml` - Envoy proxy configuration
-- `sensor-id-extractor/extract_sensor_id.py` - Sensor ID extraction service
+- `wasm-plugin/` - WASM filter that extracts sensor ID directly from certificates
 - `scripts/setup-onprem.sh` - Automated setup script
 
