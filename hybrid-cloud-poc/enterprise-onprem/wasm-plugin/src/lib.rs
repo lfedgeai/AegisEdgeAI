@@ -16,7 +16,10 @@ struct VerifyRequest {
 
 #[derive(Deserialize)]
 struct VerifyResponse {
-    verification_result: bool,
+    verification_result: Option<bool>,
+    error: Option<String>,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 proxy_wasm::main! {{
@@ -58,7 +61,12 @@ impl Default for SensorVerificationFilter {
 
 impl Context for SensorVerificationFilter {
     // Handle HTTP call response from mobile location service
-    fn on_http_call_response(&mut self, _token_id: u32, _num_headers: usize, body_size: usize, _num_trailers: usize) {
+    fn on_http_call_response(&mut self, _token_id: u32, num_headers: usize, body_size: usize, _num_trailers: usize) {
+        // Get HTTP status code
+        let status_code = self.get_http_call_response_header(":status")
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(0);
+        
         // Get response body
         let body_result = self.get_http_call_response_body(0, body_size);
         let body = match body_result {
@@ -75,13 +83,46 @@ impl Context for SensorVerificationFilter {
         };
         let body_str = String::from_utf8_lossy(&body);
         
-        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Mobile location service response: {}", body_str));
+        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Mobile location service response: status={}, body={}", status_code, body_str));
         
-        // Parse response
+        // Check if status code indicates error
+        if status_code >= 400 {
+            let error_msg = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body_str) {
+                json.get("error")
+                    .and_then(|e| e.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "unknown error".to_string())
+            } else {
+                "http error".to_string()
+            };
+            proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Mobile location service error (status {}): {}", status_code, error_msg));
+            // On service error, reject request (fail closed for security)
+            self.send_http_response(
+                503,
+                vec![("content-type", "text/plain")],
+                Some(b"Verification service error"),
+            );
+            return;
+        }
+        
+        // Parse response (expecting 200 OK with verification_result)
         match serde_json::from_str::<VerifyResponse>(&body_str) {
             Ok(response) => {
                 let sensor_id = self.sensor_id.clone().unwrap_or_default();
-                let verified = response.verification_result;
+                
+                // Check if response has an error field
+                if let Some(error) = &response.error {
+                    proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Mobile location service returned error: {} for sensor_id: {}", error, sensor_id));
+                    self.send_http_response(
+                        503,
+                        vec![("content-type", "text/plain")],
+                        Some(b"Verification service error"),
+                    );
+                    return;
+                }
+                
+                // Get verification result
+                let verified = response.verification_result.unwrap_or(false);
                 
                 proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Verification result for sensor_id {}: {}", sensor_id, verified));
                 

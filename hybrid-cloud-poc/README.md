@@ -1,53 +1,127 @@
-# Unified Identity for Sovereign AI
+# Enterprise On-Prem Components (10.1.0.10)
 
-This project implements a **Unified Identity** system that provides TPM-based attestation and geolocation claims for sovereign AI workloads.This extends SPIFFE/SPIRE with sovereign attestation capabilities. Workloads can obtain X.509 certificates (SVIDs) that include not just identity, but also **attested claims** about the host's location - all cryptographically bound to the TPM.
+This directory contains components for the enterprise on-prem environment that:
+- Terminates mTLS from SPIRE clients (10.1.0.11)
+- Verifies SPIRE certificate signatures
+- Extracts mobile sensor ID from SPIRE certificates
+- Calls mobile location service to verify sensor
+- Forwards requests to backend mTLS server
 
-The system works in three integrated phases:
+## Architecture
 
-1. **SPIRE API & Policy** - Extends SPIRE Server and Agent APIs to support `SovereignAttestation` and `AttestedClaims`
-2. **Keylime Verification** - Validates TPM evidence and provides attested facts (geolocation, integrity, GPU metrics)
-3. **Hardware Integration** - Real TPM operations with delegated certification between SPIRE Agent and Keylime Agent
+```
+SPIRE Client (10.1.0.11)
+    |
+    | mTLS (SPIRE cert with Unified Identity extension)
+    v
+Envoy Proxy (10.1.0.10:8080)
+    |
+    | 1. Terminates mTLS
+    | 2. Verifies SPIRE cert signature (using SPIRE CA bundle)
+    | 3. WASM filter extracts sensor ID from certificate chain
+    |    (Unified Identity extension in intermediate cert)
+    | 4. WASM filter calls mobile location service (blocking)
+    |    - Uses time-based cache (15s TTL) to reduce CAMARA API calls
+    |    - Requests pause until verification completes
+    | 5. If verified: adds X-Sensor-ID header and forwards request
+    |    If not verified: returns 403 Forbidden
+    |
+    v
+mTLS Server (10.1.0.10:9443)
+    |
+    | Receives HTTP requests with X-Sensor-ID header
+    | Logs sensor ID for audit trail
+```
 
-The end result: workloads receive SVIDs that prove not just *who* they are, but also *where* they are and *what* state their host is in - all verified by TPM hardware.
+## Components
 
-Key references: 
-- [Zero-trust Sovereign AI](https://github.com/lfedgeai/AegisEdgeAI/blob/main/docs/Zero-trust%20Sovereign%20AI-public.pdf)
-- [Sovereign Unified Identity Architecture - End-to-End Flow](https://github.com/lfedgeai/AegisEdgeAI/blob/main/hybrid-cloud-poc/README-arch-sovereign-unified-identity.md)
+### 1. Envoy Proxy (`envoy/`)
+- **Port**: 8080 (listens for SPIRE client connections)
+- **Function**: 
+  - Terminates mTLS from SPIRE clients
+  - Verifies SPIRE certificate signatures using SPIRE CA bundle
+  - Uses WASM filter to extract sensor ID from certificate chain and verify with mobile location service
+  - Forwards verified requests to backend mTLS server with `X-Sensor-ID` header
+- **Certificates**:
+  - Uses its own certificates (`envoy-cert.pem`, `envoy-key.pem`) for TLS connections
+  - Uses SPIRE bundle to verify SPIRE client certificates
+  - Uses backend server certificate to verify backend server when connecting upstream
+- **WASM Filter**: 
+  - Extracts sensor ID from certificate chain (Unified Identity extension in intermediate certificate, OID 1.3.6.1.4.1.99999.2)
+  - **Blocking verification**: Requests pause until mobile location service responds
+  - **Time-based caching**: 15-second TTL to reduce CAMARA API calls
+  - Calls mobile location service only when cache expires or sensor ID changes
+  - Adds `X-Sensor-ID` header to verified requests
+  - Returns 403 Forbidden if verification fails
 
-Implementation Status: Proof of Concept
+### 3. Mobile Location Service
+- **Port**: 5000
+- **Location**: `../mobile-sensor-microservice/`
+- **Function**: Verifies sensor ID via CAMARA API
+- **API**: `POST /verify` with `{"sensor_id": "12d1:1433"}`
 
-## Quick Start
+### 3. mTLS Server
+- **Port**: 9443
+- **Location**: `../python-app-demo/mtls-server-app.py`
+- **Function**: Backend server using standard certificates (no SPIRE)
+- **Features**:
+  - Receives HTTP requests from Envoy
+  - Logs `X-Sensor-ID` header for audit trail
+  - Responds with HTTP 200 OK
+
+## Setup
 
 ### Prerequisites
 
-- Python 3.8+
-- Go 1.19+ (for SPIRE)
-- Rust toolchain (for rust-keylime agent)
-- tpm2-tools
-- Hardware TPM 2.0 or swtpm (software TPM emulator)
-- `pkg-config`, `libssl-dev`, `clang`, `libclang-dev` (for rust-keylime)
+1. **Copy SPIRE CA bundle** from 10.1.0.11:
+   ```bash
+   # On 10.1.0.11 (where SPIRE Agent runs):
+   cd ~/AegisEdgeAI/hybrid-cloud-poc
+   python3 fetch-spire-bundle.py
+   
+   # Copy to 10.1.0.10:
+   scp /tmp/spire-bundle.pem mw@10.1.0.10:/tmp/spire-bundle.pem
+   ```
+   
+   **Note:** The `fetch-spire-bundle.py` script is in the repo root and is also called automatically by `test_complete.sh`.
 
-### Build Components
+2. **Copy server certificates** (if not already on 10.1.0.10):
+   ```bash
+   # On 10.1.0.10:
+   mkdir -p ~/.mtls-demo
+   # If server certs don't exist, they'll be auto-generated by mtls-server-app.py
+   ```
+
+### Installation
+
+Run the setup script on 10.1.0.10:
 
 ```bash
-# Build SPIRE Server and Agent
-cd spire
-go build -o bin/spire-server ./cmd/spire-server
-go build -o bin/spire-agent ./cmd/spire-agent
-
-# Build rust-keylime Agent
-cd ../rust-keylime/keylime-agent
-cargo build --release
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem
+./scripts/setup-onprem.sh
 ```
 
-### Run End-to-End Test
+The script will:
+1. Install dependencies (Python, Rust toolchain, etc.)
+2. Create necessary directories (`/opt/envoy/certs`, `/opt/envoy/plugins`, `/opt/envoy/logs`)
+3. Set up certificates:
+   - Fetches SPIRE bundle from 10.1.0.11 (if accessible)
+   - Generates Envoy certificates (separate from backend)
+   - Creates combined CA bundle (SPIRE + Envoy) for backend server
+   - Copies Envoy cert to client machine (10.1.0.11)
+4. Builds WASM filter with time-based caching
+5. Configures mobile location service with CAMARA credentials
+6. **Auto-starts all services** in background:
+   - Mobile Location Service (port 5000)
+   - mTLS Server (port 9443)
+   - Envoy Proxy (port 8080)
+7. Verifies all services are running
 
-The easiest way to get started is to run the complete integration test:
+### Manual Setup
 
-```bash
-./test_complete.sh --no-pause
-```
+If you prefer manual setup:
 
+<<<<<<< HEAD
 This single command will:
 - Clean up any existing state
 - Start all services (Keylime Verifier, Registrar, rust-keylime Agent, SPIRE Server/Agent, TPM Plugin)
@@ -58,326 +132,187 @@ This single command will:
 - Fetch SPIRE trust bundle (see `fetch-spire-bundle.py`)
 
 **Note:** The `fetch-spire-bundle.py` script is available in the repo root for fetching the SPIRE CA bundle needed for certificate verification in enterprise deployments.
+=======
+1. **Install Envoy**:
+   ```bash
+   curl -sL 'https://getenvoy.io/install.sh' | sudo bash -s -- -b /usr/local/bin
+   ```
+>>>>>>> f3745b98c9941b3b82e650230413f77e021b2663
 
-> By default the script exports `UNIFIED_IDENTITY_ENABLED=true` and configures
-> `SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30`, so SPIRE Agent/workloads automatically
-> renew their SVIDs every ~30s for a clear renewal demo. Use `--exit-cleanup` if
-> you want everything to stop when the script finishes.
+2. **Copy certificates**:
+   ```bash
+   sudo mkdir -p /opt/envoy/certs
+   # SPIRE bundle for verifying SPIRE clients
+   sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/
+   # Backend server cert for Envoy to verify backend (upstream)
+   sudo cp ~/.mtls-demo/server-cert.pem /opt/envoy/certs/
+   # Generate Envoy's own certificates (separate from backend)
+   sudo openssl req -x509 -newkey rsa:2048 \
+       -keyout /opt/envoy/certs/envoy-key.pem \
+       -out /opt/envoy/certs/envoy-cert.pem \
+       -days 365 -nodes \
+       -subj "/CN=envoy-proxy.10.1.0.10/O=Enterprise On-Prem/C=US"
+   sudo chmod 644 /opt/envoy/certs/envoy-cert.pem
+   sudo chmod 600 /opt/envoy/certs/envoy-key.pem
+   # Copy Envoy cert to client for verification
+   scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
+   ```
 
-**Test Options:**
-- `--help` - Show usage information
-- `--cleanup-only` - Stop services and reset state, then exit
-- `--skip-cleanup` - Reuse existing environment
-- `--no-pause` - Run non-interactively (recommended for automation)
-- `--exit-cleanup` - Stop background services automatically when the script exits (default is to keep them running)
+3. **Start mobile location service**:
+   ```bash
+   cd ~/AegisEdgeAI/hybrid-cloud-poc/mobile-sensor-microservice
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   python3 service.py --port 5000 --host 0.0.0.0 &
+   ```
 
-For the workload mTLS renewal demonstration run `./test_workload_svid_renewal.sh`
-after the main script finishes (details below).
+4. **Build WASM filter** (if not done during setup):
+   ```bash
+   cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem/wasm-plugin
+   bash build.sh
+   ```
+   This builds the WASM filter that extracts sensor ID directly from certificates.
 
-### Inspect Generated SVID
+5. **Start mTLS server**:
+   ```bash
+   cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+   export SERVER_USE_SPIRE="false"
+   export SERVER_PORT="9443"
+   export CA_CERT_PATH="/opt/envoy/certs/combined-ca-bundle.pem"  # Trusts both SPIRE and Envoy certs
+   python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
+   ```
 
-After the test completes, inspect the generated SVID:
-
-```bash
-./scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
-```
-
-### Clean Up
-
-Stop all services and clean up state:
-
-```bash
-./scripts/cleanup.sh
-# or
-./test_complete.sh --cleanup-only
-```
-
-## System Architecture
-
-```
-┌──────────────┐
-│   Workload   │ Requests SVID with SovereignAttestation
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│ SPIRE Agent  │ → TPM Plugin → Generates App Key & Quote
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│ SPIRE Server │ → Keylime Verifier → Validates TPM Evidence
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│   Workload   │ Receives SVID + AttestedClaims (geolocation, integrity, GPU)
-└──────────────┘
-```
-
-**Key Components:**
-- **SPIRE Server/Agent** - Workload identity and SVID issuance
-- **Keylime Verifier** - TPM evidence verification and fact provider
-- **rust-keylime Agent** - High-privilege TPM operations (delegated certification)
-- **TPM Plugin** - App Key generation and quote creation
-- **Mobile Sensor Service** - Geolocation verification via CAMARA APIs
-
-## Configuration
-
-### Enable Unified Identity Feature
-
-**SPIRE Server** (`spire/conf/server/server.conf`):
-```hcl
-server {
-    experimental {
-        feature_flags = ["Unified-Identity"]
-    }
-}
-```
-
-**SPIRE Agent** (`spire/conf/agent/agent.conf`):
-```hcl
-agent {
-    experimental {
-        feature_flags = ["Unified-Identity"]
-    }
-}
-```
-
-**Keylime Verifier** (`keylime/verifier.conf.minimal`):
-```ini
-[verifier]
-unified_identity_enabled = true
-```
-
-**rust-keylime Agent** (environment variable):
-```bash
-export UNIFIED_IDENTITY_ENABLED=true
-```
-
-### CAMARA API Configuration
-
-For testing, you can bypass CAMARA API calls to avoid rate limiting:
-
-```bash
-export CAMARA_BYPASS=true
-./test_phase3_complete.sh
-```
-
-## Key References
-
-### Architecture & Design
-
-- **`README-arch-sovereign-unified-identity.md`** - Complete architecture document with all component interfaces, data flows, and protocols
-- **`docs-additional/README-spire-setup.md`** - SPIRE setup and configuration guide
-- **`docs-additional/README-keylime-setup.md`** - Keylime setup and configuration guide
-
-### Component Documentation
-
-- **`spire/README.md`** - SPIRE project documentation
-- **`keylime/README.md`** - Keylime project documentation
-- **`rust-keylime/README.md`** - rust-keylime agent documentation
-- **`tpm-plugin/`** - TPM plugin implementation and tests
-- **`mobile-sensor-microservice/README.md`** - Mobile location verification service
-- **`python-app-demo/README.md`** - Python workload demo
-- **`workflow-ui/WORKFLOW_UI_README.md`** - Workflow visualization UI
-
-### Scripts & Tools
-
-**Main Test Script:**
-- **`test_complete.sh`** - Main end-to-end integration test
-  - `--cleanup-only` - Stop services and reset state
-  - `--skip-cleanup` - Reuse existing environment (skip initial cleanup)
-  - `--no-pause` - Run non-interactively (for automation)
-  - `--exit-cleanup` - Stop services automatically when the script exits (default is to keep them running)
-  - `--help` - Show usage information
-- **`test_workload_svid_renewal.sh`** - Workload (Python mTLS) SVID renewal demo. Requires `test_complete.sh` to have been run first.
-
-**Utility Scripts:**
-- **`scripts/cleanup.sh`** - Stop all services and clean up state
-- **`scripts/demo.sh`** - Generate Sovereign SVID demo
-- **`scripts/dump-svid-attested-claims.sh`** - Inspect SVID and AttestedClaims
-- **`fetch-spire-bundle.py`** - Extract SPIRE trust bundle (CA certificates) for use with standard cert servers
-
-**Python App Demo Scripts:**
-- **`python-app-demo/setup-spire.sh`** - Set up SPIRE server and agent
-- **`python-app-demo/run-demo.sh`** - Run Python workload demo
-- **`python-app-demo/create-registration-entry.sh`** - Create workload registration entries
-- **`python-app-demo/cleanup.sh`** - Clean up Python app demo resources
-- **`python-app-demo/generate-proto-stubs.sh`** - Generate Python protobuf stubs
-
-### Configuration Files
-
-- **`keylime/verifier.conf.minimal`** - Minimal Keylime Verifier configuration
-- **`spire/conf/server/server.conf`** - SPIRE Server configuration template
-- **`spire/conf/agent/agent.conf`** - SPIRE Agent configuration template
+6. **Start Envoy** (WASM filter will be loaded automatically):
+   ```bash
+   sudo mkdir -p /opt/envoy/logs
+   sudo touch /opt/envoy/logs/envoy.log
+   sudo chmod 666 /opt/envoy/logs/envoy.log
+   sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &
+   ```
 
 ## Testing
 
-### Full Integration Test
+### From SPIRE Client (10.1.0.11)
 
 ```bash
-./test_complete.sh --no-pause
+cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+export CLIENT_USE_SPIRE="true"
+export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
+export SERVER_HOST="10.1.0.10"  # Envoy on on-prem
+export SERVER_PORT="8080"        # Envoy port
+export CA_CERT_PATH="~/.mtls-demo/envoy-cert.pem"  # Envoy cert for verification (auto-copied by setup script)
+python3 mtls-client-app.py
 ```
 
-### Unit Tests
+**Note:** The setup script on 10.1.0.10 automatically copies the Envoy certificate to `~/.mtls-demo/envoy-cert.pem` on the client machine. If the automatic copy fails, you can manually copy it:
+```bash
+# From 10.1.0.10:
+scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
+```
+
+### Verify Flow
+
+1. **Check Envoy logs** (WASM filter, sensor verification, caching):
+   ```bash
+   sudo tail -f /opt/envoy/logs/envoy.log
+   # Filter for sensor verification:
+   sudo tail -f /opt/envoy/logs/envoy.log | grep -E '(sensor|verification|cache|TTL)'
+   ```
+   Should show:
+   - "Extracted sensor_id: 12d1:1433"
+   - "Using cached verification" (after first request, within 15s)
+   - "Cache expired" (after 15s, re-verifying)
+   - "Sensor verification successful" (when mobile service responds)
+
+2. **Check mobile location service logs** (CAMARA API calls):
+   ```bash
+   tail -f /tmp/mobile-sensor.log
+   # Filter for CAMARA calls:
+   tail -f /tmp/mobile-sensor.log | grep -E '(CAMARA|authorize|token|verify_location)'
+   ```
+   Should show:
+   - CAMARA API flow (authorize → token → verify_location)
+   - Verification results
+   - Rate limit warnings (if CAMARA API is rate-limited)
+
+3. **Check mTLS server logs** (X-Sensor-ID header):
+   ```bash
+   tail -f /tmp/mtls-server.log
+   # Filter for sensor ID:
+   tail -f /tmp/mtls-server.log | grep -E '(Sensor ID|X-Sensor-ID)'
+   ```
+   Should show:
+   - "Client X HTTP GET /hello: HELLO #N [Sensor ID: 12d1:1433]"
+   - "No Sensor ID header" (if header is missing)
+
+### Log Locations
+
+All logs are on 10.1.0.10:
+- **Envoy**: `/opt/envoy/logs/envoy.log` (requires sudo)
+- **Backend mTLS Server**: `/tmp/mtls-server.log`
+- **Mobile Location Service**: `/tmp/mobile-sensor.log`
+
+### View All Logs Simultaneously
 
 ```bash
-# TPM Plugin tests
-cd tpm-plugin
-python3 -m pytest test/ -v
+# Terminal 1: Envoy
+sudo tail -f /opt/envoy/logs/envoy.log
 
-# Mobile sensor service tests
-cd ../mobile-sensor-microservice
-python3 -m pytest tests/ -v
+# Terminal 2: Backend
+tail -f /tmp/mtls-server.log
+
+# Terminal 3: Mobile Service
+tail -f /tmp/mobile-sensor.log
 ```
-
-### Manual Component Testing
-
-See individual component READMEs for component-specific testing instructions.
-
-### SPIRE Agent SVID Renewal Testing
-
-The system now enables SPIRE Agent SVID renewal on **every** run of
-`test_complete.sh`. No extra flags are required—Steps 13–14 automatically verify
-that renewals occur and keep every component running afterward.
-
-#### Quick Test (default ~30 second renewals)
-
-```bash
-./test_complete.sh --no-pause
-```
-
-This will:
-- Start all components (SPIRE Server/Agent, Keylime Verifier/Registrar,
-  rust-keylime Agent, TPM Plugin, etc.)
-- Configure `UNIFIED_IDENTITY_ENABLED=true` and
-  `SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30` (minimum interval) so renewals happen
-  roughly every 30 seconds
-- Monitor agent renewals automatically (Step 14) and summarize the results
-- Leave all services running so you can continue observing renewals
-
-To reuse the existing environment for faster reruns:
-
-```bash
-./test_complete.sh --skip-cleanup --no-pause
-```
-
-#### Extended Monitoring
-
-Simply leave the services running and tail the agent log:
-
-```bash
-tail -f /tmp/spire-agent.log | grep "Agent Unified SVID renewed"
-```
-
-Because the script keeps everything alive, you can monitor for as long as you
-need. Run `./scripts/cleanup.sh` (or `./test_complete.sh --cleanup-only`) when
-you’re done.
-
-#### Configuration
-
-The renewal interval is controlled by the `SPIRE_AGENT_SVID_RENEWAL_INTERVAL`
-environment variable:
-
-- **Default (script)**: 30 seconds for a fast demo
-- **Minimum**: 30 seconds (when `Unified-Identity` is enabled)
-- **Format**: Duration in seconds (e.g., `300` for 5 minutes)
-
-The script automatically writes this interval into the agent configuration
-(`availability_target`) and also sets the server’s `agent_ttl` to 60 seconds so
-renewals occur predictably.
-
-#### Monitoring Logs
-
-Monitor renewal activity in real-time:
-
-```bash
-# SPIRE Agent renewals
-tail -f /tmp/spire-agent.log | grep "Agent Unified SVID renewed"
-
-# SPIRE Server activity
-tail -f /tmp/spire-server.log
-
-# Count total renewals
-grep -c "Agent Unified SVID renewed" /tmp/spire-agent.log
-```
-
-#### Workload mTLS Renewal Demo (`test_workload_svid_renewal.sh`)
-
-To test end-to-end renewal (agent + Python mTLS client/server) with visible communication blips:
-
-```bash
-./test_complete.sh --no-pause         # start/verify all components (leave running)
-WORKLOAD_RENEWAL_MONITOR_SECONDS=300 ./test_workload_svid_renewal.sh
-```
-
-The workload script restarts the Python apps, recreates 60-second TTL entries, and monitors the logs for SVID renewals/blips while keeping the apps running afterward. Set `WORKLOAD_RENEWAL_MONITOR_SECONDS` to control how long it watches (default 180 s).
-
-Monitor the three log files to observe the full flow:
-
-1. SPIRE Agent: `tail -f /tmp/spire-agent.log | grep "Agent Unified SVID renewed"`
-2. Server workload: `tail -f /tmp/mtls-server-app.log`
-3. Client workload: `tail -f /tmp/mtls-client-app.log`
-
-The client log shows `RENEWAL BLIP` entries whenever the TLS connection is re-established after a workload SVID rotates.
-
-> **Tip:** The Python server listens on TCP port `9443` by default. Override with `PYTHON_MTLS_SERVER_PORT=<port>` if that port is busy. The test script will automatically probe for a free port starting from that value.
 
 ## Troubleshooting
 
-### CAMARA API Rate Limiting
+### Envoy fails to start
+- Check certificate paths in `/opt/envoy/certs/`
+- Verify Envoy config: `envoy --config-path envoy.yaml --mode validate`
 
-If you encounter rate limiting errors (429), you have two options:
+### Sensor ID extraction fails
+- Check WASM filter is loaded: Look for "sensor_verification" in Envoy logs (`/opt/envoy/logs/envoy.log`)
+- Verify WASM file exists: `/opt/envoy/plugins/sensor_verification_wasm.wasm`
+- Verify SPIRE cert has Unified Identity extension with geolocation data
+- **Note**: The Unified Identity extension is in the **intermediate certificate** (agent SVID), not the leaf certificate
+- Check Envoy logs for certificate parsing errors
+- Rebuild WASM filter if needed: `cd enterprise-onprem/wasm-plugin && bash build.sh`
 
-1. **Wait and retry** - The CAMARA sandbox has rate limits
-2. **Use bypass mode** - Set `CAMARA_BYPASS=true` for testing
+### Mobile location service fails
+- Check service is running: `curl http://localhost:5000/verify -X POST -H "Content-Type: application/json" -d '{}'`
+- Verify sensor ID exists in database: Check `mobile-sensor-microservice/sensor_mapping.db`
 
-```bash
-export CAMARA_BYPASS=true
-./test_phase3_complete.sh
-```
+### Certificate verification fails
+- Ensure SPIRE CA bundle is correct: `/opt/envoy/certs/spire-bundle.pem`
+- Verify client cert is signed by SPIRE CA in bundle
+- Backend server uses combined CA bundle: `/opt/envoy/certs/combined-ca-bundle.pem` (includes both SPIRE and Envoy certs)
+- Check backend server logs for TLS handshake errors: `tail -f /tmp/mtls-server.log | grep -i tls`
 
-### TPM Issues
+## Features
 
-If TPM operations fail:
-- Ensure TPM is accessible: `ls -l /dev/tpm*`
-- Check tpm2-abrmd is running: `systemctl status tpm2-abrmd`
-- Clear TPM state: `tpm2_clear` (requires appropriate permissions)
+### Time-Based Caching
+- **Cache TTL**: 15 seconds (configurable in WASM filter source)
+- **Purpose**: Reduces expensive CAMARA API calls
+- **Behavior**: First request calls mobile location service, subsequent requests within 15s use cached result
+- **Logging**: Cache hits/misses are logged in Envoy logs
 
-### Service Startup Issues
+### Blocking Verification
+- **Behavior**: Requests pause until mobile location service responds
+- **Success**: Request continues with `X-Sensor-ID` header added
+- **Failure**: Request is rejected with 403 Forbidden
+- **Timeout**: 5 seconds for mobile location service call
 
-Check service logs:
-- SPIRE Server: `tail -f /tmp/spire-server.log`
-- SPIRE Agent: `tail -f /tmp/spire-agent.log`
-- Keylime Verifier: `tail -f /tmp/keylime-verifier.log`
-- rust-keylime Agent: `tail -f /tmp/rust-keylime-agent.log`
+### Certificate Chain Parsing
+- **Location**: Unified Identity extension is in the **intermediate certificate** (agent SVID)
+- **OID**: 1.3.6.1.4.1.99999.2 (or legacy 1.3.6.1.4.1.99999.1)
+- **Format**: JSON with `grc.geolocation.sensor_id` field
+- **Extraction**: WASM filter parses full certificate chain from `x-forwarded-client-cert` header
 
-## Project Structure
+## Files
 
-```
-.
-├── README.md                          # This file
-├── test_complete.sh                   # Main end-to-end test
-├── scripts/                           # Utility scripts
-│   ├── cleanup.sh                    # Cleanup script
-│   ├── demo.sh                        # Demo script
-│   └── dump-svid-attested-claims.sh  # SVID inspection tool
-│
-├── spire/                             # SPIRE Server and Agent
-├── keylime/                           # Keylime Verifier and Registrar
-├── rust-keylime/                      # rust-keylime Agent
-├── tpm-plugin/                        # TPM Plugin (Python)
-├── mobile-sensor-microservice/        # Mobile location verification
-├── python-app-demo/                   # Python workload demo
-├── workflow-ui/                       # Workflow visualization tools
-│
-├── go-spiffe/                         # SPIFFE Go SDK
-├── spire-api-sdk/                     # SPIRE API SDK
-│
-└── README-arch-sovereign-unified-identity.md  # Architecture documentation
-```
+- `envoy/envoy.yaml` - Envoy proxy configuration with HTTP connection manager and WASM filter
+- `wasm-plugin/` - WASM filter with time-based caching and blocking verification
+- `scripts/setup-onprem.sh` - Automated setup script with cleanup and auto-start
 
-## License
-
-See individual component directories for their respective licenses.
