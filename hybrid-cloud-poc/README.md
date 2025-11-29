@@ -55,6 +55,9 @@ This single command will:
 - Run all unit and integration tests
 - Generate workflow visualization
 - Keep every component running in the background when the script exits
+- Fetch SPIRE trust bundle (see `fetch-spire-bundle.py`)
+
+**Note:** The `fetch-spire-bundle.py` script is available in the repo root for fetching the SPIRE CA bundle needed for certificate verification in enterprise deployments.
 
 > By default the script exports `UNIFIED_IDENTITY_ENABLED=true` and configures
 > `SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30`, so SPIRE Agent/workloads automatically

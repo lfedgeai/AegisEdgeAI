@@ -12,18 +12,25 @@ This directory contains components for the enterprise on-prem environment that:
 ```
 SPIRE Client (10.1.0.11)
     |
-    | mTLS (SPIRE cert)
+    | mTLS (SPIRE cert with Unified Identity extension)
     v
 Envoy Proxy (10.1.0.10:8080)
     |
     | 1. Terminates mTLS
     | 2. Verifies SPIRE cert signature (using SPIRE CA bundle)
-    | 3. Extracts sensor ID directly from cert (WASM filter)
-    | 4. Calls mobile location service
-    | 5. Verifies response is "yes"
+    | 3. WASM filter extracts sensor ID from certificate chain
+    |    (Unified Identity extension in intermediate cert)
+    | 4. WASM filter calls mobile location service (blocking)
+    |    - Uses time-based cache (15s TTL) to reduce CAMARA API calls
+    |    - Requests pause until verification completes
+    | 5. If verified: adds X-Sensor-ID header and forwards request
+    |    If not verified: returns 403 Forbidden
     |
     v
 mTLS Server (10.1.0.10:9443)
+    |
+    | Receives HTTP requests with X-Sensor-ID header
+    | Logs sensor ID for audit trail
 ```
 
 ## Components
@@ -33,15 +40,19 @@ mTLS Server (10.1.0.10:9443)
 - **Function**: 
   - Terminates mTLS from SPIRE clients
   - Verifies SPIRE certificate signatures using SPIRE CA bundle
-  - Uses WASM filter to extract sensor ID directly from certificate and verify with mobile location service
-  - Forwards verified requests to backend mTLS server
+  - Uses WASM filter to extract sensor ID from certificate chain and verify with mobile location service
+  - Forwards verified requests to backend mTLS server with `X-Sensor-ID` header
 - **Certificates**:
   - Uses its own certificates (`envoy-cert.pem`, `envoy-key.pem`) for TLS connections
   - Uses SPIRE bundle to verify SPIRE client certificates
   - Uses backend server certificate to verify backend server when connecting upstream
 - **WASM Filter**: 
-  - Extracts sensor ID directly from SPIRE certificate Unified Identity extension (OID 1.3.6.1.4.1.99999.2)
-  - No separate service needed - all extraction logic is in the WASM module
+  - Extracts sensor ID from certificate chain (Unified Identity extension in intermediate certificate, OID 1.3.6.1.4.1.99999.2)
+  - **Blocking verification**: Requests pause until mobile location service responds
+  - **Time-based caching**: 15-second TTL to reduce CAMARA API calls
+  - Calls mobile location service only when cache expires or sensor ID changes
+  - Adds `X-Sensor-ID` header to verified requests
+  - Returns 403 Forbidden if verification fails
 
 ### 3. Mobile Location Service
 - **Port**: 5000
@@ -53,6 +64,10 @@ mTLS Server (10.1.0.10:9443)
 - **Port**: 9443
 - **Location**: `../python-app-demo/mtls-server-app.py`
 - **Function**: Backend server using standard certificates (no SPIRE)
+- **Features**:
+  - Receives HTTP requests from Envoy
+  - Logs `X-Sensor-ID` header for audit trail
+  - Responds with HTTP 200 OK
 
 ## Setup
 
@@ -61,12 +76,14 @@ mTLS Server (10.1.0.10:9443)
 1. **Copy SPIRE CA bundle** from 10.1.0.11:
    ```bash
    # On 10.1.0.11 (where SPIRE Agent runs):
-   cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+   cd ~/AegisEdgeAI/hybrid-cloud-poc
    python3 fetch-spire-bundle.py
    
    # Copy to 10.1.0.10:
    scp /tmp/spire-bundle.pem mw@10.1.0.10:/tmp/spire-bundle.pem
    ```
+   
+   **Note:** The `fetch-spire-bundle.py` script is in the repo root and is also called automatically by `test_complete.sh`.
 
 2. **Copy server certificates** (if not already on 10.1.0.10):
    ```bash
@@ -85,11 +102,20 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem
 ```
 
 The script will:
-1. Install dependencies (Python, Envoy, etc.)
-2. Create necessary directories
-3. Set up certificates (you'll need to copy them)
-4. Install and configure services
-5. Create systemd service files
+1. Install dependencies (Python, Rust toolchain, etc.)
+2. Create necessary directories (`/opt/envoy/certs`, `/opt/envoy/plugins`, `/opt/envoy/logs`)
+3. Set up certificates:
+   - Fetches SPIRE bundle from 10.1.0.11 (if accessible)
+   - Generates Envoy certificates (separate from backend)
+   - Creates combined CA bundle (SPIRE + Envoy) for backend server
+   - Copies Envoy cert to client machine (10.1.0.11)
+4. Builds WASM filter with time-based caching
+5. Configures mobile location service with CAMARA credentials
+6. **Auto-starts all services** in background:
+   - Mobile Location Service (port 5000)
+   - mTLS Server (port 9443)
+   - Envoy Proxy (port 8080)
+7. Verifies all services are running
 
 ### Manual Setup
 
@@ -140,13 +166,16 @@ If you prefer manual setup:
    cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
    export SERVER_USE_SPIRE="false"
    export SERVER_PORT="9443"
-   export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"  # Optional: for strict client verification
-   python3 mtls-server-app.py &
+   export CA_CERT_PATH="/opt/envoy/certs/combined-ca-bundle.pem"  # Trusts both SPIRE and Envoy certs
+   python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
    ```
 
 6. **Start Envoy** (WASM filter will be loaded automatically):
    ```bash
-   sudo envoy -c ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem/envoy/envoy.yaml
+   sudo mkdir -p /opt/envoy/logs
+   sudo touch /opt/envoy/logs/envoy.log
+   sudo chmod 666 /opt/envoy/logs/envoy.log
+   sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &
    ```
 
 ## Testing
@@ -171,23 +200,58 @@ scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
 
 ### Verify Flow
 
-1. **Check Envoy logs**:
+1. **Check Envoy logs** (WASM filter, sensor verification, caching):
    ```bash
-   sudo journalctl -u envoy-proxy -f
+   sudo tail -f /opt/envoy/logs/envoy.log
+   # Filter for sensor verification:
+   sudo tail -f /opt/envoy/logs/envoy.log | grep -E '(sensor|verification|cache|TTL)'
    ```
-   Should show: "Sensor verified successfully: 12d1:1433"
+   Should show:
+   - "Extracted sensor_id: 12d1:1433"
+   - "Using cached verification" (after first request, within 15s)
+   - "Cache expired" (after 15s, re-verifying)
+   - "Sensor verification successful" (when mobile service responds)
 
-2. **Check mobile location service logs**:
+2. **Check mobile location service logs** (CAMARA API calls):
    ```bash
-   sudo journalctl -u mobile-sensor-service -f
+   tail -f /tmp/mobile-sensor.log
+   # Filter for CAMARA calls:
+   tail -f /tmp/mobile-sensor.log | grep -E '(CAMARA|authorize|token|verify_location)'
    ```
-   Should show verification requests and results
+   Should show:
+   - CAMARA API flow (authorize → token → verify_location)
+   - Verification results
+   - Rate limit warnings (if CAMARA API is rate-limited)
 
-3. **Check mTLS server logs**:
+3. **Check mTLS server logs** (X-Sensor-ID header):
    ```bash
-   tail -f /tmp/mtls-server-app.log
+   tail -f /tmp/mtls-server.log
+   # Filter for sensor ID:
+   tail -f /tmp/mtls-server.log | grep -E '(Sensor ID|X-Sensor-ID)'
    ```
-   Should show connections from Envoy with `X-Sensor-ID` header
+   Should show:
+   - "Client X HTTP GET /hello: HELLO #N [Sensor ID: 12d1:1433]"
+   - "No Sensor ID header" (if header is missing)
+
+### Log Locations
+
+All logs are on 10.1.0.10:
+- **Envoy**: `/opt/envoy/logs/envoy.log` (requires sudo)
+- **Backend mTLS Server**: `/tmp/mtls-server.log`
+- **Mobile Location Service**: `/tmp/mobile-sensor.log`
+
+### View All Logs Simultaneously
+
+```bash
+# Terminal 1: Envoy
+sudo tail -f /opt/envoy/logs/envoy.log
+
+# Terminal 2: Backend
+tail -f /tmp/mtls-server.log
+
+# Terminal 3: Mobile Service
+tail -f /tmp/mobile-sensor.log
+```
 
 ## Troubleshooting
 
@@ -196,9 +260,11 @@ scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
 - Verify Envoy config: `envoy --config-path envoy.yaml --mode validate`
 
 ### Sensor ID extraction fails
-- Check WASM filter is loaded: Look for "sensor_verification" in Envoy logs
+- Check WASM filter is loaded: Look for "sensor_verification" in Envoy logs (`/opt/envoy/logs/envoy.log`)
 - Verify WASM file exists: `/opt/envoy/plugins/sensor_verification_wasm.wasm`
 - Verify SPIRE cert has Unified Identity extension with geolocation data
+- **Note**: The Unified Identity extension is in the **intermediate certificate** (agent SVID), not the leaf certificate
+- Check Envoy logs for certificate parsing errors
 - Rebuild WASM filter if needed: `cd enterprise-onprem/wasm-plugin && bash build.sh`
 
 ### Mobile location service fails
@@ -208,10 +274,32 @@ scp /opt/envoy/certs/envoy-cert.pem mw@10.1.0.11:~/.mtls-demo/envoy-cert.pem
 ### Certificate verification fails
 - Ensure SPIRE CA bundle is correct: `/opt/envoy/certs/spire-bundle.pem`
 - Verify client cert is signed by SPIRE CA in bundle
+- Backend server uses combined CA bundle: `/opt/envoy/certs/combined-ca-bundle.pem` (includes both SPIRE and Envoy certs)
+- Check backend server logs for TLS handshake errors: `tail -f /tmp/mtls-server.log | grep -i tls`
+
+## Features
+
+### Time-Based Caching
+- **Cache TTL**: 15 seconds (configurable in WASM filter source)
+- **Purpose**: Reduces expensive CAMARA API calls
+- **Behavior**: First request calls mobile location service, subsequent requests within 15s use cached result
+- **Logging**: Cache hits/misses are logged in Envoy logs
+
+### Blocking Verification
+- **Behavior**: Requests pause until mobile location service responds
+- **Success**: Request continues with `X-Sensor-ID` header added
+- **Failure**: Request is rejected with 403 Forbidden
+- **Timeout**: 5 seconds for mobile location service call
+
+### Certificate Chain Parsing
+- **Location**: Unified Identity extension is in the **intermediate certificate** (agent SVID)
+- **OID**: 1.3.6.1.4.1.99999.2 (or legacy 1.3.6.1.4.1.99999.1)
+- **Format**: JSON with `grc.geolocation.sensor_id` field
+- **Extraction**: WASM filter parses full certificate chain from `x-forwarded-client-cert` header
 
 ## Files
 
-- `envoy/envoy.yaml` - Envoy proxy configuration
-- `wasm-plugin/` - WASM filter that extracts sensor ID directly from certificates
-- `scripts/setup-onprem.sh` - Automated setup script
+- `envoy/envoy.yaml` - Envoy proxy configuration with HTTP connection manager and WASM filter
+- `wasm-plugin/` - WASM filter with time-based caching and blocking verification
+- `scripts/setup-onprem.sh` - Automated setup script with cleanup and auto-start
 
