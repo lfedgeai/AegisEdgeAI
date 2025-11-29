@@ -5,8 +5,17 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ONPREM_DIR="$REPO_ROOT/enterprise-onprem"
+ONPREM_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$ONPREM_DIR/.." && pwd)"
+
+# Verify paths
+if [ ! -d "$REPO_ROOT/mobile-sensor-microservice" ]; then
+    echo "Error: Could not find mobile-sensor-microservice at $REPO_ROOT/mobile-sensor-microservice"
+    echo "  SCRIPT_DIR: $SCRIPT_DIR"
+    echo "  ONPREM_DIR: $ONPREM_DIR"
+    echo "  REPO_ROOT: $REPO_ROOT"
+    exit 1
+fi
 
 echo "=========================================="
 echo "Enterprise On-Prem Setup (10.1.0.10)"
