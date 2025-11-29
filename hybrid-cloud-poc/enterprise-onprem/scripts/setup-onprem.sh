@@ -10,29 +10,25 @@ REPO_ROOT="$(cd "$ONPREM_DIR/.." && pwd)"
 
 # Verify paths
 if [ ! -d "$REPO_ROOT/mobile-sensor-microservice" ]; then
-    echo "Error: Could not find mobile-sensor-microservice at $REPO_ROOT/mobile-sensor-microservice"
-    echo "  SCRIPT_DIR: $SCRIPT_DIR"
-    echo "  ONPREM_DIR: $ONPREM_DIR"
-    echo "  REPO_ROOT: $REPO_ROOT"
+    printf 'Error: Could not find mobile-sensor-microservice at %s\n' "$REPO_ROOT/mobile-sensor-microservice"
+    printf '  SCRIPT_DIR: %s\n' "$SCRIPT_DIR"
+    printf '  ONPREM_DIR: %s\n' "$ONPREM_DIR"
+    printf '  REPO_ROOT: %s\n' "$REPO_ROOT"
     exit 1
 fi
 
-echo "=========================================="
-echo "Enterprise On-Prem Setup (10.1.0.10)"
-echo "=========================================="
+printf '==========================================\n'
+printf 'Enterprise On-Prem Setup (10.1.0.10)\n'
+printf '==========================================\n'
 
-# Colors (only use if output is to a terminal)
-if [ -t 1 ]; then
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    YELLOW='\033[1;33m'
-    NC='\033[0m' # No Color
-else
-    RED=''
-    GREEN=''
-    YELLOW=''
-    NC=''
-fi
+# Disable colors entirely to prevent terminal corruption
+# Colors can cause terminal corruption in some environments
+RED=''
+GREEN=''
+YELLOW=''
+NC=''
+# Ensure terminal is reset on exit (safe even without colors)
+trap 'tput sgr0 2>/dev/null || true' EXIT
 
 # Check if running as root or with sudo
 if [ "$EUID" -ne 0 ]; then 
@@ -98,7 +94,7 @@ cleanup_existing_services() {
     sleep 2
     
     # Clean up log files
-    echo "  Cleaning up log files..."
+    printf '  Cleaning up log files...\n'
     sudo rm -f /opt/envoy/logs/envoy.log /tmp/mobile-sensor.log /tmp/mtls-server.log >/dev/null 2>&1
     sudo mkdir -p /opt/envoy/logs >/dev/null 2>&1
     sudo touch /opt/envoy/logs/envoy.log >/dev/null 2>&1
@@ -148,21 +144,21 @@ if ! command -v envoy &> /dev/null; then
     echo -e "${YELLOW}Installing Envoy...${NC}"
     echo -e "${YELLOW}Note: Envoy installation methods vary by distribution.${NC}"
     echo -e "${YELLOW}Please install Envoy manually using one of these methods:${NC}"
-    echo ""
+    printf '\n'
     echo "Option 1: Using apt (Ubuntu/Debian):"
     echo "  curl -sL 'https://getenvoy.io/gpg' | sudo gpg --dearmor -o /usr/share/keyrings/getenvoy.gpg"
     echo "  echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/getenvoy.gpg] https://deb.dl.getenvoy.io/public/deb/ubuntu focal main' | sudo tee /etc/apt/sources.list.d/getenvoy.list"
     echo "  sudo apt-get update"
     echo "  sudo apt-get install -y getenvoy-envoy"
-    echo ""
+    printf '\n'
     echo "Option 2: Download binary directly:"
     echo "  wget https://github.com/envoyproxy/envoy/releases/download/v1.28.0/envoy-1.28.0-linux-x86_64"
     echo "  sudo mv envoy-1.28.0-linux-x86_64 /usr/local/bin/envoy"
     echo "  sudo chmod +x /usr/local/bin/envoy"
-    echo ""
+    printf '\n'
     echo "Option 3: Using Docker:"
     echo "  docker pull envoyproxy/envoy:v1.28-latest"
-    echo ""
+    printf '\n'
     read -p "Press Enter after installing Envoy, or 's' to skip (you can install later): " answer
     if [ "$answer" = "s" ]; then
         echo -e "${YELLOW}Skipping Envoy installation. Please install it manually before starting Envoy proxy.${NC}"
@@ -271,7 +267,7 @@ else
     echo "       scp ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem"
     echo "     Or extract it on ${SPIRE_CLIENT_HOST} first:"
     echo "       cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py"
-    echo ""
+    printf '\n'
     read -p "Press Enter to continue (you can add the bundle later), or 'q' to quit: " answer
     if [ "$answer" = "q" ]; then
         exit 1
@@ -292,7 +288,7 @@ else
 fi
 
 # Verify required certificates
-echo ""
+printf '\n'
 echo "  Verifying certificates..."
 MISSING_CERTS=0
 if [ ! -f /opt/envoy/certs/spire-bundle.pem ]; then
@@ -393,20 +389,25 @@ else
     echo -e "${YELLOW}  ⚠ Envoy not found - skipping configuration validation${NC}"
 fi
 
-echo ""
+printf '\n'
 echo "  To start Envoy manually:"
 echo "    sudo envoy -c /opt/envoy/envoy.yaml"
 echo "  Or run in background:"
 echo "    sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &"
 
-echo -e "\n${GREEN}=========================================="
+echo
+echo "=========================================="
 echo "Setup complete!"
-echo "==========================================${NC}"
+echo "=========================================="
 
 # Only auto-start services on test machine (10.1.0.10)
 if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Start all services in the background
-    echo -e "\n${GREEN}Starting all services in the background...${NC}"
+    # Ensure clean output - flush any pending output
+    exec >&2  # Redirect to stderr temporarily to avoid buffering issues
+    exec >&1  # Restore stdout
+    printf '\n'
+    printf 'Starting all services in the background...\n'
     
     # Temporarily disable exit on error for service startup
     set +e
@@ -417,7 +418,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Create environment file for mobile sensor service
     if [ -n "$CAMARA_BASIC_AUTH" ]; then
         echo "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
-        echo -e "${GREEN}  ✓ Mobile sensor service environment configured${NC}"
+        echo "  [OK] Mobile sensor service environment configured"
     fi
 
     # Start Mobile Location Service
@@ -435,16 +436,16 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         MOBILE_PID=$!
         sleep 2
         if ps -p $MOBILE_PID > /dev/null 2>&1; then
-            echo -e "${GREEN}    ✓ Mobile Location Service started (PID: $MOBILE_PID)${NC}"
+            printf '    [OK] Mobile Location Service started (PID: %s)\n' "$MOBILE_PID"
         else
-            echo -e "${YELLOW}    ⚠ Mobile Location Service may have failed - check /tmp/mobile-sensor.log${NC}"
+            printf '    [WARN] Mobile Location Service may have failed - check /tmp/mobile-sensor.log\n'
         fi
     else
-        echo -e "${YELLOW}    ⚠ Virtual environment or service.py not found - skipping mobile service startup${NC}"
+        printf '    [WARN] Virtual environment or service.py not found - skipping mobile service startup\n'
     fi
 
     # Start mTLS Server
-    echo "  Starting mTLS Server (port 9443)..."
+    printf '  Starting mTLS Server (port 9443)...\n'
     cd "$REPO_ROOT/python-app-demo" 2>/dev/null
     if [ -f "mtls-server-app.py" ]; then
         export SERVER_USE_SPIRE="false"
@@ -454,23 +455,23 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         MTLS_PID=$!
         sleep 2
         if ps -p $MTLS_PID > /dev/null 2>&1; then
-            echo -e "${GREEN}    ✓ mTLS Server started (PID: $MTLS_PID)${NC}"
+            printf '    [OK] mTLS Server started (PID: %s)\n' "$MTLS_PID"
         else
-            echo -e "${YELLOW}    ⚠ mTLS Server may have failed - check /tmp/mtls-server.log${NC}"
+            printf '    [WARN] mTLS Server may have failed - check /tmp/mtls-server.log\n'
         fi
     else
-        echo -e "${YELLOW}    ⚠ mtls-server-app.py not found - skipping mTLS server startup${NC}"
+        printf '    [WARN] mtls-server-app.py not found - skipping mTLS server startup\n'
     fi
 
     # Ensure backend server cert is available for Envoy
     if [ ! -f /opt/envoy/certs/server-cert.pem ] && [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
         sudo cp "$HOME/.mtls-demo/server-cert.pem" /opt/envoy/certs/server-cert.pem 2>/dev/null
         sudo chmod 644 /opt/envoy/certs/server-cert.pem 2>/dev/null
-        echo -e "${GREEN}    ✓ Backend server certificate copied for Envoy${NC}"
+        printf '    [OK] Backend server certificate copied for Envoy\n'
     fi
 
     # Start Envoy
-    echo "  Starting Envoy Proxy (port 8080)..."
+    printf '  Starting Envoy Proxy (port 8080)...\n'
     if command -v envoy &> /dev/null; then
         sudo mkdir -p /opt/envoy/logs 2>/dev/null
         sudo touch /opt/envoy/logs/envoy.log 2>/dev/null
@@ -479,20 +480,25 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         ENVOY_PID=$!
         sleep 3
         if ps -p $ENVOY_PID > /dev/null 2>&1; then
-            echo -e "${GREEN}    ✓ Envoy started (PID: $ENVOY_PID)${NC}"
+            printf '    [OK] Envoy started (PID: %s)\n' "$ENVOY_PID"
         else
-            echo -e "${YELLOW}    ⚠ Envoy may have failed - check /opt/envoy/logs/envoy.log${NC}"
+            printf '    [WARN] Envoy may have failed - check /opt/envoy/logs/envoy.log\n'
         fi
     else
-        echo -e "${YELLOW}    ⚠ Envoy not found - please install and start manually${NC}"
+        printf '    [WARN] Envoy not found - please install and start manually\n'
     fi
 
     # Re-enable exit on error
     set -e
 
     # Verify services are running
-    echo
-    echo -e "${GREEN}Verifying services...${NC}"
+    # Ensure clean output before verification section
+    exec 1>&1
+    sync 2>/dev/null || true
+    printf '\n'
+    printf 'Verifying services...\n'
+    # Force flush
+    exec 1>&1
     sleep 2
 
     # Temporarily disable exit on error for verification
@@ -501,98 +507,98 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     SERVICES_OK=0
     if command -v ss &> /dev/null; then
         if sudo ss -tlnp 2>/dev/null | grep -q ':5000'; then
-            echo -e "${GREEN}  ✓ Mobile Location Service listening on port 5000${NC}"
+            printf '  [OK] Mobile Location Service listening on port 5000\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
-            echo -e "${YELLOW}  ⚠ Mobile Location Service not listening on port 5000${NC}"
+            printf '  [WARN] Mobile Location Service not listening on port 5000\n'
         fi
-        
         if sudo ss -tlnp 2>/dev/null | grep -q ':9443'; then
-            echo -e "${GREEN}  ✓ mTLS Server listening on port 9443${NC}"
+            printf '  [OK] mTLS Server listening on port 9443\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
-            echo -e "${YELLOW}  ⚠ mTLS Server not listening on port 9443${NC}"
+            printf '  [WARN] mTLS Server not listening on port 9443\n'
         fi
-        
         if sudo ss -tlnp 2>/dev/null | grep -q ':8080'; then
-            echo -e "${GREEN}  ✓ Envoy listening on port 8080${NC}"
+            printf '  [OK] Envoy listening on port 8080\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
-            echo -e "${YELLOW}  ⚠ Envoy not listening on port 8080${NC}"
+            printf '  [WARN] Envoy not listening on port 8080\n'
         fi
     elif command -v netstat &> /dev/null; then
         if sudo netstat -tlnp 2>/dev/null | grep -q ':5000'; then
-            echo -e "${GREEN}  ✓ Mobile Location Service listening on port 5000${NC}"
+            printf '  [OK] Mobile Location Service listening on port 5000\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
-            echo -e "${YELLOW}  ⚠ Mobile Location Service not listening on port 5000${NC}"
+            printf '  [WARN] Mobile Location Service not listening on port 5000\n'
         fi
-        
         if sudo netstat -tlnp 2>/dev/null | grep -q ':9443'; then
-            echo -e "${GREEN}  ✓ mTLS Server listening on port 9443${NC}"
+            printf '  [OK] mTLS Server listening on port 9443\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
-            echo -e "${YELLOW}  ⚠ mTLS Server not listening on port 9443${NC}"
+            printf '  [WARN] mTLS Server not listening on port 9443\n'
         fi
-        
         if sudo netstat -tlnp 2>/dev/null | grep -q ':8080'; then
-            echo -e "${GREEN}  ✓ Envoy listening on port 8080${NC}"
+            printf '  [OK] Envoy listening on port 8080\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
-            echo -e "${YELLOW}  ⚠ Envoy not listening on port 8080${NC}"
+            printf '  [WARN] Envoy not listening on port 8080\n'
         fi
     else
-        echo -e "${YELLOW}  ⚠ Cannot verify ports (ss/netstat not available)${NC}"
+        printf '  [WARN] Cannot verify ports (ss/netstat not available)\n'
     fi
 
     # Re-enable exit on error
     set -e
 
-    echo
+    printf '\n'
     if [ $SERVICES_OK -eq 3 ]; then
-        echo -e "${GREEN}✓ All services are running!${NC}"
+        printf '[SUCCESS] All services are running!\n'
     else
-        echo -e "${YELLOW}⚠ Some services may not be running. Check logs:${NC}"
-        echo "  - Mobile Location Service: tail -f /tmp/mobile-sensor.log"
-        echo "  - mTLS Server: tail -f /tmp/mtls-server.log"
-        echo "  - Envoy: tail -f /opt/envoy/logs/envoy.log"
+        printf '[WARN] Some services may not be running. Check logs:\n'
+        printf '  - Mobile Location Service: tail -f /tmp/mobile-sensor.log\n'
+        printf '  - mTLS Server: tail -f /tmp/mtls-server.log\n'
+        printf '  - Envoy: tail -f /opt/envoy/logs/envoy.log\n'
     fi
 
-    echo
-    echo "Service Management:"
-    echo "  To stop all services: sudo pkill -f 'envoy.*envoy.yaml'; pkill -f 'mtls-server-app.py'; pkill -f 'service.py.*5000'"
-    echo "  To view logs:"
-    echo "    tail -f /tmp/mobile-sensor.log"
-    echo "    tail -f /tmp/mtls-server.log"
-    echo "    tail -f /opt/envoy/logs/envoy.log"
-    echo
-    echo "Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!"
+    printf '\n'
+    printf 'Service Management:\n'
+    printf '  To stop all services: sudo pkill -f '\''envoy.*envoy.yaml'\''; pkill -f '\''mtls-server-app.py'\''; pkill -f '\''service.py.*5000'\''\n'
+    printf '  To view logs:\n'
+    printf '    tail -f /tmp/mobile-sensor.log\n'
+    printf '    tail -f /tmp/mtls-server.log\n'
+    printf '    tail -f /opt/envoy/logs/envoy.log\n'
+    printf '\n'
+    printf 'Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!\n'
+    # Reset terminal colors before exit
+    [ -t 1 ] && tput sgr0
 else
     # Not on test machine - show manual startup instructions
-    echo ""
-    echo "To start all services manually (in separate terminals):"
-    echo ""
-    echo "Terminal 1 - Mobile Location Service:"
-    echo "  cd $REPO_ROOT/mobile-sensor-microservice"
-    echo "  source .venv/bin/activate"
-    echo "  export CAMARA_BYPASS=true  # or set CAMARA_BASIC_AUTH"
-    echo "  python3 service.py --port 5000 --host 0.0.0.0"
-    echo ""
-    echo "Terminal 2 - mTLS Server:"
-    echo "  cd $REPO_ROOT/python-app-demo"
-    echo "  export SERVER_USE_SPIRE=\"false\""
-    echo "  export SERVER_PORT=\"9443\""
-    echo "  export CA_CERT_PATH=\"/opt/envoy/certs/spire-bundle.pem\""
-    echo "  python3 mtls-server-app.py"
-    echo ""
-    echo "Terminal 3 - Envoy:"
-    echo "  sudo envoy -c /opt/envoy/envoy.yaml"
-    echo ""
-    echo "Or start all in background:"
-    echo "  cd $REPO_ROOT/mobile-sensor-microservice && source .venv/bin/activate && export CAMARA_BYPASS=true && python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &"
-    echo "  cd $REPO_ROOT/python-app-demo && export SERVER_USE_SPIRE=\"false\" SERVER_PORT=\"9443\" && python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &"
-    echo "  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &"
-    echo ""
-    echo "Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!"
+    printf '\n'
+    printf 'To start all services manually (in separate terminals):\n'
+    printf '\n'
+    printf 'Terminal 1 - Mobile Location Service:\n'
+    printf '  cd %s/mobile-sensor-microservice\n' "$REPO_ROOT"
+    printf '  source .venv/bin/activate\n'
+    printf '  export CAMARA_BYPASS=true  # or set CAMARA_BASIC_AUTH\n'
+    printf '  python3 service.py --port 5000 --host 0.0.0.0\n'
+    printf '\n'
+    printf 'Terminal 2 - mTLS Server:\n'
+    printf '  cd %s/python-app-demo\n' "$REPO_ROOT"
+    printf '  export SERVER_USE_SPIRE="false"\n'
+    printf '  export SERVER_PORT="9443"\n'
+    printf '  export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"\n'
+    printf '  python3 mtls-server-app.py\n'
+    printf '\n'
+    printf 'Terminal 3 - Envoy:\n'
+    printf '  sudo envoy -c /opt/envoy/envoy.yaml\n'
+    printf '\n'
+    printf 'Or start all in background:\n'
+    printf '  cd %s/mobile-sensor-microservice && source .venv/bin/activate && export CAMARA_BYPASS=true && python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &\n' "$REPO_ROOT"
+    printf '  cd %s/python-app-demo && export SERVER_USE_SPIRE="false" SERVER_PORT="9443" && python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &\n' "$REPO_ROOT"
+    printf '  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &\n'
+    printf '\n'
+    printf 'Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!\n'
+    # Reset terminal colors before exit
+    [ -t 1 ] && tput sgr0
 fi
 
