@@ -517,10 +517,15 @@ class SPIREmTLSClient:
                 while self.running:
                     try:
                         # Only send messages if connection is active AND stable
-                        if not connection_active or not connection_stable:
-                            # Connection is not active or not stable - wait and reconnect
+                        if not connection_active:
+                            # Connection is not active - wait and reconnect
                             time.sleep(0.5)
                             break  # Exit inner loop to reconnect
+                        if not connection_stable:
+                            # Connection is not stable yet - wait a bit more
+                            time.sleep(0.1)
+                            connection_stable = True  # Mark as stable after brief wait
+                            continue  # Retry the loop
                         
                         # Check for renewal periodically
                         if self.check_renewal():
