@@ -132,9 +132,9 @@ start_mobile_sensor_microservice() {
     rm -f "${MOBILE_SENSOR_DB_PATH}" 2>/dev/null || true
 
     export MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB_PATH}"
-    # CAMARA APIs are enabled by default (can be bypassed by setting CAMARA_BYPASS=true)
-    # Set CAMARA_BYPASS=true to skip CAMARA API calls for testing
-    export CAMARA_BYPASS="${CAMARA_BYPASS:-false}"
+    # CAMARA APIs are bypassed by default (set CAMARA_BYPASS=false to enable CAMARA API calls)
+    # Set CAMARA_BYPASS=false to use real CAMARA API calls
+    export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
     if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
         # Default to valid CAMARA sandbox credentials (can be overridden via env var)
         export CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
