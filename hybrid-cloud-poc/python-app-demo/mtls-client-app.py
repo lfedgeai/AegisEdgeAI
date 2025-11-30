@@ -717,20 +717,27 @@ class SPIREmTLSClient:
                         # If we got a response, the error is during cleanup - silent reconnect
                         if not last_response_received:
                             # Check if this is renewal-related
-                            if self.renewal_count > 0 and (
+                            # Only set flag if this is a NEW renewal (renewal_count increased) AND error is renewal-related
+                            is_renewal_error = (
                                 "certificate" in err_str.lower()
                                 or "renewal" in err_str.lower()
                                 or "unknown ca" in err_str.lower()
-                            ):
+                            )
+                            is_new_renewal = self.renewal_count > self.last_logged_renewal_id
+                            
+                            if is_renewal_error and is_new_renewal:
                                 # Only log once per renewal cycle
-                                if self.renewal_count > self.last_logged_renewal_id:
-                                    self.last_logged_renewal_id = self.renewal_count
-                                    self.log(
-                                        f"Renewal blip: reconnecting after TLS error: "
-                                        f"{err_str[:120]}"
-                                    )
+                                self.last_logged_renewal_id = self.renewal_count
+                                self.log(
+                                    f"Renewal blip: reconnecting after TLS error: "
+                                    f"{err_str[:120]}"
+                                )
                                 # Mark that reconnection is due to renewal (will be logged on reconnect)
                                 self._reconnect_due_to_renewal = True
+                            elif is_renewal_error:
+                                # Renewal-related error but not a new renewal - just log, don't set flag
+                                # (renewal already happened, this is just a side effect)
+                                pass
                             elif is_eof_error:
                                 # EOF errors are common and often normal (server closes connections)
                                 # Don't log them - they're usually just normal connection closures
