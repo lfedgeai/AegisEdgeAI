@@ -5,6 +5,22 @@
 
 LOG_FILE="/tmp/spire-agent.log"
 
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Disable colors if output is not a terminal
+if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
+    GREEN=""
+    YELLOW=""
+    CYAN=""
+    BOLD=""
+    NC=""
+fi
+
 echo "=========================================="
 echo "Watching SPIRE Agent Attestation Events"
 echo "=========================================="
@@ -25,7 +41,7 @@ fi
 
 # Initialize reattestation count
 REATTEST_COUNT=$(grep -c 'level=info msg="Successfully reattested node"' "$LOG_FILE" 2>/dev/null || echo "0")
-echo "Initial reattestation count: $REATTEST_COUNT"
+echo -e "${CYAN}Initial reattestation count: ${BOLD}$REATTEST_COUNT${NC}"
 echo "=========================================="
 echo ""
 
@@ -36,7 +52,9 @@ tail -f "$LOG_FILE" | while IFS= read -r line; do
         # If this is a reattestation message, update count first
         if echo "$line" | grep -q 'level=info msg="Successfully reattested node"'; then
             REATTEST_COUNT=$((REATTEST_COUNT + 1))
-            echo ">>> [Reattestation #$REATTEST_COUNT] $line"
+            echo ""
+            echo -e "${GREEN}${BOLD}>>> [Reattestation #$REATTEST_COUNT]${NC} ${YELLOW}$line${NC}"
+            echo ""
         else
             echo "$line"
         fi
