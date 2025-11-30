@@ -444,6 +444,12 @@ class SPIREmTLSClient:
         
         while self.running:
             try:
+                # Check if we just reconnected due to renewal (from inner loop break)
+                # This happens when renewal was detected during active connection
+                # We preserve _reconnect_due_to_renewal for connection logging below
+                if self._reconnect_due_to_renewal:
+                    just_reconnected_due_to_renewal = True
+                
                 # If we just reconnected due to renewal, update serial and skip renewal check
                 # to prevent infinite reconnect loops
                 if just_reconnected_due_to_renewal:
