@@ -68,7 +68,8 @@ echo -e "${YELLOW}Starting from end of log file (showing new entries only)...${N
 echo ""
 
 # Start from end of file and watch for new entries only (skip old logs)
-tail -n 0 -f "$LOG_FILE" 2>/dev/null | while IFS= read -r line; do
+# Use stdbuf to ensure line-buffered output for faster refresh
+stdbuf -oL -eL tail -n 0 -f "$LOG_FILE" 2>/dev/null | while IFS= read -r line; do
     # Check for key events and highlight them
     if echo "$line" | grep -q 'Responded to client.*HTTP 200'; then
         RESPONSE_COUNT=$((RESPONSE_COUNT + 1))

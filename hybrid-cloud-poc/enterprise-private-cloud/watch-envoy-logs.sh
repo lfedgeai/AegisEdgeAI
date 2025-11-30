@@ -66,7 +66,8 @@ echo "=========================================="
 echo ""
 
 # Watch log file and highlight key events
-tail -f "$LOG_FILE" | while IFS= read -r line; do
+# Use stdbuf to ensure line-buffered output for faster refresh
+stdbuf -oL -eL tail -f "$LOG_FILE" | while IFS= read -r line; do
     # Check for key events and highlight them
     if echo "$line" | grep -q 'Sensor verification successful'; then
         VERIFICATION_SUCCESS_COUNT=$((VERIFICATION_SUCCESS_COUNT + 1))
