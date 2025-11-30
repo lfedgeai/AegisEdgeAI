@@ -50,7 +50,6 @@ static_resources:
                   [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
                   %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
                   %DURATION% %RESP(X-REQUEST-ID)% "%REQ(:AUTHORITY)%" "%REQ(USER-AGENT)%"
-                  "sensor_id=%REQ(X-SENSOR-ID)%"
           http_filters:
           - name: envoy.filters.http.wasm
             typed_config:
