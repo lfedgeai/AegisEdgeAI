@@ -48,6 +48,8 @@ class SPIREmTLSClient:
         self.bundle_path = None  # Keep bundle file path for SSL context lifetime
         # Track logging so we don't spam on repeated renewal blips
         self.last_logged_renewal_id = 0
+        # Track if we had a previous connection (for reconnection logging)
+        self.had_previous_connection = False
         
         # Certificate mode configuration
         if use_spire is None:
@@ -484,8 +486,11 @@ class SPIREmTLSClient:
                         self.log(f"  ℹ Server certificate type: {server_cert_type} (matches client mode)")
                 
                 # DEMO: Show successful connection (especially after renewal)
-                if self.reconnect_count > 0:
+                # Only show "reconnected" message if this is actually a reconnection
+                # (i.e., we had a previous connection that was closed)
+                if self.had_previous_connection:
                     self.log("  ✓ Reconnected to server successfully (renewal blip resolved)")
+                    self.had_previous_connection = False  # Reset after logging
                 else:
                     self.log("✓ Connected to server")
                 
@@ -503,6 +508,7 @@ class SPIREmTLSClient:
                                     "closing and reconnecting with new certificate"
                                 )
                             # Close current connection to force reconnection with new cert
+                            self.had_previous_connection = True
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -522,6 +528,7 @@ class SPIREmTLSClient:
                                     "closing and reconnecting with refreshed certificate"
                                 )
                             # Close current connection to force reconnection with refreshed cert
+                            self.had_previous_connection = True
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -551,9 +558,12 @@ class SPIREmTLSClient:
                         # Receive HTTP response
                         try:
                             response_data = b""
+                            connection_closed_by_server = False
                             while True:
                                 chunk = tls_socket.recv(4096)
                                 if not chunk:
+                                    # Server closed connection
+                                    connection_closed_by_server = True
                                     break
                                 response_data += chunk
                                 # Check if we've received the full HTTP response
@@ -562,6 +572,13 @@ class SPIREmTLSClient:
                                     headers_end = response_data.find(b"\r\n\r\n")
                                     headers = response_data[:headers_end].decode('utf-8', errors='replace')
                                     body_start = headers_end + 4
+                                    
+                                    # Check for Connection header to see if server wants to close
+                                    connection_header = None
+                                    for line in headers.split('\r\n'):
+                                        if line.lower().startswith('connection:'):
+                                            connection_header = line.split(':', 1)[1].strip().lower()
+                                            break
                                     
                                     # Check for Content-Length
                                     content_length = 0
@@ -580,6 +597,10 @@ class SPIREmTLSClient:
                                     else:
                                         # No Content-Length, assume response is complete
                                         break
+                                    
+                                    # If server sent Connection: close, mark for reconnection
+                                    if connection_header == 'close':
+                                        connection_closed_by_server = True
                             
                             if response_data:
                                 response_text = response_data.decode('utf-8', errors='replace')
@@ -589,6 +610,16 @@ class SPIREmTLSClient:
                                     self.log(f"📥 Received HTTP response: {body.strip()}")
                                 else:
                                     self.log(f"📥 Received: {response_text[:200]}")
+                            
+                            # If server closed connection, break to reconnect
+                            if connection_closed_by_server:
+                                self.log("  ℹ Server closed connection (Connection: close or socket closed)")
+                                self.had_previous_connection = True
+                                try:
+                                    tls_socket.close()
+                                except:
+                                    pass
+                                break  # Exit inner loop to reconnect
                         except ssl.SSLError as e:
                             err_str = str(e)
                             if "certificate" in err_str.lower() or "renewal" in err_str.lower():
@@ -608,6 +639,7 @@ class SPIREmTLSClient:
                                 self.log(f"  ⚠️  Connection closed (renewal blip): {e}")
                             else:
                                 self.log(f"Connection closed: {e}")
+                            self.had_previous_connection = True
                             raise  # Reconnect
                         
                         # Wait before next message
@@ -631,6 +663,7 @@ class SPIREmTLSClient:
                         else:
                             self.log(f"Connection error: {err_str}")
                         self.reconnect_count += 1
+                        self.had_previous_connection = True
                         try:
                             tls_socket.close()
                         except:
@@ -638,6 +671,7 @@ class SPIREmTLSClient:
                         break  # Reconnect
                     except Exception as e:
                         self.log(f"Error in communication: {e}")
+                        self.had_previous_connection = True
                         try:
                             tls_socket.close()
                         except:
