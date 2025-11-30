@@ -9,9 +9,12 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Script directory
+# Script directory (hybrid-cloud-poc root)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+# Python app demo directory
+PYTHON_APP_DIR="${SCRIPT_DIR}/python-app-demo"
 
 echo "=========================================="
 echo "mTLS Client Test Script"
@@ -74,8 +77,8 @@ if [ -n "$CA_CERT_PATH" ] && [ "$CA_CERT_PATH" != "~/.mtls-demo/envoy-cert.pem" 
 fi
 
 # Check if Python script exists
-if [ ! -f "mtls-client-app.py" ]; then
-    echo "Error: mtls-client-app.py not found in $SCRIPT_DIR"
+if [ ! -f "${PYTHON_APP_DIR}/mtls-client-app.py" ]; then
+    echo "Error: mtls-client-app.py not found in $PYTHON_APP_DIR"
     exit 1
 fi
 echo -e "${GREEN}✓ Client script found${NC}"
@@ -88,6 +91,7 @@ echo "=========================================="
 echo "Press Ctrl+C to stop"
 echo ""
 
-# Run the client
+# Run the client from python-app-demo directory
+cd "${PYTHON_APP_DIR}"
 python3 mtls-client-app.py
 
