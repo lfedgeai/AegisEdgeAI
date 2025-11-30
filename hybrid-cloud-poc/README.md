@@ -31,9 +31,16 @@ This will:
 **Monitor logs (optional):**
 ```bash
 # In separate terminals, watch logs:
-tail -f /tmp/spire-server.log
-tail -f /tmp/spire-agent.log
-tail -f /tmp/mobile-sensor-microservice.log
+tail -f /tmp/spire-server.log          # SPIRE Server
+tail -f /tmp/spire-agent.log          # SPIRE Agent
+tail -f /tmp/keylime-verifier.log     # Keylime Verifier
+tail -f /tmp/rust-keylime-agent.log   # rust-keylime Agent
+tail -f /tmp/tpm-plugin-server.log    # SPIRE TPM Plugin
+tail -f /tmp/mobile-sensor-microservice.log  # Mobile Location Service
+
+# Or use the attestation watch script (filters for attestation events):
+cd enterprise-onprem
+./watch-spire-agent-attestations.sh    # SPIRE Agent attestations only
 ```
 
 ### Enterprise On-Prem Setup
