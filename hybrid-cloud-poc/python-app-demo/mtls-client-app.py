@@ -508,24 +508,17 @@ class SPIREmTLSClient:
                 message_num = 0
                 last_response_received = False  # Track if last request got a response
                 connection_active = True  # Track if connection is active and ready for messages
-                connection_stable = False  # Track if connection is stable (ready for traffic)
                 
                 # Wait a brief moment after connection to ensure it's stable before sending traffic
                 time.sleep(0.1)
-                connection_stable = True  # Connection is now stable and ready for traffic
                 
                 while self.running:
                     try:
-                        # Only send messages if connection is active AND stable
+                        # Only send messages if connection is active
                         if not connection_active:
                             # Connection is not active - wait and reconnect
                             time.sleep(0.5)
                             break  # Exit inner loop to reconnect
-                        if not connection_stable:
-                            # Connection is not stable yet - wait a bit more
-                            time.sleep(0.1)
-                            connection_stable = True  # Mark as stable after brief wait
-                            continue  # Retry the loop
                         
                         # Check for renewal periodically
                         if self.check_renewal():
@@ -538,9 +531,8 @@ class SPIREmTLSClient:
                                 )
                             # Mark that reconnection is due to renewal (will be logged on reconnect)
                             self._reconnect_due_to_renewal = True
-                            # Mark connection as inactive and unstable - block all traffic
+                            # Mark connection as inactive - block all traffic
                             connection_active = False
-                            connection_stable = False
                             # Close current connection to force reconnection with new cert
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
@@ -562,9 +554,8 @@ class SPIREmTLSClient:
                                 )
                             # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
                             self._reconnect_due_to_renewal = True
-                            # Mark connection as inactive and unstable - block all traffic
+                            # Mark connection as inactive - block all traffic
                             connection_active = False
-                            connection_stable = False
                             # Close current connection to force reconnection with refreshed cert
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
@@ -589,14 +580,13 @@ class SPIREmTLSClient:
                             f"Connection: keep-alive\r\n"
                             f"\r\n"
                         )
-                        # Verify connection is still active and stable before sending
+                        # Verify connection is still active before sending
                         try:
                             # Quick check if socket is still connected
                             tls_socket.getpeername()
                         except (OSError, AttributeError):
-                            # Connection is not active - mark as inactive and unstable, then reconnect
+                            # Connection is not active - mark as inactive, then reconnect
                             connection_active = False
-                            connection_stable = False
                             break  # Exit inner loop to reconnect
                         
                         self.log(f"📤 Sending HTTP request: {message}")
@@ -604,9 +594,8 @@ class SPIREmTLSClient:
                             tls_socket.sendall(http_request.encode('utf-8'))
                         except (ssl.SSLError, ConnectionError, BrokenPipeError) as e:
                             # EOF or connection error during send - connection likely closed by server
-                            # Mark connection as inactive and unstable - block all traffic
+                            # Mark connection as inactive - block all traffic
                             connection_active = False
-                            connection_stable = False
                             err_str = str(e)
                             is_eof_error = "EOF" in err_str or "eof" in err_str.lower()
                             # Only log if it's clearly not a normal closure (not EOF)
@@ -684,9 +673,8 @@ class SPIREmTLSClient:
                             # This is normal HTTP behavior - no logging needed
                             if connection_closed_by_server:
                                 last_response_received = True  # We got a response before closure
-                                # Mark connection as inactive and unstable - will reconnect
+                                # Mark connection as inactive - will reconnect
                                 connection_active = False
-                                connection_stable = False
                                 try:
                                     tls_socket.close()
                                 except:
@@ -704,9 +692,8 @@ class SPIREmTLSClient:
                                     )
                                     # Mark that reconnection is due to renewal (will be logged on reconnect)
                                     self._reconnect_due_to_renewal = True
-                                # Mark connection as inactive and unstable - block all traffic
+                                # Mark connection as inactive - block all traffic
                                 connection_active = False
-                                connection_stable = False
                                 raise  # Reconnect
                             else:
                                 # Non-renewal TLS error - already logged above, reconnect silently
@@ -765,9 +752,8 @@ class SPIREmTLSClient:
                                 # Non-renewal, non-EOF error - log it
                                 self.log(f"Connection error: {err_str}")
                         # If we got a response, any error (including EOF) is normal closure - silent reconnect
-                        # Mark connection as inactive and unstable - block all traffic
+                        # Mark connection as inactive - block all traffic
                         connection_active = False
-                        connection_stable = False
                         # Always increment reconnect count and reset response flag
                         self.reconnect_count += 1
                         last_response_received = False  # Reset for next connection
