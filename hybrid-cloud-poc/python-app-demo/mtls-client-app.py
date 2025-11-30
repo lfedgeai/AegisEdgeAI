@@ -513,8 +513,9 @@ class SPIREmTLSClient:
                                     f"SVID renewed #{self.renewal_count} during active connection; "
                                     "closing and reconnecting with new certificate"
                                 )
+                            # Mark that reconnection is due to renewal (will be logged on reconnect)
+                            self._reconnect_due_to_renewal = True
                             # Close current connection to force reconnection with new cert
-                            # Silent reconnect - renewal is already logged above
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -523,7 +524,7 @@ class SPIREmTLSClient:
                                 tls_socket.close()
                             except:
                                 pass
-                            break  # Exit inner loop to reconnect (silent)
+                            break  # Exit inner loop to reconnect
                         # Also check if SVID expired during active connection
                         elif self.check_svid_expired():
                             # SVID expired during active connection - close and refresh
@@ -641,7 +642,8 @@ class SPIREmTLSClient:
                                         f"TLS error during SVID renewal (will reconnect): "
                                         f"{err_str[:120]}"
                                     )
-                                # Renewal-related error - already logged above, reconnect silently
+                                # Mark that reconnection is due to renewal (will be logged on reconnect)
+                                self._reconnect_due_to_renewal = True
                                 raise  # Reconnect
                             else:
                                 # Non-renewal TLS error - already logged above, reconnect silently
@@ -680,6 +682,8 @@ class SPIREmTLSClient:
                                         f"Renewal blip: reconnecting after TLS error: "
                                         f"{err_str[:120]}"
                                     )
+                                # Mark that reconnection is due to renewal (will be logged on reconnect)
+                                self._reconnect_due_to_renewal = True
                             else:
                                 # Non-renewal error - log it
                                 self.log(f"Connection error: {err_str}")
