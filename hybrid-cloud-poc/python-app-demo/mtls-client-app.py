@@ -612,9 +612,10 @@ class SPIREmTLSClient:
                                     self.log(f"📥 Received: {response_text[:200]}")
                             
                             # If server closed connection, break to reconnect
+                            # Note: Don't set had_previous_connection here - this is normal HTTP behavior
+                            # Only set it for actual errors or renewals
                             if connection_closed_by_server:
                                 self.log("  ℹ Server closed connection (Connection: close or socket closed)")
-                                self.had_previous_connection = True
                                 try:
                                     tls_socket.close()
                                 except:
