@@ -493,11 +493,16 @@ class SPIREmTLSClient:
                 if not self._first_connection_logged:
                     self.log("✓ Connected to server")
                     self._first_connection_logged = True
+                    # Reset renewal flag on first connection
+                    self._reconnect_due_to_renewal = False
                 elif self._reconnect_due_to_renewal:
                     # Log reconnection when it's due to certificate renewal (important event)
                     self.log("  ✓ Reconnected to server (certificate renewal)")
-                    self._reconnect_due_to_renewal = False  # Reset after logging
+                    self._reconnect_due_to_renewal = False  # Reset immediately after logging
                 # All other reconnections (normal connection closures) are silent for stability
+                # Also reset renewal flag for normal reconnections to prevent false positives
+                else:
+                    self._reconnect_due_to_renewal = False
                 
                 # Send periodic messages
                 message_num = 0
@@ -534,8 +539,6 @@ class SPIREmTLSClient:
                                     f"SVID expired during active connection; "
                                     "closing and reconnecting with refreshed certificate"
                                 )
-                            # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
-                            self._reconnect_due_to_renewal = True
                             # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
                             self._reconnect_due_to_renewal = True
                             # Close current connection to force reconnection with refreshed cert
