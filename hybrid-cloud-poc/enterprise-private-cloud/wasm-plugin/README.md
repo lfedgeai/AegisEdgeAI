@@ -23,7 +23,7 @@ This directory contains a WebAssembly (WASM) filter for Envoy that:
 ### Build
 
 ```bash
-cd enterprise-onprem/wasm-plugin
+cd enterprise-private-cloud/wasm-plugin
 bash build.sh
 ```
 

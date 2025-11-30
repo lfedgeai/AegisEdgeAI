@@ -97,7 +97,7 @@ mTLS Server (10.1.0.10:9443)
 Run the setup script on 10.1.0.10:
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
 ./test_onprem.sh
 ```
 
@@ -107,7 +107,7 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem
 # Get your CAMARA credentials from Telefonica Open Gateway
 # Format: Base64(client_id:client_secret)
 export CAMARA_BASIC_AUTH="Basic <your_base64_encoded_credentials>"
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
 ./test_onprem.sh
 ```
 
@@ -168,7 +168,7 @@ If you prefer manual setup:
 
 4. **Build WASM filter** (if not done during setup):
    ```bash
-   cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem/wasm-plugin
+   cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin
    bash build.sh
    ```
    This builds the WASM filter that extracts sensor ID directly from certificates.
@@ -258,7 +258,7 @@ Use the provided watch scripts for easy log monitoring:
 
 **Option 1: Individual terminal windows**
 ```bash
-cd enterprise-onprem
+cd enterprise-private-cloud
 
 # Terminal 1 - Envoy logs
 ./watch-envoy-logs.sh
@@ -272,7 +272,7 @@ cd enterprise-onprem
 
 **Option 2: Single tmux session (all logs in one window)**
 ```bash
-cd enterprise-onprem
+cd enterprise-private-cloud
 ./watch-all-logs.sh
 ```
 
@@ -303,7 +303,7 @@ tail -f /tmp/mobile-sensor.log
 - Verify SPIRE cert has Unified Identity extension with geolocation data
 - **Note**: The Unified Identity extension is in the **intermediate certificate** (agent SVID), not the leaf certificate
 - Check Envoy logs for certificate parsing errors
-- Rebuild WASM filter if needed: `cd enterprise-onprem/wasm-plugin && bash build.sh`
+- Rebuild WASM filter if needed: `cd enterprise-private-cloud/wasm-plugin && bash build.sh`
 
 ### Mobile location service fails
 - Check service is running: `curl http://localhost:5000/verify -X POST -H "Content-Type: application/json" -d '{}'`

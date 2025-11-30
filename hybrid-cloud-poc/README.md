@@ -47,7 +47,7 @@ tail -f /tmp/mobile-sensor-microservice.log  # Mobile Location Service
 **Step 2: Setup on-prem server (10.1.0.10)**
 
 ```bash
-cd enterprise-onprem
+cd enterprise-private-cloud
 ./test_onprem.sh
 ```
 
@@ -59,7 +59,7 @@ This sets up:
 
 **Monitor logs (optional):**
 ```bash
-cd enterprise-onprem
+cd enterprise-private-cloud
 
 # Option 1: Individual terminal windows
 ./watch-envoy-logs.sh          # Terminal 1
@@ -88,7 +88,7 @@ python3 mtls-client-app.py
 tail -f /tmp/mtls-client-app.log
 ```
 
-See [enterprise-onprem/README.md](enterprise-onprem/README.md) for detailed documentation.
+See [enterprise-private-cloud/README.md](enterprise-private-cloud/README.md) for detailed documentation.
 
 ## Components
 
@@ -107,15 +107,15 @@ See [enterprise-onprem/README.md](enterprise-onprem/README.md) for detailed docu
 - **Server**: mTLS server for testing
 - Location: `python-app-demo/`
 
-### Enterprise On-Prem
+### Enterprise Private Cloud
 - **Envoy Proxy**: mTLS termination and routing
 - **WASM Filter**: Sensor ID extraction and verification
 - **Mobile Location Service**: CAMARA API integration
-- Location: `enterprise-onprem/`
+- Location: `enterprise-private-cloud/`
 
 ## Documentation
 
-- [Enterprise On-Prem README](enterprise-onprem/README.md) - Detailed setup and architecture
+- [Enterprise Private Cloud README](enterprise-private-cloud/README.md) - Detailed setup and architecture
 - [Python App Demo README](python-app-demo/README.md) - Client/server usage
 - [test_complete.sh](test_complete.sh) - Complete integration test script
 
@@ -135,7 +135,7 @@ For monitoring logs during a demo, use the watch scripts:
 
 **Option 1: Individual terminal windows**
 ```bash
-cd enterprise-onprem
+cd enterprise-private-cloud
 
 # Terminal 1 - Envoy logs
 ./watch-envoy-logs.sh
@@ -149,7 +149,7 @@ cd enterprise-onprem
 
 **Option 2: Single tmux session (all logs in one window)**
 ```bash
-cd enterprise-onprem
+cd enterprise-private-cloud
 ./watch-all-logs.sh
 ```
 
