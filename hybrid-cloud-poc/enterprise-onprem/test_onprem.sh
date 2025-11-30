@@ -477,22 +477,30 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Temporarily disable exit on error for service startup
     set +e
     
-    # Set CAMARA_BASIC_AUTH for mobile location service
-    # Allow override via environment variable, otherwise use default (may be invalid)
-    if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
-        # Default credentials (may be invalid - user should provide valid credentials)
-        CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
-        printf '  [WARN] Using default CAMARA_BASIC_AUTH (may be invalid)\n'
-        printf '         Set CAMARA_BASIC_AUTH environment variable with valid credentials\n'
-        printf '         Format: export CAMARA_BASIC_AUTH="Basic <base64(client_id:client_secret)>"\n'
-    else
-        printf '  [OK] Using CAMARA_BASIC_AUTH from environment\n'
-    fi
+    # Set CAMARA_BYPASS default to true (can be overridden via environment variable)
+    export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
+    
+    # Set CAMARA_BASIC_AUTH for mobile location service (only if bypass is disabled)
+    if [ "$CAMARA_BYPASS" != "true" ]; then
+        # Allow override via environment variable, otherwise use default (may be invalid)
+        if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
+            # Default credentials (may be invalid - user should provide valid credentials)
+            CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
+            printf '  [WARN] CAMARA_BYPASS=false but no CAMARA_BASIC_AUTH provided\n'
+            printf '         Using default CAMARA_BASIC_AUTH (may be invalid)\n'
+            printf '         Set CAMARA_BASIC_AUTH environment variable with valid credentials\n'
+            printf '         Format: export CAMARA_BASIC_AUTH="Basic <base64(client_id:client_secret)>"\n'
+        else
+            printf '  [OK] Using CAMARA_BASIC_AUTH from environment\n'
+        fi
 
-    # Create environment file for mobile sensor service
-    if [ -n "$CAMARA_BASIC_AUTH" ]; then
-        printf '%s\n' "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
-        printf '  [OK] Mobile sensor service environment configured\n'
+        # Create environment file for mobile sensor service
+        if [ -n "$CAMARA_BASIC_AUTH" ]; then
+            printf '%s\n' "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
+            printf '  [OK] Mobile sensor service environment configured\n'
+        fi
+    else
+        printf '  [OK] CAMARA_BYPASS=true (CAMARA API calls will be skipped)\n'
     fi
 
     # Start Mobile Location Service
@@ -500,11 +508,12 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
     if [ -d ".venv" ] && [ -f "service.py" ]; then
         source .venv/bin/activate
-        if [ -n "$CAMARA_BASIC_AUTH" ]; then
+        # Default to bypass mode (can be overridden by setting CAMARA_BYPASS=false and providing CAMARA_BASIC_AUTH)
+        export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
+        if [ -n "$CAMARA_BASIC_AUTH" ] && [ "$CAMARA_BYPASS" != "true" ]; then
             export CAMARA_BASIC_AUTH
             python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
         else
-            export CAMARA_BYPASS=true
             python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
         fi
         MOBILE_PID=$!
