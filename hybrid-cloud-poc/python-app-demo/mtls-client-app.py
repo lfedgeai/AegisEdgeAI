@@ -518,6 +518,16 @@ class SPIREmTLSClient:
                 # Wait a brief moment after connection to ensure it's stable before sending traffic
                 time.sleep(0.1)
                 
+                # Update last_svid_serial immediately after reconnection to avoid detecting
+                # the renewal we just handled (or a renewal that happened during reconnect)
+                if self.use_spire and self.source:
+                    try:
+                        current_svid = self.source.svid
+                        if current_svid:
+                            self.last_svid_serial = current_svid.leaf.serial_number
+                    except Exception:
+                        pass  # Ignore errors, will be caught on next renewal check
+                
                 while self.running:
                     try:
                         # Only send messages if connection is active
@@ -527,8 +537,9 @@ class SPIREmTLSClient:
                             break  # Exit inner loop to reconnect
                         
                         # Check for renewal periodically (but not on every iteration to avoid blocking)
-                        # Only check every 10 messages to avoid excessive checks
-                        if message_num % 10 == 0:
+                        # Only check every 10 messages, and skip check on first message after reconnect
+                        # to avoid immediately detecting a renewal that happened during reconnect
+                        if message_num > 0 and message_num % 10 == 0:
                             if self.check_renewal():
                                 # Renewal detected during active connection
                                 if self.renewal_count > self.last_logged_renewal_id:
