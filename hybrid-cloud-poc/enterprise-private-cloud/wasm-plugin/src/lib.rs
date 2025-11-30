@@ -3,6 +3,7 @@ use proxy_wasm::types::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
 
 // Unified Identity extension OIDs (as ASN.1 OID bytes)
 // 1.3.6.1.4.1.99999.2 = 0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x63, 0x02
@@ -140,9 +141,15 @@ impl Context for SensorVerificationFilter {
                 
                 // Update cache with verification result and current timestamp
                 let current_time = self.get_current_time();
-                if let Ok(mut cache) = self.cache.lock() {
-                    cache.verification_cache = Some((sensor_id.clone(), current_time));
-                    cache.verification_result = Some(verified);
+                match self.cache.lock() {
+                    Ok(mut cache) => {
+                        cache.verification_cache = Some((sensor_id.clone(), current_time));
+                        cache.verification_result = Some(verified);
+                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache updated for sensor_id: {} at time {:?}", sensor_id, current_time));
+                    }
+                    Err(e) => {
+                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Failed to lock cache for update: {:?}", e));
+                    }
                 }
                 
                 if verified {
@@ -262,11 +269,21 @@ impl HttpContext for SensorVerificationFilter {
         let (should_verify, cached_verified) = {
             let cache_guard = match self.cache.lock() {
                 Ok(guard) => guard,
-                Err(_) => {
-                    proxy_wasm::hostcalls::log(LogLevel::Warn, "Failed to lock cache, will verify");
+                Err(e) => {
+                    proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Failed to lock cache for read: {:?}, will verify", e));
                     return Action::Pause;
                 }
             };
+            
+            // Debug: log cache state
+            match &cache_guard.verification_cache {
+                Some((cached_sensor_id, cached_timestamp)) => {
+                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache check: found cached sensor_id: {}, timestamp: {:?}", cached_sensor_id, cached_timestamp));
+                }
+                None => {
+                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache check: no cache entry found"));
+                }
+            }
             
             let should_verify = match &cache_guard.verification_cache {
                 Some((cached_sensor_id, cached_timestamp)) => {
