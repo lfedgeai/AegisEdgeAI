@@ -339,6 +339,19 @@ else
     printf '     You'\''ll need to copy it to /opt/envoy/certs/server-cert.pem for Envoy upstream verification\n'
 fi
 
+# Create combined CA bundle for backend server (SPIRE + Envoy certs)
+# Backend server needs to trust both SPIRE clients and Envoy proxy
+printf '  Creating combined CA bundle for backend server...\n'
+if [ -f /opt/envoy/certs/spire-bundle.pem ] && [ -f /opt/envoy/certs/envoy-cert.pem ]; then
+    sudo sh -c "cat /opt/envoy/certs/spire-bundle.pem /opt/envoy/certs/envoy-cert.pem > /opt/envoy/certs/combined-ca-bundle.pem"
+    sudo chmod 644 /opt/envoy/certs/combined-ca-bundle.pem
+    echo -e "${GREEN}  ✓ Combined CA bundle created: /opt/envoy/certs/combined-ca-bundle.pem${NC}"
+    printf '     Contains: SPIRE CA bundle + Envoy certificate\n'
+else
+    echo -e "${YELLOW}  ⚠ Could not create combined CA bundle (missing spire-bundle.pem or envoy-cert.pem)${NC}"
+    printf '     Backend server will need to trust Envoy certificate separately\n'
+fi
+
 # Verify required certificates
 printf '\n'
 printf '  Verifying certificates...\n'
@@ -502,7 +515,12 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     if [ -f "mtls-server-app.py" ]; then
         export SERVER_USE_SPIRE="false"
         export SERVER_PORT="9443"
-        export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
+        # Use combined CA bundle if available, otherwise fall back to spire-bundle
+        if [ -f "/opt/envoy/certs/combined-ca-bundle.pem" ]; then
+            export CA_CERT_PATH="/opt/envoy/certs/combined-ca-bundle.pem"
+        else
+            export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
+        fi
         python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
         MTLS_PID=$!
         sleep 2
