@@ -445,6 +445,8 @@ class SPIREmTLSClient:
                 if self.check_renewal():
                     # DEMO: Show TLS context recreation
                     self.log("  🔧 Recreating TLS context with renewed SVID...")
+                    # Mark that reconnection is due to renewal (will be logged on reconnect)
+                    self._reconnect_due_to_renewal = True
                     context = self.setup_tls_context()
                     self.log("  ✓ TLS context recreated successfully")
                     self.log("  🔌 Reconnecting to server with new certificate...")
@@ -465,6 +467,10 @@ class SPIREmTLSClient:
                     # Small delay to ensure new SVID is fully loaded
                     time.sleep(0.5)
                     self.log("  🔌 Reconnecting to server with refreshed certificate...")
+                else:
+                    # No renewal - use existing context or create new one if needed
+                    if context is None:
+                        context = self.setup_tls_context()
                 
                 # Create socket
                 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
