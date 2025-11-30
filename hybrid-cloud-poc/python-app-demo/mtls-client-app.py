@@ -462,6 +462,10 @@ class SPIREmTLSClient:
                             pass
                     just_reconnected_due_to_renewal = False
                     # Skip renewal check on this iteration - go straight to connecting
+                    # But we MUST recreate the TLS context with the new certificate
+                    # The old context still has the old certificate, so we need a fresh one
+                    context = self.setup_tls_context()
+                    self.log("  ✓ TLS context recreated with renewed certificate")
                 else:
                     # Update serial before checking for renewal to avoid detecting the same renewal twice
                     if self.use_spire and self.source:
