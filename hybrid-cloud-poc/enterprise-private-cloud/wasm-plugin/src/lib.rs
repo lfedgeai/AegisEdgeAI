@@ -2,6 +2,7 @@ use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
 // Unified Identity extension OIDs (as ASN.1 OID bytes)
 // 1.3.6.1.4.1.99999.2 = 0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x63, 0x02
@@ -25,17 +26,39 @@ struct VerifyResponse {
 proxy_wasm::main! {{
     proxy_wasm::set_log_level(LogLevel::Info);
     proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
-        Box::new(SensorVerificationRoot)
+        Box::new(SensorVerificationRoot::default())
     });
 }}
 
-struct SensorVerificationRoot;
+// Shared cache state (persists across requests)
+struct CacheState {
+    verification_cache: Option<(String, std::time::SystemTime)>, // (sensor_id, timestamp when cached)
+    verification_result: Option<bool>, // Cached verification result
+}
+
+struct SensorVerificationRoot {
+    cache: Arc<Mutex<CacheState>>,
+}
+
+impl Default for SensorVerificationRoot {
+    fn default() -> Self {
+        Self {
+            cache: Arc::new(Mutex::new(CacheState {
+                verification_cache: None,
+                verification_result: None,
+            })),
+        }
+    }
+}
 
 impl Context for SensorVerificationRoot {}
 
 impl RootContext for SensorVerificationRoot {
     fn create_http_context(&self, _context_id: u32) -> Option<Box<dyn HttpContext>> {
-        Some(Box::new(SensorVerificationFilter::default()))
+        Some(Box::new(SensorVerificationFilter {
+            sensor_id: None,
+            cache: Arc::clone(&self.cache),
+        }))
     }
 
     fn get_type(&self) -> Option<ContextType> {
@@ -45,18 +68,7 @@ impl RootContext for SensorVerificationRoot {
 
 struct SensorVerificationFilter {
     sensor_id: Option<String>,
-    verification_cache: Option<(String, std::time::SystemTime)>, // (sensor_id, timestamp when cached)
-    verification_result: Option<bool>, // Cached verification result
-}
-
-impl Default for SensorVerificationFilter {
-    fn default() -> Self {
-        Self { 
-            sensor_id: None,
-            verification_cache: None,
-            verification_result: None,
-        }
-    }
+    cache: Arc<Mutex<CacheState>>, // Shared cache from root context
 }
 
 impl Context for SensorVerificationFilter {
@@ -128,8 +140,10 @@ impl Context for SensorVerificationFilter {
                 
                 // Update cache with verification result and current timestamp
                 let current_time = self.get_current_time();
-                self.verification_cache = Some((sensor_id.clone(), current_time));
-                self.verification_result = Some(verified);
+                if let Ok(mut cache) = self.cache.lock() {
+                    cache.verification_cache = Some((sensor_id.clone(), current_time));
+                    cache.verification_result = Some(verified);
+                }
                 
                 if verified {
                     // Verification successful - resume request
@@ -244,30 +258,44 @@ impl HttpContext for SensorVerificationFilter {
         let cache_ttl = Duration::from_secs(15);
         let current_time = self.get_current_time();
         
-        let should_verify = match &self.verification_cache {
-            Some((cached_sensor_id, cached_timestamp)) => {
-                if cached_sensor_id == &sensor_id {
-                    // Calculate cache age
-                    let cache_age = current_time.duration_since(*cached_timestamp)
-                        .unwrap_or(Duration::from_secs(0));
-                    let cache_age_seconds = cache_age.as_secs();
-                    
-                    if cache_age < cache_ttl {
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Using cached verification for sensor_id: {} (age: {}s, TTL: 15s)", sensor_id, cache_age_seconds));
-                        false // Use cached result
-                    } else {
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache expired for sensor_id: {} (age: {}s, TTL: 15s), re-verifying", sensor_id, cache_age_seconds));
-                        true // Cache expired, need to verify
-                    }
-                } else {
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Different sensor_id: {} (cached: {}), verifying", sensor_id, cached_sensor_id));
-                    true // Different sensor_id, need to verify
+        // Access shared cache from root context
+        let (should_verify, cached_verified) = {
+            let cache_guard = match self.cache.lock() {
+                Ok(guard) => guard,
+                Err(_) => {
+                    proxy_wasm::hostcalls::log(LogLevel::Warn, "Failed to lock cache, will verify");
+                    return Action::Pause;
                 }
-            }
-            None => {
-                proxy_wasm::hostcalls::log(LogLevel::Info, &format!("No cache for sensor_id: {}, verifying", sensor_id));
-                true // No cache, need to verify
-            }
+            };
+            
+            let should_verify = match &cache_guard.verification_cache {
+                Some((cached_sensor_id, cached_timestamp)) => {
+                    if cached_sensor_id == &sensor_id {
+                        // Calculate cache age
+                        let cache_age = current_time.duration_since(*cached_timestamp)
+                            .unwrap_or(Duration::from_secs(0));
+                        let cache_age_seconds = cache_age.as_secs();
+                        
+                        if cache_age < cache_ttl {
+                            proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Using cached verification for sensor_id: {} (age: {}s, TTL: 15s)", sensor_id, cache_age_seconds));
+                            false // Use cached result
+                        } else {
+                            proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache expired for sensor_id: {} (age: {}s, TTL: 15s), re-verifying", sensor_id, cache_age_seconds));
+                            true // Cache expired, need to verify
+                        }
+                    } else {
+                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Different sensor_id: {} (cached: {}), verifying", sensor_id, cached_sensor_id));
+                        true // Different sensor_id, need to verify
+                    }
+                }
+                None => {
+                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("No cache for sensor_id: {}, verifying", sensor_id));
+                    true // No cache, need to verify
+                }
+            };
+            
+            let cached_verified = cache_guard.verification_result;
+            (should_verify, cached_verified)
         };
         
         if should_verify {
@@ -309,7 +337,7 @@ impl HttpContext for SensorVerificationFilter {
             }
         } else {
             // Use cached verification result - allow request
-            if let Some(verified) = self.verification_result {
+            if let Some(verified) = cached_verified {
                 if verified {
                     proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Extracted sensor_id: {} (using cached verification result: verified)", sensor_id));
                     Action::Continue

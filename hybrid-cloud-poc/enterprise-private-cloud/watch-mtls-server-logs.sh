@@ -53,9 +53,17 @@ CONNECTION_COUNT=0
 # Count existing events (only recent ones to avoid counting old logs)
 if [ -f "$LOG_FILE" ]; then
     # Get file size and only count from last 1000 lines to avoid processing huge old logs
-    REQUEST_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'HTTP GET\|HTTP POST' || echo "0")
-    RESPONSE_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'Responded to client.*HTTP 200' || echo "0")
-    CONNECTION_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'New TLS client connected\|Client.*connected from' || echo "0")
+    REQUEST_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'HTTP GET\|HTTP POST' 2>/dev/null || echo "0")
+    RESPONSE_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'Responded to client.*HTTP 200' 2>/dev/null || echo "0")
+    CONNECTION_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'New TLS client connected\|Client.*connected from' 2>/dev/null || echo "0")
+    # Ensure all counts are numeric (handle empty strings and strip whitespace)
+    REQUEST_COUNT=$(echo "${REQUEST_COUNT:-0}" | tr -d '[:space:]')
+    RESPONSE_COUNT=$(echo "${RESPONSE_COUNT:-0}" | tr -d '[:space:]')
+    CONNECTION_COUNT=$(echo "${CONNECTION_COUNT:-0}" | tr -d '[:space:]')
+    # Default to 0 if still empty or non-numeric
+    [ -z "$REQUEST_COUNT" ] && REQUEST_COUNT=0
+    [ -z "$RESPONSE_COUNT" ] && RESPONSE_COUNT=0
+    [ -z "$CONNECTION_COUNT" ] && CONNECTION_COUNT=0
 fi
 
 echo -e "${CYAN}Current counts (from recent logs):${NC}"
