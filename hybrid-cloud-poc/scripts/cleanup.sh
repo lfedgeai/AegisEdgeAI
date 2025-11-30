@@ -290,8 +290,9 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
     
-    # Step 4: Clean up all log files
-    echo "  4. Removing log files..."
+    # Step 4: Clean up all log files and temporary files
+    echo "  4. Removing log files and temporary files..."
+    # Standard log files
     rm -f /tmp/keylime-test.log 2>/dev/null || true
     rm -f /tmp/keylime-verifier.log 2>/dev/null || true
     rm -f /tmp/keylime-registrar.log 2>/dev/null || true
@@ -301,14 +302,45 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/spire-agent.log 2>/dev/null || true
     rm -f /tmp/spire-agent-test.log 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
+    rm -f /tmp/mobile-sensor-microservice.log 2>/dev/null || true
+    rm -f /tmp/mobile-sensor.log 2>/dev/null || true
+    rm -f /tmp/mtls-server.log 2>/dev/null || true
+    rm -f /tmp/mtls-server-app.log 2>/dev/null || true
+    rm -f /tmp/mtls-client-app.log 2>/dev/null || true
+    # Envoy logs
+    rm -f /opt/envoy/logs/envoy.log 2>/dev/null || true
+    rm -f /opt/envoy/logs/*.log 2>/dev/null || true
+    # Phase/workflow log files
     rm -f /tmp/bundle.pem 2>/dev/null || true
+    rm -f /tmp/spire-bundle.pem 2>/dev/null || true
     rm -f /tmp/phase3_complete_workflow_logs.txt 2>/dev/null || true
     rm -f /tmp/phase3_*.log 2>/dev/null || true
     rm -f /tmp/test_phase3_*.log 2>/dev/null || true
-    rm -f /tmp/mobile-sensor-microservice.log 2>/dev/null || true
-    # Clean up temporary config files
+    # Old backup and temporary files
+    rm -f /tmp/*.log.old 2>/dev/null || true
+    rm -f /tmp/*.log.bak 2>/dev/null || true
+    rm -f /tmp/*.pid.old 2>/dev/null || true
+    rm -f /tmp/*.pid.bak 2>/dev/null || true
+    # Temporary config files
     rm -f /tmp/keylime-agent-*.conf 2>/dev/null || true
     rm -f /tmp/*.conf.tmp 2>/dev/null || true
+    rm -f /tmp/*.conf.old 2>/dev/null || true
+    rm -f /tmp/*.conf.bak 2>/dev/null || true
+    # Old WASM artifacts
+    rm -f /opt/envoy/plugins/*.wasm.old 2>/dev/null || true
+    rm -f /opt/envoy/plugins/*.wasm.bak 2>/dev/null || true
+    # Old certificate backups
+    rm -f /opt/envoy/certs/*.pem.old 2>/dev/null || true
+    rm -f /opt/envoy/certs/*.pem.bak 2>/dev/null || true
+    rm -f /tmp/*.pem.old 2>/dev/null || true
+    rm -f /tmp/*.pem.bak 2>/dev/null || true
+    # Old environment files
+    rm -f /etc/mobile-sensor-service.env.old 2>/dev/null || true
+    rm -f /etc/mobile-sensor-service.env.bak 2>/dev/null || true
+    # Python cache and temporary files
+    find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
+    find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
+    find /tmp -name "*.tmp" -type f 2>/dev/null | grep -E "(keylime|spire|tpm|mobile)" | xargs rm -f 2>/dev/null || true
     
     # Step 5: Clean up sockets
     echo "  5. Removing socket files..."
