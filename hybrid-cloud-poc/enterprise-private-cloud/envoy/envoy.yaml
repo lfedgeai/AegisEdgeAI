@@ -41,6 +41,12 @@ static_resources:
             subject: true
             cert: true
             chain: true
+          common_http_protocol_options:
+            idle_timeout: 300s  # Keep connections alive for 5 minutes
+            max_connection_duration: 3600s  # Max connection lifetime: 1 hour
+          http_protocol_options:
+            accept_http_10: true  # Accept HTTP/1.0 for compatibility
+          delayed_close_timeout: 1s  # Graceful connection closure
           access_log:
           - name: envoy.access_loggers.stdout
             typed_config:
