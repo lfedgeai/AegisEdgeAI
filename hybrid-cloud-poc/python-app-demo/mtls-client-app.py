@@ -536,6 +536,8 @@ class SPIREmTLSClient:
                                 )
                             # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
                             self._reconnect_due_to_renewal = True
+                            # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
+                            self._reconnect_due_to_renewal = True
                             # Close current connection to force reconnection with refreshed cert
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
