@@ -525,8 +525,14 @@ class SPIREmTLSClient:
                         current_svid = self.source.svid
                         if current_svid:
                             self.last_svid_serial = current_svid.leaf.serial_number
-                    except Exception:
-                        pass  # Ignore errors, will be caught on next renewal check
+                            # Log the serial we're tracking to help debug
+                            self.log(f"  🔧 Tracking SVID serial: {self.last_svid_serial}")
+                    except Exception as e:
+                        self.log(f"  ⚠️  Error updating serial after reconnect: {e}")
+                
+                # Skip renewal checks for the first 20 messages after reconnect to ensure
+                # we send traffic even if a renewal happened during reconnect
+                messages_since_reconnect = 0
                 
                 while self.running:
                     try:
@@ -538,12 +544,13 @@ class SPIREmTLSClient:
                         
                         # Increment message counter first (before sending)
                         message_num += 1
+                        messages_since_reconnect += 1
                         self.message_count += 1
                         
                         # Check for renewal periodically (but not on every iteration to avoid blocking)
-                        # Only check every 10 messages, and skip check on first message after reconnect
-                        # to avoid immediately detecting a renewal that happened during reconnect
-                        if message_num > 1 and message_num % 10 == 0:
+                        # Skip renewal checks for first 20 messages after reconnect to ensure traffic flows
+                        # even if a renewal happened during the reconnect process
+                        if messages_since_reconnect > 20 and message_num % 10 == 0:
                             if self.check_renewal():
                                 # Renewal detected during active connection
                                 if self.renewal_count > self.last_logged_renewal_id:
