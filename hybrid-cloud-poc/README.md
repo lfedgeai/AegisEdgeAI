@@ -74,6 +74,8 @@ cd enterprise-private-cloud
 
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+# Clean up old client log file
+rm -f /tmp/mtls-client-app.log
 export CLIENT_USE_SPIRE="true"
 export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
 export SERVER_HOST="10.1.0.10"  # Envoy on on-prem
