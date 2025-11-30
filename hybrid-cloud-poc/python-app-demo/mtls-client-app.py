@@ -526,52 +526,54 @@ class SPIREmTLSClient:
                             time.sleep(0.5)
                             break  # Exit inner loop to reconnect
                         
-                        # Check for renewal periodically
-                        if self.check_renewal():
-                            # Renewal detected during active connection
-                            if self.renewal_count > self.last_logged_renewal_id:
-                                self.last_logged_renewal_id = self.renewal_count
-                                self.log(
-                                    f"SVID renewed #{self.renewal_count} during active connection; "
-                                    "closing and reconnecting with new certificate"
-                                )
-                            # Mark that reconnection is due to renewal (will be logged on reconnect)
-                            self._reconnect_due_to_renewal = True
-                            # Mark connection as inactive - block all traffic
-                            connection_active = False
-                            # Close current connection to force reconnection with new cert
-                            try:
-                                tls_socket.shutdown(socket.SHUT_RDWR)
-                            except:
-                                pass
-                            try:
-                                tls_socket.close()
-                            except:
-                                pass
-                            break  # Exit inner loop to reconnect
-                        # Also check if SVID expired during active connection
-                        elif self.check_svid_expired():
-                            # SVID expired during active connection - close and refresh
-                            if self.renewal_count > self.last_logged_renewal_id:
-                                self.last_logged_renewal_id = self.renewal_count
-                                self.log(
-                                    f"SVID expired during active connection; "
-                                    "closing and reconnecting with refreshed certificate"
-                                )
-                            # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
-                            self._reconnect_due_to_renewal = True
-                            # Mark connection as inactive - block all traffic
-                            connection_active = False
-                            # Close current connection to force reconnection with refreshed cert
-                            try:
-                                tls_socket.shutdown(socket.SHUT_RDWR)
-                            except:
-                                pass
-                            try:
-                                tls_socket.close()
-                            except:
-                                pass
-                            break  # Exit inner loop to reconnect
+                        # Check for renewal periodically (but not on every iteration to avoid blocking)
+                        # Only check every 10 messages to avoid excessive checks
+                        if message_num % 10 == 0:
+                            if self.check_renewal():
+                                # Renewal detected during active connection
+                                if self.renewal_count > self.last_logged_renewal_id:
+                                    self.last_logged_renewal_id = self.renewal_count
+                                    self.log(
+                                        f"SVID renewed #{self.renewal_count} during active connection; "
+                                        "closing and reconnecting with new certificate"
+                                    )
+                                # Mark that reconnection is due to renewal (will be logged on reconnect)
+                                self._reconnect_due_to_renewal = True
+                                # Mark connection as inactive - block all traffic
+                                connection_active = False
+                                # Close current connection to force reconnection with new cert
+                                try:
+                                    tls_socket.shutdown(socket.SHUT_RDWR)
+                                except:
+                                    pass
+                                try:
+                                    tls_socket.close()
+                                except:
+                                    pass
+                                break  # Exit inner loop to reconnect
+                            # Also check if SVID expired during active connection
+                            elif self.check_svid_expired():
+                                # SVID expired during active connection - close and refresh
+                                if self.renewal_count > self.last_logged_renewal_id:
+                                    self.last_logged_renewal_id = self.renewal_count
+                                    self.log(
+                                        f"SVID expired during active connection; "
+                                        "closing and reconnecting with refreshed certificate"
+                                    )
+                                # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
+                                self._reconnect_due_to_renewal = True
+                                # Mark connection as inactive - block all traffic
+                                connection_active = False
+                                # Close current connection to force reconnection with refreshed cert
+                                try:
+                                    tls_socket.shutdown(socket.SHUT_RDWR)
+                                except:
+                                    pass
+                                try:
+                                    tls_socket.close()
+                                except:
+                                    pass
+                                break  # Exit inner loop to reconnect
                         
                         message_num += 1
                         self.message_count += 1
