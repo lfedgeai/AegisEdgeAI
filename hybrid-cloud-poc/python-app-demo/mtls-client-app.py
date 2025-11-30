@@ -485,14 +485,20 @@ class SPIREmTLSClient:
                     else:
                         self.log(f"  ℹ Server certificate type: {server_cert_type} (matches client mode)")
                 
-                # DEMO: Show successful connection (especially after renewal)
-                # Only show "reconnected" message if this is actually a reconnection
-                # (i.e., we had a previous connection that was closed)
-                if self.had_previous_connection:
-                    self.log("  ✓ Reconnected to server successfully (renewal blip resolved)")
-                    self.had_previous_connection = False  # Reset after logging
-                else:
+                # Log connection only on first connection or after actual errors
+                # For normal connection closures, silently reconnect (stable behavior)
+                if not hasattr(self, '_first_connection_logged'):
                     self.log("✓ Connected to server")
+                    self._first_connection_logged = True
+                elif self.had_previous_connection:
+                    # Only log reconnection if it was due to an actual error (not normal closure)
+                    # This happens for renewal blips or connection failures
+                    if self.renewal_count > 0:
+                        self.log("  ✓ Reconnected to server (renewal resolved)")
+                    else:
+                        self.log("  ✓ Reconnected to server")
+                    self.had_previous_connection = False  # Reset after logging
+                # Otherwise, silently reconnect (normal connection closure)
                 
                 # Send periodic messages
                 message_num = 0
@@ -680,7 +686,9 @@ class SPIREmTLSClient:
                                     f"{err_str[:120]}"
                                 )
                             is_actual_error = True  # Renewal-related errors are always actual errors
-                        else:
+                        elif is_actual_error:
+                            # Only log connection errors if we didn't get a response
+                            # (silent reconnect if we got a response - normal closure)
                             self.log(f"Connection error: {err_str}")
                         self.reconnect_count += 1
                         if is_actual_error:
