@@ -50,6 +50,8 @@ class SPIREmTLSClient:
         self.last_logged_renewal_id = 0
         # Track if we had a previous connection (for reconnection logging)
         self.had_previous_connection = False
+        # Track if we've logged the first connection (for stable reconnection behavior)
+        self._first_connection_logged = False
         
         # Certificate mode configuration
         if use_spire is None:
@@ -487,7 +489,7 @@ class SPIREmTLSClient:
                 
                 # Log connection only on first connection or after actual errors
                 # For normal connection closures, silently reconnect (stable behavior)
-                if not hasattr(self, '_first_connection_logged'):
+                if not self._first_connection_logged:
                     self.log("✓ Connected to server")
                     self._first_connection_logged = True
                 elif self.had_previous_connection:
