@@ -491,6 +491,9 @@ class SPIREmTLSClient:
                 if not self._first_connection_logged:
                     self.log("✓ Connected to server")
                     self._first_connection_logged = True
+                    # Reset server cert check flag for new connection
+                    if hasattr(self, '_server_cert_checked'):
+                        delattr(self, '_server_cert_checked')
                 # All other connections (reconnections) are silent for stability
                 
                 # Send periodic messages
