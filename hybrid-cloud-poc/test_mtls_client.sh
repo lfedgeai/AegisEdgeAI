@@ -21,8 +21,16 @@ echo "mTLS Client Test Script"
 echo "=========================================="
 echo ""
 
-# Step 1: Clean up log files
-echo -e "${YELLOW}Cleaning up log files...${NC}"
+# Step 1: Clean up existing processes and log files
+echo -e "${YELLOW}Cleaning up existing processes and log files...${NC}"
+# Kill any existing mTLS client processes
+if pkill -f mtls-client-app.py 2>/dev/null; then
+    sleep 1  # Give processes time to exit
+    echo -e "${GREEN}✓ Killed existing mTLS client processes${NC}"
+else
+    echo -e "${GREEN}✓ No existing mTLS client processes found${NC}"
+fi
+# Clean up log files
 rm -f /tmp/mtls-client-app.log
 echo -e "${GREEN}✓ Log files cleaned${NC}"
 echo ""
