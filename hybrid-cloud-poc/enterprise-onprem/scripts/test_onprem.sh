@@ -515,11 +515,21 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     if [ -f "mtls-server-app.py" ]; then
         export SERVER_USE_SPIRE="false"
         export SERVER_PORT="9443"
-        # Use combined CA bundle if available, otherwise fall back to spire-bundle
+        # Always use combined CA bundle if it exists (created earlier in the script)
+        # This allows backend to trust both SPIRE clients and Envoy proxy
         if [ -f "/opt/envoy/certs/combined-ca-bundle.pem" ]; then
             export CA_CERT_PATH="/opt/envoy/certs/combined-ca-bundle.pem"
+            printf '    Using combined CA bundle: /opt/envoy/certs/combined-ca-bundle.pem\n'
+        elif [ -f "/opt/envoy/certs/spire-bundle.pem" ] && [ -f "/opt/envoy/certs/envoy-cert.pem" ]; then
+            # Create combined bundle on-the-fly if it doesn't exist
+            sudo sh -c "cat /opt/envoy/certs/spire-bundle.pem /opt/envoy/certs/envoy-cert.pem > /opt/envoy/certs/combined-ca-bundle.pem"
+            sudo chmod 644 /opt/envoy/certs/combined-ca-bundle.pem
+            export CA_CERT_PATH="/opt/envoy/certs/combined-ca-bundle.pem"
+            printf '    Created and using combined CA bundle: /opt/envoy/certs/combined-ca-bundle.pem\n'
         else
+            # Fallback to spire-bundle only if combined can't be created
             export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
+            printf '    [WARN] Using spire-bundle.pem only (Envoy cert not available)\n'
         fi
         python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
         MTLS_PID=$!
