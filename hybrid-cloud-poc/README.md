@@ -116,19 +116,22 @@ For monitoring logs during a demo, use the watch scripts:
 
 **Option 1: Individual terminal windows**
 ```bash
+cd enterprise-onprem
+
 # Terminal 1 - Envoy logs
-./scripts/watch-envoy-logs.sh
+./watch-envoy-logs.sh
 
 # Terminal 2 - mTLS server logs
-./scripts/watch-mtls-server-logs.sh
+./watch-mtls-server-logs.sh
 
 # Terminal 3 - Mobile sensor service logs
-./scripts/watch-mobile-sensor-logs.sh
+./watch-mobile-sensor-logs.sh
 ```
 
 **Option 2: Single tmux session (all logs in one window)**
 ```bash
-./scripts/watch-all-logs.sh
+cd enterprise-onprem
+./watch-all-logs.sh
 ```
 
 This creates a tmux session with 3 panes showing all logs simultaneously.

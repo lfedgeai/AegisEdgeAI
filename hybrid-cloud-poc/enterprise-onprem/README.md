@@ -240,7 +240,33 @@ All logs are on 10.1.0.10:
 - **Backend mTLS Server**: `/tmp/mtls-server.log`
 - **Mobile Location Service**: `/tmp/mobile-sensor.log`
 
-### View All Logs Simultaneously
+### Watch Logs During Demo
+
+Use the provided watch scripts for easy log monitoring:
+
+**Option 1: Individual terminal windows**
+```bash
+cd enterprise-onprem
+
+# Terminal 1 - Envoy logs
+./watch-envoy-logs.sh
+
+# Terminal 2 - mTLS server logs
+./watch-mtls-server-logs.sh
+
+# Terminal 3 - Mobile sensor service logs
+./watch-mobile-sensor-logs.sh
+```
+
+**Option 2: Single tmux session (all logs in one window)**
+```bash
+cd enterprise-onprem
+./watch-all-logs.sh
+```
+
+This creates a tmux session with 3 panes showing all logs simultaneously.
+
+### View All Logs Simultaneously (Manual)
 
 ```bash
 # Terminal 1: Envoy
