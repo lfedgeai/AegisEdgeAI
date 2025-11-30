@@ -439,10 +439,36 @@ class SPIREmTLSClient:
         """Connect to server and send periodic messages."""
         self.log(f"Connecting to {self.server_host}:{self.server_port}...")
         
+        # Track if we just reconnected due to renewal to avoid immediate re-detection
+        just_reconnected_due_to_renewal = False
+        
         while self.running:
             try:
-                # Check for renewal before connecting
-                if self.check_renewal():
+                # If we just reconnected due to renewal, update serial and skip renewal check
+                # to prevent infinite reconnect loops
+                if just_reconnected_due_to_renewal:
+                    if self.use_spire and self.source:
+                        try:
+                            current_svid = self.source.svid
+                            if current_svid:
+                                self.last_svid_serial = current_svid.leaf.serial_number
+                        except Exception:
+                            pass
+                    just_reconnected_due_to_renewal = False
+                    # Skip renewal check on this iteration - go straight to connecting
+                else:
+                    # Update serial before checking for renewal to avoid detecting the same renewal twice
+                    if self.use_spire and self.source:
+                        try:
+                            current_svid = self.source.svid
+                            if current_svid and not self.last_svid_serial:
+                                # Initialize serial if not set
+                                self.last_svid_serial = current_svid.leaf.serial_number
+                        except Exception:
+                            pass
+                    
+                    # Check for renewal before connecting
+                    if self.check_renewal():
                     # DEMO: Show TLS context recreation
                     self.log("  🔧 Recreating TLS context with renewed SVID...")
                     # Mark that reconnection is due to renewal (will be logged on reconnect)
@@ -520,12 +546,13 @@ class SPIREmTLSClient:
                 
                 # Update last_svid_serial immediately after reconnection to avoid detecting
                 # the renewal we just handled (or a renewal that happened during reconnect)
+                # This is critical to prevent infinite reconnect loops
                 if self.use_spire and self.source:
                     try:
                         current_svid = self.source.svid
                         if current_svid:
                             self.last_svid_serial = current_svid.leaf.serial_number
-                    except Exception as e:
+                    except Exception:
                         pass  # Ignore errors, will be caught on next renewal check
                 
                 # Skip renewal checks for the first 20 messages after reconnect to ensure
