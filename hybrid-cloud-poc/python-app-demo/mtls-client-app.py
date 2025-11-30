@@ -556,6 +556,7 @@ class SPIREmTLSClient:
                         tls_socket.sendall(http_request.encode('utf-8'))
                         
                         # Receive HTTP response
+                        response_received = False
                         try:
                             response_data = b""
                             connection_closed_by_server = False
@@ -593,9 +594,11 @@ class SPIREmTLSClient:
                                     if content_length > 0:
                                         body_received = len(response_data) - body_start
                                         if body_received >= content_length:
+                                            response_received = True
                                             break
                                     else:
                                         # No Content-Length, assume response is complete
+                                        response_received = True
                                         break
                                     
                                     # If server sent Connection: close, mark for reconnection
@@ -631,16 +634,24 @@ class SPIREmTLSClient:
                                         f"TLS error during SVID renewal (will reconnect): "
                                         f"{err_str[:120]}"
                                     )
+                                self.had_previous_connection = True  # Actual error/renewal
                                 raise  # Reconnect
                             else:
+                                self.had_previous_connection = True  # Actual error
                                 raise
                         except (ConnectionError, BrokenPipeError) as e:
-                            # DEMO: Show connection closure (may be due to renewal)
-                            if "renewal" in str(e).lower() or self.renewal_count > 0:
-                                self.log(f"  ⚠️  Connection closed (renewal blip): {e}")
+                            # Only set had_previous_connection if we didn't receive a complete response
+                            # If we got a complete response, this is just normal connection closure
+                            if not response_received:
+                                # DEMO: Show connection closure (may be due to renewal)
+                                if "renewal" in str(e).lower() or self.renewal_count > 0:
+                                    self.log(f"  ⚠️  Connection closed (renewal blip): {e}")
+                                else:
+                                    self.log(f"Connection closed before response: {e}")
+                                self.had_previous_connection = True  # Actual error - no response received
                             else:
-                                self.log(f"Connection closed: {e}")
-                            self.had_previous_connection = True
+                                # Normal closure after successful response
+                                self.log("  ℹ Connection closed by server (normal closure after response)")
                             raise  # Reconnect
                         
                         # Wait before next message
