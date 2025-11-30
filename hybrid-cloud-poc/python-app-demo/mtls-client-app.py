@@ -563,7 +563,23 @@ class SPIREmTLSClient:
                             f"\r\n"
                         )
                         self.log(f"📤 Sending HTTP request: {message}")
-                        tls_socket.sendall(http_request.encode('utf-8'))
+                        try:
+                            tls_socket.sendall(http_request.encode('utf-8'))
+                        except (ssl.SSLError, ConnectionError, BrokenPipeError) as e:
+                            # EOF or connection error during send - connection likely closed by server
+                            # This is often normal (server closes idle connections) - silent reconnect
+                            err_str = str(e)
+                            is_eof_error = "EOF" in err_str or "eof" in err_str.lower()
+                            # Only log if it's clearly not a normal closure (not EOF)
+                            if not is_eof_error:
+                                self.log(f"Connection error during send: {err_str}")
+                            # Reconnect silently for EOF (normal closure)
+                            self.reconnect_count += 1
+                            try:
+                                tls_socket.close()
+                            except:
+                                pass
+                            break  # Reconnect
                         
                         # Receive HTTP response
                         response_received = False
@@ -689,12 +705,10 @@ class SPIREmTLSClient:
                                 # Mark that reconnection is due to renewal (will be logged on reconnect)
                                 self._reconnect_due_to_renewal = True
                             elif is_eof_error:
-                                # EOF errors are common and often normal - only log if it's a protocol violation
-                                # and we didn't get a response (actual error condition)
-                                if "violation" in err_str.lower():
-                                    # This is an actual protocol violation - log it
-                                    self.log(f"Connection error: {err_str}")
-                                # Otherwise, silent reconnect (normal EOF closure)
+                                # EOF errors are common and often normal (server closes connections)
+                                # Don't log them - they're usually just normal connection closures
+                                # Silent reconnect for all EOF errors
+                                pass
                             else:
                                 # Non-renewal, non-EOF error - log it
                                 self.log(f"Connection error: {err_str}")
