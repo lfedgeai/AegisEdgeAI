@@ -452,6 +452,8 @@ class SPIREmTLSClient:
                 elif self.check_svid_expired():
                     # SVID expired - refresh context proactively
                     self.log("  🔧 Recreating TLS context (SVID expired/expiring)...")
+                    # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
+                    self._reconnect_due_to_renewal = True
                     # Close old source if it exists to force fresh SVID fetch
                     if self.source:
                         try:
