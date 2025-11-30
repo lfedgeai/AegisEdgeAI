@@ -102,8 +102,33 @@ python3 mtls-client-app.py
 
 ## Logs
 
+### Log File Locations
+
 - SPIRE Server: `/tmp/spire-server.log`
 - SPIRE Agent: `/tmp/spire-agent.log`
 - Envoy: `/opt/envoy/logs/envoy.log`
 - mTLS Server: `/tmp/mtls-server.log`
 - Mobile Location Service: `/tmp/mobile-sensor.log`
+
+### Watch Logs During Demo
+
+For monitoring logs during a demo, use the watch scripts:
+
+**Option 1: Individual terminal windows**
+```bash
+# Terminal 1 - Envoy logs
+./scripts/watch-envoy-logs.sh
+
+# Terminal 2 - mTLS server logs
+./scripts/watch-mtls-server-logs.sh
+
+# Terminal 3 - Mobile sensor service logs
+./scripts/watch-mobile-sensor-logs.sh
+```
+
+**Option 2: Single tmux session (all logs in one window)**
+```bash
+./scripts/watch-all-logs.sh
+```
+
+This creates a tmux session with 3 panes showing all logs simultaneously.
