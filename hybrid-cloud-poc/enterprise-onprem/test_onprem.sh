@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ONPREM_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ONPREM_DIR="$SCRIPT_DIR"
 REPO_ROOT="$(cd "$ONPREM_DIR/.." && pwd)"
 
 # Verify paths

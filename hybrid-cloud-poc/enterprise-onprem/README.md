@@ -98,7 +98,7 @@ Run the setup script on 10.1.0.10:
 
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem
-./scripts/test_onprem.sh
+./test_onprem.sh
 ```
 
 The script will:
@@ -301,5 +301,5 @@ tail -f /tmp/mobile-sensor.log
 
 - `envoy/envoy.yaml` - Envoy proxy configuration with HTTP connection manager and WASM filter
 - `wasm-plugin/` - WASM filter with time-based caching and blocking verification
-- `scripts/test_onprem.sh` - Automated setup script with cleanup and auto-start
+- `test_onprem.sh` - Automated setup script with cleanup and auto-start
 
