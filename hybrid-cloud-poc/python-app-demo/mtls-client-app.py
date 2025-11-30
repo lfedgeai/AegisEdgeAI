@@ -52,6 +52,8 @@ class SPIREmTLSClient:
         self.had_previous_connection = False
         # Track if we've logged the first connection (for stable reconnection behavior)
         self._first_connection_logged = False
+        # Track if there was a recent renewal that caused reconnection
+        self._recent_renewal_reconnect = False
         
         # Certificate mode configuration
         if use_spire is None:
@@ -495,8 +497,9 @@ class SPIREmTLSClient:
                 elif self.had_previous_connection:
                     # Only log reconnection if it was due to an actual error (not normal closure)
                     # This happens for renewal blips or connection failures
-                    if self.renewal_count > 0:
+                    if self._recent_renewal_reconnect:
                         self.log("  ✓ Reconnected to server (renewal resolved)")
+                        self._recent_renewal_reconnect = False  # Reset after logging
                     else:
                         self.log("  ✓ Reconnected to server")
                     self.had_previous_connection = False  # Reset after logging
@@ -518,6 +521,7 @@ class SPIREmTLSClient:
                                 )
                             # Close current connection to force reconnection with new cert
                             self.had_previous_connection = True
+                            self._recent_renewal_reconnect = True  # Mark as renewal-triggered reconnect
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -538,6 +542,7 @@ class SPIREmTLSClient:
                                 )
                             # Close current connection to force reconnection with refreshed cert
                             self.had_previous_connection = True
+                            self._recent_renewal_reconnect = True  # Mark as renewal-triggered reconnect
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -646,6 +651,7 @@ class SPIREmTLSClient:
                                         f"{err_str[:120]}"
                                     )
                                 self.had_previous_connection = True  # Actual error/renewal
+                                self._recent_renewal_reconnect = True  # Mark as renewal-triggered reconnect
                                 raise  # Reconnect
                             else:
                                 self.had_previous_connection = True  # Actual error
@@ -688,6 +694,7 @@ class SPIREmTLSClient:
                                     f"{err_str[:120]}"
                                 )
                             is_actual_error = True  # Renewal-related errors are always actual errors
+                            self._recent_renewal_reconnect = True  # Mark as renewal-triggered reconnect
                         elif is_actual_error:
                             # Only log connection errors if we didn't get a response
                             # (silent reconnect if we got a response - normal closure)
