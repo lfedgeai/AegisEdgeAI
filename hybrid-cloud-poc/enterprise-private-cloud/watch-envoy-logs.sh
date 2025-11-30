@@ -51,11 +51,20 @@ VERIFICATION_SUCCESS_COUNT=0
 VERIFICATION_FAIL_COUNT=0
 CACHE_HIT_COUNT=0
 
-# Count existing events
+# Count existing events (only recent ones to avoid counting old logs)
 if [ -f "$LOG_FILE" ]; then
-    VERIFICATION_SUCCESS_COUNT=$(grep -c 'Sensor verification successful' "$LOG_FILE" 2>/dev/null || echo "0")
-    VERIFICATION_FAIL_COUNT=$(grep -c 'Sensor verification failed' "$LOG_FILE" 2>/dev/null || echo "0")
-    CACHE_HIT_COUNT=$(grep -c 'Using cached verification' "$LOG_FILE" 2>/dev/null || echo "0")
+    # Get file size and only count from last 1000 lines to avoid processing huge old logs
+    VERIFICATION_SUCCESS_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'Sensor verification successful' 2>/dev/null || echo "0")
+    VERIFICATION_FAIL_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'Sensor verification failed' 2>/dev/null || echo "0")
+    CACHE_HIT_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'Using cached verification' 2>/dev/null || echo "0")
+    # Ensure all counts are numeric (handle empty strings and strip whitespace)
+    VERIFICATION_SUCCESS_COUNT=$(echo "${VERIFICATION_SUCCESS_COUNT:-0}" | tr -d '[:space:]')
+    VERIFICATION_FAIL_COUNT=$(echo "${VERIFICATION_FAIL_COUNT:-0}" | tr -d '[:space:]')
+    CACHE_HIT_COUNT=$(echo "${CACHE_HIT_COUNT:-0}" | tr -d '[:space:]')
+    # Default to 0 if still empty or non-numeric
+    [ -z "$VERIFICATION_SUCCESS_COUNT" ] && VERIFICATION_SUCCESS_COUNT=0
+    [ -z "$VERIFICATION_FAIL_COUNT" ] && VERIFICATION_FAIL_COUNT=0
+    [ -z "$CACHE_HIT_COUNT" ] && CACHE_HIT_COUNT=0
 fi
 
 echo -e "${CYAN}Current counts:${NC}"
