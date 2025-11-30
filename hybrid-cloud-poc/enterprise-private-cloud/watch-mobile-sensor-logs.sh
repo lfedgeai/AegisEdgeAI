@@ -51,11 +51,20 @@ VERIFICATION_SUCCESS_COUNT=0
 VERIFICATION_FAIL_COUNT=0
 CAMARA_CALL_COUNT=0
 
-# Count existing events
+# Count existing events (only recent ones to avoid counting old logs)
 if [ -f "$LOG_FILE" ]; then
-    VERIFICATION_SUCCESS_COUNT=$(grep -c 'Verification completed.*result=True' "$LOG_FILE" 2>/dev/null || echo "0")
-    VERIFICATION_FAIL_COUNT=$(grep -cE 'Verification completed.*result=False|ERROR.*verification|ERROR.*CAMARA' "$LOG_FILE" 2>/dev/null || echo "0")
-    CAMARA_CALL_COUNT=$(grep -c 'CAMARA.*API' "$LOG_FILE" 2>/dev/null || echo "0")
+    # Get file size and only count from last 1000 lines to avoid processing huge old logs
+    VERIFICATION_SUCCESS_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -c 'Verification completed.*result=True' 2>/dev/null || echo "0")
+    VERIFICATION_FAIL_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -cE 'Verification completed.*result=False|ERROR.*verification|ERROR.*CAMARA' 2>/dev/null || echo "0")
+    CAMARA_CALL_COUNT=$(tail -1000 "$LOG_FILE" 2>/dev/null | grep -cE 'CAMARA.*API|CAMARA authorize|CAMARA verify_location|CAMARA token' 2>/dev/null || echo "0")
+    # Ensure all counts are numeric (handle empty strings and strip whitespace)
+    VERIFICATION_SUCCESS_COUNT=$(echo "${VERIFICATION_SUCCESS_COUNT:-0}" | tr -d '[:space:]')
+    VERIFICATION_FAIL_COUNT=$(echo "${VERIFICATION_FAIL_COUNT:-0}" | tr -d '[:space:]')
+    CAMARA_CALL_COUNT=$(echo "${CAMARA_CALL_COUNT:-0}" | tr -d '[:space:]')
+    # Default to 0 if still empty or non-numeric
+    [ -z "$VERIFICATION_SUCCESS_COUNT" ] && VERIFICATION_SUCCESS_COUNT=0
+    [ -z "$VERIFICATION_FAIL_COUNT" ] && VERIFICATION_FAIL_COUNT=0
+    [ -z "$CAMARA_CALL_COUNT" ] && CAMARA_CALL_COUNT=0
 fi
 
 echo -e "${CYAN}Current counts:${NC}"
