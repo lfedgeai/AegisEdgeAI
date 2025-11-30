@@ -50,6 +50,8 @@ class SPIREmTLSClient:
         self.last_logged_renewal_id = 0
         # Track if we've logged the first connection (for stable reconnection behavior)
         self._first_connection_logged = False
+        # Track if reconnection is due to renewal (should be logged)
+        self._reconnect_due_to_renewal = False
         
         # Certificate mode configuration
         if use_spire is None:
@@ -487,13 +489,15 @@ class SPIREmTLSClient:
                             self.log(f"  ℹ Server certificate type: {server_cert_type} (matches client mode)")
                     self._server_cert_logged = True
                 
-                # Log connection only on first connection
-                # For all subsequent connections (including reconnections), reconnect silently
-                # This provides stable behavior - connection closures are normal HTTP behavior
+                # Log connection appropriately
                 if not self._first_connection_logged:
                     self.log("✓ Connected to server")
                     self._first_connection_logged = True
-                # All other connections (reconnections) are silent for stability
+                elif self._reconnect_due_to_renewal:
+                    # Log reconnection when it's due to certificate renewal (important event)
+                    self.log("  ✓ Reconnected to server (certificate renewal)")
+                    self._reconnect_due_to_renewal = False  # Reset after logging
+                # All other reconnections (normal connection closures) are silent for stability
                 
                 # Send periodic messages
                 message_num = 0
@@ -529,8 +533,9 @@ class SPIREmTLSClient:
                                     f"SVID expired during active connection; "
                                     "closing and reconnecting with refreshed certificate"
                                 )
+                            # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
+                            self._reconnect_due_to_renewal = True
                             # Close current connection to force reconnection with refreshed cert
-                            # Silent reconnect - expiration is already logged above
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -539,7 +544,7 @@ class SPIREmTLSClient:
                                 tls_socket.close()
                             except:
                                 pass
-                            break  # Exit inner loop to reconnect (silent)
+                            break  # Exit inner loop to reconnect
                         
                         message_num += 1
                         self.message_count += 1
