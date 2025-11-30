@@ -496,6 +496,7 @@ class SPIREmTLSClient:
                 
                 # Send periodic messages
                 message_num = 0
+                last_response_received = False  # Track if last request got a response
                 while self.running:
                     try:
                         # Check for renewal periodically
@@ -613,12 +614,14 @@ class SPIREmTLSClient:
                                     self.log(f"📥 Received HTTP response: {body.strip()}")
                                 else:
                                     self.log(f"📥 Received: {response_text[:200]}")
+                                last_response_received = True  # Successfully received response
                             
                             # If server closed connection, break to reconnect
                             # Note: Don't set had_previous_connection here - this is normal HTTP behavior
                             # Only set it for actual errors or renewals
                             if connection_closed_by_server:
                                 self.log("  ℹ Server closed connection (Connection: close or socket closed)")
+                                last_response_received = True  # We got a response before closure
                                 try:
                                     tls_socket.close()
                                 except:
@@ -660,6 +663,10 @@ class SPIREmTLSClient:
                     except (ssl.SSLError, ConnectionError, BrokenPipeError) as e:
                         # Reconnection due to error (possibly renewal-related)
                         err_str = str(e)
+                        # Only set had_previous_connection if we didn't receive a response
+                        # If we got a response, the error might be during cleanup, not a real error
+                        is_actual_error = not last_response_received
+                        
                         if self.renewal_count > 0 and (
                             "certificate" in err_str.lower()
                             or "renewal" in err_str.lower()
@@ -672,10 +679,13 @@ class SPIREmTLSClient:
                                     f"Renewal blip: reconnecting after TLS error: "
                                     f"{err_str[:120]}"
                                 )
+                            is_actual_error = True  # Renewal-related errors are always actual errors
                         else:
                             self.log(f"Connection error: {err_str}")
                         self.reconnect_count += 1
-                        self.had_previous_connection = True
+                        if is_actual_error:
+                            self.had_previous_connection = True
+                        last_response_received = False  # Reset for next connection
                         try:
                             tls_socket.close()
                         except:
@@ -683,7 +693,7 @@ class SPIREmTLSClient:
                         break  # Reconnect
                     except Exception as e:
                         self.log(f"Error in communication: {e}")
-                        self.had_previous_connection = True
+                        self.had_previous_connection = True  # Always an error
                         try:
                             tls_socket.close()
                         except:
