@@ -23,5 +23,5 @@ if [ ! -f "$LOG_FILE" ]; then
     echo "Log file created, starting to watch..."
 fi
 
-tail -f "$LOG_FILE" | grep -E --line-buffered "TPM Plugin|SovereignAttestation|TPM Quote|certificate|Agent SVID|Workload|Unified-Identity|attest|python-app|BatchNewX509SVID" || tail -f "$LOG_FILE"
+tail -f "$LOG_FILE" | grep -E --line-buffered "TPM Plugin|SovereignAttestation|TPM Quote|certificate|Agent SVID|Workload|Unified-Identity|attest|python-app|BatchNewX509SVID"
 
