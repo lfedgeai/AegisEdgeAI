@@ -391,6 +391,7 @@ def create_app(db_path: Path) -> Flask:
                     if response_body:
                         LOG.error("CAMARA response body: %s", response_body)
                     LOG.error("This usually means invalid CAMARA credentials. Set CAMARA_BYPASS=true for testing.")
+                    return jsonify({"error": "camara_authentication_failed", "status_code": 401}), 401
                 elif status_code == 400:
                     LOG.error("CAMARA bad request (400): %s", http_err)
                     if response_body:
