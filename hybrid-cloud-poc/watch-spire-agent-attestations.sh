@@ -23,9 +23,9 @@ if [ ! -f "$LOG_FILE" ]; then
     echo "Log file created, starting to watch..."
 fi
 
-# Count successful reattestations
+# Initialize reattestation count
 REATTEST_COUNT=$(grep -c 'level=info msg="Successfully reattested node"' "$LOG_FILE" 2>/dev/null || echo "0")
-echo "Current reattestation count: $REATTEST_COUNT"
+echo "Initial reattestation count: $REATTEST_COUNT"
 echo "=========================================="
 echo ""
 
@@ -33,11 +33,12 @@ echo ""
 tail -f "$LOG_FILE" | while IFS= read -r line; do
     # Check if this line matches our filter
     if echo "$line" | grep -qE "TPM Plugin|SovereignAttestation|TPM Quote|certificate|Agent SVID|Workload|Unified-Identity|attest|python-app|BatchNewX509SVID"; then
-        echo "$line"
-        # If this is a reattestation message, update and show count
+        # If this is a reattestation message, update count first
         if echo "$line" | grep -q 'level=info msg="Successfully reattested node"'; then
             REATTEST_COUNT=$((REATTEST_COUNT + 1))
-            echo "--- Reattestation count: $REATTEST_COUNT ---"
+            echo ">>> [Reattestation #$REATTEST_COUNT] $line"
+        else
+            echo "$line"
         fi
     fi
 done
