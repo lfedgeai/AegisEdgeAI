@@ -133,8 +133,17 @@ impl Context for SensorVerificationFilter {
                 
                 if verified {
                     // Verification successful - add sensor ID header and resume request
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Sensor verification successful for sensor_id: {} - resuming request", sensor_id));
+                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Sensor verification successful for sensor_id: {} - adding header and resuming request", sensor_id));
+                    // Add header before resuming to ensure it's included in the forwarded request
+                    // Note: Headers must be added before resuming, and the header name is case-sensitive
                     self.add_http_request_header("X-Sensor-ID", &sensor_id);
+                    // Verify header was added by checking if we can get it back (for debugging)
+                    let header_value = self.get_http_request_header("X-Sensor-ID");
+                    if let Some(val) = header_value {
+                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Confirmed X-Sensor-ID header added: {} = {}", sensor_id, val));
+                    } else {
+                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("WARNING: X-Sensor-ID header not found after adding for sensor_id: {}", sensor_id));
+                    }
                     self.resume_http_request();
                 } else {
                     // Verification failed - reject request
