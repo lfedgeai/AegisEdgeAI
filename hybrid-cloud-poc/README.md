@@ -1,6 +1,6 @@
 # Hybrid Cloud POC
 
-This directory contains a proof-of-concept implementation demonstrating hybrid cloud security with SPIRE, Keylime, and Envoy.
+This directory contains a proof-of-concept implementation demonstrating hybrid cloud unified identity with SPIRE, Keylime, and Envoy.
 
 ## Overview
 
@@ -13,12 +13,12 @@ This POC demonstrates:
 
 ## Quick Start
 
-### Complete Integration Test
+### Unified Identity using Spire and Keylime
 
-Run the full end-to-end test:
+Run the full end-to-end test (10.1.0.11):
 
 ```bash
-./test_complete.sh
+./test_complete.sh --no-pause
 ```
 
 This will:
@@ -30,7 +30,7 @@ This will:
 
 ### Enterprise On-Prem Setup
 
-For the enterprise on-prem environment (10.1.0.10):
+**Step 1: Setup on-prem server (10.1.0.10)**
 
 ```bash
 cd enterprise-onprem
@@ -39,9 +39,21 @@ cd enterprise-onprem
 
 This sets up:
 - Envoy proxy (port 8080)
+    - Envoy WASM filter for sensor verification which calls mobile location sensor service
+    - Mobile location service (port 5000)
 - mTLS server (port 9443)
-- Mobile location service (port 5000)
-- WASM filter for sensor verification
+
+**Step 3: Start mTLS client (10.1.0.11)**
+
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+export CLIENT_USE_SPIRE="true"
+export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
+export SERVER_HOST="10.1.0.10"  # Envoy on on-prem
+export SERVER_PORT="8080"
+export CA_CERT_PATH="~/.mtls-demo/envoy-cert.pem"
+python3 mtls-client-app.py
+```
 
 See [enterprise-onprem/README.md](enterprise-onprem/README.md) for detailed documentation.
 
