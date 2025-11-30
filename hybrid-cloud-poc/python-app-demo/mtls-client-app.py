@@ -668,6 +668,8 @@ class SPIREmTLSClient:
                     except (ssl.SSLError, ConnectionError, BrokenPipeError) as e:
                         # Reconnection due to error
                         err_str = str(e)
+                        is_eof_error = "EOF" in err_str or "eof" in err_str.lower()
+                        
                         # Only log if we didn't receive a response (actual error)
                         # If we got a response, the error is during cleanup - silent reconnect
                         if not last_response_received:
@@ -686,9 +688,17 @@ class SPIREmTLSClient:
                                     )
                                 # Mark that reconnection is due to renewal (will be logged on reconnect)
                                 self._reconnect_due_to_renewal = True
+                            elif is_eof_error:
+                                # EOF errors are common and often normal - only log if it's a protocol violation
+                                # and we didn't get a response (actual error condition)
+                                if "violation" in err_str.lower():
+                                    # This is an actual protocol violation - log it
+                                    self.log(f"Connection error: {err_str}")
+                                # Otherwise, silent reconnect (normal EOF closure)
                             else:
-                                # Non-renewal error - log it
+                                # Non-renewal, non-EOF error - log it
                                 self.log(f"Connection error: {err_str}")
+                        # If we got a response, any error (including EOF) is normal closure - silent reconnect
                         # Always increment reconnect count and reset response flag
                         self.reconnect_count += 1
                         last_response_received = False  # Reset for next connection
@@ -696,7 +706,7 @@ class SPIREmTLSClient:
                             tls_socket.close()
                         except:
                             pass
-                        break  # Reconnect (silently - errors are already logged above if needed)
+                        break  # Reconnect (silently if response was received or normal EOF)
                     except Exception as e:
                         # Unexpected error - log it
                         self.log(f"Error in communication: {e}")
