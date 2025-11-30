@@ -565,7 +565,7 @@ class SPIREmTLSServer:
                     if sensor_id:
                         self.log(f"🔊 Client {conn_id} HTTP {method} {path}: {message} [Sensor ID: {sensor_id}]")
                     else:
-                        self.log(f"🔊 Client {conn_id} HTTP {method} {path}: {message} [No Sensor ID header]")
+                        self.log(f"🔊 Client {conn_id} HTTP {method} {path}: {message}")
                     
                     # Prepare HTTP response
                     response_body = f"SERVER ACK: {message}"

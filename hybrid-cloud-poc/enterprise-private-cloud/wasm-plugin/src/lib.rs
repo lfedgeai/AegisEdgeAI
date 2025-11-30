@@ -132,27 +132,9 @@ impl Context for SensorVerificationFilter {
                 self.verification_result = Some(verified);
                 
                 if verified {
-                    // Verification successful - add sensor ID header and resume request
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Sensor verification successful for sensor_id: {} - adding header and resuming request", sensor_id));
-                    // Add header before resuming to ensure it's included in the forwarded request
-                    // Note: Headers must be added before resuming, and the header name is case-sensitive
-                    self.add_http_request_header("X-Sensor-ID", &sensor_id);
-                    // Verify header was added by checking if we can get it back (for debugging)
-                    let header_value = self.get_http_request_header("X-Sensor-ID");
-                    if let Some(val) = header_value {
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Confirmed X-Sensor-ID header added in on_http_call_response: {} = {}", sensor_id, val));
-                    } else {
-                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("WARNING: X-Sensor-ID header not found after adding in on_http_call_response for sensor_id: {}", sensor_id));
-                    }
-                    // Resume the paused request - header should be included
+                    // Verification successful - resume request
+                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Sensor verification successful for sensor_id: {} - resuming request", sensor_id));
                     self.resume_http_request();
-                    // Check header again after resuming (may not work, but worth trying)
-                    let header_value_after = self.get_http_request_header("X-Sensor-ID");
-                    if let Some(val) = header_value_after {
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("X-Sensor-ID header still present after resume: {}", val));
-                    } else {
-                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("WARNING: X-Sensor-ID header missing after resume for sensor_id: {}", sensor_id));
-                    }
                 } else {
                     // Verification failed - reject request
                     proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Sensor verification failed for sensor_id: {} - rejecting request", sensor_id));
@@ -330,7 +312,6 @@ impl HttpContext for SensorVerificationFilter {
             if let Some(verified) = self.verification_result {
                 if verified {
                     proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Extracted sensor_id: {} (using cached verification result: verified)", sensor_id));
-                    self.add_http_request_header("X-Sensor-ID", &sensor_id);
                     Action::Continue
                 } else {
                     proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Extracted sensor_id: {} (using cached verification result: rejected)", sensor_id));
@@ -344,7 +325,6 @@ impl HttpContext for SensorVerificationFilter {
             } else {
                 // Cache exists but no result stored - should not happen, but allow request
                 proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Extracted sensor_id: {} (cache exists but no result - allowing request)", sensor_id));
-                self.add_http_request_header("X-Sensor-ID", &sensor_id);
                 Action::Continue
             }
         }
