@@ -1,20 +1,27 @@
 #!/bin/bash
-# Periodic tail for SPIRE Agent log
-# Usage: ./monitor-spire-agent.sh [interval_seconds]
+# Watch SPIRE Agent attestation events in real-time
+# Filters for attestation-related log entries
+# Usage: ./watch-spire-agent-attestations.sh
 
-INTERVAL="${1:-5}"
+LOG_FILE="/tmp/spire-agent.log"
 
-# Check if unified_identity is enabled (default: true)
-UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
+echo "=========================================="
+echo "Watching SPIRE Agent Attestation Events"
+echo "=========================================="
+echo "Log file: $LOG_FILE"
+echo "Filtering for: TPM Plugin, SovereignAttestation, TPM Quote, Agent SVID, Workload, Unified-Identity, attest"
+echo "Press Ctrl+C to stop"
+echo "=========================================="
+echo ""
 
-tail -1 /tmp/spire-agent.log 2>/dev/null || echo "  [Log file not found]"
-
-if [ "${UNIFIED_IDENTITY_ENABLED}" = "true" ]; then
-    # unified_identity: Agent SVID uses reattestation only (no rotation)
-    echo "Monitoring agent SVID reattestations (unified_identity enabled)..."
-    watch -n "$INTERVAL" 'grep "Successfully reattested node" /tmp/spire-agent.log | wc -l'
-else
-    # Non-reattestable: Agent SVID uses rotation
-    echo "Monitoring agent SVID rotations..."
-    watch -n "$INTERVAL" 'grep "Successfully rotated agent SVID" /tmp/spire-agent.log | wc -l'
+if [ ! -f "$LOG_FILE" ]; then
+    echo "Warning: Log file not found: $LOG_FILE"
+    echo "Waiting for log file to be created..."
+    while [ ! -f "$LOG_FILE" ]; do
+        sleep 1
+    done
+    echo "Log file created, starting to watch..."
 fi
+
+tail -f "$LOG_FILE" | grep -E --line-buffered "TPM Plugin|SovereignAttestation|TPM Quote|certificate|Agent SVID|Workload|Unified-Identity|attest|python-app|BatchNewX509SVID" || tail -f "$LOG_FILE"
+

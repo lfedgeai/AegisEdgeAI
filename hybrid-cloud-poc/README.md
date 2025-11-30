@@ -39,7 +39,6 @@ tail -f /tmp/tpm-plugin-server.log    # SPIRE TPM Plugin
 tail -f /tmp/mobile-sensor-microservice.log  # Mobile Location Service
 
 # Or use the attestation watch script (filters for attestation events):
-cd enterprise-onprem
 ./watch-spire-agent-attestations.sh    # SPIRE Agent attestations only
 ```
 
