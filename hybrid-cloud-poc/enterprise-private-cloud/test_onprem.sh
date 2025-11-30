@@ -476,9 +476,7 @@ printf '==========================================\n'
 # Only auto-start services on test machine (10.1.0.10)
 if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Start all services in the background
-    # Ensure clean output - flush any pending output
-    exec >&2  # Redirect to stderr temporarily to avoid buffering issues
-    exec >&1  # Restore stdout
+    # Ensure clean output
     printf '\n'
     printf 'Starting all services in the background...\n'
     
@@ -582,7 +580,9 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         sudo mkdir -p /opt/envoy/logs 2>/dev/null
         sudo touch /opt/envoy/logs/envoy.log 2>/dev/null
         sudo chmod 666 /opt/envoy/logs/envoy.log 2>/dev/null
-        sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &
+        # Start Envoy with output fully redirected to prevent terminal corruption
+        # Use nohup to ensure clean background execution
+        nohup sudo env -i PATH="$PATH" envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 </dev/null &
         ENVOY_PID=$!
         sleep 3
         if ps -p $ENVOY_PID > /dev/null 2>&1; then
