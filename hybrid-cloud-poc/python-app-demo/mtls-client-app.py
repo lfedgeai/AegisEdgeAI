@@ -536,10 +536,14 @@ class SPIREmTLSClient:
                             time.sleep(0.5)
                             break  # Exit inner loop to reconnect
                         
+                        # Increment message counter first (before sending)
+                        message_num += 1
+                        self.message_count += 1
+                        
                         # Check for renewal periodically (but not on every iteration to avoid blocking)
                         # Only check every 10 messages, and skip check on first message after reconnect
                         # to avoid immediately detecting a renewal that happened during reconnect
-                        if message_num > 0 and message_num % 10 == 0:
+                        if message_num > 1 and message_num % 10 == 0:
                             if self.check_renewal():
                                 # Renewal detected during active connection
                                 if self.renewal_count > self.last_logged_renewal_id:
@@ -585,9 +589,6 @@ class SPIREmTLSClient:
                                 except:
                                     pass
                                 break  # Exit inner loop to reconnect
-                        
-                        message_num += 1
-                        self.message_count += 1
                         
                         # Send HTTP request
                         message = f"HELLO #{self.message_count}"
