@@ -93,9 +93,17 @@ cleanup_existing_services() {
     # Wait a moment for processes to terminate
     sleep 2
     
-    # Clean up log files
-    printf '  Cleaning up log files...\n'
-    sudo rm -f /opt/envoy/logs/envoy.log /tmp/mobile-sensor.log /tmp/mtls-server.log >/dev/null 2>&1
+    # Clean up log files and old temporary files
+    printf '  Cleaning up log files and old temporary files...\n'
+    # Remove all log files
+    sudo rm -f /opt/envoy/logs/envoy.log /tmp/mobile-sensor.log /tmp/mtls-server.log /tmp/mtls-server-app.log >/dev/null 2>&1
+    # Remove any old WASM build artifacts
+    sudo rm -f /opt/envoy/plugins/sensor_verification_wasm.wasm.old >/dev/null 2>&1
+    # Remove old certificate backups if any
+    sudo rm -f /opt/envoy/certs/*.pem.old /opt/envoy/certs/*.bak >/dev/null 2>&1
+    # Remove old environment files
+    sudo rm -f /etc/mobile-sensor-service.env.old >/dev/null 2>&1
+    # Recreate log directory and file
     sudo mkdir -p /opt/envoy/logs >/dev/null 2>&1
     sudo touch /opt/envoy/logs/envoy.log >/dev/null 2>&1
     sudo chmod 666 /opt/envoy/logs/envoy.log >/dev/null 2>&1
