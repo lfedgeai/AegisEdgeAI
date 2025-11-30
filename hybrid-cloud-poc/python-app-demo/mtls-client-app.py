@@ -469,34 +469,36 @@ class SPIREmTLSClient:
                     
                     # Check for renewal before connecting
                     if self.check_renewal():
-                    # DEMO: Show TLS context recreation
-                    self.log("  🔧 Recreating TLS context with renewed SVID...")
-                    # Mark that reconnection is due to renewal (will be logged on reconnect)
-                    self._reconnect_due_to_renewal = True
-                    context = self.setup_tls_context()
-                    self.log("  ✓ TLS context recreated successfully")
-                    self.log("  🔌 Reconnecting to server with new certificate...")
-                # Also check if SVID is expired or about to expire
-                elif self.check_svid_expired():
-                    # SVID expired - refresh context proactively
-                    self.log("  🔧 Recreating TLS context (SVID expired/expiring)...")
-                    # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
-                    self._reconnect_due_to_renewal = True
-                    # Close old source if it exists to force fresh SVID fetch
-                    if self.source:
-                        try:
-                            self.source.close()
-                        except:
-                            pass
-                    context = self.setup_tls_context()
-                    self.log("  ✓ TLS context recreated successfully")
-                    # Small delay to ensure new SVID is fully loaded
-                    time.sleep(0.5)
-                    self.log("  🔌 Reconnecting to server with refreshed certificate...")
-                else:
-                    # No renewal - use existing context or create new one if needed
-                    if context is None:
+                        # DEMO: Show TLS context recreation
+                        self.log("  🔧 Recreating TLS context with renewed SVID...")
+                        # Mark that reconnection is due to renewal (will be logged on reconnect)
+                        self._reconnect_due_to_renewal = True
+                        just_reconnected_due_to_renewal = True
                         context = self.setup_tls_context()
+                        self.log("  ✓ TLS context recreated successfully")
+                        self.log("  🔌 Reconnecting to server with new certificate...")
+                    # Also check if SVID is expired or about to expire
+                    elif self.check_svid_expired():
+                        # SVID expired - refresh context proactively
+                        self.log("  🔧 Recreating TLS context (SVID expired/expiring)...")
+                        # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
+                        self._reconnect_due_to_renewal = True
+                        just_reconnected_due_to_renewal = True
+                        # Close old source if it exists to force fresh SVID fetch
+                        if self.source:
+                            try:
+                                self.source.close()
+                            except:
+                                pass
+                        context = self.setup_tls_context()
+                        self.log("  ✓ TLS context recreated successfully")
+                        # Small delay to ensure new SVID is fully loaded
+                        time.sleep(0.5)
+                        self.log("  🔌 Reconnecting to server with refreshed certificate...")
+                    else:
+                        # No renewal - use existing context or create new one if needed
+                        if context is None:
+                            context = self.setup_tls_context()
                 
                 # Create socket
                 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
