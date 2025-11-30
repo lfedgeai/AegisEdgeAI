@@ -490,19 +490,17 @@ class SPIREmTLSClient:
                     self._server_cert_logged = True
                 
                 # Log connection appropriately
+                # Check renewal flag BEFORE logging, then reset it immediately
+                was_renewal_reconnect = self._reconnect_due_to_renewal
+                self._reconnect_due_to_renewal = False  # Always reset flag first to prevent persistence
+                
                 if not self._first_connection_logged:
                     self.log("✓ Connected to server")
                     self._first_connection_logged = True
-                    # Reset renewal flag on first connection
-                    self._reconnect_due_to_renewal = False
-                elif self._reconnect_due_to_renewal:
-                    # Log reconnection when it's due to certificate renewal (important event)
+                elif was_renewal_reconnect:
+                    # Log reconnection when it was due to certificate renewal (important event)
                     self.log("  ✓ Reconnected to server (certificate renewal)")
-                    self._reconnect_due_to_renewal = False  # Reset immediately after logging
                 # All other reconnections (normal connection closures) are silent for stability
-                # Also reset renewal flag for normal reconnections to prevent false positives
-                else:
-                    self._reconnect_due_to_renewal = False
                 
                 # Send periodic messages
                 message_num = 0
