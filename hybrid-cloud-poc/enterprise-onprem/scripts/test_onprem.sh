@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup script for enterprise on-prem (10.1.0.10)
+# Test script for enterprise on-prem (10.1.0.10)
 # Sets up: Envoy proxy, mTLS server, mobile location service, WASM filter
 
 set -e
@@ -105,6 +105,58 @@ cleanup_existing_services() {
     
     echo -e "${GREEN}  ✓ Cleanup complete${NC}"
 }
+
+# Usage helper
+show_usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  --cleanup-only       Stop services, remove logs, and exit.
+  -h, --help          Show this help message.
+
+This script sets up the enterprise on-prem environment:
+  - Envoy proxy (port 8080)
+  - mTLS server (port 9443)
+  - Mobile location service (port 5000)
+  - WASM filter for sensor verification
+
+Examples:
+  $0                  # Run full setup
+  $0 --cleanup-only   # Stop all services and clean up logs
+  $0 --help           # Show this help message
+EOF
+}
+
+# Parse command line arguments
+RUN_CLEANUP_ONLY=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --cleanup-only)
+            RUN_CLEANUP_ONLY=true
+            shift
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        *)
+            printf 'Unknown option: %s\n' "$1"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
+
+# If --cleanup-only, run cleanup and exit
+if [ "$RUN_CLEANUP_ONLY" = "true" ]; then
+    printf 'Running cleanup only...\n'
+    printf '\n'
+    cleanup_existing_services
+    printf '\n'
+    printf 'Cleanup complete!\n'
+    exit 0
+fi
 
 # Run cleanup at the start (only on test machine)
 if [ "$IS_TEST_MACHINE" = "true" ]; then
@@ -492,14 +544,9 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     set -e
 
     # Verify services are running
-    # Ensure clean output before verification section
-    exec 1>&1
-    sync 2>/dev/null || true
     printf '\n'
     printf 'Verifying services...\n'
-    # Force flush
-    exec 1>&1
-    sleep 2
+    sleep 1
 
     # Temporarily disable exit on error for verification
     set +e

@@ -7,7 +7,7 @@
 # 4. Calls mobile location service to verify sensor
 # 5. Forwards verified requests to backend mTLS server (localhost:9443)
 #
-# Certificate paths (set up by setup-onprem.sh):
+# Certificate paths (set up by test_onprem.sh):
 # - /opt/envoy/certs/envoy-cert.pem: Envoy's own certificate
 # - /opt/envoy/certs/envoy-key.pem: Envoy's private key
 # - /opt/envoy/certs/spire-bundle.pem: SPIRE CA bundle for verifying clients
