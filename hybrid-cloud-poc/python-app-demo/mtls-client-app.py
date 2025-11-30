@@ -525,10 +525,8 @@ class SPIREmTLSClient:
                         current_svid = self.source.svid
                         if current_svid:
                             self.last_svid_serial = current_svid.leaf.serial_number
-                            # Log the serial we're tracking to help debug
-                            self.log(f"  🔧 Tracking SVID serial: {self.last_svid_serial}")
                     except Exception as e:
-                        self.log(f"  ⚠️  Error updating serial after reconnect: {e}")
+                        pass  # Ignore errors, will be caught on next renewal check
                 
                 # Skip renewal checks for the first 20 messages after reconnect to ensure
                 # we send traffic even if a renewal happened during reconnect
