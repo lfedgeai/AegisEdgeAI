@@ -469,21 +469,23 @@ class SPIREmTLSClient:
                 tls_socket = context.wrap_socket(client_socket, server_hostname=self.server_host)
                 tls_socket.connect((self.server_host, self.server_port))
                 
-                # Detect and log server certificate type
-                server_cert_type = self._detect_peer_cert_type(tls_socket)
-                if server_cert_type:
-                    if server_cert_type == 'standard' and self.use_spire:
-                        self.log(f"  ℹ Mixed mode detected: Server using standard certificate, Client using SPIRE certificate")
-                        if not self.ca_cert_path:
-                            self.log(f"  ⚠ Warning: Server verification may fail without CA_CERT_PATH")
-                            self.log(f"  ℹ Provide server's CA via CA_CERT_PATH for proper verification")
+                # Detect and log server certificate type (only once per connection session)
+                if not hasattr(self, '_server_cert_logged'):
+                    server_cert_type = self._detect_peer_cert_type(tls_socket)
+                    if server_cert_type:
+                        if server_cert_type == 'standard' and self.use_spire:
+                            self.log(f"  ℹ Mixed mode detected: Server using standard certificate, Client using SPIRE certificate")
+                            if not self.ca_cert_path:
+                                self.log(f"  ⚠ Warning: Server verification may fail without CA_CERT_PATH")
+                                self.log(f"  ℹ Provide server's CA via CA_CERT_PATH for proper verification")
+                            else:
+                                self.log(f"  ✓ Server CA provided - verification should succeed")
+                        elif server_cert_type == 'SPIRE' and not self.use_spire:
+                            self.log(f"  ℹ Mixed mode detected: Server using SPIRE certificate, Client using standard certificate")
+                            self.log(f"  ℹ This is supported - client can connect to SPIRE servers")
                         else:
-                            self.log(f"  ✓ Server CA provided - verification should succeed")
-                    elif server_cert_type == 'SPIRE' and not self.use_spire:
-                        self.log(f"  ℹ Mixed mode detected: Server using SPIRE certificate, Client using standard certificate")
-                        self.log(f"  ℹ This is supported - client can connect to SPIRE servers")
-                    else:
-                        self.log(f"  ℹ Server certificate type: {server_cert_type} (matches client mode)")
+                            self.log(f"  ℹ Server certificate type: {server_cert_type} (matches client mode)")
+                    self._server_cert_logged = True
                 
                 # Log connection only on first connection
                 # For all subsequent connections (including reconnections), reconnect silently
@@ -491,9 +493,6 @@ class SPIREmTLSClient:
                 if not self._first_connection_logged:
                     self.log("✓ Connected to server")
                     self._first_connection_logged = True
-                    # Reset server cert check flag for new connection
-                    if hasattr(self, '_server_cert_checked'):
-                        delattr(self, '_server_cert_checked')
                 # All other connections (reconnections) are silent for stability
                 
                 # Send periodic messages
