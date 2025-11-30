@@ -48,12 +48,8 @@ class SPIREmTLSClient:
         self.bundle_path = None  # Keep bundle file path for SSL context lifetime
         # Track logging so we don't spam on repeated renewal blips
         self.last_logged_renewal_id = 0
-        # Track if we had a previous connection (for reconnection logging)
-        self.had_previous_connection = False
         # Track if we've logged the first connection (for stable reconnection behavior)
         self._first_connection_logged = False
-        # Track if there was a recent renewal that caused reconnection
-        self._recent_renewal_reconnect = False
         
         # Certificate mode configuration
         if use_spire is None:
@@ -489,21 +485,13 @@ class SPIREmTLSClient:
                     else:
                         self.log(f"  ℹ Server certificate type: {server_cert_type} (matches client mode)")
                 
-                # Log connection only on first connection or after actual errors
-                # For normal connection closures, silently reconnect (stable behavior)
+                # Log connection only on first connection
+                # For all subsequent connections (including reconnections), reconnect silently
+                # This provides stable behavior - connection closures are normal HTTP behavior
                 if not self._first_connection_logged:
                     self.log("✓ Connected to server")
                     self._first_connection_logged = True
-                elif self.had_previous_connection:
-                    # Only log reconnection if it was due to an actual error (not normal closure)
-                    # This happens for renewal blips or connection failures
-                    if self._recent_renewal_reconnect:
-                        self.log("  ✓ Reconnected to server (renewal resolved)")
-                        self._recent_renewal_reconnect = False  # Reset after logging
-                    else:
-                        self.log("  ✓ Reconnected to server")
-                    self.had_previous_connection = False  # Reset after logging
-                # Otherwise, silently reconnect (normal connection closure)
+                # All other connections (reconnections) are silent for stability
                 
                 # Send periodic messages
                 message_num = 0
@@ -520,8 +508,7 @@ class SPIREmTLSClient:
                                     "closing and reconnecting with new certificate"
                                 )
                             # Close current connection to force reconnection with new cert
-                            self.had_previous_connection = True
-                            self._recent_renewal_reconnect = True  # Mark as renewal-triggered reconnect
+                            # Silent reconnect - renewal is already logged above
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -530,7 +517,7 @@ class SPIREmTLSClient:
                                 tls_socket.close()
                             except:
                                 pass
-                            break  # Exit inner loop to reconnect
+                            break  # Exit inner loop to reconnect (silent)
                         # Also check if SVID expired during active connection
                         elif self.check_svid_expired():
                             # SVID expired during active connection - close and refresh
@@ -541,8 +528,7 @@ class SPIREmTLSClient:
                                     "closing and reconnecting with refreshed certificate"
                                 )
                             # Close current connection to force reconnection with refreshed cert
-                            self.had_previous_connection = True
-                            self._recent_renewal_reconnect = True  # Mark as renewal-triggered reconnect
+                            # Silent reconnect - expiration is already logged above
                             try:
                                 tls_socket.shutdown(socket.SHUT_RDWR)
                             except:
@@ -551,7 +537,7 @@ class SPIREmTLSClient:
                                 tls_socket.close()
                             except:
                                 pass
-                            break  # Exit inner loop to reconnect
+                            break  # Exit inner loop to reconnect (silent)
                         
                         message_num += 1
                         self.message_count += 1
@@ -629,17 +615,15 @@ class SPIREmTLSClient:
                                     self.log(f"📥 Received: {response_text[:200]}")
                                 last_response_received = True  # Successfully received response
                             
-                            # If server closed connection, break to reconnect
-                            # Note: Don't set had_previous_connection here - this is normal HTTP behavior
-                            # Only set it for actual errors or renewals
-                            # Silent reconnect for normal connection closures (stable behavior)
+                            # If server closed connection, break to reconnect silently
+                            # This is normal HTTP behavior - no logging needed
                             if connection_closed_by_server:
                                 last_response_received = True  # We got a response before closure
                                 try:
                                     tls_socket.close()
                                 except:
                                     pass
-                                break  # Exit inner loop to reconnect (silently)
+                                break  # Exit inner loop to reconnect (silent - normal behavior)
                         except ssl.SSLError as e:
                             err_str = str(e)
                             if "certificate" in err_str.lower() or "renewal" in err_str.lower():
@@ -650,72 +634,64 @@ class SPIREmTLSClient:
                                         f"TLS error during SVID renewal (will reconnect): "
                                         f"{err_str[:120]}"
                                     )
-                                self.had_previous_connection = True  # Actual error/renewal
-                                self._recent_renewal_reconnect = True  # Mark as renewal-triggered reconnect
+                                # Renewal-related error - already logged above, reconnect silently
                                 raise  # Reconnect
                             else:
-                                self.had_previous_connection = True  # Actual error
+                                # Non-renewal TLS error - already logged above, reconnect silently
                                 raise
                         except (ConnectionError, BrokenPipeError) as e:
                             # Only set had_previous_connection if we didn't receive a complete response
                             # If we got a complete response, this is just normal connection closure
                             if not response_received:
-                                # DEMO: Show connection closure (may be due to renewal)
+                                # Connection closed before response - log error
                                 if "renewal" in str(e).lower() or self.renewal_count > 0:
                                     self.log(f"  ⚠️  Connection closed (renewal blip): {e}")
                                 else:
                                     self.log(f"Connection closed before response: {e}")
-                                self.had_previous_connection = True  # Actual error - no response received
-                            else:
-                                # Normal closure after successful response
-                                self.log("  ℹ Connection closed by server (normal closure after response)")
-                            raise  # Reconnect
+                            # Otherwise, normal closure after successful response - silent reconnect
+                            raise  # Reconnect (silently if response was received)
                         
                         # Wait before next message
                         time.sleep(interval)
                         
                     except (ssl.SSLError, ConnectionError, BrokenPipeError) as e:
-                        # Reconnection due to error (possibly renewal-related)
+                        # Reconnection due to error
                         err_str = str(e)
-                        # Only set had_previous_connection if we didn't receive a response
-                        # If we got a response, the error might be during cleanup, not a real error
-                        is_actual_error = not last_response_received
-                        
-                        if self.renewal_count > 0 and (
-                            "certificate" in err_str.lower()
-                            or "renewal" in err_str.lower()
-                            or "unknown ca" in err_str.lower()
-                        ):
-                            # Only log once per renewal cycle
-                            if self.renewal_count > self.last_logged_renewal_id:
-                                self.last_logged_renewal_id = self.renewal_count
-                                self.log(
-                                    f"Renewal blip: reconnecting after TLS error: "
-                                    f"{err_str[:120]}"
-                                )
-                            is_actual_error = True  # Renewal-related errors are always actual errors
-                            self._recent_renewal_reconnect = True  # Mark as renewal-triggered reconnect
-                        elif is_actual_error:
-                            # Only log connection errors if we didn't get a response
-                            # (silent reconnect if we got a response - normal closure)
-                            self.log(f"Connection error: {err_str}")
+                        # Only log if we didn't receive a response (actual error)
+                        # If we got a response, the error is during cleanup - silent reconnect
+                        if not last_response_received:
+                            # Check if this is renewal-related
+                            if self.renewal_count > 0 and (
+                                "certificate" in err_str.lower()
+                                or "renewal" in err_str.lower()
+                                or "unknown ca" in err_str.lower()
+                            ):
+                                # Only log once per renewal cycle
+                                if self.renewal_count > self.last_logged_renewal_id:
+                                    self.last_logged_renewal_id = self.renewal_count
+                                    self.log(
+                                        f"Renewal blip: reconnecting after TLS error: "
+                                        f"{err_str[:120]}"
+                                    )
+                            else:
+                                # Non-renewal error - log it
+                                self.log(f"Connection error: {err_str}")
+                        # Always increment reconnect count and reset response flag
                         self.reconnect_count += 1
-                        if is_actual_error:
-                            self.had_previous_connection = True
                         last_response_received = False  # Reset for next connection
                         try:
                             tls_socket.close()
                         except:
                             pass
-                        break  # Reconnect
+                        break  # Reconnect (silently - errors are already logged above if needed)
                     except Exception as e:
+                        # Unexpected error - log it
                         self.log(f"Error in communication: {e}")
-                        self.had_previous_connection = True  # Always an error
                         try:
                             tls_socket.close()
                         except:
                             pass
-                        break  # Reconnect
+                        break  # Reconnect (error already logged)
                 
                 try:
                     tls_socket.close()
