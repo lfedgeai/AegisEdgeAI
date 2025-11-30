@@ -101,6 +101,18 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem
 ./test_onprem.sh
 ```
 
+**Note:** The script uses default CAMARA credentials which may be invalid. To use valid CAMARA credentials:
+
+```bash
+# Get your CAMARA credentials from Telefonica Open Gateway
+# Format: Base64(client_id:client_secret)
+export CAMARA_BASIC_AUTH="Basic <your_base64_encoded_credentials>"
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-onprem
+./test_onprem.sh
+```
+
+The service will use the credentials from the environment variable. If credentials are invalid, the service will return 401 errors. See [mobile-sensor-microservice/README.md](../mobile-sensor-microservice/README.md) for details on obtaining CAMARA credentials.
+
 The script will:
 1. Install dependencies (Python, Rust toolchain, etc.)
 2. Create necessary directories (`/opt/envoy/certs`, `/opt/envoy/plugins`, `/opt/envoy/logs`)

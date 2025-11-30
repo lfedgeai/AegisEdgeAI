@@ -37,12 +37,46 @@ This installs both runtime dependencies (Flask, requests) and the `pytest` tooli
 | `CAMARA_BASE_URL` | Base URL for Telefonica Open Gateway sandbox | `https://sandbox.opengateway.telefonica.com/apigateway` |
 | `CAMARA_BASIC_AUTH` | `Basic` header value used for `/bc-authorize` and `/token` | **required** |
 | `CAMARA_SCOPE` | Scope used in `/bc-authorize` | `dpv:FraudPreventionAndDetection#device-location-read` |
+| `CAMARA_BYPASS` | Set to `true` to skip CAMARA API calls (for testing only) | `false` |
+
+### Obtaining CAMARA Credentials
+
+To use the CAMARA API, you need valid credentials from Telefonica Open Gateway:
+
+1. **Register for Telefonica Open Gateway Sandbox**:
+   - Visit: https://opengateway.telefonica.com/
+   - Sign up for sandbox access
+   - Create an application to get `client_id` and `client_secret`
+
+2. **Generate Basic Auth Header**:
+   ```bash
+   # Format: Base64(client_id:client_secret)
+   echo -n "your_client_id:your_client_secret" | base64
+   # Output: e.g., "eW91cl9jbGllbnRfaWQ6eW91cl9jbGllbnRfc2VjcmV0"
+   
+   # Set environment variable:
+   export CAMARA_BASIC_AUTH="Basic eW91cl9jbGllbnRfaWQ6eW91cl9jbGllbnRfc2VjcmV0"
+   ```
+
+3. **Verify Credentials**:
+   ```bash
+   # Test the credentials:
+   curl -X POST https://sandbox.opengateway.telefonica.com/apigateway/bc-authorize \
+     -H "Authorization: $CAMARA_BASIC_AUTH" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "login_hint=tel:+34696810912&scope=dpv:FraudPreventionAndDetection#device-location-read"
+   ```
+   If credentials are valid, you'll get a 200 response with `auth_req_id`. If invalid, you'll get 401.
 
 ### Running
 ```bash
-export CAMARA_BASIC_AUTH="Basic <client_id:secret base64>"
-python mobile-sensor-microservice/service.py --socket /tmp/mobile-sensor.sock
-# Then configure Keylime Verifier to call the microservice via that UDS path.
+# With valid CAMARA credentials:
+export CAMARA_BASIC_AUTH="Basic <your_base64_encoded_credentials>"
+python mobile-sensor-microservice/service.py --port 5000 --host 0.0.0.0
+
+# For testing without CAMARA (bypass mode):
+export CAMARA_BYPASS=true
+python mobile-sensor-microservice/service.py --port 5000 --host 0.0.0.0
 ```
 
 ### Unit Tests

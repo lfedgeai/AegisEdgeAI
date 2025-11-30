@@ -477,8 +477,17 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Temporarily disable exit on error for service startup
     set +e
     
-    # Set CAMARA_BASIC_AUTH for mobile location service (test machine only)
-    CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
+    # Set CAMARA_BASIC_AUTH for mobile location service
+    # Allow override via environment variable, otherwise use default (may be invalid)
+    if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
+        # Default credentials (may be invalid - user should provide valid credentials)
+        CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
+        printf '  [WARN] Using default CAMARA_BASIC_AUTH (may be invalid)\n'
+        printf '         Set CAMARA_BASIC_AUTH environment variable with valid credentials\n'
+        printf '         Format: export CAMARA_BASIC_AUTH="Basic <base64(client_id:client_secret)>"\n'
+    else
+        printf '  [OK] Using CAMARA_BASIC_AUTH from environment\n'
+    fi
 
     # Create environment file for mobile sensor service
     if [ -n "$CAMARA_BASIC_AUTH" ]; then
