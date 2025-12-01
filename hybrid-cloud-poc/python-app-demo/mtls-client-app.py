@@ -43,13 +43,19 @@ def suppress_spiffe_warnings():
         sys.stderr = io.StringIO()
         yield
     finally:
-        # Restore stderr and check if there were any real errors
+        # Restore stderr and filter out only the warning lines
         stderr_content = sys.stderr.getvalue()
         sys.stderr = old_stderr
-        # Only print stderr content if it doesn't contain the expected warning
-        if stderr_content and "intermediate certificate missing CA flag" not in stderr_content:
-            # There was a real error, print it
-            print(stderr_content, file=sys.stderr, end='')
+        # Filter out lines containing the intermediate certificate warning
+        if stderr_content:
+            lines = stderr_content.split('\n')
+            filtered_lines = [line for line in lines 
+                            if "intermediate certificate missing CA flag" not in line 
+                            and "skipping strict validation" not in line
+                            and line.strip()]  # Remove empty lines
+            # Print any remaining lines (real errors)
+            if filtered_lines:
+                print('\n'.join(filtered_lines), file=sys.stderr)
 
 class SPIREmTLSClient:
     def __init__(self, socket_path, server_host, server_port, log_file=None,
