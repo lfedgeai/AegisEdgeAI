@@ -1,19 +1,9 @@
 # Hybrid Cloud POC
 
-This directory contains a proof-of-concept implementation demonstrating hybrid cloud unified identity with SPIRE, Keylime, and Envoy.
+## Overview
+This directory contains a proof-of-concept implementation demonstrating hybrid cloud unified identity with hardware-rooted verifiable geofencing and residency proofs using SPIRE, Keylime, and Envoy addressing the challenges of the traditional non-verifiable security model.
 
 **Slides:** [View Presentation](https://onedrive.live.com/?id=746ADA9DC9BA7CB7%21sa416cb345794427ab085a20f8ccc0edd&cid=746ADA9DC9BA7CB7&redeem=aHR0cHM6Ly8xZHJ2Lm1zL2IvYy83NDZhZGE5ZGM5YmE3Y2I3L0VUVExGcVNVVjNwQ3NJV2lENHpNRHQwQlh6U3djQ01HWDhjQS1xbGxLZm1Zdnc%5FZT1PTnJqZjE&parId=746ADA9DC9BA7CB7%21s95775661177f4ef5a4ba84313cd3795a&o=OneUp)
-
-## Overview
-
-This POC demonstrates:
-- **SPIRE** for workload identity and certificate management
-- **Keylime** for TPM-based attestation
-- **Envoy Proxy** for mTLS termination and request routing
-- **WASM Filters** for custom request processing
-- **Mobile Location Service** for sensor verification
-
-![AegisEdgeAI Flow](zero-trust/images/AegisEdgeAI-flow.png)
 
 ## The Problem: A Fragile and Non-Verifiable Security Model
 
@@ -71,7 +61,7 @@ Real-time data about the host's health, GNSS/mobile sensor status (e.g., connect
 
 *Figure: Slide 7 - The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity. Illustrates the solution architecture with Proof of Residency (PoR), Proof of Geofencing (PoG), and dynamic hardware integrity, showing how workload identity, host integrity, and geolocation are cryptographically bound into unified SVIDs.*
 
-## Unified Identity Product Architecture
+## Unified Identity Architecture
 
 For detailed information on the unified identity product architecture, including the complete end-to-end flow, attestation mechanisms, and component interactions, see:
 
@@ -85,7 +75,7 @@ This document covers:
 - Certificate chain structure
 - Security mechanisms and design points
 
-## End-to-End Solution Architecture
+## Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture
 
 The current implementation demonstrates a hybrid cloud unified identity system connecting a Sovereign Cloud/Edge Cloud environment with a Customer on-Prem Private Cloud.
 
@@ -136,13 +126,18 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 
 ### Prerequisites
 
-- Two machines (or VMs):
-  - **10.1.0.11**: Sovereign Cloud/Edge Cloud (SPIRE Server, SPIRE Agent, Keylime Verifier, Keylime Agent)
-  - **10.1.0.10**: Customer On-Prem Private Cloud (Envoy Gateway, Mobile Location Service, mTLS Server)
+- Two machines:
+  - **Physical with static IP address (e.g. 10.1.0.11)**: Sovereign Cloud/Edge Cloud (SPIRE Server, SPIRE Agent, Spire TPM Plugin, Keylime Verifier, Keylime Agent)
+  - **Physical or Virtual with static IP address (e.g. 10.1.0.10)**: Customer On-Prem Private Cloud (Envoy Gateway, Mobile Location Service, mTLS Server)
 - TPM 2.0 hardware (or TPM emulator for testing)
 - Mobile location sensor (USB tethered smartphone) or GNSS module (optional, for geofencing demo)
 - Root/sudo access on both machines
+- CAMARA API credentials for mobile location service
+- Add user to TSS group for TPM access
 - Network connectivity between machines
+- Python 3.10+ installed on both machines
+- Rust toolchain installed on both machines
+- Git installed on both machines
 
 ### Step 1: Setup SPIRE and Keylime (10.1.0.11)
 
