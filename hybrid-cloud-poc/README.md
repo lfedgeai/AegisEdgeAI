@@ -116,7 +116,7 @@ The current implementation demonstrates a hybrid cloud unified identity system c
    - Envoy verifies geolocation through Mobile Geolocation Service (CAMARA API)
    - Envoy communicates to Server App using standard mTLS
 
-![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/slide-12-implementation-architecture.png)
+![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/slide-12-hybrid-cloud-unified-identity-poc-end-to-end-solution-architecture.png)
 
 *Figure: Slide 12 - Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture. The diagram shows the complete hybrid cloud unified identity architecture: **Sovereign Cloud/Edge Cloud (left, orange boundary)**: Contains Host Identity (Keylime Verifier & Registrar), Workload Identity (SPIRE Server), Keylime Agent, SPIRE Agent, SPIRE TPM Plugin, Mobile location sensor (USB tethered smartphone), TPM, and Client App. System flow: "SPIRE agent gets/refreshes unified identity with TPM-attested geolocation from SPIRE server". Client App flow: "Client app inherits unified identity from SPIRE server – intermediate cert in cert hierarchy". **Customer on-Prem Private Cloud (right, blue boundary)**: Contains Envoy (API Gateway) with WASM plugin, Server App, and Mobile Geolocation Service (CAMARA API). System flow: "Envoy verifies unified identity signature using configured SPIRE server public key cert and verifies geolocation through Mobile Geolocation Service". Server App flow: "Envoy communicates to Server App using standard mTLS". **Inter-Cloud Communication**: Client App connects to Envoy via HTTPS/mTLS using unified identity.*
 
