@@ -37,7 +37,9 @@ Current security approaches for AI inference applications, secret stores, system
 
 - GPU health, utilization, and host integrity are typically checked by isolated, non-verifiable monitoring systems. This creates a critical gap where a compromised host can easily feed false data to the monitoring system.
 
-**Reference:** See [Presentation Slide 6](https://onedrive.live.com/?id=746ADA9DC9BA7CB7%21sa416cb345794427ab085a20f8ccc0edd&cid=746ADA9DC9BA7CB7&redeem=aHR0cHM6Ly8xZHJ2Lm1zL2IvYy83NDZhZGE5ZGM5YmE3Y2I3L0VUVExGcVNVVjNwQ3NJV2lENHpNRHQwQlh6U3djQ01HWDhjQS1xbGxLZm1Zdnc%5FZT1PTnJqZjE&parId=746ADA9DC9BA7CB7%21s95775661177f4ef5a4ba84313cd3795a&o=OneUp) for detailed problem diagram.
+![The Problem: A Fragile and Non-Verifiable Security Model](images/slide-06-problem-diagram.png)
+
+*Figure: Slide 6 - The Problem: A Fragile and Non-Verifiable Security Model. Shows the traditional security architecture with bearer tokens, proof-of-possession tokens, and IP-based geofencing, highlighting vulnerabilities in host-affinity, geolocation-affinity, and static security monitoring.*
 
 ## The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity
 
@@ -65,7 +67,9 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 
 Real-time data about the host's health, GNSS/mobile sensor status (e.g., connected/disconnected), and GPU status (e.g., temperature and utilization) is collected by specialized plugins and included in the attestation process.
 
-**Reference:** See [Presentation Slide 7](https://onedrive.live.com/?id=746ADA9DC9BA7CB7%21sa416cb345794427ab085a20f8ccc0edd&cid=746ADA9DC9BA7CB7&redeem=aHR0cHM6Ly8xZHJ2Lm1zL2IvYy83NDZhZGE5ZGM5YmE3Y2I3L0VUVExGcVNVVjNwQ3NJV2lENHpNRHQwQlh6U3djQ01HWDhjQS1xbGxLZm1Zdnc%5FZT1PTnJqZjE&parId=746ADA9DC9BA7CB7%21s95775661177f4ef5a4ba84313cd3795a&o=OneUp) for detailed solution architecture.
+![The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity](images/slide-07-solution-diagram.png)
+
+*Figure: Slide 7 - The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity. Illustrates the solution architecture with Proof of Residency (PoR), Proof of Geofencing (PoG), and dynamic hardware integrity, showing how workload identity, host integrity, and geolocation are cryptographically bound into unified SVIDs.*
 
 ## Unified Identity Product Architecture
 
@@ -122,7 +126,9 @@ The current implementation demonstrates a hybrid cloud unified identity system c
    - Envoy verifies geolocation through Mobile Geolocation Service (CAMARA API)
    - Envoy communicates to Server App using standard mTLS
 
-**Reference:** See [Presentation Slide 12](https://onedrive.live.com/?id=746ADA9DC9BA7CB7%21sa416cb345794427ab085a20f8ccc0edd&cid=746ADA9DC9BA7CB7&redeem=aHR0cHM6Ly8xZHJ2Lm1zL2IvYy83NDZhZGE5ZGM5YmE3Y2I3L0VUVExGcVNVVjNwQ3NJV2lENHpNRHQwQlh6U3djQ01HWDhjQS1xbGxLZm1Zdnc%5FZT1PTnJqZjE&parId=746ADA9DC9BA7CB7%21s95775661177f4ef5a4ba84313cd3795a&o=OneUp) for detailed implementation architecture diagram.
+![Implementation Details – Current Iteration](images/slide-12-implementation-architecture.png)
+
+*Figure: Slide 12 - Implementation Details – Current Iteration. Shows the complete hybrid cloud unified identity architecture with Sovereign Cloud/Edge Cloud (left) containing SPIRE Server, Keylime Verifier, agents, and TPM, communicating via HTTPS/mTLS with Customer on-Prem Private Cloud (right) containing Envoy Gateway with WASM plugin, Mobile Geolocation Service, and Server App.*
 
 ## Quick Start Guide
 
