@@ -34,6 +34,23 @@ except ImportError:
     print("Warning: cryptography library not installed. Standard cert mode will not work.")
     print("Install it with: pip install cryptography")
 
+@contextmanager
+def suppress_spiffe_warnings():
+    """Context manager to suppress spiffe library stderr warnings about intermediate certificate CA flag."""
+    old_stderr = sys.stderr
+    try:
+        # Redirect stderr to filter out the intermediate certificate warning
+        sys.stderr = io.StringIO()
+        yield
+    finally:
+        # Restore stderr and check if there were any real errors
+        stderr_content = sys.stderr.getvalue()
+        sys.stderr = old_stderr
+        # Only print stderr content if it doesn't contain the expected warning
+        if stderr_content and "intermediate certificate missing CA flag" not in stderr_content:
+            # There was a real error, print it
+            print(stderr_content, file=sys.stderr, end='')
+
 class SPIREmTLSClient:
     def __init__(self, socket_path, server_host, server_port, log_file=None,
                  use_spire=None, client_cert_path=None, client_key_path=None, ca_cert_path=None):
@@ -210,10 +227,12 @@ class SPIREmTLSClient:
         
         try:
             # Create X509Source which handles automatic renewal
-            self.source = X509Source(socket_path=socket_path_with_scheme)
-            
-            # Get initial SVID
-            svid = self.source.svid
+            # Suppress spiffe library warnings about intermediate certificate CA flag
+            with suppress_spiffe_warnings():
+                self.source = X509Source(socket_path=socket_path_with_scheme)
+                
+                # Get initial SVID
+                svid = self.source.svid
             if not svid:
                 raise Exception("Failed to get SVID from SPIRE Agent")
             
@@ -232,7 +251,9 @@ class SPIREmTLSClient:
                 import time
                 time.sleep(0.5)
                 
-                bundle = self.source.get_bundle_for_trust_domain(trust_domain)
+                # Suppress spiffe library warnings about intermediate certificate CA flag
+                with suppress_spiffe_warnings():
+                    bundle = self.source.get_bundle_for_trust_domain(trust_domain)
                 if bundle:
                     # Load CA certificates from bundle into SSL context
                     from cryptography.hazmat.primitives import serialization
@@ -377,7 +398,9 @@ class SPIREmTLSClient:
             return False  # No renewal in standard cert mode
         
         try:
-            new_svid = self.source.svid
+            # Suppress spiffe library warnings about intermediate certificate CA flag
+            with suppress_spiffe_warnings():
+                new_svid = self.source.svid
             if new_svid and self.last_svid_serial:
                 if new_svid.leaf.serial_number != self.last_svid_serial:
                     # Detected a new SVID (renewal event)
@@ -410,7 +433,9 @@ class SPIREmTLSClient:
             return False
         
         try:
-            svid = self.source.svid
+            # Suppress spiffe library warnings about intermediate certificate CA flag
+            with suppress_spiffe_warnings():
+                svid = self.source.svid
             if not svid:
                 return False
             
@@ -457,7 +482,9 @@ class SPIREmTLSClient:
                 if just_reconnected_due_to_renewal:
                     if self.use_spire and self.source:
                         try:
-                            current_svid = self.source.svid
+                            # Suppress spiffe library warnings about intermediate certificate CA flag
+                            with suppress_spiffe_warnings():
+                                current_svid = self.source.svid
                             if current_svid:
                                 self.last_svid_serial = current_svid.leaf.serial_number
                         except Exception:
@@ -472,7 +499,9 @@ class SPIREmTLSClient:
                     # Update serial before checking for renewal to avoid detecting the same renewal twice
                     if self.use_spire and self.source:
                         try:
-                            current_svid = self.source.svid
+                            # Suppress spiffe library warnings about intermediate certificate CA flag
+                            with suppress_spiffe_warnings():
+                                current_svid = self.source.svid
                             if current_svid and not self.last_svid_serial:
                                 # Initialize serial if not set
                                 self.last_svid_serial = current_svid.leaf.serial_number
@@ -563,7 +592,9 @@ class SPIREmTLSClient:
                 # This is critical to prevent infinite reconnect loops
                 if self.use_spire and self.source:
                     try:
-                        current_svid = self.source.svid
+                        # Suppress spiffe library warnings about intermediate certificate CA flag
+                        with suppress_spiffe_warnings():
+                            current_svid = self.source.svid
                         if current_svid:
                             self.last_svid_serial = current_svid.leaf.serial_number
                     except Exception:
