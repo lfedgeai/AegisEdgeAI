@@ -12,7 +12,9 @@ import socket
 import ssl
 import signal
 import ipaddress
+import io
 from pathlib import Path
+from contextlib import contextmanager
 
 try:
     from spiffe.workloadapi.x509_source import X509Source
