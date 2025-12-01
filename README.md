@@ -25,8 +25,8 @@
 - [Vijaya Prakash Masilamani](https://lf-edge.atlassian.net/wiki/people/712020:4ffd801f-be21-429e-b9b8-d8cc749364a9?ref=confluence) (Independent)
 - [Bala Siva Sai Akhil Malepati](https://github.com/saiakhil2012) (Independent)
 - Dhanush (Vishanti)
-- [Pranav Kirtani](https://github.com/pranavkirtani) (Independent) 
-  
+- [Pranav Kirtani](https://github.com/pranavkirtani) (Independent)
+
 ## Problem Statement - Common Threats - Infrastructure Security
 
 Current security approaches for inference applications, secret stores, system agents, AI agents, and model repositories face **critical gaps** — gaps amplified in **edge AI** deployments and further complicated by emerging **multi‑agent** and **Model Context Protocol (MCP)** interoperability patterns. These challenges — documented in the [IETF Verifiable Geofencing draft](https://github.com/nedmsmith/draft-klspa-wimse-verifiable-geo-fence/blob/main/draft-lkspa-wimse-verifiable-geo-fence.md), and summarize below, which outlines broad use cases and deployment patterns, including edge computing — are summarized below.
@@ -187,7 +187,7 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 
 ### Addressing Hardware and Software Supply Chain Threats (work in progress)
 To mitigate the hardware and software supply chain threats above, AegisEdgeAI adopts a layered trust model that binds device identity, hardware integrity, and runtime state into a continuous attestation chain from manufacturing through operation.
-  
+
 **Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
 
 - **Approach:** At boot, the server's hardware management plane—anchored by the BMC—collects a signed inventory of components and firmware (NICs, GPUs, DIMMs, BIOS, etc.) via secure, out‑of‑band protocols (e.g., Redfish + Secured Component Verification). This inventory is compared against a purchase‑order‑bound allowlist maintained in the attestation policy service.
@@ -223,39 +223,27 @@ Verifier - Regulator:
 - Mechanism: Receives the small, compact ZKP and the public compliance statement.
 - Statement proven (public): The verifier is mathematically certain the safety protocol is implemented in the production code without learning the proprietary algorithm $W$ or $A$.
 
-### Unified Application + Infrastrcuture security value for AI RAN - Combining Proof of Residency (PoR), Proof of Geofencing (PoG) and Zero Knowledge Proof (ZKP)
-- Verifiable infrastrcuture
+### Unified Application + Infrastructure security value for AI RAN - Combining Proof of Residency (PoR), Proof of Geofencing (PoG) and Zero Knowledge Proof (ZKP)
+- Verifiable infrastructure
   - PoR certifies which trusted host(s) the AI RAN model which generated zero knowledge proof of the confidential configuration was running
   - PoG certifies the trusted geolocation of the trusted host(s)
 - Verifiable application
   - ZKP generates non-repudiable proof of compliance without any vendor proprietary IP disclosure conflicts which can be verified by a 3rd party regulator.
-  
+
 ### Note
 The current solutions don't include Trusted Execution Environments (TEEs) which can address threats such as 1) Malicious or Compromised Administrator 2) Kernel/Hypervisor Vulnerabilities 3) Side channel attacks for scraping system memory 
 
-## Implementation Progress
+## Core Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity
 
-### Edge data collection
+Address Bearer/Proof of possession token issue by **Proof of Residency (PoR)** 
+- Cryptographically bind (vs convention & configuration) Workload identity (executable code hash etc.) + Approved host platform hardware identity (TPM PKI key etc.)/platform policy (Linux kernel version etc.) to generate a PoR workload certificate/token.
 
-A production‑ready prototype microservice design for secure, verifiable data (e.g., operational metrics etc.) collection at the edge.
+Address Bearer/Proof of possession token and Source IP issue by **Proof of Geofencing (PoG)**
+- Cryptographically bind PoR + Approved host platform location hardware identity (GNSS or mobile sensor serial number) to generate a PoG workload certificate/token.
 
-Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trust/README.md)
+### How to test Unified Identity?
 
-#### Security Highlights
-
-- **Proof of Residency** at the edge → The metrics agent is cryptographically bound to the host platform hardware TPM identity. All the data from the edge metrics agent, including replay protection, is signed by a host TPM resident key which is verified by the collector. The host TPM resident signing key is certified by the host TPM attestation key (AK) which is certified by the host TPM endorsement key (EK). TPM AK is an ephemeral host identity. TPM EK is the permanent host identity.
-
-- **Proof of Geofencing** at the edge → The geographic region is included in the payload from the edge metrics agent and is signed by host TPM. The geographic region verification is done by collector before data is ingested into the system.
-
-- **GPU Telemetry Integration** → AI/ML edge workloads can securely collect GPU metrics (utilization, temperature, memory) from DCGM exporters via Unix Domain Sockets (UDS - secure default) or HTTP (network mode). GPU metrics follow the same TPM-signed trust chain as system metrics, with support for both local and distributed GPU cluster monitoring.
-
-#### How to test Prototype?
-
-- Refer [README_demo.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trust/README_demo.md)
-
-### TPM tools for macOS - In progress
-
-Details: [README.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/swtpm-macos/README.md)
+- Refer [README_demo.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/hybrid-cloud-poc/README_demo.md)
 
 ## Additional Resources
 

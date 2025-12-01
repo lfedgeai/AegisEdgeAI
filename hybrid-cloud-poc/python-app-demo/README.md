@@ -1,4 +1,3 @@
-*** End Patch
 # Unified-Identity: Python App Demo
 
 This demo shows how a Python workload can fetch and use a Sovereign SVID with AttestedClaims from SPIRE Agent.

@@ -633,7 +633,6 @@ SPIRE Server (Port 8081)
    - Microservice verifies device location via CAMARA APIs
    - Attestation fails if location verification fails
    - Enables geofencing and location-based policy enforcement
-```
 
 ---
 
