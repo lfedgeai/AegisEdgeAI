@@ -2,32 +2,11 @@
 
 ## End-to-End Flow Visualization
 
-### Quick Reference (Compact View)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                      SOVEREIGN UNIFIED IDENTITY - END-TO-END FLOW                                                      │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-
-SETUP:        [1] rust-keylime Agent → Keylime Registrar [2] TPM Plugin Server → Generate App Key
-
-ATTESTATION:  [3] SPIRE Agent → [4] TPM Plugin → [5] rust-keylime Agent (TPM2_Certify) → [5] TPM Plugin → [3] SPIRE Agent
-              [6] SPIRE Agent → SPIRE Server (SovereignAttestation)
-
-VERIFICATION: [7] SPIRE Server → [8] Keylime Verifier → [9] Keylime Registrar → [9] Keylime Verifier
-              [10] Keylime Verifier → [11] rust-keylime Agent → [12] Mobile Sensor Microservice → [12] rust-keylime Agent → [13] Keylime Verifier
-              [14] Keylime Verifier → SPIRE Server (AttestedClaims)
-
-AGENT SVID:   [15] SPIRE Server → SPIRE Agent (Agent SVID)
-
-WORKLOAD SVID:[16] Workload → [17] SPIRE Agent → [18] SPIRE Server → [19] SPIRE Agent → [20] Workload
-```
-
 ### Detailed Flow Diagram (Full View)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                      SOVEREIGN UNIFIED IDENTITY - END-TO-END FLOW                                                      │
+│                                                      SOVEREIGN UNIFIED IDENTITY - END-TO-END FLOW                                                   │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 SETUP PHASE:
@@ -47,23 +26,23 @@ SPIRE AGENT ATTESTATION PHASE:
 └──────────────┘       └──────────────┘       │  App Key)    │       └──────────────┘       └──────────────┘       └──────────────┘
                                               └──────────────┘
 
-SPIRE SERVER VERIFICATION PHASE:
+SPIRE SERVER and KEYLIME VERIFIER VERIFICATION PHASE:
 ┌──────────────┐  [8]  ┌──────────────┐  [9]  ┌──────────────┐  [10] ┌──────────────┐  [11] ┌──────────────┐  [12] ┌──────────────┐  [13] ┌──────────────┐  [14] ┌──────────────┐  [15] ┌──────────────┐
 │ SPIRE Server │──────>│ Keylime      │──────>│   Keylime    │──────>│ Keylime      │──────>│ rust-keylime │──────>│ Mobile Sensor│──────>│ rust-keylime │──────>│ Keylime      │──────>│ SPIRE Server │
 │ Extract: App │       │ Verifier     │       │  Registrar   │       │ Verifier     │       │    Agent     │       │ Microservice │       │    Agent     │       │ Verifier     │       │ Issue Agent  │
 │ Key, Cert,   │       │ Verify App   │       │ Return: IP,  │       │ Request TPM  │       │ Generate     │       │ Verify       │       │ Return Quote │       │ Verify Quote │       │ SVID with    │
-│ Nonce, UUID  │       │ Key Cert     │       │ Port, AK,    │       │ Quote        │       │ TPM Quote    │       │ Location via │       │ + Geolocation│       │ Verify Cert  │       │ AttestedClaims│
-└──────────────┘       └──────────────┘       │ mTLS Cert    │       └──────────────┘       │ (with geo)   │       │ CAMARA APIs  │       └──────────────┘       │ Verify Geo   │       └──────────────┘
-                                               └──────────────┘                              └──────────────┘       └──────────────┘                              │ Return       │
-                                                                                                                                                                    │ AttestedClaims│
-                                                                                                                                                                    └──────────────┘
+│ Nonce, UUID  │       │ Key Cert     │       │ Port, AK,    │       │ Quote        │       │ TPM Quote    │       │ Location     │       │ + Geolocation│       │ Verify Cert  │       │ BroaderClaims│
+└──────────────┘       └──────────────┘       │ mTLS Cert    │       └──────────────┘       │ (with geo)   │       │ (Optional)   │       └──────────────┘       │ Verify Geo   │       └──────────────┘
+                                              └──────────────┘                              └──────────────┘       └──────────────┘                              │ Return       │
+                                                                                                                                                                 │ BroaderClaims│
+                                                                                                                                                                 └──────────────┘
 
 SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 ┌──────────────┐  [16] ┌──────────────┐  [17] ┌──────────────┐  [18] ┌──────────────┐  [19] ┌──────────────┐  [20] ┌──────────────┐  [21] ┌──────────────┐
-│ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │──────>│  SPIRE Agent │──────>│ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │
-│ Issue Agent  │       │ Receive      │       │  (Python App)│       │ Match Entry  │       │ Issue        │       │ Forward      │       │ Receive      │
+│ SPIRE Server │──────>│  SPIRE Agent │──────>│   Workload   │──────>│  SPIRE Agent │──────>│ SPIRE Server │──────>│ SPIRE Agent  │──────>│   Workload   │
+│ Issue Agent  │       │ Receive      │       │ (Application)│       │ Match Entry  │       │ Issue        │       │ Forward      │       │ Receive      │
 │ SVID with    │       │ Agent SVID   │       │ Request SVID │       │ Forward      │       │ Workload SVID│       │ Request      │       │ Workload SVID│
-│ AttestedClaims│      └──────────────┘       └──────────────┘       └──────────────┘       │ (inherit     │       └──────────────┘       └──────────────┘
+│ BroaderClaims│       └──────────────┘       └──────────────┘       └──────────────┘       │ (inherit     │       └──────────────┘       └──────────────┘
 └──────────────┘                                                                            │ agent claims)│
                                                                                             └──────────────┘
 ```
@@ -83,13 +62,14 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 **[11]** Geolocation Detection: Agent detects mobile sensor, includes in quote  
 **[12]** Location Verification: Verifier calls mobile sensor microservice (CAMARA APIs)*  
 **[13]** Quote Response: Agent returns TPM quote with geolocation data  
-**[14]** Verification Result: Verifier returns AttestedClaims (geolocation, TPM attestation) → SPIRE Server  
-**[15]** Agent SVID: Server issues agent SVID with AttestedClaims embedded → SPIRE Agent  
+**[14]** Verification Result: Verifier returns BroaderClaims (geolocation, TPM attestation) → SPIRE Server  
+**[15]** Agent SVID: Server issues agent SVID with BroaderClaims embedded → SPIRE Agent  
 **[16]** Workload Request: Workload connects to Agent Workload API  
 **[17]** Workload API: Workload requests SVID via Agent Workload API  
 **[18]** Forward Request: Agent forwards workload SVID request to Server  
-**[19]** Workload SVID: Server issues workload SVID (inherits agent claims, no Keylime call)  
-**[20]** Return SVID: Agent returns workload SVID to workload  
+**[19]** Spire Server Issues Workload SVID: Server issues workload SVID (inherits agent claims, no Keylime call) to spire agent
+**[20]** Spire Agent Returns SVID: Agent returns workload SVID to workload  
+**[21]** Workload Receives SVID: Workload receives workload SVID from SPIRE Agent  
 
 ### Key Components:
 
@@ -101,7 +81,7 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **Keylime Registrar**: Agent registration database
 - **Mobile Sensor Microservice**: Location verification via CAMARA APIs (invoked only when the TPM quote reports a physical mobile sensor, e.g., USB `lsusb` detection)
 
-*The verifier skips this step entirely when no TPM-reported mobile sensor is present, so Sovereign SVIDs omit `grc.geolocation` in that case.*
+*The verifier skips this step entirely when no TPM-reported Mobile/GNSS sensor is present, so Sovereign SVIDs omit `grc.geolocation` in that case.*
 
 ---
 
