@@ -29,7 +29,7 @@ Current security approaches for AI inference applications, secret stores, system
 
 ![The Problem: A Fragile and Non-Verifiable Security Model](images/slide-06-problem-diagram.png)
 
-*Figure: Slide 6 - The Problem: A Fragile and Non-Verifiable Security Model. Shows the traditional security architecture with bearer tokens, proof-of-possession tokens, and IP-based geofencing, highlighting vulnerabilities in host-affinity, geolocation-affinity, and static security monitoring.*
+*Figure: Slide 6 - The Problem: A Fragile and Non-Verifiable Security Model. The diagram illustrates a traditional security architecture for AI inference applications showing: (1) End user host sending inference data with bearer tokens and source IP to Bank Inference application in Sovereign Cloud, (2) Workload host requesting secrets from Customer-managed key vault using bearer/proof-of-possession tokens, (3) Key vault retrieving encrypted models from storage. The diagram highlights three critical security challenges: Host-Affinity Realization Challenges (bearer token replay, proof-of-possession token vulnerabilities to orchestration/RBAC abuse), Geolocation-Affinity Realization Challenges (IP-based geofencing bypass via VPNs/proxies), and Static and Isolated Security Challenges (non-verifiable monitoring systems).*
 
 ## The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity
 
@@ -59,7 +59,7 @@ Real-time data about the host's health, GNSS/mobile sensor status (e.g., connect
 
 ![The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity](images/slide-07-solution-diagram.png)
 
-*Figure: Slide 7 - The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity. Illustrates the solution architecture with Proof of Residency (PoR), Proof of Geofencing (PoG), and dynamic hardware integrity, showing how workload identity, host integrity, and geolocation are cryptographically bound into unified SVIDs.*
+*Figure: Slide 7 - The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity. The diagram shows the solution architecture with: (1) Workload Identity Agent sending inference data with Proof of Geofencing workload certificate/token to AI Inference Host, (2) AI Inference Host (with Spiffe/Spire Agent and Keylime Agent) requesting secrets from Key vault/HSM using Proof of Geofencing tokens, (3) Key vault retrieving encrypted models from storage using Proof of Residency tokens. The architecture includes Workload Identity Manager (SPIRE Server) and Host Identity/Policy Manager (Keylime) for continuous attestation. The solution cryptographically binds workload identity, host hardware identity (TPM), platform policy, and location hardware identity (GNSS/mobile sensor) into unified SVIDs, replacing fragile bearer tokens with hardware-rooted Proof of Residency (PoR) and Proof of Geofencing (PoG).*
 
 ## Unified Identity Architecture
 
@@ -118,7 +118,7 @@ The current implementation demonstrates a hybrid cloud unified identity system c
 
 ![Implementation Details – Current Iteration](images/slide-12-implementation-architecture.png)
 
-*Figure: Slide 12 - Implementation Details – Current Iteration. Shows the complete hybrid cloud unified identity architecture with Sovereign Cloud/Edge Cloud (left) containing SPIRE Server, Keylime Verifier, agents, and TPM, communicating via HTTPS/mTLS with Customer on-Prem Private Cloud (right) containing Envoy Gateway with WASM plugin, Mobile Geolocation Service, and Server App.*
+*Figure: Slide 12 - Implementation Details – Current Iteration. The diagram shows the complete hybrid cloud unified identity architecture: **Sovereign Cloud/Edge Cloud (left, orange boundary)**: Contains Host Identity (Keylime Verifier & Registrar), Workload Identity (SPIRE Server), Keylime Agent, SPIRE Agent, SPIRE TPM Plugin, Mobile location sensor (USB tethered smartphone), TPM, and Client App. System flow: "SPIRE agent gets/refreshes unified identity with TPM-attested geolocation from SPIRE server". Client App flow: "Client app inherits unified identity from SPIRE server – intermediate cert in cert hierarchy". **Customer on-Prem Private Cloud (right, blue boundary)**: Contains Envoy (API Gateway) with WASM plugin, Server App, and Mobile Geolocation Service (CAMARA API). System flow: "Envoy verifies unified identity signature using configured SPIRE server public key cert and verifies geolocation through Mobile Geolocation Service". Server App flow: "Envoy communicates to Server App using standard mTLS". **Inter-Cloud Communication**: Client App connects to Envoy via HTTPS/mTLS using unified identity.*
 
 ## Quick Start Guide
 
