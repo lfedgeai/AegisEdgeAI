@@ -763,6 +763,8 @@ Options:
   --skip-cleanup       Skip the initial cleanup phase.
   --exit-cleanup       Run cleanup on exit (default: components continue running)
   --no-exit-cleanup    Do not run best-effort cleanup on exit (default behavior)
+  --control-plane-only Start only control plane services (SPIRE Server, Keylime Verifier/Registrar)
+                       Skip SPIRE Agent, TPM Plugin, and rust-keylime Agent
   --pause              Enable pause points at critical phases (default: auto-detect)
   --no-pause           Disable pause points (run non-interactively)
   -h, --help           Show this help message.
@@ -798,6 +800,8 @@ cleanup() {
 RUN_INITIAL_CLEANUP=true
 # Modified: Default to NOT cleaning up on exit so components continue running
 EXIT_CLEANUP_ON_EXIT=false
+# Control plane only mode: skip SPIRE Agent and related components
+CONTROL_PLANE_ONLY=false
 # Auto-detect pause mode: enable if interactive terminal, disable otherwise
 if [ -t 0 ]; then
     PAUSE_ENABLED="${PAUSE_ENABLED:-true}"
@@ -1206,6 +1210,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-pause)
             PAUSE_ENABLED=false
+            shift
+            ;;
+        --control-plane-only)
+            CONTROL_PLANE_ONLY=true
             shift
             ;;
         -h|--help)
@@ -2214,13 +2222,17 @@ if [ -f "${SERVER_CONFIG}" ]; then
     sleep 3
 fi
 
-# Start SPIRE Agent manually
-AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
-if [ ! -f "${AGENT_CONFIG}" ]; then
-    AGENT_CONFIG="${PROJECT_DIR}/spire/conf/agent/agent.conf"
-fi
+# Start SPIRE Agent manually (skip if control-plane-only mode)
+if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+    echo "    Skipping SPIRE Agent (--control-plane-only mode)"
+    echo "    Only control plane services (SPIRE Server, Keylime Verifier/Registrar) are started"
+else
+    AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
+    if [ ! -f "${AGENT_CONFIG}" ]; then
+        AGENT_CONFIG="${PROJECT_DIR}/spire/conf/agent/agent.conf"
+    fi
 
-if [ -f "${AGENT_CONFIG}" ]; then
+    if [ -f "${AGENT_CONFIG}" ]; then
     # Stop any existing agent processes first (join tokens are single-use)
     if [ -f /tmp/spire-agent.pid ]; then
         OLD_PID=$(cat /tmp/spire-agent.pid 2>/dev/null || echo "")
@@ -2863,9 +2875,12 @@ COMPONENTS_OK=true
         echo -e "${GREEN}  ✓ SPIRE Server is running${NC}"
     fi
     
-    # Check TPM Plugin Server
-    TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
-    if [ ! -S "$TPM_PLUGIN_SOCKET" ]; then
+    # Check TPM Plugin Server (skip if control-plane-only)
+    if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+        echo -e "${YELLOW}  ⚠ TPM Plugin Server skipped (--control-plane-only mode)${NC}"
+    else
+        TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+        if [ ! -S "$TPM_PLUGIN_SOCKET" ]; then
         echo -e "${YELLOW}  ⚠ TPM Plugin Server not running, starting it...${NC}"
         TPM_PLUGIN_SERVER="${PROJECT_DIR}/tpm-plugin/tpm_plugin_server.py"
         if [ -f "$TPM_PLUGIN_SERVER" ]; then
