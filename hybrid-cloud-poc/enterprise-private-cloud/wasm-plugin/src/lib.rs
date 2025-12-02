@@ -249,10 +249,11 @@ impl HttpContext for SensorVerificationFilter {
         let sensor_id = match extract_sensor_id_from_cert(&cert_pem) {
             Some(id) => id,
             None => {
+                proxy_wasm::hostcalls::log(LogLevel::Warn, "Geo Claim Missing: No sensor ID found in certificate Unified Identity extension");
                 self.send_http_response(
                     403,
                     vec![("content-type", "text/plain")],
-                    Some(b"Invalid certificate: no sensor ID"),
+                    Some(b"Geo Claim Missing"),
                 );
                 return Action::Pause;
             }

@@ -1,7 +1,10 @@
 # Hybrid Cloud POC
 
 ## Overview
-This directory contains a proof-of-concept implementation demonstrating hybrid cloud unified identity with hardware-rooted verifiable geofencing and residency proofs using SPIRE, Keylime, and Envoy addressing the challenges of the traditional non-verifiable security model.
+
+This directory contains a proof-of-concept implementation demonstrating hybrid cloud unified identity with hardware-rooted verifiable geofencing and residency proofs using SPIRE, Keylime, and Envoy.
+
+This POC addresses the challenges of the traditional non-verifiable security model by providing cryptographically verifiable proofs that bind workload identity, host integrity, and geolocation into unified credentials.
 
 **Slides:** [View Presentation](https://onedrive.live.com/?id=746ADA9DC9BA7CB7%21sa416cb345794427ab085a20f8ccc0edd&cid=746ADA9DC9BA7CB7&redeem=aHR0cHM6Ly8xZHJ2Lm1zL2IvYy83NDZhZGE5ZGM5YmE3Y2I3L0VUVExGcVNVVjNwQ3NJV2lENHpNRHQwQlh6U3djQ01HWDhjQS1xbGxLZm1Zdnc%5FZT1PTnJqZjE&parId=746ADA9DC9BA7CB7%21s95775661177f4ef5a4ba84313cd3795a&o=OneUp)
 
@@ -11,7 +14,9 @@ Current security approaches for AI inference applications, secret stores, system
 
 ### Host-Affinity Realization Challenges
 
-- **Bearer tokens (RFC 6750)**: Protect inference applications, secret stores, and model repositories but can be replayed if stolen through compromise of an identity provider (e.g., Okta) or metadata server (e.g., Kubernetes bootstrap token, SPIRE bootstrap token).
+- **Bearer tokens (RFC 6750)**: Protect inference applications, secret stores, and model repositories but can be replayed if stolen through compromise of:
+  - Identity providers (e.g., Okta)
+  - Metadata servers (e.g., Kubernetes bootstrap token, SPIRE bootstrap token)
 
 - **Proof-of-Possession tokens (RFC 7800)**: Bind a private key to the token, reducing replay risk, but remain vulnerable to:
   - Container orchestration abuse (MITRE T1611)
@@ -29,7 +34,17 @@ Current security approaches for AI inference applications, secret stores, system
 
 ![The Problem: A Fragile and Non-Verifiable Security Model](images/slide-06-problem-diagram.png)
 
-*Figure: Slide 6 - The Problem: A Fragile and Non-Verifiable Security Model. The diagram illustrates a traditional security architecture for AI inference applications showing: (1) End user host sending inference data with bearer tokens and source IP to Bank Inference application in Sovereign Cloud, (2) Workload host requesting secrets from Customer-managed key vault using bearer/proof-of-possession tokens, (3) Key vault retrieving encrypted models from storage. The diagram highlights three critical security challenges: Host-Affinity Realization Challenges (bearer token replay, proof-of-possession token vulnerabilities to orchestration/RBAC abuse), Geolocation-Affinity Realization Challenges (IP-based geofencing bypass via VPNs/proxies), and Static and Isolated Security Challenges (non-verifiable monitoring systems).*
+*Figure: Slide 6 - The Problem: A Fragile and Non-Verifiable Security Model*
+
+The diagram illustrates a traditional security architecture for AI inference applications showing:
+1. End user host sending inference data with bearer tokens and source IP to Bank Inference application in Sovereign Cloud
+2. Workload host requesting secrets from Customer-managed key vault using bearer/proof-of-possession tokens
+3. Key vault retrieving encrypted models from storage
+
+The diagram highlights three critical security challenges:
+- **Host-Affinity Realization Challenges**: Bearer token replay, proof-of-possession token vulnerabilities to orchestration/RBAC abuse
+- **Geolocation-Affinity Realization Challenges**: IP-based geofencing bypass via VPNs/proxies
+- **Static and Isolated Security Challenges**: Non-verifiable monitoring systems
 
 ## The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity
 
@@ -59,7 +74,17 @@ Real-time data about the host's health, GNSS/mobile sensor status (e.g., connect
 
 ![The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity](images/slide-07-solution-diagram.png)
 
-*Figure: Slide 7 - The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity. The diagram shows the solution architecture with: (1) Workload Identity Agent sending inference data with Proof of Geofencing workload certificate/token to AI Inference Host, (2) AI Inference Host (with Spiffe/Spire Agent and Keylime Agent) requesting secrets from Key vault/HSM using Proof of Geofencing tokens, (3) Key vault retrieving encrypted models from storage using Proof of Residency tokens. The architecture includes Workload Identity Manager (SPIRE Server) and Host Identity/Policy Manager (Keylime) for continuous attestation. The solution cryptographically binds workload identity, host hardware identity (TPM), platform policy, and location hardware identity (GNSS/mobile sensor) into unified SVIDs, replacing fragile bearer tokens with hardware-rooted Proof of Residency (PoR) and Proof of Geofencing (PoG).*
+*Figure: Slide 7 - The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity*
+
+The diagram shows the solution architecture with:
+1. **Workload Identity Agent** sending inference data with Proof of Geofencing workload certificate/token to AI Inference Host
+2. **AI Inference Host** (with Spiffe/Spire Agent and Keylime Agent) requesting secrets from Key vault/HSM using Proof of Geofencing tokens
+3. **Key vault** retrieving encrypted models from storage using Proof of Residency tokens
+
+The architecture includes:
+- **Workload Identity Manager** (SPIRE Server) and **Host Identity/Policy Manager** (Keylime) for continuous attestation
+- Cryptographic binding of workload identity, host hardware identity (TPM), platform policy, and location hardware identity (GNSS/mobile sensor) into unified SVIDs
+- Replacement of fragile bearer tokens with hardware-rooted **Proof of Residency (PoR)** and **Proof of Geofencing (PoG)**
 
 ## Unified Identity Architecture
 
@@ -118,7 +143,20 @@ The current implementation demonstrates a hybrid cloud unified identity system c
 
 ![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/slide-12-implementation-architecture.png)
 
-*Figure: Slide 12 - Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture. The diagram shows the complete hybrid cloud unified identity architecture: **Sovereign Cloud/Edge Cloud (left, orange boundary)**: Contains Host Identity (Keylime Verifier & Registrar), Workload Identity (SPIRE Server), Keylime Agent, SPIRE Agent, SPIRE TPM Plugin, Mobile location sensor (USB tethered smartphone), TPM, and Client App. System flow: "SPIRE agent gets/refreshes unified identity with TPM-attested geolocation from SPIRE server". Client App flow: "Client app inherits unified identity from SPIRE server – intermediate cert in cert hierarchy". **Customer on-Prem Private Cloud (right, blue boundary)**: Contains Envoy (API Gateway) with WASM plugin, Server App, and Mobile Geolocation Service (CAMARA API). System flow: "Envoy verifies unified identity signature using configured SPIRE server public key cert and verifies geolocation through Mobile Geolocation Service". Server App flow: "Envoy communicates to Server App using standard mTLS". **Inter-Cloud Communication**: Client App connects to Envoy via HTTPS/mTLS using unified identity.*
+*Figure: Slide 12 - Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture*
+
+**Sovereign Cloud/Edge Cloud (left, orange boundary):**
+- Contains: Host Identity (Keylime Verifier & Registrar), Workload Identity (SPIRE Server), Keylime Agent, SPIRE Agent, SPIRE TPM Plugin, Mobile location sensor (USB tethered smartphone), TPM, and Client App
+- System flow: SPIRE agent gets/refreshes unified identity with TPM-attested geolocation from SPIRE server
+- Client App flow: Client app inherits unified identity from SPIRE server – intermediate cert in cert hierarchy
+
+**Customer on-Prem Private Cloud (right, blue boundary):**
+- Contains: Envoy (API Gateway) with WASM plugin, Server App, and Mobile Geolocation Service (CAMARA API)
+- System flow: Envoy verifies unified identity signature using configured SPIRE server public key cert and verifies geolocation through Mobile Geolocation Service
+- Server App flow: Envoy communicates to Server App using standard mTLS
+
+**Inter-Cloud Communication:**
+- Client App connects to Envoy via HTTPS/mTLS using unified identity
 
 ## Quick Start Guide
 
@@ -269,6 +307,7 @@ python3 mtls-client-app.py
 ```
 
 **What happens:**
+
 1. Client connects to SPIRE Agent Workload API
 2. SPIRE Agent attests the client process and matches to registration entry
 3. SPIRE Agent requests workload SVID from SPIRE Server
@@ -277,7 +316,7 @@ python3 mtls-client-app.py
 6. Envoy verifies SPIRE certificate signature using SPIRE CA bundle
 7. Envoy WASM filter extracts sensor ID from certificate chain
 8. Envoy calls Mobile Location Service to verify geolocation
-9. If verified, Envoy forwards request to backend mTLS server with X-Sensor-ID header
+9. If verified, Envoy forwards request to backend mTLS server with `X-Sensor-ID` header
 10. Backend server logs the sensor ID for audit trail
 
 **Expected output:**
@@ -309,11 +348,11 @@ tail -f /tmp/mtls-client-app.log
 sudo tail -f /opt/envoy/logs/envoy.log | grep -E '(sensor|verification|cache|TTL)'
 ```
 
-Expected log entries:
-- "Extracted sensor_id: 12d1:1433"
-- "Using cached verification" (after first request, within 15s)
-- "Cache expired" (after 15s, re-verifying)
-- "Sensor verification successful"
+**Expected log entries:**
+- `Extracted sensor_id: 12d1:1433`
+- `Using cached verification` (after first request, within 15s)
+- `Cache expired` (after 15s, re-verifying)
+- `Sensor verification successful`
 
 **Check Mobile Location Service logs:**
 ```bash
@@ -327,8 +366,8 @@ tail -f /tmp/mobile-sensor.log | grep -E '(CAMARA|authorize|token|verify_locatio
 tail -f /tmp/mtls-server.log | grep -E '(Sensor ID|X-Sensor-ID)'
 ```
 
-Expected log entries:
-- "Client X HTTP GET /hello: HELLO #N [Sensor ID: 12d1:1433]"
+**Expected log entries:**
+- `Client X HTTP GET /hello: HELLO #N [Sensor ID: 12d1:1433]`
 
 **Check SPIRE Agent attestation:**
 ```bash
@@ -336,7 +375,7 @@ Expected log entries:
 ./watch-spire-agent-attestations.sh
 ```
 
-Expected log entries showing:
+**Expected log entries showing:**
 - Agent attestation with TPM App Key certification
 - Unified identity SVID issuance with geolocation claims
 - Workload SVID inheritance from agent SVID
@@ -355,7 +394,7 @@ python3 fetch-sovereign-svid-grpc.py
 **Expected output shows:**
 - Workload SPIFFE ID
 - Agent SVID in certificate chain
-- AttestedClaims including:
+- **AttestedClaims** including:
   - `grc.geolocation.*` (sensor_id, type, latitude, longitude)
   - `grc.tpm-attestation.*` (App Key cert, TPM quote data)
   - `grc.workload.*` (workload ID, key source)
@@ -453,3 +492,53 @@ cd enterprise-private-cloud
 ```
 
 This creates a tmux session with 3 panes showing all logs simultaneously.
+
+## Demo Script: 3-Act Presentation
+
+For a guided demonstration following the slide deck structure, use the 3-Act demo script:
+
+```bash
+./demo-3-act-presentation.sh
+```
+
+This script guides the audience through:
+
+### **Introduction: The Sovereign Challenge**
+- Explains the problem: fragile IP-based geofencing and insider threats
+- Introduces the Unified Identity solution
+
+### **Act 1: The Setup (Trusted Infrastructure)**
+- Shows the architecture (Sovereign Cloud ↔ On-Prem Private Cloud)
+- Demonstrates Keylime Verifier establishing hardware root of trust with TPM
+- Verifies all services are running
+
+### **Act 2: The Happy Path (Proof of Residency)**
+- Shows SPIRE Agent fetching Unified SVID with:
+  - Workload Attestation (Software identity)
+  - Host Attestation (TPM proof)
+  - Geolocation Proof (From Keylime Agent Plugin)
+- Decodes and displays the SVID certificate structure
+- Demonstrates successful client connection with 200 OK from Envoy
+- Shows WASM Plugin verification of Proof of Geofencing (PoG)
+
+### **Act 3: The Defense (The Rogue Admin)**
+- Simulates rogue admin disconnecting USB Mobile Sensor
+- Shows Keylime Agent detecting the USB disconnect event
+- Demonstrates Degraded SVID issuance (valid for network, missing PoR)
+- Shows client reconnection attempt
+- **Key demonstration**: Envoy WASM Plugin returns **403 Forbidden** with error **"Geo Claim Missing"**
+- Proves the system blocks requests when geolocation proof is missing
+
+### **Conclusion: Value Delivered**
+- Summarizes the move from Phase I (replayable credentials) to Phase II (HW-anchored proofs)
+- Highlights three key achievements:
+  1. Strong Residency Guarantees (auditable)
+  2. Protection against Insider Threats
+  3. Unified Identity bound to physical hardware
+
+**Prerequisites for Demo:**
+- All services running on both machines (see Quick Start Guide above)
+- USB Mobile Sensor connected (for Act 2)
+- Root/sudo access for sensor toggle script
+
+**Note:** The demo script automatically handles sensor disconnection/reconnection for Act 3.
