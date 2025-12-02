@@ -307,8 +307,30 @@ printf '  Fetching SPIRE CA bundle from 10.1.0.11...\n'
 SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
 
+# First, check if bundle exists on 10.1.0.11, if not, generate it
+if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+    "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
+    "test -f /tmp/spire-bundle.pem" 2>/dev/null; then
+    # Bundle doesn't exist, try to generate it
+    echo "  Generating SPIRE bundle on ${SPIRE_CLIENT_HOST}..."
+    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+        "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
+        "cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null" 2>/dev/null; then
+        echo -e "${GREEN}  ✓ SPIRE bundle generated on ${SPIRE_CLIENT_HOST}${NC}"
+    else
+        # Try alternative method: use SPIRE server command directly
+        if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+            "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
+            "test -S /tmp/spire-server/private/api.sock && ~/AegisEdgeAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null" 2>/dev/null; then
+            echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ Could not generate bundle on ${SPIRE_CLIENT_HOST} (SPIRE server may not be ready)${NC}"
+        fi
+    fi
+fi
+
 # Try to fetch from 10.1.0.11
-if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
     "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem" \
     /tmp/spire-bundle.pem 2>/dev/null; then
     echo -e "${GREEN}  ✓ SPIRE bundle fetched from ${SPIRE_CLIENT_HOST}${NC}"
@@ -318,9 +340,9 @@ if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
 elif [ -f /tmp/spire-bundle.pem ]; then
     # If scp failed but file exists locally, use it
     echo -e "${YELLOW}  ⚠ Could not fetch from ${SPIRE_CLIENT_HOST}, using local /tmp/spire-bundle.pem${NC}"
+    echo -e "${GREEN}  ✓ SPIRE bundle copied from local file -- spire server is up in ${SPIRE_CLIENT_HOST}${NC}"
     sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem
     sudo chmod 644 /opt/envoy/certs/spire-bundle.pem
-    echo -e "${GREEN}  ✓ SPIRE bundle copied from local file${NC}"
 else
     echo -e "${YELLOW}  ⚠ Could not fetch SPIRE bundle from ${SPIRE_CLIENT_HOST}${NC}"
     printf '     You can manually copy it later:\n'

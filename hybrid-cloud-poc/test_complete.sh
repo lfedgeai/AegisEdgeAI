@@ -90,11 +90,84 @@ SCRIPT_DIR="${TEST_SCRIPT_DIR}"
     eval "$func_def"
 }
 
+# Function to clean up only control plane services
+stop_control_plane_services_only() {
+    echo -e "${CYAN}Step 0: Stopping control plane services and cleaning up their data...${NC}"
+    echo ""
+    
+    # Step 1: Stop control plane processes only
+    echo "  1. Stopping control plane processes..."
+    
+    # Stop SPIRE Server (not Agent)
+    echo "     Stopping SPIRE Server..."
+    pkill -f "spire-server" >/dev/null 2>&1 || true
+    
+    # Stop Keylime Verifier and Registrar
+    echo "     Stopping Keylime Verifier and Registrar..."
+    pkill -f "keylime_verifier" >/dev/null 2>&1 || true
+    pkill -f "keylime\.cmd\.verifier" >/dev/null 2>&1 || true
+    pkill -f "keylime_registrar" >/dev/null 2>&1 || true
+    pkill -f "keylime\.cmd\.registrar" >/dev/null 2>&1 || true
+    
+    sleep 1
+    
+    # Step 2: Clean up only control plane data directories
+    echo "  2. Cleaning up control plane data directories..."
+    
+    # Remove SPIRE Server data (not Agent data)
+    echo "     Removing SPIRE Server data directories..."
+    rm -rf /tmp/spire-server 2>/dev/null || true
+    rm -f /tmp/spire-server.pid 2>/dev/null || true
+    rm -f /tmp/spire-server.log 2>/dev/null || true
+    
+    # Remove Keylime databases and persistent data
+    echo "     Removing Keylime databases and persistent data..."
+    rm -rf /tmp/keylime 2>/dev/null || true
+    rm -f /tmp/keylime-verifier.pid 2>/dev/null || true
+    rm -f /tmp/keylime-registrar.pid 2>/dev/null || true
+    rm -f /tmp/keylime-verifier.log 2>/dev/null || true
+    rm -f /tmp/keylime-registrar.log 2>/dev/null || true
+    
+    # Remove TLS certificates (needed for Keylime)
+    echo "     Removing TLS certificates..."
+    rm -rf "${KEYLIME_DIR}/cv_ca" 2>/dev/null || true
+    
+    # Step 3: Remove PID files
+    echo "  3. Removing PID files..."
+    rm -f /tmp/spire-server.pid 2>/dev/null || true
+    rm -f /tmp/keylime-verifier.pid 2>/dev/null || true
+    rm -f /tmp/keylime-registrar.pid 2>/dev/null || true
+    
+    # Step 4: Remove log files
+    echo "  4. Removing log files..."
+    rm -f /tmp/spire-server.log 2>/dev/null || true
+    rm -f /tmp/keylime-verifier.log 2>/dev/null || true
+    rm -f /tmp/keylime-registrar.log 2>/dev/null || true
+    
+    # Step 5: Remove socket files
+    echo "  5. Removing socket files..."
+    rm -f /tmp/spire-server/private/api.sock 2>/dev/null || true
+    rm -f /tmp/spire-server/public/api.sock 2>/dev/null || true
+    
+    # Step 6: Create clean data directories
+    echo "  6. Creating clean data directories..."
+    mkdir -p /tmp/spire-server/private 2>/dev/null || true
+    mkdir -p /tmp/spire-server/public 2>/dev/null || true
+    mkdir -p /tmp/keylime 2>/dev/null || true
+    
+    echo ""
+    echo -e "${GREEN}  ✓ Control plane services stopped and data cleaned up${NC}"
+}
+
 # Override with wrapper that adds Step 0 prefix
 stop_all_instances_and_cleanup() {
-    echo -e "${CYAN}Step 0: Stopping all existing instances and cleaning up all data...${NC}"
-    echo ""
-    SKIP_HEADER=1 _original_stop_all_instances_and_cleanup
+    if [ "${CONTROL_PLANE_ONLY:-false}" = "true" ]; then
+        stop_control_plane_services_only
+    else
+        echo -e "${CYAN}Step 0: Stopping all existing instances and cleaning up all data...${NC}"
+        echo ""
+        SKIP_HEADER=1 _original_stop_all_instances_and_cleanup
+    fi
 }
 
 # Pause function for critical phases (only in interactive terminals)
@@ -1359,7 +1432,12 @@ fi
 
 pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
 
-start_mobile_sensor_microservice
+# Step 1.5: Start Mobile Location Verification microservice (skip if control-plane-only)
+if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+    echo -e "${YELLOW}  Skipping Mobile Location Verification microservice (--control-plane-only mode)${NC}"
+else
+    start_mobile_sensor_microservice
+fi
 
 # Helper function to stop control plane services
 stop_control_plane_services() {
@@ -1583,9 +1661,14 @@ fi
 
 pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent registration."
 
-# Step 4: Start rust-keylime Agent
-echo ""
-echo -e "${CYAN}Step 4: Starting rust-keylime Agent with delegated certification...${NC}"
+# Step 4: Start rust-keylime Agent (skip if control-plane-only)
+if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+    echo ""
+    echo -e "${YELLOW}  Skipping rust-keylime Agent (--control-plane-only mode)${NC}"
+    echo -e "${YELLOW}  Only control plane services (SPIRE Server, Keylime Verifier/Registrar) are started${NC}"
+else
+    echo ""
+    echo -e "${CYAN}Step 4: Starting rust-keylime Agent with delegated certification...${NC}"
 
 cd "${RUST_KEYLIME_DIR}"
 
@@ -2108,13 +2191,19 @@ fi
 
 echo "  TPM Plugin and SPIRE can now be started."
 
-pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. Geolocation claims are optional and surface only when sensors report them. Ready for SPIRE integration."
+    pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. Geolocation claims are optional and surface only when sensors report them. Ready for SPIRE integration."
+fi
 
-# Step 6: Start TPM Plugin Server (HTTP/UDS)
-echo ""
-echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
+# Step 6: Start TPM Plugin Server (HTTP/UDS) (skip if control-plane-only)
+if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+    echo ""
+    echo -e "${YELLOW}  Skipping TPM Plugin Server (--control-plane-only mode)${NC}"
+    echo -e "${YELLOW}  Only control plane services (SPIRE Server, Keylime Verifier/Registrar) are started${NC}"
+else
+    echo ""
+    echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
 
-TPM_PLUGIN_SERVER="${SCRIPT_DIR}/tpm-plugin/tpm_plugin_server.py"
+    TPM_PLUGIN_SERVER="${SCRIPT_DIR}/tpm-plugin/tpm_plugin_server.py"
 if [ ! -f "$TPM_PLUGIN_SERVER" ]; then
     abort_on_error "TPM Plugin Server not found at ${TPM_PLUGIN_SERVER}"
 fi
@@ -2213,9 +2302,10 @@ if [ "$TPM_SERVER_STARTED" = false ]; then
         tail -20 /tmp/tpm-plugin-server.log
         abort_on_error "TPM Plugin Server failed to start"
     fi
-fi
+    fi
 
-pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE to use TPM operations."
+    pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE to use TPM operations."
+fi
 
 # Step 7: Start SPIRE Server and Agent
 echo ""
@@ -2537,7 +2627,7 @@ if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
     echo "  ✓ Keylime Verifier"
     echo "  ✓ Keylime Registrar"
     echo ""
-    echo -e "${YELLOW}Note: SPIRE Agent, TPM Plugin, and workload registration are skipped in --control-plane-only mode${NC}"
+    echo -e "${YELLOW}Note: SPIRE Agent, TPM Plugin, rust-keylime Agent, Mobile Sensor microservice, and workload registration are skipped in --control-plane-only mode${NC}"
     exit 0
 fi
 
@@ -2989,17 +3079,22 @@ COMPONENTS_OK=true
                 echo -e "${YELLOW}  ⚠ TPM Plugin Server start attempted (may not be required)${NC}"
             fi
         fi
-    else
-        echo -e "${GREEN}  ✓ TPM Plugin Server is running${NC}"
+        else
+            echo -e "${GREEN}  ✓ TPM Plugin Server is running${NC}"
+        fi
     fi
     
-    # Check rust-keylime agent
-    if ! pgrep -f "keylime_agent" >/dev/null 2>&1; then
-        echo -e "${YELLOW}  ⚠ rust-keylime agent not running${NC}"
-        echo "  Note: Agent may be needed for Unified-Identity attestation"
-        COMPONENTS_OK=false
+    # Check rust-keylime agent (skip if control-plane-only)
+    if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+        echo -e "${YELLOW}  ⚠ rust-keylime agent skipped (--control-plane-only mode)${NC}"
     else
-        echo -e "${GREEN}  ✓ rust-keylime agent is running${NC}"
+        if ! pgrep -f "keylime_agent" >/dev/null 2>&1; then
+            echo -e "${YELLOW}  ⚠ rust-keylime agent not running${NC}"
+            echo "  Note: Agent may be needed for Unified-Identity attestation"
+            COMPONENTS_OK=false
+        else
+            echo -e "${GREEN}  ✓ rust-keylime agent is running${NC}"
+        fi
     fi
     
     # Check SPIRE Agent

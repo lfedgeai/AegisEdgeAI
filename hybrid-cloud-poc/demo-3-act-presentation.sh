@@ -23,6 +23,29 @@ CLIENT_LOG="/tmp/mtls-client-app.log"
 # SSH options to avoid password prompts
 SSH_OPTS="-o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes"
 
+# Detect if we're running on the sovereign host
+CURRENT_HOST_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || ip addr show | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1)
+if [ "${CURRENT_HOST_IP}" = "${SOVEREIGN_HOST}" ]; then
+    ON_SOVEREIGN_HOST=true
+else
+    # Try to check via hostname comparison (fallback)
+    SOVEREIGN_HOSTNAME=$(ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'hostname' 2>/dev/null || echo '')
+    if [ "$(hostname)" = "${SOVEREIGN_HOSTNAME}" ] && [ -n "${SOVEREIGN_HOSTNAME}" ]; then
+        ON_SOVEREIGN_HOST=true
+    else
+        ON_SOVEREIGN_HOST=false
+    fi
+fi
+
+# Function to run command on sovereign host (local or via SSH)
+run_on_sovereign() {
+    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+        eval "$@"
+    else
+        ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "$@"
+    fi
+}
+
 echo -e "${BOLD}${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}${CYAN}║  Zero-Trust Sovereign AI: Unified Identity Demo              ║${NC}"
 echo -e "${BOLD}${CYAN}║  3-Act Structure: Setup → Happy Path → Defense              ║${NC}"
@@ -84,12 +107,36 @@ echo ""
 
 # Check if services are running
 echo "Checking services on ${SOVEREIGN_HOST}..."
-if ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "pgrep -f 'spire-server|keylime-verifier' > /dev/null" 2>/dev/null; then
-    echo -e "${GREEN}✓ SPIRE Server and Keylime Verifier are running${NC}"
+if run_on_sovereign "pgrep -f 'spire-server|keylime-verifier|keylime-registrar' > /dev/null" 2>/dev/null; then
+    # Verify all three control plane services are running
+    SPIRE_RUNNING=$(run_on_sovereign "pgrep -f 'spire-server' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+    VERIFIER_RUNNING=$(run_on_sovereign "pgrep -f 'keylime-verifier' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+    REGISTRAR_RUNNING=$(run_on_sovereign "pgrep -f 'keylime-registrar' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+    
+    if [ "${SPIRE_RUNNING}" = "yes" ] && [ "${VERIFIER_RUNNING}" = "yes" ] && [ "${REGISTRAR_RUNNING}" = "yes" ]; then
+        echo -e "${GREEN}✓ SPIRE Server, Keylime Verifier, and Keylime Registrar are running${NC}"
+    else
+        echo -e "${YELLOW}⚠ Some control plane services are not running:${NC}"
+        [ "${SPIRE_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} SPIRE Server" || echo -e "  ${RED}✗${NC} SPIRE Server"
+        [ "${VERIFIER_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} Keylime Verifier" || echo -e "  ${RED}✗${NC} Keylime Verifier"
+        [ "${REGISTRAR_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} Keylime Registrar" || echo -e "  ${RED}✗${NC} Keylime Registrar"
+        echo ""
+        echo -e "${RED}✗ Services not running. Starting control plane services...${NC}"
+        if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+            cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause
+        else
+            echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause'"
+            exit 1
+        fi
+    fi
 else
-    echo -e "${RED}✗ Services not running. Please start them first:${NC}"
-    echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause'"
-    exit 1
+    echo -e "${RED}✗ Services not running. Starting control plane services...${NC}"
+    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+        cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause
+    else
+        echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause'"
+        exit 1
+    fi
 fi
 
 echo ""
@@ -135,7 +182,7 @@ echo ""
 
 # Show SPIRE Agent attestation logs
 echo "Fetching latest SPIRE Agent attestation logs..."
-ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "tail -20 /tmp/spire-agent.log | grep -E '(attestation|SVID|geolocation|TPM)' | tail -5" 2>/dev/null || echo "  (No recent attestation logs found)"
+run_on_sovereign "tail -20 /tmp/spire-agent.log | grep -E '(attestation|SVID|geolocation|TPM)' | tail -5" 2>/dev/null || echo "  (No recent attestation logs found)"
 
 echo ""
 echo -e "${BOLD}The Visual Proof:${NC}"
@@ -145,7 +192,7 @@ echo ""
 
 # Decode and display SVID
 echo "Fetching and decoding SVID..."
-ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1 && ../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -30" 2>/dev/null || echo "  (SVID fetch in progress...)"
+run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1 && ../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -30" 2>/dev/null || echo "  (SVID fetch in progress...)"
 
 echo ""
 echo -e "${YELLOW}Action: The Client App now calls the Server.${NC}"
@@ -158,7 +205,7 @@ echo ""
 
 # Start client in background and show logs
 echo "Starting mTLS client..."
-ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f mtls-client-app.py 2>/dev/null; rm -f ${CLIENT_LOG} && nohup python3 python-app-demo/mtls-client-app.py > ${CLIENT_LOG} 2>&1 &" 2>/dev/null
+run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f mtls-client-app.py 2>/dev/null; rm -f ${CLIENT_LOG} && nohup python3 python-app-demo/mtls-client-app.py > ${CLIENT_LOG} 2>&1 &" 2>/dev/null
 
 sleep 3
 
@@ -166,7 +213,7 @@ echo ""
 echo -e "${GREEN}Log Check: Envoy reports '200 OK'. The location is verified as compliant.${NC}"
 echo ""
 echo "Client logs (first few messages):"
-ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "tail -10 ${CLIENT_LOG} 2>/dev/null | grep -E '(Connected|Sending|Received|ACK)' | head -5" 2>/dev/null || echo "  (Client starting...)"
+run_on_sovereign "tail -10 ${CLIENT_LOG} 2>/dev/null | grep -E '(Connected|Sending|Received|ACK)' | head -5" 2>/dev/null || echo "  (Client starting...)"
 
 echo ""
 echo "Envoy logs (verification):"
@@ -194,7 +241,7 @@ echo ""
 
 # Disconnect the sensor
 echo "Disconnecting USB Mobile Sensor..."
-ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "sudo ~/AegisEdgeAI/hybrid-cloud-poc/test_toggle_huawei_mobile_sensor.sh off" 2>/dev/null || echo "  (Sensor toggle script not available or already disconnected)"
+run_on_sovereign "sudo ~/AegisEdgeAI/hybrid-cloud-poc/test_toggle_huawei_mobile_sensor.sh off" 2>/dev/null || echo "  (Sensor toggle script not available or already disconnected)"
 
 sleep 2
 
@@ -207,7 +254,7 @@ echo ""
 
 # Show Keylime agent detection
 echo "Checking Keylime Agent logs for sensor disconnect detection..."
-ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "tail -30 /tmp/rust-keylime-agent.log 2>/dev/null | grep -E '(sensor|USB|disconnect|geolocation)' | tail -5" 2>/dev/null || echo "  (Checking agent status...)"
+run_on_sovereign "tail -30 /tmp/rust-keylime-agent.log 2>/dev/null | grep -E '(sensor|USB|disconnect|geolocation)' | tail -5" 2>/dev/null || echo "  (Checking agent status...)"
 
 echo ""
 echo -e "${BOLD}The Block (Degraded Identity):${NC}"
@@ -229,7 +276,7 @@ echo ""
 
 # Check client logs for reconnection
 echo "Client logs (reconnection attempt):"
-ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "tail -15 ${CLIENT_LOG} 2>/dev/null | tail -5" 2>/dev/null || echo "  (Checking client status...)"
+run_on_sovereign "tail -15 ${CLIENT_LOG} 2>/dev/null | tail -5" 2>/dev/null || echo "  (Checking client status...)"
 
 echo ""
 echo -e "${GREEN}Log Check:${NC} Look at the Envoy logs. The TLS handshake succeeds"
@@ -269,11 +316,15 @@ echo ""
 
 # Reconnect sensor for cleanup
 echo "Reconnecting USB Mobile Sensor for cleanup..."
-ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "sudo ~/AegisEdgeAI/hybrid-cloud-poc/test_toggle_huawei_mobile_sensor.sh on" 2>/dev/null || echo "  (Sensor toggle script not available)"
+run_on_sovereign "sudo ~/AegisEdgeAI/hybrid-cloud-poc/test_toggle_huawei_mobile_sensor.sh on" 2>/dev/null || echo "  (Sensor toggle script not available)"
 
 echo ""
 echo "To stop the client:"
-echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'pkill -f mtls-client-app.py'"
+    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+        echo "  pkill -f mtls-client-app.py"
+    else
+        echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'pkill -f mtls-client-app.py'"
+    fi
 echo ""
 echo -e "${YELLOW}Note:${NC} This script uses SSH key-based authentication."
 echo "Make sure your SSH keys are set up for passwordless access to both hosts."
