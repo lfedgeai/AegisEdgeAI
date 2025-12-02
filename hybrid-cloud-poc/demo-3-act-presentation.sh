@@ -118,61 +118,39 @@ echo ""
 echo -e "${YELLOW}Action: Starting the Control Plane...${NC}"
 echo ""
 
-# Check if services are already running
-echo "Checking if control plane services are already running on ${SOVEREIGN_HOST}..."
-SPIRE_RUNNING=$(run_on_sovereign "pgrep -f 'spire-server' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-VERIFIER_RUNNING=$(run_on_sovereign "pgrep -f 'keylime.*verifier|keylime\.cmd\.verifier' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-REGISTRAR_RUNNING=$(run_on_sovereign "pgrep -f 'keylime.*registrar|keylime\.cmd\.registrar' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+# Start control plane services on sovereign host (10.1.0.11)
+echo "Starting control plane services on ${SOVEREIGN_HOST}..."
+echo "  Running test_complete_control_plane.sh --no-pause..."
+echo "  (This may take a minute to start all services...)"
+echo ""
 
-if [ "${SPIRE_RUNNING}" = "yes" ] && [ "${VERIFIER_RUNNING}" = "yes" ] && [ "${REGISTRAR_RUNNING}" = "yes" ]; then
-    echo -e "${GREEN}✓ SPIRE Server, Keylime Verifier, and Keylime Registrar are already running${NC}"
-    echo "  Skipping control plane startup (services already running)"
+if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+    cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete_control_plane.sh --no-pause
 else
-    echo -e "${YELLOW}⚠ Starting control plane services...${NC}"
-    [ "${SPIRE_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} SPIRE Server (already running)" || echo -e "  ${YELLOW}→${NC} Starting SPIRE Server"
-    [ "${VERIFIER_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} Keylime Verifier (already running)" || echo -e "  ${YELLOW}→${NC} Starting Keylime Verifier"
-    [ "${REGISTRAR_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} Keylime Registrar (already running)" || echo -e "  ${YELLOW}→${NC} Starting Keylime Registrar"
-    echo ""
-    echo "  Running test_complete_control_plane.sh --no-pause..."
-    echo "  (This may take a minute to start all services...)"
-    
-    # Run test_complete_control_plane.sh
-    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
-        cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete_control_plane.sh --no-pause
-    else
-        ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete_control_plane.sh --no-pause"
-    fi
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Control plane services started successfully${NC}"
-    else
-        echo -e "${RED}✗ Failed to start control plane services${NC}"
-        exit 1
-    fi
+    ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete_control_plane.sh --no-pause"
+fi
+
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ Control plane services started successfully${NC}"
+else
+    echo -e "${RED}✗ Failed to start control plane services${NC}"
+    exit 1
 fi
 
 echo ""
-echo "Checking services on ${ONPREM_HOST}..."
-# Check if services are already running
-ONPREM_SERVICES_RUNNING=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "sudo netstat -tlnp | grep -E ':(8080|5000|9443)' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+echo "Starting onprem services on ${ONPREM_HOST}..."
+echo "  Running test_onprem.sh..."
+echo "  (This may take a minute to start all services...)"
+echo ""
 
-if [ "${ONPREM_SERVICES_RUNNING}" = "yes" ]; then
-    echo -e "${GREEN}✓ Envoy, Mobile Location Service, and mTLS Server are already running${NC}"
-    echo "  Skipping onprem services startup (services already running)"
+# Run test_onprem.sh on the onprem host
+ssh ${SSH_OPTS} mw@${ONPREM_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh"
+
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ Onprem services started successfully${NC}"
 else
-    echo -e "${YELLOW}⚠ Starting onprem services...${NC}"
-    echo "  Running test_onprem.sh on ${ONPREM_HOST}..."
-    echo "  (This may take a minute to start all services...)"
-    
-    # Run test_onprem.sh on the onprem host
-    ssh ${SSH_OPTS} mw@${ONPREM_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh"
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Onprem services started successfully${NC}"
-    else
-        echo -e "${RED}✗ Failed to start onprem services${NC}"
-        exit 1
-    fi
+    echo -e "${RED}✗ Failed to start onprem services${NC}"
+    exit 1
 fi
 
 echo ""
@@ -205,74 +183,23 @@ echo ""
 echo -e "${YELLOW}Action: Starting SPIRE Agent, Keylime Agent, and TPM Plugin...${NC}"
 echo ""
 
-# Start agents using test_complete.sh (control plane already running from Act 1)
-echo "  Starting agents (rust-keylime Agent, TPM Plugin, SPIRE Agent)..."
-echo "    Using test_complete.sh --no-pause (control plane services already running)"
-echo "    (This may take a minute to start all agents...)"
+# Start agent services on sovereign host (10.1.0.11)
+echo "Starting agent services on ${SOVEREIGN_HOST}..."
+echo "  Running test_complete.sh --no-pause (control plane services already running)..."
+echo "  (This may take a minute to start all agents...)"
+echo ""
 
-# Run the command in background and capture output
-run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause > /tmp/agents-startup.log 2>&1" &
-AGENTS_STARTUP_PID=$!
-
-# Wait a bit for agents to start, then check status
-sleep 10
-
-# Check if agents are starting/running
-echo "    Checking agent status..."
-KEYLIME_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'keylime_agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-TPM_PLUGIN_RUNNING=$(run_on_sovereign "test -S /tmp/spire-data/tpm-plugin/tpm-plugin.sock" 2>/dev/null && echo "yes" || echo "no")
-SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-
-# Show status
-if [ "${KEYLIME_AGENT_RUNNING}" = "yes" ]; then
-    echo -e "    ${GREEN}✓ rust-keylime Agent is running${NC}"
+if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+    cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause
 else
-    echo -e "    ${YELLOW}⚠ rust-keylime Agent starting...${NC}"
+    ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause"
 fi
 
-if [ "${TPM_PLUGIN_RUNNING}" = "yes" ]; then
-    echo -e "    ${GREEN}✓ TPM Plugin Server is running${NC}"
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ Agent services started successfully${NC}"
 else
-    echo -e "    ${YELLOW}⚠ TPM Plugin Server starting...${NC}"
-fi
-
-if [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
-    echo -e "    ${GREEN}✓ SPIRE Agent is running${NC}"
-else
-    echo -e "    ${YELLOW}⚠ SPIRE Agent starting...${NC}"
-fi
-
-# Wait a bit more for all agents to fully start
-echo "    Waiting for all agents to be ready..."
-for i in {1..30}; do
-    KEYLIME_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'keylime_agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-    TPM_PLUGIN_RUNNING=$(run_on_sovereign "test -S /tmp/spire-data/tpm-plugin/tpm-plugin.sock" 2>/dev/null && echo "yes" || echo "no")
-    SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-    
-    if [ "${KEYLIME_AGENT_RUNNING}" = "yes" ] && [ "${TPM_PLUGIN_RUNNING}" = "yes" ] && [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
-        echo -e "  ${GREEN}✓ All agents are running${NC}"
-        break
-    fi
-    
-    if [ $((i % 5)) -eq 0 ]; then
-        echo "    Still waiting... (${i}/30 seconds)"
-    fi
-    sleep 1
-done
-
-# Final status check
-KEYLIME_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'keylime_agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-TPM_PLUGIN_RUNNING=$(run_on_sovereign "test -S /tmp/spire-data/tpm-plugin/tpm-plugin.sock" 2>/dev/null && echo "yes" || echo "no")
-SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-
-if [ "${KEYLIME_AGENT_RUNNING}" = "yes" ] && [ "${TPM_PLUGIN_RUNNING}" = "yes" ] && [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
-    echo -e "  ${GREEN}✓ All agents started successfully${NC}"
-else
-    echo -e "  ${YELLOW}⚠ Some agents may still be starting${NC}"
-    [ "${KEYLIME_AGENT_RUNNING}" = "yes" ] && echo -e "    ${GREEN}✓${NC} rust-keylime Agent" || echo -e "    ${RED}✗${NC} rust-keylime Agent"
-    [ "${TPM_PLUGIN_RUNNING}" = "yes" ] && echo -e "    ${GREEN}✓${NC} TPM Plugin" || echo -e "    ${RED}✗${NC} TPM Plugin"
-    [ "${SPIRE_AGENT_RUNNING}" = "yes" ] && echo -e "    ${GREEN}✓${NC} SPIRE Agent" || echo -e "    ${RED}✗${NC} SPIRE Agent"
-    echo "    Check logs: /tmp/agents-startup.log"
+    echo -e "${RED}✗ Failed to start agent services${NC}"
+    exit 1
 fi
 
 echo ""
