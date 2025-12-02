@@ -2504,27 +2504,28 @@ else
         fi
     fi
     sleep 1
-done
+    done
 
-if [ "$ATTESTATION_COMPLETE" = false ]; then
-    echo -e "${YELLOW}  ⚠ SPIRE Agent attestation may still be in progress...${NC}"
-    if [ -f /tmp/spire-agent.log ]; then
-        echo "    Recent agent log entries:"
-        tail -15 /tmp/spire-agent.log | sed 's/^/      /'
+    if [ "$ATTESTATION_COMPLETE" = false ]; then
+        echo -e "${YELLOW}  ⚠ SPIRE Agent attestation may still be in progress...${NC}"
+        if [ -f /tmp/spire-agent.log ]; then
+            echo "    Recent agent log entries:"
+            tail -15 /tmp/spire-agent.log | sed 's/^/      /'
+        fi
     fi
-fi
 
-# Show initial attestation logs
-echo ""
-echo -e "${CYAN}  Initial SPIRE Agent Attestation Status:${NC}"
-if [ -f /tmp/spire-agent.log ]; then
-    echo "  Checking for attestation completion..."
-    if grep -q "Node attestation was successful\|SVID loaded" /tmp/spire-agent.log; then
-        echo -e "${GREEN}  ✓ Agent attestation completed${NC}"
-        echo "  Agent SVID details:"
-        grep -E "Node attestation was successful|SVID loaded|spiffe://.*agent" /tmp/spire-agent.log | tail -3 | sed 's/^/    /'
-    else
-        echo -e "${YELLOW}  ⚠ Agent attestation may still be in progress...${NC}"
+    # Show initial attestation logs
+    echo ""
+    echo -e "${CYAN}  Initial SPIRE Agent Attestation Status:${NC}"
+    if [ -f /tmp/spire-agent.log ]; then
+        echo "  Checking for attestation completion..."
+        if grep -q "Node attestation was successful\|SVID loaded" /tmp/spire-agent.log; then
+            echo -e "${GREEN}  ✓ Agent attestation completed${NC}"
+            echo "  Agent SVID details:"
+            grep -E "Node attestation was successful|SVID loaded|spiffe://.*agent" /tmp/spire-agent.log | tail -3 | sed 's/^/    /'
+        else
+            echo -e "${YELLOW}  ⚠ Agent attestation may still be in progress...${NC}"
+        fi
     fi
 fi
 
