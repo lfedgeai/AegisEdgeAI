@@ -2392,6 +2392,7 @@ else
     disown $SPIRE_AGENT_PID 2>/dev/null || true
     echo $SPIRE_AGENT_PID > /tmp/spire-agent.pid
     sleep 3
+    fi
 fi
 
 # Wait for SPIRE Server to be ready
@@ -2415,10 +2416,14 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Wait for Agent to complete attestation and receive its SVID
-echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
-ATTESTATION_COMPLETE=false
-for i in {1..90}; do
+# Wait for Agent to complete attestation and receive its SVID (skip if control-plane-only)
+if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+    echo "  Skipping SPIRE Agent attestation wait (--control-plane-only mode)"
+    ATTESTATION_COMPLETE=true
+else
+    echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
+    ATTESTATION_COMPLETE=false
+    for i in {1..90}; do
     # Check if agent has its SVID by checking for Workload API socket
     # The socket is created as soon as the agent has its SVID and is ready
     if [ -S /tmp/spire-agent/public/api.sock ] 2>/dev/null; then
