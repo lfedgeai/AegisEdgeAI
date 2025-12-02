@@ -2259,6 +2259,18 @@ if [ -f "${SERVER_CONFIG}" ]; then
         fi
     fi
     
+    # Cleanup existing SPIRE Server before starting
+    if [ -f /tmp/spire-server.pid ]; then
+        OLD_PID=$(cat /tmp/spire-server.pid 2>/dev/null || echo "")
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            echo "    Stopping existing SPIRE Server (PID: $OLD_PID)..."
+            kill "$OLD_PID" 2>/dev/null || true
+            sleep 2
+        fi
+    fi
+    pkill -f "spire-server" >/dev/null 2>&1 || true
+    sleep 1
+    
     echo "    Starting SPIRE Server (logs: /tmp/spire-server.log)..."
     # Use nohup to ensure server continues running after script exits
     nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
