@@ -2528,6 +2528,18 @@ if [ -f /tmp/spire-agent.log ]; then
     fi
 fi
 
+if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+    pause_at_phase "Step 7 Complete" "SPIRE Server is running. Control plane services ready (Agent skipped in --control-plane-only mode)."
+    echo ""
+    echo -e "${GREEN}Control plane services started successfully:${NC}"
+    echo "  ✓ SPIRE Server"
+    echo "  ✓ Keylime Verifier"
+    echo "  ✓ Keylime Registrar"
+    echo ""
+    echo -e "${YELLOW}Note: SPIRE Agent, TPM Plugin, and workload registration are skipped in --control-plane-only mode${NC}"
+    exit 0
+fi
+
 pause_at_phase "Step 7 Complete" "SPIRE Server and Agent are running. Agent has completed attestation. Ready for workload registration."
 
 # Step 8: Create Registration Entry
