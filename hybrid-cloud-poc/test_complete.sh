@@ -1361,10 +1361,56 @@ pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime 
 
 start_mobile_sensor_microservice
 
+# Helper function to stop control plane services
+stop_control_plane_services() {
+    echo "  Stopping existing control plane services..."
+    # Stop Keylime Verifier
+    if [ -f /tmp/keylime-verifier.pid ]; then
+        OLD_PID=$(cat /tmp/keylime-verifier.pid 2>/dev/null || echo "")
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            echo "    Stopping Keylime Verifier (PID: $OLD_PID)..."
+            kill "$OLD_PID" 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+    pkill -f "keylime.*verifier" >/dev/null 2>&1 || true
+    pkill -f "python.*keylime.*verifier" >/dev/null 2>&1 || true
+    
+    # Stop Keylime Registrar
+    if [ -f /tmp/keylime-registrar.pid ]; then
+        OLD_PID=$(cat /tmp/keylime-registrar.pid 2>/dev/null || echo "")
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            echo "    Stopping Keylime Registrar (PID: $OLD_PID)..."
+            kill "$OLD_PID" 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+    pkill -f "keylime.*registrar" >/dev/null 2>&1 || true
+    pkill -f "python.*keylime.*registrar" >/dev/null 2>&1 || true
+    
+    # Stop SPIRE Server
+    if [ -f /tmp/spire-server.pid ]; then
+        OLD_PID=$(cat /tmp/spire-server.pid 2>/dev/null || echo "")
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            echo "    Stopping SPIRE Server (PID: $OLD_PID)..."
+            kill "$OLD_PID" 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+    pkill -f "spire-server" >/dev/null 2>&1 || true
+    
+    # Wait a moment for processes to fully stop
+    sleep 2
+    echo "  ✓ Control plane services stopped"
+}
+
 # Step 2: Start Real Keylime Verifier with unified_identity enabled
 echo ""
 echo -e "${CYAN}Step 2: Starting Real Keylime Verifier with unified_identity enabled...${NC}"
 cd "${KEYLIME_DIR}"
+
+# Cleanup existing Keylime Verifier before starting
+stop_control_plane_services
 
 # Start verifier in background
 echo "  Starting verifier on port 8881..."
