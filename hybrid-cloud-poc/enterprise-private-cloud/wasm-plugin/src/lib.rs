@@ -162,7 +162,7 @@ impl Context for SensorVerificationFilter {
                     self.send_http_response(
                         403,
                         vec![("content-type", "text/plain")],
-                        Some(b"Sensor verification failed"),
+                        Some(b"Geo Claim Missing"),
                     );
                 }
             }
@@ -364,7 +364,7 @@ impl HttpContext for SensorVerificationFilter {
                     self.send_http_response(
                         403,
                         vec![("content-type", "text/plain")],
-                        Some(b"Sensor verification failed (cached)"),
+                        Some(b"Geo Claim Missing"),
                     );
                     Action::Pause
                 }
