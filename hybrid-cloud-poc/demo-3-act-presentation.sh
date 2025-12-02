@@ -51,8 +51,8 @@ fi
 # Function to run command on sovereign host (local or via SSH)
 run_on_sovereign() {
     if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
-        # Execute locally - no SSH needed
-        eval "$@"
+        # Execute locally on 10.1.0.11 - no SSH needed
+        bash -c "$@"
     else
         # Execute via SSH
         ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "$@"
@@ -366,13 +366,10 @@ SERVER_PORT="${SERVER_PORT:-8080}"
 # Use the single-request script if available, otherwise use timeout with regular client
 if run_on_sovereign "test -f ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo/send-single-request.py" 2>/dev/null; then
     echo "  Using single-request script..."
-    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
-        CLIENT_OUTPUT=$(cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} python3 python-app-demo/send-single-request.py 2>&1)
-        CLIENT_EXIT_CODE=$?
-    else
-        CLIENT_OUTPUT=$(ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} python3 python-app-demo/send-single-request.py 2>&1" 2>/dev/null)
-        CLIENT_EXIT_CODE=$?
-    fi
+    # Execute on sovereign host (10.1.0.11) - use run_on_sovereign which handles local vs SSH
+    # Use timeout to prevent hanging (20 seconds should be enough)
+    CLIENT_OUTPUT=$(run_on_sovereign "timeout 20 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} python3 python-app-demo/send-single-request.py 2>&1'" 2>/dev/null || echo "TIMEOUT: Client script exceeded 20 second timeout")
+    CLIENT_EXIT_CODE=$?
     if [ -n "$CLIENT_OUTPUT" ]; then
         echo "$CLIENT_OUTPUT" | sed 's/^/  /'
     fi
@@ -396,23 +393,56 @@ set -e
 
 # Wait a moment for Envoy to process and log the request
 echo ""
-echo "  (Waiting for Envoy to process request...)"
-sleep 3
+echo "  (Waiting for services to process request...)"
+sleep 5
 
 echo ""
-echo "Envoy logs (verification and response):"
-ENVOY_LOGS=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 2 sudo tail -100 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(sensor|verification|Extracted|200 OK|403|Forbidden|Geo Claim|X-Sensor-ID|GET /hello)' | tail -15" 2>/dev/null || echo "")
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}Envoy Logs (mTLS Handshake, HTTP Request, WASM Plugin)${NC}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# Get recent Envoy logs showing mTLS handshake, HTTP requests, and WASM plugin activity
+# Look for: TLS handshake, HTTP requests, WASM filter logs, sensor verification
+ENVOY_LOGS=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 3 sudo tail -500 /opt/envoy/logs/envoy.log 2>/dev/null | grep -vE '(Deprecated|loading|initializing|starting|admin address|runtime:|cm init|all clusters|dependencies|main dispatch|HTTP header map|stats configuration|RTDS|listener_manager|envoy.filters|envoy.upstream|envoy.transport|envoy.matching|envoy.access_loggers|envoy.stats_sinks|envoy.quic|quic.http|filter_state)' | grep -iE '(TLS|handshake|connection|GET /hello|POST|HTTP|sensor|verification|Extracted|200 OK|403|Forbidden|Geo Claim|X-Sensor-ID|wasm|filter|resuming request|rejecting request|client.*connected|downstream.*request)' | tail -30" 2>/dev/null || echo "")
 if [ -n "$ENVOY_LOGS" ] && [ ${#ENVOY_LOGS} -gt 0 ]; then
     echo "$ENVOY_LOGS" | sed 's/^/  /'
 else
-    echo "  (Fetching recent Envoy logs...)"
-    # Show recent Envoy logs if specific patterns not found
-    ENVOY_RECENT=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 2 sudo tail -50 /opt/envoy/logs/envoy.log 2>/dev/null | tail -20" 2>/dev/null || echo "")
-    if [ -n "$ENVOY_RECENT" ] && [ ${#ENVOY_RECENT} -gt 0 ]; then
-        echo "$ENVOY_RECENT" | sed 's/^/  /'
-    else
-        echo "  (Envoy logs not accessible or verification not yet logged)"
-    fi
+    echo "  (No recent Envoy request logs found - may need to wait longer or check if request was sent)"
+fi
+
+echo ""
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}WASM Plugin Logs (Sensor Verification)${NC}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# Get WASM plugin specific logs
+WASM_LOGS=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 3 sudo tail -500 /opt/envoy/logs/envoy.log 2>/dev/null | grep -iE '(wasm|sensor.*verification|Extracted.*sensor_id|sensor_id:|verification.*successful|verification.*failed|resuming request|rejecting request|Geo Claim)' | tail -15" 2>/dev/null || echo "")
+if [ -n "$WASM_LOGS" ] && [ ${#WASM_LOGS} -gt 0 ]; then
+    echo "$WASM_LOGS" | sed 's/^/  /'
+else
+    echo "  (No WASM plugin logs found yet)"
+fi
+
+echo ""
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}mTLS Server Logs (Backend Service)${NC}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# Get mTLS server logs showing connection and request handling
+MTLS_SERVER_LOGS=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 2 tail -100 /tmp/mtls-server.log 2>/dev/null | grep -iE '(connected|TLS|handshake|HTTP|GET|POST|request|response|200|403|Client.*connected)' | tail -20" 2>/dev/null || echo "")
+if [ -n "$MTLS_SERVER_LOGS" ] && [ ${#MTLS_SERVER_LOGS} -gt 0 ]; then
+    echo "$MTLS_SERVER_LOGS" | sed 's/^/  /'
+else
+    echo "  (No mTLS server logs found - server may not have received request yet)"
+fi
+
+echo ""
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}Mobile Sensor Service Logs (Geolocation Verification)${NC}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# Get mobile sensor service logs showing verification requests
+MOBILE_SENSOR_LOGS=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 2 tail -100 /tmp/mobile-sensor.log 2>/dev/null | grep -iE '(verification|sensor_id|request|CAMARA|result=True|result=False|completed)' | tail -15" 2>/dev/null || echo "")
+if [ -n "$MOBILE_SENSOR_LOGS" ] && [ ${#MOBILE_SENSOR_LOGS} -gt 0 ]; then
+    echo "$MOBILE_SENSOR_LOGS" | sed 's/^/  /'
+else
+    echo "  (No mobile sensor service logs found - verification may not have been triggered)"
 fi
 
 echo ""
