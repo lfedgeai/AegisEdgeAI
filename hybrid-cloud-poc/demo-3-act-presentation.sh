@@ -20,6 +20,9 @@ ONPREM_HOST="10.1.0.10"
 SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
 CLIENT_LOG="/tmp/mtls-client-app.log"
 
+# SSH options to avoid password prompts
+SSH_OPTS="-o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes"
+
 echo -e "${BOLD}${CYAN}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}${CYAN}║  Zero-Trust Sovereign AI: Unified Identity Demo              ║${NC}"
 echo -e "${BOLD}${CYAN}║  3-Act Structure: Setup → Happy Path → Defense              ║${NC}"
@@ -81,7 +84,7 @@ echo ""
 
 # Check if services are running
 echo "Checking services on ${SOVEREIGN_HOST}..."
-if ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "pgrep -f 'spire-server|keylime-verifier' > /dev/null" 2>/dev/null; then
+if ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "pgrep -f 'spire-server|keylime-verifier' > /dev/null" 2>/dev/null; then
     echo -e "${GREEN}✓ SPIRE Server and Keylime Verifier are running${NC}"
 else
     echo -e "${RED}✗ Services not running. Please start them first:${NC}"
@@ -91,7 +94,7 @@ fi
 
 echo ""
 echo "Checking services on ${ONPREM_HOST}..."
-if ssh -o StrictHostKeyChecking=no mw@${ONPREM_HOST} "sudo netstat -tlnp | grep -E ':(8080|5000|9443)' > /dev/null" 2>/dev/null; then
+if ssh ${SSH_OPTS} mw@${ONPREM_HOST} "sudo netstat -tlnp | grep -E ':(8080|5000|9443)' > /dev/null" 2>/dev/null; then
     echo -e "${GREEN}✓ Envoy, Mobile Location Service, and mTLS Server are running${NC}"
 else
     echo -e "${RED}✗ Services not running. Please start them first:${NC}"
@@ -130,7 +133,7 @@ echo ""
 
 # Show SPIRE Agent attestation logs
 echo "Fetching latest SPIRE Agent attestation logs..."
-ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "tail -20 /tmp/spire-agent.log | grep -E '(attestation|SVID|geolocation|TPM)' | tail -5" 2>/dev/null || echo "  (No recent attestation logs found)"
+ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "tail -20 /tmp/spire-agent.log | grep -E '(attestation|SVID|geolocation|TPM)' | tail -5" 2>/dev/null || echo "  (No recent attestation logs found)"
 
 echo ""
 echo -e "${BOLD}The Visual Proof:${NC}"
@@ -140,7 +143,7 @@ echo ""
 
 # Decode and display SVID
 echo "Fetching and decoding SVID..."
-ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1 && ../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -30" 2>/dev/null || echo "  (SVID fetch in progress...)"
+ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1 && ../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -30" 2>/dev/null || echo "  (SVID fetch in progress...)"
 
 echo ""
 echo -e "${YELLOW}Action: The Client App now calls the Server.${NC}"
@@ -153,7 +156,7 @@ echo ""
 
 # Start client in background and show logs
 echo "Starting mTLS client..."
-ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f mtls-client-app.py 2>/dev/null; rm -f ${CLIENT_LOG} && nohup python3 python-app-demo/mtls-client-app.py > ${CLIENT_LOG} 2>&1 &" 2>/dev/null
+ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f mtls-client-app.py 2>/dev/null; rm -f ${CLIENT_LOG} && nohup python3 python-app-demo/mtls-client-app.py > ${CLIENT_LOG} 2>&1 &" 2>/dev/null
 
 sleep 3
 
@@ -161,11 +164,11 @@ echo ""
 echo -e "${GREEN}Log Check: Envoy reports '200 OK'. The location is verified as compliant.${NC}"
 echo ""
 echo "Client logs (first few messages):"
-ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "tail -10 ${CLIENT_LOG} 2>/dev/null | grep -E '(Connected|Sending|Received|ACK)' | head -5" 2>/dev/null || echo "  (Client starting...)"
+ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "tail -10 ${CLIENT_LOG} 2>/dev/null | grep -E '(Connected|Sending|Received|ACK)' | head -5" 2>/dev/null || echo "  (Client starting...)"
 
 echo ""
 echo "Envoy logs (verification):"
-ssh -o StrictHostKeyChecking=no mw@${ONPREM_HOST} "sudo tail -20 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(sensor|verification|Extracted)' | tail -3" 2>/dev/null || echo "  (Envoy logs not accessible)"
+ssh ${SSH_OPTS} mw@${ONPREM_HOST} "sudo tail -20 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(sensor|verification|Extracted)' | tail -3" 2>/dev/null || echo "  (Envoy logs not accessible)"
 
 echo ""
 read -p "Press Enter to continue to Act 3: Defense..."
@@ -189,7 +192,7 @@ echo ""
 
 # Disconnect the sensor
 echo "Disconnecting USB Mobile Sensor..."
-ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "sudo ~/AegisEdgeAI/hybrid-cloud-poc/test_toggle_huawei_mobile_sensor.sh off" 2>/dev/null || echo "  (Sensor toggle script not available or already disconnected)"
+ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "sudo ~/AegisEdgeAI/hybrid-cloud-poc/test_toggle_huawei_mobile_sensor.sh off" 2>/dev/null || echo "  (Sensor toggle script not available or already disconnected)"
 
 sleep 2
 
@@ -202,7 +205,7 @@ echo ""
 
 # Show Keylime agent detection
 echo "Checking Keylime Agent logs for sensor disconnect detection..."
-ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "tail -30 /tmp/rust-keylime-agent.log 2>/dev/null | grep -E '(sensor|USB|disconnect|geolocation)' | tail -5" 2>/dev/null || echo "  (Checking agent status...)"
+ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "tail -30 /tmp/rust-keylime-agent.log 2>/dev/null | grep -E '(sensor|USB|disconnect|geolocation)' | tail -5" 2>/dev/null || echo "  (Checking agent status...)"
 
 echo ""
 echo -e "${BOLD}The Block (Degraded Identity):${NC}"
@@ -224,7 +227,7 @@ echo ""
 
 # Check client logs for reconnection
 echo "Client logs (reconnection attempt):"
-ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "tail -15 ${CLIENT_LOG} 2>/dev/null | tail -5" 2>/dev/null || echo "  (Checking client status...)"
+ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "tail -15 ${CLIENT_LOG} 2>/dev/null | tail -5" 2>/dev/null || echo "  (Checking client status...)"
 
 echo ""
 echo -e "${GREEN}Log Check:${NC} Look at the Envoy logs. The TLS handshake succeeds"
@@ -234,7 +237,7 @@ echo ""
 
 # Check Envoy logs for 403
 echo "Envoy logs (403 Forbidden):"
-ssh -o StrictHostKeyChecking=no mw@${ONPREM_HOST} "sudo tail -30 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(403|Forbidden|Geo Claim|sensor.*missing)' | tail -5" 2>/dev/null || echo "  (Envoy logs not accessible or no 403 yet)"
+ssh ${SSH_OPTS} mw@${ONPREM_HOST} "sudo tail -30 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(403|Forbidden|Geo Claim|sensor.*missing)' | tail -5" 2>/dev/null || echo "  (Envoy logs not accessible or no 403 yet)"
 
 echo ""
 read -p "Press Enter to continue to Conclusion..."
@@ -264,10 +267,13 @@ echo ""
 
 # Reconnect sensor for cleanup
 echo "Reconnecting USB Mobile Sensor for cleanup..."
-ssh -o StrictHostKeyChecking=no mw@${SOVEREIGN_HOST} "sudo ~/AegisEdgeAI/hybrid-cloud-poc/test_toggle_huawei_mobile_sensor.sh on" 2>/dev/null || echo "  (Sensor toggle script not available)"
+ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "sudo ~/AegisEdgeAI/hybrid-cloud-poc/test_toggle_huawei_mobile_sensor.sh on" 2>/dev/null || echo "  (Sensor toggle script not available)"
 
 echo ""
 echo "To stop the client:"
-echo "  ssh mw@${SOVEREIGN_HOST} 'pkill -f mtls-client-app.py'"
+echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'pkill -f mtls-client-app.py'"
+echo ""
+echo -e "${YELLOW}Note:${NC} This script uses SSH key-based authentication."
+echo "Make sure your SSH keys are set up for passwordless access to both hosts."
 echo ""
 
