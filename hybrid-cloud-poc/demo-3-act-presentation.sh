@@ -190,13 +190,15 @@ echo -e "${BOLD}${CYAN}═══════════════════
 echo -e "${BOLD}${CYAN}ACT 2: The Happy Path (Proof of Residency)${NC}"
 echo -e "${BOLD}${CYAN}════════════════════════════════════════════════════════════════${NC}"
 echo ""
+echo -e "${BOLD}${YELLOW}Slide to Display:${NC} ${BOLD}Appendix: Unified Identity Architecture Details${NC}"
+echo -e "${BOLD}  (Specifically focus on the 'Spiffe/Spire agent unified svid' flow)${NC}"
+echo ""
+read -p "Press Enter after displaying the slide..."
+echo ""
 echo "Now, let's authorize a workload. In a standard Zero Trust environment,"
 echo "the workload just asks for an ID. In our Phase II solution, it's different."
 echo ""
-echo -e "${BOLD}The SPIRE Agent${NC} is now part of the flow. It connects to the"
-echo "Keylime Plugin, verifies the GNSS sensor, and fetches a Unified SVID."
-echo ""
-echo -e "${BOLD}Step 9 in the flow:${NC} The Agent fetches a Unified SVID."
+echo -e "${BOLD}Look at Step 9 in this flow:${NC} The Agent fetches a Unified SVID."
 echo "This isn't just a software certificate. It includes:"
 echo ""
 echo "  1. ${GREEN}Workload Attestation${NC} (Software identity)"
@@ -218,22 +220,30 @@ else
     ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause"
 fi
 
-if [ $? -eq 0 ]; then
+AGENT_EXIT_CODE=$?
+if [ $AGENT_EXIT_CODE -eq 0 ]; then
     echo -e "${GREEN}✓ Agent services started successfully${NC}"
 else
     echo -e "${RED}✗ Failed to start agent services${NC}"
     exit 1
 fi
 
+# Wait a moment for agents to fully initialize
+echo "  Waiting for agents to initialize..."
+sleep 5
+
+# Check if SPIRE Agent is actually running
+SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent.*run' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+
 echo ""
-echo -e "${YELLOW}Action: The SPIRE Agent is connecting to the Keylime Plugin...${NC}"
-echo "Watch the logs. It is verifying the GNSS sensor... and now it receives the SVID."
+echo -e "${YELLOW}Action: I am starting the SPIRE Agent.${NC}"
+echo "Watch the logs. It is connecting to the Keylime Plugin... verifying the GNSS sensor... and now it receives the SVID."
 echo ""
 
 # Show SPIRE Agent attestation logs
 echo "Fetching latest SPIRE Agent attestation logs..."
 
-# Check if SPIRE Agent is running (use the status we already checked)
+# Check if SPIRE Agent is running
 if [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
     # Agent is running, try to get logs
     ATTESTATION_LOGS=$(run_on_sovereign "timeout 2 tail -50 /tmp/spire-agent.log 2>/dev/null | grep -iE '(attestation|SVID|geolocation|TPM|Plugin|SovereignAttestation|Node attestation)' | tail -5" 2>/dev/null || echo "")
@@ -250,13 +260,16 @@ if [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
         fi
     fi
 else
-    echo -e "  ${YELLOW}⚠ SPIRE Agent is not running${NC}"
-    echo "  (In --control-plane-only mode, SPIRE Agent is not started)"
-    echo "  To start SPIRE Agent, run:"
-    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
-        echo "    cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause"
+    echo -e "  ${YELLOW}⚠ SPIRE Agent may still be starting...${NC}"
+    echo "  (Checking agent status...)"
+    # Wait a bit more and check again
+    sleep 3
+    SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent.*run' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+    if [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
+        echo -e "  ${GREEN}✓ SPIRE Agent is now running${NC}"
     else
-        echo "    ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause'"
+        echo -e "  ${YELLOW}⚠ SPIRE Agent may need more time to start${NC}"
+        echo "  (Agent processes may still be initializing)"
     fi
 fi
 
@@ -265,40 +278,62 @@ echo -e "${BOLD}The Visual Proof:${NC}"
 echo "I'm going to decode this SVID. You can see right here—the"
 echo -e "${GREEN}Proof of Residency (PoR)${NC} is embedded directly in the certificate extensions."
 echo ""
+read -p "Press Enter to continue..."
+echo ""
 
 # Decode and display SVID (with timeout to prevent hanging)
 echo "Fetching and decoding SVID..."
 
-# Check if SPIRE Agent is running (required for SVID fetch)
-if [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
-    # Try to fetch SVID
-    SVID_OUTPUT=$(run_on_sovereign "timeout 10 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1 && ../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -30'" 2>/dev/null || echo "")
-    if [ -n "$SVID_OUTPUT" ] && [ ${#SVID_OUTPUT} -gt 0 ]; then
-        echo "$SVID_OUTPUT" | sed 's/^/  /'
-    else
-        echo "  (Attempting to fetch SVID...)"
-        # Try to show if SVID file exists
-        if run_on_sovereign "test -f /tmp/svid-dump/svid.pem" 2>/dev/null; then
-            echo "  (SVID file exists, decoding...)"
-            SVID_DECODE=$(run_on_sovereign "timeout 3 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc && scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -20'" 2>/dev/null || echo "")
-            if [ -n "$SVID_DECODE" ] && [ ${#SVID_DECODE} -gt 0 ]; then
-                echo "$SVID_DECODE" | sed 's/^/  /'
-            else
-                echo "  (SVID file found but decode failed - may need agent to be running)"
-            fi
+# Re-check SPIRE Agent status for SVID fetch
+SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent.*run' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+SPIRE_AGENT_SOCKET=$(run_on_sovereign "test -S /tmp/spire-agent/public/api.sock" 2>/dev/null && echo "yes" || echo "no")
+
+# Check if SPIRE Agent is running and socket is ready (required for SVID fetch)
+if [ "${SPIRE_AGENT_RUNNING}" = "yes" ] || [ "${SPIRE_AGENT_SOCKET}" = "yes" ]; then
+    # Try to fetch SVID first
+    echo "  Fetching SVID from SPIRE Agent..."
+    run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1" 2>/dev/null || true
+    
+    # Check if SVID file exists
+    if run_on_sovereign "test -f /tmp/svid-dump/svid.pem" 2>/dev/null; then
+        echo "  ✓ SVID file found, decoding to show Proof of Residency..."
+        echo ""
+        # Decode SVID and show the AttestedClaims section (which contains PoR)
+        # We need more lines to see the AttestedClaims section (it comes after certificate chain info)
+        SVID_OUTPUT=$(run_on_sovereign "timeout 15 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc && scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null'" 2>/dev/null || echo "")
+        if [ -n "$SVID_OUTPUT" ] && [ ${#SVID_OUTPUT} -gt 0 ]; then
+            # Extract and show the AttestedClaims section (Proof of Residency)
+            # The AttestedClaims section starts after "AttestedClaims Extension" header
+            echo "$SVID_OUTPUT" | grep -A 50 "AttestedClaims Extension" | head -40 | sed 's/^/  /'
+            # Also show a summary of certificate chain
+            echo ""
+            echo "  Certificate Chain Summary:"
+            echo "$SVID_OUTPUT" | grep -E "^(    \[|  Certificate|  SPIRE|  Signing)" | head -10 | sed 's/^/    /'
         else
-            echo "  (SVID not yet available - SPIRE Agent may still be initializing)"
-            echo "  (Note: SVID fetch requires SPIRE Agent to be running)"
+            echo "  (SVID decode output was empty)"
         fi
+    else
+        echo "  (SVID file not found - SPIRE Agent may still be initializing)"
+        echo "  (Note: SVID fetch requires SPIRE Agent to be running and have completed attestation)"
     fi
 else
-    echo -e "  ${YELLOW}⚠ Cannot fetch SVID: SPIRE Agent is not running${NC}"
-    echo "  (SVID fetch requires SPIRE Agent to be running)"
-    echo "  To start SPIRE Agent, run:"
-    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
-        echo "    cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause"
+    echo -e "  ${YELLOW}⚠ SPIRE Agent may still be initializing...${NC}"
+    echo "  (SVID fetch requires SPIRE Agent socket to be ready)"
+    echo "  Waiting a bit more for agent to be ready..."
+    sleep 5
+    # Try one more time
+    SPIRE_AGENT_SOCKET=$(run_on_sovereign "test -S /tmp/spire-agent/public/api.sock" 2>/dev/null && echo "yes" || echo "no")
+    if [ "${SPIRE_AGENT_SOCKET}" = "yes" ]; then
+        echo -e "  ${GREEN}✓ SPIRE Agent socket is now ready, attempting SVID fetch...${NC}"
+        run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1" 2>/dev/null || true
+        if run_on_sovereign "test -f /tmp/svid-dump/svid.pem" 2>/dev/null; then
+            SVID_OUTPUT=$(run_on_sovereign "timeout 15 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc && scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null'" 2>/dev/null || echo "")
+            if [ -n "$SVID_OUTPUT" ] && [ ${#SVID_OUTPUT} -gt 0 ]; then
+                echo "$SVID_OUTPUT" | grep -A 50 "AttestedClaims Extension" | head -40 | sed 's/^/  /'
+            fi
+        fi
     else
-        echo "    ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause'"
+        echo -e "  ${YELLOW}⚠ SPIRE Agent socket not yet ready - SVID will be available once agent completes attestation${NC}"
     fi
 fi
 
@@ -307,41 +342,83 @@ echo -e "${YELLOW}Action: The Client App now calls the Server.${NC}"
 echo ""
 echo "As the request hits the Envoy Proxy in the On-Prem cloud, the WASM Plugin"
 echo "verifies two things:"
-echo "  1. The Cryptographic Signature"
-echo "  2. The Proof of Geofencing (PoG)"
+echo ""
+echo -e "  1. ${GREEN}The Cryptographic Signature${NC}"
+echo -e "  2. ${GREEN}The Proof of Geofencing (PoG)${NC}"
+echo ""
+read -p "Press Enter to continue..."
 echo ""
 
-# Start client in background and show logs
-echo "Starting mTLS client..."
-run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f mtls-client-app.py 2>/dev/null; sleep 1; rm -f ${CLIENT_LOG} && nohup python3 python-app-demo/mtls-client-app.py > ${CLIENT_LOG} 2>&1 &" 2>/dev/null
+# Send a single HTTP request (for clear, decodable logs)
+echo "Sending a single HTTP request via mTLS..."
+echo "  (This ensures only one request is sent for clear log analysis)"
 
-echo "  (Waiting for client to connect...)"
-sleep 4
+# Temporarily disable exit on error for client execution (to prevent script termination)
+set +e
 
-echo ""
-echo -e "${GREEN}Log Check: Envoy reports '200 OK'. The location is verified as compliant.${NC}"
-echo ""
-echo "Client logs (first few messages):"
-CLIENT_LOGS=$(run_on_sovereign "timeout 2 tail -15 ${CLIENT_LOG} 2>/dev/null | grep -E '(Connected|Sending|Received|ACK|HELLO)' | head -5" 2>/dev/null || echo "")
-if [ -n "$CLIENT_LOGS" ] && [ ${#CLIENT_LOGS} -gt 0 ]; then
-    echo "$CLIENT_LOGS" | sed 's/^/  /'
+# Kill any existing client first
+run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f 'mtls-client-app.py|send-single-request.py' 2>/dev/null; sleep 1" 2>/dev/null
+
+# Set server configuration
+SERVER_HOST="${SERVER_HOST:-10.1.0.10}"
+SERVER_PORT="${SERVER_PORT:-8080}"
+
+# Use the single-request script if available, otherwise use timeout with regular client
+if run_on_sovereign "test -f ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo/send-single-request.py" 2>/dev/null; then
+    echo "  Using single-request script..."
+    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+        CLIENT_OUTPUT=$(cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} python3 python-app-demo/send-single-request.py 2>&1)
+        CLIENT_EXIT_CODE=$?
+    else
+        CLIENT_OUTPUT=$(ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} python3 python-app-demo/send-single-request.py 2>&1" 2>/dev/null)
+        CLIENT_EXIT_CODE=$?
+    fi
+    if [ -n "$CLIENT_OUTPUT" ]; then
+        echo "$CLIENT_OUTPUT" | sed 's/^/  /'
+    fi
+    if [ $CLIENT_EXIT_CODE -ne 0 ]; then
+        echo -e "  ${YELLOW}⚠ Client script exited with code $CLIENT_EXIT_CODE (this is OK if request was sent)${NC}"
+    fi
 else
-    echo "  (Client starting or checking connection...)"
-    # Show any available client logs
-    CLIENT_ANY=$(run_on_sovereign "timeout 2 tail -5 ${CLIENT_LOG} 2>/dev/null" 2>/dev/null || echo "")
-    if [ -n "$CLIENT_ANY" ] && [ ${#CLIENT_ANY} -gt 0 ]; then
-        echo "$CLIENT_ANY" | sed 's/^/  /'
+    # Fallback: use regular client with timeout (sends one request then stops)
+    echo "  Using regular client with timeout (single request)..."
+    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+        cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} timeout 8 python3 python-app-demo/mtls-client-app.py 2>&1 | head -30 || true
+    else
+        ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} timeout 8 python3 python-app-demo/mtls-client-app.py 2>&1 | head -30" 2>/dev/null || true
+    fi
+    # Stop client after timeout
+    run_on_sovereign "pkill -f mtls-client-app.py 2>/dev/null" 2>/dev/null || true
+fi
+
+# Re-enable exit on error
+set -e
+
+# Wait a moment for Envoy to process and log the request
+echo ""
+echo "  (Waiting for Envoy to process request...)"
+sleep 3
+
+echo ""
+echo "Envoy logs (verification and response):"
+ENVOY_LOGS=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 2 sudo tail -100 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(sensor|verification|Extracted|200 OK|403|Forbidden|Geo Claim|X-Sensor-ID|GET /hello)' | tail -15" 2>/dev/null || echo "")
+if [ -n "$ENVOY_LOGS" ] && [ ${#ENVOY_LOGS} -gt 0 ]; then
+    echo "$ENVOY_LOGS" | sed 's/^/  /'
+else
+    echo "  (Fetching recent Envoy logs...)"
+    # Show recent Envoy logs if specific patterns not found
+    ENVOY_RECENT=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 2 sudo tail -50 /opt/envoy/logs/envoy.log 2>/dev/null | tail -20" 2>/dev/null || echo "")
+    if [ -n "$ENVOY_RECENT" ] && [ ${#ENVOY_RECENT} -gt 0 ]; then
+        echo "$ENVOY_RECENT" | sed 's/^/  /'
+    else
+        echo "  (Envoy logs not accessible or verification not yet logged)"
     fi
 fi
 
 echo ""
-echo "Envoy logs (verification):"
-ENVOY_LOGS=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 2 sudo tail -30 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(sensor|verification|Extracted|200 OK)' | tail -3" 2>/dev/null || echo "")
-if [ -n "$ENVOY_LOGS" ] && [ ${#ENVOY_LOGS} -gt 0 ]; then
-    echo "$ENVOY_LOGS" | sed 's/^/  /'
-else
-    echo "  (Envoy logs not accessible or verification not yet logged)"
-fi
+echo -e "${GREEN}Log Check:${NC} Envoy reports '200 OK'. The location is verified as compliant."
+echo ""
+read -p "Press Enter to continue to Act 3: Defense..."
 
 echo ""
 read -p "Press Enter to continue to Act 3: Defense..."

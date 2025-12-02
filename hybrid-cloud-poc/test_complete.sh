@@ -2357,6 +2357,49 @@ pause_at_phase "Step 7 Complete" "SPIRE Agent has completed attestation. Ready f
 echo ""
 echo -e "${CYAN}Step 8: Creating registration entry for workload...${NC}"
 
+# Clean up any existing registration entries for the Python app workload
+# This prevents the creation script from needing to handle deletion
+WORKLOAD_SPIFFE_ID="spiffe://example.org/python-app"
+SPIRE_DIR="${PROJECT_DIR}/spire"
+SERVER_SOCKET="/tmp/spire-server/private/api.sock"
+
+if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
+    echo "  Cleaning up any existing registration entries for workload..."
+    if "${SPIRE_DIR}/bin/spire-server" healthcheck -socketPath "$SERVER_SOCKET" >/dev/null 2>&1; then
+        # Check if entry exists for this workload SPIFFE ID
+        ENTRY_SHOW_OUTPUT=$("${SPIRE_DIR}/bin/spire-server" entry show \
+            -spiffeID "$WORKLOAD_SPIFFE_ID" \
+            -socketPath "$SERVER_SOCKET" 2>&1 || echo "")
+        
+        # Check if entry actually exists
+        if echo "$ENTRY_SHOW_OUTPUT" | grep -qi "Entry ID" && ! echo "$ENTRY_SHOW_OUTPUT" | grep -qi "Found 0 entries"; then
+            # Extract entry ID(s) and delete them
+            ENTRY_IDS=$(echo "$ENTRY_SHOW_OUTPUT" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' || echo "")
+            if [ -z "$ENTRY_IDS" ]; then
+                # Fallback: try extracting from "Entry ID" line
+                ENTRY_IDS=$(echo "$ENTRY_SHOW_OUTPUT" | grep -i "Entry ID" | sed -n 's/.*Entry ID[[:space:]]*:[[:space:]]*\([a-f0-9-]\+\).*/\1/p' || echo "")
+            fi
+            
+            ENTRY_COUNT=0
+            if [ -n "$ENTRY_IDS" ]; then
+                while IFS= read -r entry_id; do
+                    if [ -n "$entry_id" ]; then
+                        if "${SPIRE_DIR}/bin/spire-server" entry delete \
+                            -entryID "$entry_id" \
+                            -socketPath "$SERVER_SOCKET" >/dev/null 2>&1; then
+                            ENTRY_COUNT=$((ENTRY_COUNT + 1))
+                        fi
+                    fi
+                done <<< "$ENTRY_IDS"
+            fi
+            
+            if [ $ENTRY_COUNT -gt 0 ]; then
+                echo -e "  ${GREEN}✓ Deleted $ENTRY_COUNT existing registration entry/entries${NC}"
+            fi
+        fi
+    fi
+fi
+
 cd "${PROJECT_DIR}/python-app-demo"
 if [ -f "./create-registration-entry.sh" ]; then
     ./create-registration-entry.sh
