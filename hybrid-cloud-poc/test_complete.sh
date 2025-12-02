@@ -1532,6 +1532,19 @@ except Exception as e:
     # Continue anyway - registrar might handle it
 " 2>&1 | grep -v "^$" || echo "  ⚠ Migration check completed (may have warnings)"
 
+# Cleanup existing Keylime Registrar before starting (if not already stopped)
+if [ -f /tmp/keylime-registrar.pid ]; then
+    OLD_PID=$(cat /tmp/keylime-registrar.pid 2>/dev/null || echo "")
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "  Stopping existing Keylime Registrar (PID: $OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+        sleep 1
+    fi
+fi
+pkill -f "keylime.*registrar" >/dev/null 2>&1 || true
+pkill -f "python.*keylime.*registrar" >/dev/null 2>&1 || true
+sleep 1
+
 # Start registrar in background
 echo "  Starting registrar on port 8890..."
 echo "    Database URL: ${KEYLIME_REGISTRAR_DATABASE_URL:-sqlite}"
