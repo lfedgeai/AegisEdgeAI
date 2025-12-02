@@ -144,20 +144,43 @@ echo "  (This may take a minute to start all services...)"
 echo ""
 
 # Run test_onprem.sh on the onprem host
-ssh ${SSH_OPTS} mw@${ONPREM_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh"
+# Note: test_onprem.sh starts services in background and exits successfully
+# Temporarily disable exit on error to handle SSH properly
+set +e
+ssh ${SSH_OPTS} mw@${ONPREM_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh" 2>&1
+ONPREM_EXIT_CODE=$?
+set -e
 
-if [ $? -eq 0 ]; then
+# Explicitly continue the script after SSH command
+if [ $ONPREM_EXIT_CODE -eq 0 ]; then
+    echo ""
     echo -e "${GREEN}✓ Onprem services started successfully${NC}"
+    echo "  Services are running in the background on ${ONPREM_HOST}"
+    echo "  (Mobile Location Service, mTLS Server, Envoy Proxy)"
 else
-    echo -e "${RED}✗ Failed to start onprem services${NC}"
+    echo ""
+    echo -e "${RED}✗ Failed to start onprem services (exit code: $ONPREM_EXIT_CODE)${NC}"
     exit 1
 fi
 
+# Explicit continuation - ensure script doesn't exit here
 echo ""
 echo -e "${GREEN}You can see the Keylime Verifier loading the 'Golden State' policies${NC}"
 echo -e "${GREEN}for our hardware.${NC}"
 echo ""
-read -p "Press Enter to continue to Act 2: Happy Path..."
+echo -e "${CYAN}Act 1 complete. All control plane and onprem services are running.${NC}"
+echo ""
+echo -e "${BOLD}Ready to proceed to Act 2...${NC}"
+echo ""
+
+# Ensure we're reading from the terminal, not from a pipe
+# Use explicit file descriptor check
+if [ -t 0 ] && [ -t 1 ]; then
+    read -p "Press Enter to continue to Act 2: Happy Path... " < /dev/tty
+else
+    echo "  (Non-interactive mode - continuing automatically in 3 seconds...)"
+    sleep 3
+fi
 
 # ============================================================================
 # ACT 2: The Happy Path (Proof of Residency)

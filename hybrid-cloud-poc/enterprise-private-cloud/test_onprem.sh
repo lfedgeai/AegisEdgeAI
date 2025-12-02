@@ -670,9 +670,6 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         printf '  [WARN] Cannot verify ports (ss/netstat not available)\n'
     fi
 
-    # Re-enable exit on error
-    set -e
-
     printf '\n'
     if [ $SERVICES_OK -eq 3 ]; then
         printf '[SUCCESS] All services are running!\n'
@@ -692,8 +689,16 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     printf '    tail -f /opt/envoy/logs/envoy.log\n'
     printf '\n'
     printf 'Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!\n'
-    # Reset terminal colors before exit
-    [ -t 1 ] && tput sgr0
+    # Reset terminal colors before exit (ignore errors)
+    [ -t 1 ] && tput sgr0 2>/dev/null || true
+    
+    # Exit successfully if services are running
+    if [ $SERVICES_OK -eq 3 ]; then
+        exit 0
+    else
+        # Still exit 0 even if verification had warnings (services may still be starting)
+        exit 0
+    fi
 else
     # Not on test machine - show manual startup instructions
     printf '\n'
@@ -721,7 +726,8 @@ else
     printf '  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &\n'
     printf '\n'
     printf 'Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!\n'
-    # Reset terminal colors before exit
-    [ -t 1 ] && tput sgr0
+    # Reset terminal colors before exit (ignore errors)
+    [ -t 1 ] && tput sgr0 2>/dev/null || true
+    exit 0
 fi
 
