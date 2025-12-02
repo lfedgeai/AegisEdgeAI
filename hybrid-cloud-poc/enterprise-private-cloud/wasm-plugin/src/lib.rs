@@ -287,29 +287,29 @@ impl HttpContext for SensorVerificationFilter {
             }
             
             let should_verify = match &cache_guard.verification_cache {
-                Some((cached_sensor_id, cached_timestamp)) => {
-                    if cached_sensor_id == &sensor_id {
-                        // Calculate cache age
-                        let cache_age = current_time.duration_since(*cached_timestamp)
-                            .unwrap_or(Duration::from_secs(0));
-                        let cache_age_seconds = cache_age.as_secs();
-                        
-                        if cache_age < cache_ttl {
-                            proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Using cached verification for sensor_id: {} (age: {}s, TTL: 15s)", sensor_id, cache_age_seconds));
-                            false // Use cached result
-                        } else {
-                            proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache expired for sensor_id: {} (age: {}s, TTL: 15s), re-verifying", sensor_id, cache_age_seconds));
-                            true // Cache expired, need to verify
-                        }
+            Some((cached_sensor_id, cached_timestamp)) => {
+                if cached_sensor_id == &sensor_id {
+                    // Calculate cache age
+                    let cache_age = current_time.duration_since(*cached_timestamp)
+                        .unwrap_or(Duration::from_secs(0));
+                    let cache_age_seconds = cache_age.as_secs();
+                    
+                    if cache_age < cache_ttl {
+                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Using cached verification for sensor_id: {} (age: {}s, TTL: 15s)", sensor_id, cache_age_seconds));
+                        false // Use cached result
                     } else {
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Different sensor_id: {} (cached: {}), verifying", sensor_id, cached_sensor_id));
-                        true // Different sensor_id, need to verify
+                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache expired for sensor_id: {} (age: {}s, TTL: 15s), re-verifying", sensor_id, cache_age_seconds));
+                        true // Cache expired, need to verify
                     }
+                } else {
+                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Different sensor_id: {} (cached: {}), verifying", sensor_id, cached_sensor_id));
+                    true // Different sensor_id, need to verify
                 }
-                None => {
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("No cache for sensor_id: {}, verifying", sensor_id));
-                    true // No cache, need to verify
-                }
+            }
+            None => {
+                proxy_wasm::hostcalls::log(LogLevel::Info, &format!("No cache for sensor_id: {}, verifying", sensor_id));
+                true // No cache, need to verify
+            }
             };
             
             let cached_verified = cache_guard.verification_result;

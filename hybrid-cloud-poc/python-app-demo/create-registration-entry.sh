@@ -46,18 +46,22 @@ if echo "$ENTRY_SHOW_OUTPUT" | grep -qi "Entry ID" && ! echo "$ENTRY_SHOW_OUTPUT
     echo "⚠ Entry already exists (verification step should have caught this)"
     echo "  Deleting existing entry..."
     # Try multiple methods to extract entry ID
-    ENTRY_ID=$(echo "$ENTRY_SHOW_OUTPUT" | grep -i "Entry ID" | awk '{print $3}' | head -1)
+    # Method 1: Extract UUID pattern (most reliable)
+    ENTRY_ID=$(echo "$ENTRY_SHOW_OUTPUT" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1)
+    # Method 2: Extract from "Entry ID         : <uuid>" format
     if [ -z "$ENTRY_ID" ]; then
         ENTRY_ID=$(echo "$ENTRY_SHOW_OUTPUT" | grep -i "Entry ID" | sed -n 's/.*Entry ID[[:space:]]*:[[:space:]]*\([a-f0-9-]\+\).*/\1/p' | head -1)
     fi
+    # Method 3: Use awk (fallback)
     if [ -z "$ENTRY_ID" ]; then
-        ENTRY_ID=$(echo "$ENTRY_SHOW_OUTPUT" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1)
+        ENTRY_ID=$(echo "$ENTRY_SHOW_OUTPUT" | grep -i "Entry ID" | awk -F': ' '{print $2}' | awk '{print $1}' | head -1)
     fi
     
     if [ -n "$ENTRY_ID" ]; then
+        echo "  Found entry ID: $ENTRY_ID"
         if "${SPIRE_DIR}/bin/spire-server" entry delete \
             -entryID "$ENTRY_ID" \
-            -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
+            -socketPath /tmp/spire-server/private/api.sock 2>&1; then
             echo "  ✓ Existing entry deleted"
             # Verify deletion
             sleep 0.5
@@ -69,11 +73,34 @@ if echo "$ENTRY_SHOW_OUTPUT" | grep -qi "Entry ID" && ! echo "$ENTRY_SHOW_OUTPUT
             fi
         else
             echo "  ⚠ Failed to delete entry (ID: $ENTRY_ID)"
+            echo "  Attempting to list all entries and delete by SPIFFE ID..."
+            # Fallback: try to delete all entries with this SPIFFE ID
+            ENTRY_LIST=$("${SPIRE_DIR}/bin/spire-server" entry list \
+                -spiffeID "$WORKLOAD_SPIFFE_ID" \
+                -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
+            if [ -n "$ENTRY_LIST" ]; then
+                echo "$ENTRY_LIST" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | while read -r eid; do
+                    if [ -n "$eid" ]; then
+                        "${SPIRE_DIR}/bin/spire-server" entry delete -entryID "$eid" -socketPath /tmp/spire-server/private/api.sock 2>&1 && echo "  ✓ Deleted entry: $eid"
+                    fi
+                done
+            fi
         fi
     else
         echo "  ⚠ Could not extract entry ID from output"
         echo "  ⚠ Debug output:"
         echo "$ENTRY_SHOW_OUTPUT" | head -10 | sed 's/^/    /'
+        echo "  Attempting to delete by listing all entries..."
+        # Fallback: list all entries and find matching SPIFFE ID
+        ENTRY_LIST=$("${SPIRE_DIR}/bin/spire-server" entry list \
+            -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
+        if echo "$ENTRY_LIST" | grep -q "$WORKLOAD_SPIFFE_ID"; then
+            echo "$ENTRY_LIST" | grep -B 5 "$WORKLOAD_SPIFFE_ID" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1 | while read -r eid; do
+                if [ -n "$eid" ]; then
+                    "${SPIRE_DIR}/bin/spire-server" entry delete -entryID "$eid" -socketPath /tmp/spire-server/private/api.sock 2>&1 && echo "  ✓ Deleted entry: $eid"
+                fi
+            done
+        fi
     fi
 fi
 

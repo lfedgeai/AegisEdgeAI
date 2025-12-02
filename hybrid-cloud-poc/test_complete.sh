@@ -1,7 +1,8 @@
 #!/bin/bash
-# Unified-Identity: Complete End-to-End Integration Test
-# Tests the full workflow: SPIRE Server + Keylime Verifier + rust-keylime Agent -> Sovereign SVID Generation
+# Unified-Identity: Agent Services Integration Test (Act 2)
+# Tests agent services: rust-keylime Agent + TPM Plugin + SPIRE Agent -> Sovereign SVID Generation
 # Hardware Integration & Delegated Certification
+# Note: Control plane services (SPIRE Server, Keylime Verifier/Registrar) are managed by test_complete_control_plane.sh
 
 set -euo pipefail
 # Exit immediately on error - abort if anything goes wrong
@@ -17,15 +18,6 @@ KEYLIME_DIR="${SCRIPT_DIR}/keylime"
 PYTHON_KEYLIME_DIR="${KEYLIME_DIR}"
 RUST_KEYLIME_DIR="${SCRIPT_DIR}/rust-keylime"
 SPIRE_DIR="${SCRIPT_DIR}/spire"
-
-MOBILE_SENSOR_DIR="${SCRIPT_DIR}/mobile-sensor-microservice"
-MOBILE_SENSOR_HOST="${MOBILE_SENSOR_HOST:-127.0.0.1}"
-MOBILE_SENSOR_PORT="${MOBILE_SENSOR_PORT:-9050}"
-MOBILE_SENSOR_BASE_URL="http://${MOBILE_SENSOR_HOST}:${MOBILE_SENSOR_PORT}"
-MOBILE_SENSOR_DB_ROOT="/tmp/mobile-sensor-service"
-MOBILE_SENSOR_DB_PATH="${MOBILE_SENSOR_DB_ROOT}/sensor_mapping.db"
-MOBILE_SENSOR_LOG="/tmp/mobile-sensor-microservice.log"
-MOBILE_SENSOR_PID_FILE="/tmp/mobile-sensor-microservice.pid"
 
 # Colors
 GREEN='\033[0;32m'
@@ -90,84 +82,90 @@ SCRIPT_DIR="${TEST_SCRIPT_DIR}"
     eval "$func_def"
 }
 
-# Function to clean up only control plane services
-stop_control_plane_services_only() {
-    echo -e "${CYAN}Step 0: Stopping control plane services and cleaning up their data...${NC}"
+# Function to clean up only agent services (for act 2 - non-control plane)
+stop_agent_services_only() {
+    echo -e "${CYAN}Step 0: Stopping agent services and cleaning up their data...${NC}"
     echo ""
     
-    # Step 1: Stop control plane processes only
-    echo "  1. Stopping control plane processes..."
+    # Step 1: Stop agent processes only
+    echo "  1. Stopping agent processes..."
     
-    # Stop SPIRE Server (not Agent)
-    echo "     Stopping SPIRE Server..."
-    pkill -f "spire-server" >/dev/null 2>&1 || true
+    # Stop rust-keylime Agent
+    echo "     Stopping rust-keylime Agent..."
+    pkill -f "keylime_agent" >/dev/null 2>&1 || true
+    pkill -f "rust-keylime" >/dev/null 2>&1 || true
+    pkill -f "target/release/keylime_agent" >/dev/null 2>&1 || true
     
-    # Stop Keylime Verifier and Registrar
-    echo "     Stopping Keylime Verifier and Registrar..."
-    pkill -f "keylime_verifier" >/dev/null 2>&1 || true
-    pkill -f "keylime\.cmd\.verifier" >/dev/null 2>&1 || true
-    pkill -f "keylime_registrar" >/dev/null 2>&1 || true
-    pkill -f "keylime\.cmd\.registrar" >/dev/null 2>&1 || true
+    # Stop TPM Plugin Server
+    echo "     Stopping TPM Plugin Server..."
+    pkill -f "tpm_plugin_server" >/dev/null 2>&1 || true
+    
+    # Stop SPIRE Agent (not Server)
+    echo "     Stopping SPIRE Agent..."
+    pkill -f "spire-agent" >/dev/null 2>&1 || true
     
     sleep 1
     
-    # Step 2: Clean up only control plane data directories
-    echo "  2. Cleaning up control plane data directories..."
+    # Step 2: Clean up only agent data directories
+    echo "  2. Cleaning up agent data directories..."
     
-    # Remove SPIRE Server data (not Agent data)
-    echo "     Removing SPIRE Server data directories..."
-    rm -rf /tmp/spire-server 2>/dev/null || true
-    rm -f /tmp/spire-server.pid 2>/dev/null || true
-    rm -f /tmp/spire-server.log 2>/dev/null || true
+    # Remove SPIRE Agent data (not Server data)
+    echo "     Removing SPIRE Agent data directories..."
+    rm -rf /tmp/spire-agent 2>/dev/null || true
+    rm -f /tmp/spire-agent.pid 2>/dev/null || true
+    rm -f /tmp/spire-agent.log 2>/dev/null || true
     
-    # Remove Keylime databases and persistent data
-    echo "     Removing Keylime databases and persistent data..."
-    rm -rf /tmp/keylime 2>/dev/null || true
-    rm -f /tmp/keylime-verifier.pid 2>/dev/null || true
-    rm -f /tmp/keylime-registrar.pid 2>/dev/null || true
-    rm -f /tmp/keylime-verifier.log 2>/dev/null || true
-    rm -f /tmp/keylime-registrar.log 2>/dev/null || true
+    # Remove rust-keylime agent data
+    echo "     Removing rust-keylime agent data..."
+    rm -rf /tmp/keylime-agent 2>/dev/null || true
+    rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
+    rm -f /tmp/keylime-agent.sock 2>/dev/null || true
+    rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
     
-    # Remove TLS certificates (needed for Keylime)
-    echo "     Removing TLS certificates..."
-    rm -rf "${KEYLIME_DIR}/cv_ca" 2>/dev/null || true
+    # Remove TPM Plugin data
+    echo "     Removing TPM Plugin data..."
+    rm -rf /tmp/spire-data/tpm-plugin 2>/dev/null || true
+    rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
+    rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
+    
+    # Remove SVID dump directory
+    echo "     Removing SVID dump directory..."
+    rm -rf /tmp/svid-dump 2>/dev/null || true
     
     # Step 3: Remove PID files
     echo "  3. Removing PID files..."
-    rm -f /tmp/spire-server.pid 2>/dev/null || true
-    rm -f /tmp/keylime-verifier.pid 2>/dev/null || true
-    rm -f /tmp/keylime-registrar.pid 2>/dev/null || true
+    rm -f /tmp/spire-agent.pid 2>/dev/null || true
+    rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
+    rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
     
     # Step 4: Remove log files
     echo "  4. Removing log files..."
-    rm -f /tmp/spire-server.log 2>/dev/null || true
-    rm -f /tmp/keylime-verifier.log 2>/dev/null || true
-    rm -f /tmp/keylime-registrar.log 2>/dev/null || true
+    rm -f /tmp/spire-agent.log 2>/dev/null || true
+    rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
+    rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
     
     # Step 5: Remove socket files
     echo "  5. Removing socket files..."
-    rm -f /tmp/spire-server/private/api.sock 2>/dev/null || true
-    rm -f /tmp/spire-server/public/api.sock 2>/dev/null || true
+    rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
+    rm -f /tmp/keylime-agent.sock 2>/dev/null || true
+    rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
     
     # Step 6: Create clean data directories
     echo "  6. Creating clean data directories..."
-    mkdir -p /tmp/spire-server/private 2>/dev/null || true
-    mkdir -p /tmp/spire-server/public 2>/dev/null || true
-    mkdir -p /tmp/keylime 2>/dev/null || true
+    mkdir -p /tmp/spire-agent/public 2>/dev/null || true
+    mkdir -p /tmp/keylime-agent 2>/dev/null || true
+    mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
     
     echo ""
-    echo -e "${GREEN}  ✓ Control plane services stopped and data cleaned up${NC}"
+    echo -e "${GREEN}  ✓ Agent services stopped and data cleaned up${NC}"
 }
 
 # Override with wrapper that adds Step 0 prefix
+# For test_complete.sh (act 2 - non-control plane), only clean up agent services
+# Control plane services are managed by test_complete_control_plane.sh
 stop_all_instances_and_cleanup() {
-    if [ "${CONTROL_PLANE_ONLY:-false}" = "true" ]; then
-        stop_control_plane_services_only
-    else
-        echo -e "${CYAN}Step 0: Stopping all existing instances and cleaning up all data...${NC}"
-        echo ""
-        SKIP_HEADER=1 _original_stop_all_instances_and_cleanup
-    fi
+    # Only clean up agent services (control plane is managed separately)
+    stop_agent_services_only
 }
 
 # Pause function for critical phases (only in interactive terminals)
@@ -191,156 +189,6 @@ pause_at_phase() {
         read -r
         echo ""
     fi
-}
-
-start_mobile_sensor_microservice() {
-    echo ""
-    echo -e "${CYAN}Step 1.5: Starting Mobile Location Verification microservice...${NC}"
-    if [ ! -d "${MOBILE_SENSOR_DIR}" ]; then
-        abort_on_error "Mobile sensor microservice directory not found: ${MOBILE_SENSOR_DIR}"
-    fi
-
-    echo "  Preparing mobile sensor service data directory..."
-    mkdir -p "${MOBILE_SENSOR_DB_ROOT}" 2>/dev/null || true
-    rm -f "${MOBILE_SENSOR_DB_PATH}" 2>/dev/null || true
-
-    export MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB_PATH}"
-    # CAMARA APIs are bypassed by default (set CAMARA_BYPASS=false to enable CAMARA API calls)
-    # Set CAMARA_BYPASS=false to use real CAMARA API calls
-    export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
-    if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
-        # Default to valid CAMARA sandbox credentials (can be overridden via env var)
-        export CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
-    fi
-    
-    # Allow lat/lon/accuracy to be overridden via env vars for testing
-    if [ -n "${MOBILE_SENSOR_LATITUDE:-}" ]; then
-        export MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE}"
-        echo "    Using custom latitude from MOBILE_SENSOR_LATITUDE: ${MOBILE_SENSOR_LATITUDE}"
-    fi
-    if [ -n "${MOBILE_SENSOR_LONGITUDE:-}" ]; then
-        export MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE}"
-        echo "    Using custom longitude from MOBILE_SENSOR_LONGITUDE: ${MOBILE_SENSOR_LONGITUDE}"
-    fi
-    if [ -n "${MOBILE_SENSOR_ACCURACY:-}" ]; then
-        export MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY}"
-        echo "    Using custom accuracy from MOBILE_SENSOR_ACCURACY: ${MOBILE_SENSOR_ACCURACY}"
-    fi
-
-    cd "${MOBILE_SENSOR_DIR}" || exit 1
-    
-    # Ensure port is free before starting
-    if command -v lsof > /dev/null 2>&1; then
-        if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
-            echo "    Port ${MOBILE_SENSOR_PORT} is in use, stopping existing service..."
-            stop_mobile_sensor_microservice
-            sleep 2
-        fi
-    fi
-    
-    echo "  Starting mobile sensor microservice..."
-    echo "    Endpoint: ${MOBILE_SENSOR_BASE_URL}"
-    echo "    Database: ${MOBILE_SENSOR_DB_PATH}"
-    echo "    Log file: ${MOBILE_SENSOR_LOG}"
-    echo "    CAMARA_BYPASS: ${CAMARA_BYPASS}"
-    nohup env MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB}" \
-             CAMARA_BYPASS="${CAMARA_BYPASS}" \
-             CAMARA_BASIC_AUTH="${CAMARA_BASIC_AUTH:-}" \
-             MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE:-}" \
-             MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE:-}" \
-             MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY:-}" \
-             python3 service.py --host "${MOBILE_SENSOR_HOST}" --port "${MOBILE_SENSOR_PORT}" > "${MOBILE_SENSOR_LOG}" 2>&1 &
-    local pid=$!
-    echo $pid > "${MOBILE_SENSOR_PID_FILE}"
-    echo "    Mobile sensor microservice PID: ${pid}"
-    
-    # Wait a moment for startup logs
-    sleep 2
-    
-    # Show startup logs
-    if [ -f "${MOBILE_SENSOR_LOG}" ]; then
-        echo "  Startup logs:"
-        tail -10 "${MOBILE_SENSOR_LOG}" | grep -E "(Starting|latitude|longitude|accuracy|CAMARA_BYPASS|ready)" | sed 's/^/    /' || true
-    fi
-
-    echo "    Performing readiness health check against /verify (seed sensor_id used)"
-    local started=false
-    for i in {1..30}; do
-        local status
-        status=$(curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" -d '{}' "${MOBILE_SENSOR_BASE_URL}/verify" || true)
-        if [ -n "${status}" ] && [ "${status}" != "000" ]; then
-            echo -e "${GREEN}    ✓ Health check passed (mobile sensor microservice responded HTTP ${status})${NC}"
-            started=true
-            break
-        fi
-        sleep 1
-    done
-
-    if [ "$started" = false ]; then
-        echo -e "${RED}    ✗ Mobile sensor microservice failed to start (check ${MOBILE_SENSOR_LOG})${NC}"
-        if [ -f "${MOBILE_SENSOR_LOG}" ]; then
-            echo "    Recent logs:"
-            tail -30 "${MOBILE_SENSOR_LOG}" | sed 's/^/      /'
-        fi
-        if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
-            local check_pid
-            check_pid=$(cat "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || echo "")
-            if [ -n "${check_pid}" ]; then
-                if ps -p "${check_pid}" > /dev/null 2>&1; then
-                    echo "    Process ${check_pid} is still running"
-                else
-                    echo "    Process ${check_pid} is not running (may have crashed)"
-                fi
-            fi
-        fi
-        return 1
-    fi
-    
-    # Double-check the service is actually listening on the port
-    if command -v netstat > /dev/null 2>&1; then
-        if ! netstat -tln 2>/dev/null | grep -q ":${MOBILE_SENSOR_PORT} "; then
-            echo -e "${YELLOW}    ⚠ Warning: Service may not be listening on port ${MOBILE_SENSOR_PORT}${NC}"
-        fi
-    elif command -v ss > /dev/null 2>&1; then
-        if ! ss -tln 2>/dev/null | grep -q ":${MOBILE_SENSOR_PORT} "; then
-            echo -e "${YELLOW}    ⚠ Warning: Service may not be listening on port ${MOBILE_SENSOR_PORT}${NC}"
-        fi
-    fi
-
-    pause_at_phase "Step 1.5 Complete" "Mobile Location Verification microservice is running on ${MOBILE_SENSOR_BASE_URL}."
-}
-
-stop_mobile_sensor_microservice() {
-    # Kill by PID file if it exists
-    if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
-        local pid
-        pid=$(cat "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || echo "")
-        if [ -n "$pid" ]; then
-            kill "$pid" >/dev/null 2>&1 || true
-        fi
-        rm -f "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || true
-    fi
-    
-    # Also kill any service.py process listening on the mobile sensor port
-    # This handles cases where the PID file is missing or the service was started outside the script
-    if command -v lsof > /dev/null 2>&1; then
-        local port_pid
-        port_pid=$(lsof -ti :${MOBILE_SENSOR_PORT} 2>/dev/null || echo "")
-        if [ -n "$port_pid" ]; then
-            kill "$port_pid" >/dev/null 2>&1 || true
-        fi
-    elif command -v fuser > /dev/null 2>&1; then
-        fuser -k ${MOBILE_SENSOR_PORT}/tcp >/dev/null 2>&1 || true
-    fi
-    
-    # Kill by process pattern matching (multiple patterns to catch all variations)
-    pkill -f "service.py.*--port.*${MOBILE_SENSOR_PORT}" >/dev/null 2>&1 || true
-    pkill -f "python3.*service.py.*--port" >/dev/null 2>&1 || true
-    pkill -f "service.py.*--host.*127.0.0.1" >/dev/null 2>&1 || true
-    pkill -f "python3.*service.py.*--host.*127.0.0.1.*--port.*9050" >/dev/null 2>&1 || true
-    pkill -f "mobile-sensor-microservice.*service.py" >/dev/null 2>&1 || true
-    
-    sleep 1
 }
 
 # Function to extract timestamp from log line
@@ -418,7 +266,7 @@ generate_workflow_log_file() {
         
         # Keylime Verifier logs
         if [ -f /tmp/keylime-verifier.log ]; then
-            grep -E "Processing|Verifying|certificate|quote|mobile|sensor|Unified-Identity" /tmp/keylime-verifier.log | \
+            grep -E "Processing|Verifying|certificate|quote|Unified-Identity" /tmp/keylime-verifier.log | \
             while IFS= read -r line; do
                 ts=$(extract_timestamp "$line")
                 nts=$(normalize_timestamp "$ts")
@@ -434,16 +282,6 @@ generate_workflow_log_file() {
                 nts=$(normalize_timestamp "$ts")
                 echo "$nts|RUST_KEYLIME|$line"
             done > "$TEMP_DIR/rust-keylime.log"
-        fi
-        
-        # Mobile Location Verification Microservice logs
-        if [ -f /tmp/mobile-sensor-microservice.log ]; then
-            grep -E "verify|CAMARA|sensor|verification|request|response" /tmp/mobile-sensor-microservice.log | \
-            while IFS= read -r line; do
-                ts=$(extract_timestamp "$line")
-                nts=$(normalize_timestamp "$ts")
-                echo "$nts|MOBILE_SENSOR|$line"
-            done > "$TEMP_DIR/mobile-sensor.log"
         fi
         
         # Sort all logs chronologically
@@ -473,7 +311,7 @@ generate_workflow_log_file() {
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         
-        # Agent attestation follows architecture flow: SPIRE Agent → TPM Plugin → rust-keylime → SPIRE Agent → SPIRE Server → Keylime Verifier → Mobile Sensor → Keylime Verifier → SPIRE Server → SPIRE Agent
+        # Agent attestation follows architecture flow: SPIRE Agent → TPM Plugin → rust-keylime → SPIRE Agent → SPIRE Server (control plane) → Keylime Verifier (control plane) → SPIRE Server (control plane) → SPIRE Agent
         
         # Step 1: SPIRE Agent Initiates Attestation & Requests App Key Info
         echo "[Step 3-4] SPIRE Agent Initiates Attestation & Requests App Key Information:"
@@ -550,20 +388,6 @@ generate_workflow_log_file() {
         done
         echo ""
         
-        # Step 7: Mobile Location Verification
-        echo "[Step 13-14] Mobile Location Verification:"
-        {
-            grep -E "KEYLIME_VERIFIER.*mobile|KEYLIME_VERIFIER.*sensor|KEYLIME_VERIFIER.*geolocation" "$TEMP_DIR/all-logs-sorted.log"
-            grep -E "MOBILE_SENSOR" "$TEMP_DIR/all-logs-sorted.log"
-        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
-            formatted_ts=$(echo "$ts" | sed 's/|.*//')
-            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
-            comp_name="Keylime Verifier"
-            [[ "$component" == "MOBILE_SENSOR" ]] && comp_name="Mobile Location Verification"
-            echo "  [$formatted_ts] [$comp_name] $clean_line"
-        done
-        echo ""
-        
         # Step 8: Keylime Verifier Returns Result to SPIRE Server
         echo "[Step 16] Keylime Verifier Returns Verification Result:"
         grep -E "KEYLIME_VERIFIER.*Verification successful|KEYLIME_VERIFIER.*Returning|SPIRE_SERVER.*AttestedClaims|SPIRE_SERVER.*received.*AttestedClaims" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
@@ -614,14 +438,6 @@ generate_workflow_log_file() {
         # Certificate Verification
         echo "[3] Certificate Signature Verification:"
         grep -E "KEYLIME_VERIFIER.*certificate|KEYLIME_VERIFIER.*Verifying.*certificate" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
-        while IFS='|' read -r ts component line; do
-            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
-        done
-        echo ""
-        
-        # Mobile Location Verification
-        echo "[4] Mobile Location Verification:"
-        grep -E "MOBILE_SENSOR|KEYLIME_VERIFIER.*mobile|KEYLIME_VERIFIER.*sensor" "$TEMP_DIR/all-logs-sorted.log" | head -8 | \
         while IFS='|' read -r ts component line; do
             echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
         done
@@ -836,8 +652,6 @@ Options:
   --skip-cleanup       Skip the initial cleanup phase.
   --exit-cleanup       Run cleanup on exit (default: components continue running)
   --no-exit-cleanup    Do not run best-effort cleanup on exit (default behavior)
-  --control-plane-only Start only control plane services (SPIRE Server, Keylime Verifier/Registrar)
-                       Skip SPIRE Agent, TPM Plugin, and rust-keylime Agent
   --pause              Enable pause points at critical phases (default: auto-detect)
   --no-pause           Disable pause points (run non-interactively)
   -h, --help           Show this help message.
@@ -860,7 +674,6 @@ cleanup() {
     fi
     echo ""
     echo -e "${YELLOW}Cleaning up on exit...${NC}"
-    stop_mobile_sensor_microservice
     # Only stop processes on exit, don't delete data (user may want to inspect)
     pkill -f "keylime_verifier" >/dev/null 2>&1 || true
     pkill -f "python.*keylime" >/dev/null 2>&1 || true
@@ -873,8 +686,6 @@ cleanup() {
 RUN_INITIAL_CLEANUP=true
 # Modified: Default to NOT cleaning up on exit so components continue running
 EXIT_CLEANUP_ON_EXIT=false
-# Control plane only mode: skip SPIRE Agent and related components
-CONTROL_PLANE_ONLY=false
 # Auto-detect pause mode: enable if interactive terminal, disable otherwise
 if [ -t 0 ]; then
     PAUSE_ENABLED="${PAUSE_ENABLED:-true}"
@@ -1255,10 +1066,8 @@ test_svid_renewal() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --cleanup-only)
-            # For --cleanup-only, use the original function directly (not the wrapper)
-            echo -e "${CYAN}Stopping all existing instances and cleaning up all data...${NC}"
-            echo ""
-            SKIP_HEADER=1 _original_stop_all_instances_and_cleanup
+            # For --cleanup-only, only clean up agent services (control plane is managed separately)
+            stop_agent_services_only
             exit 0
             ;;
         --skip-cleanup)
@@ -1283,10 +1092,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-pause)
             PAUSE_ENABLED=false
-            shift
-            ;;
-        --control-plane-only)
-            CONTROL_PLANE_ONLY=true
             shift
             ;;
         -h|--help)
@@ -1315,6 +1120,71 @@ else
 fi
 
 # Step 1: Setup Keylime environment with TLS certificates
+# Skipped for act 2 - non-control plane only (handled by test_complete_control_plane.sh)
+echo ""
+echo -e "${CYAN}Step 1: Skipping Keylime setup (act 2 - non-control plane only)${NC}"
+echo -e "${YELLOW}  Assuming control plane services are already running from test_complete_control_plane.sh${NC}"
+
+# Verify control plane services are running before proceeding
+echo "  Verifying control plane services are running..."
+CONTROL_PLANE_READY=true
+
+# Check Keylime Verifier (port 8881)
+if ! curl -k -s --connect-timeout 2 "https://localhost:8881/v2.2/status" >/dev/null 2>&1 && \
+   ! curl -k -s --connect-timeout 2 "https://localhost:8881/v2.1/status" >/dev/null 2>&1; then
+    echo -e "${RED}  ✗ Keylime Verifier is not running on port 8881${NC}"
+    CONTROL_PLANE_READY=false
+else
+    echo -e "${GREEN}  ✓ Keylime Verifier is running${NC}"
+fi
+
+# Check Keylime Registrar (port 8890)
+if ! curl -s --connect-timeout 2 "http://localhost:8890/v2.2/agents/" >/dev/null 2>&1 && \
+   ! curl -s --connect-timeout 2 "http://localhost:8890/v2.1/agents/" >/dev/null 2>&1; then
+    echo -e "${RED}  ✗ Keylime Registrar is not running on port 8890${NC}"
+    CONTROL_PLANE_READY=false
+else
+    echo -e "${GREEN}  ✓ Keylime Registrar is running${NC}"
+fi
+
+# Check SPIRE Server (port 8081)
+SPIRE_SERVER="${PROJECT_DIR}/spire/bin/spire-server"
+if [ -f "${SPIRE_SERVER}" ]; then
+    if ! "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
+        echo -e "${RED}  ✗ SPIRE Server is not running or not ready${NC}"
+        CONTROL_PLANE_READY=false
+    else
+        echo -e "${GREEN}  ✓ SPIRE Server is running${NC}"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ SPIRE Server binary not found, skipping check${NC}"
+fi
+
+if [ "$CONTROL_PLANE_READY" = false ]; then
+    echo ""
+    echo -e "${RED}ERROR: Control plane services are not running!${NC}"
+    echo ""
+    echo "Please run test_complete_control_plane.sh first to start:"
+    echo "  - SPIRE Server"
+    echo "  - Keylime Verifier"
+    echo "  - Keylime Registrar"
+    echo ""
+    echo "Then run this script (test_complete.sh) to start agent services."
+    abort_on_error "Control plane services must be running before starting agent services"
+fi
+
+echo ""
+
+# Set VERIFIER_CONFIG_ABS even though we're skipping setup (needed for later steps)
+VERIFIER_CONFIG="${KEYLIME_DIR}/verifier.conf.minimal"
+if [ -f "${VERIFIER_CONFIG}" ]; then
+    VERIFIER_CONFIG_ABS="$(cd "$(dirname "${VERIFIER_CONFIG}")" && pwd)/$(basename "${VERIFIER_CONFIG}")"
+    export KEYLIME_VERIFIER_CONFIG="${VERIFIER_CONFIG_ABS}"
+    export KEYLIME_CA_CONFIG="${VERIFIER_CONFIG_ABS}"
+    export KEYLIME_CONFIG="${VERIFIER_CONFIG_ABS}"
+fi
+
+if false; then
 echo -e "${CYAN}Step 1: Setting up Keylime environment with TLS certificates...${NC}"
 echo ""
 
@@ -1431,244 +1301,66 @@ else
 fi
 
 pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
-
-# Step 1.5: Start Mobile Location Verification microservice (skip if control-plane-only)
-if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
-    echo -e "${YELLOW}  Skipping Mobile Location Verification microservice (--control-plane-only mode)${NC}"
-else
-    start_mobile_sensor_microservice
 fi
 
-# Helper function to stop control plane services
-stop_control_plane_services() {
-    echo "  Stopping existing control plane services..."
-    # Stop Keylime Verifier
-    if [ -f /tmp/keylime-verifier.pid ]; then
-        OLD_PID=$(cat /tmp/keylime-verifier.pid 2>/dev/null || echo "")
-        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-            echo "    Stopping Keylime Verifier (PID: $OLD_PID)..."
-            kill "$OLD_PID" 2>/dev/null || true
-            sleep 1
-        fi
-    fi
-    pkill -f "keylime.*verifier" >/dev/null 2>&1 || true
-    pkill -f "python.*keylime.*verifier" >/dev/null 2>&1 || true
-    
-    # Stop Keylime Registrar
-    if [ -f /tmp/keylime-registrar.pid ]; then
-        OLD_PID=$(cat /tmp/keylime-registrar.pid 2>/dev/null || echo "")
-        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-            echo "    Stopping Keylime Registrar (PID: $OLD_PID)..."
-            kill "$OLD_PID" 2>/dev/null || true
-            sleep 1
-        fi
-    fi
-    pkill -f "keylime.*registrar" >/dev/null 2>&1 || true
-    pkill -f "python.*keylime.*registrar" >/dev/null 2>&1 || true
-    
-    # Stop SPIRE Server
-    if [ -f /tmp/spire-server.pid ]; then
-        OLD_PID=$(cat /tmp/spire-server.pid 2>/dev/null || echo "")
-        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-            echo "    Stopping SPIRE Server (PID: $OLD_PID)..."
-            kill "$OLD_PID" 2>/dev/null || true
-            sleep 1
-        fi
-    fi
-    pkill -f "spire-server" >/dev/null 2>&1 || true
-    
-    # Wait a moment for processes to fully stop
-    sleep 2
-    echo "  ✓ Control plane services stopped"
-}
-
-# Step 2: Start Real Keylime Verifier with unified_identity enabled
+# Step 2: Keylime Verifier (skipped - managed by test_complete_control_plane.sh)
 echo ""
-echo -e "${CYAN}Step 2: Starting Real Keylime Verifier with unified_identity enabled...${NC}"
-cd "${KEYLIME_DIR}"
+echo -e "${CYAN}Step 2: Skipping Keylime Verifier (managed by test_complete_control_plane.sh)${NC}"
+echo -e "${YELLOW}  Assuming Keylime Verifier is already running${NC}"
 
-# Cleanup existing Keylime Verifier before starting
-stop_control_plane_services
-
-# Start verifier in background
-echo "  Starting verifier on port 8881..."
-echo "    Config: ${KEYLIME_VERIFIER_CONFIG}"
-echo "    Work dir: ${KEYLIME_DIR}"
-# Ensure we're in the Keylime directory so relative paths work
-cd "${KEYLIME_DIR}"
-# Start verifier with explicit config - use nohup to ensure it stays running
-nohup python3 -m keylime.cmd.verifier > /tmp/keylime-verifier.log 2>&1 &
-KEYLIME_PID=$!
-disown $KEYLIME_PID 2>/dev/null || true
-echo $KEYLIME_PID > /tmp/keylime-verifier.pid
-echo "    Verifier PID: $KEYLIME_PID"
-# Give it a moment to start
-sleep 2
-
-# Wait for verifier to start
-echo "  Waiting for verifier to start..."
-VERIFIER_STARTED=false
-for i in {1..90}; do
-    # Try multiple endpoints (with and without TLS)
-    if curl -s -k https://localhost:8881/version >/dev/null 2>&1 || \
-       curl -s http://localhost:8881/version >/dev/null 2>&1 || \
-       curl -s -k https://localhost:8881/v2.4/version >/dev/null 2>&1 || \
-       curl -s http://localhost:8881/v2.4/version >/dev/null 2>&1; then
-        echo -e "${GREEN}  ✓ Keylime Verifier started (PID: $KEYLIME_PID)${NC}"
-        VERIFIER_STARTED=true
-        break
-    fi
-    # Check if process is still running
-    if ! kill -0 $KEYLIME_PID 2>/dev/null; then
-        echo -e "${RED}  ✗ Keylime Verifier process died${NC}"
-        echo "  Logs:"
-        tail -50 /tmp/keylime-verifier.log
-        abort_on_error "Keylime Verifier process died"
-    fi
-    # Show progress every 10 seconds
-    if [ $((i % 10)) -eq 0 ]; then
-        echo "    Still waiting... (${i}/90 seconds)"
-    fi
-    sleep 1
-done
-
-if [ "$VERIFIER_STARTED" = false ]; then
-    echo -e "${RED}  ✗ Keylime Verifier failed to become ready within timeout${NC}"
-    echo "  Logs:"
-    tail -50 /tmp/keylime-verifier.log | grep -E "(ERROR|Starting|port|TLS)" || tail -30 /tmp/keylime-verifier.log
-    abort_on_error "Keylime Verifier failed to become ready"
-fi
-
-# Verify unified_identity feature flag is enabled
+# Step 3: Keylime Registrar (skipped - managed by test_complete_control_plane.sh)
 echo ""
-echo "  Verifying unified_identity feature flag..."
-FEATURE_ENABLED=$(python3 -c "
-import sys
-sys.path.insert(0, '${KEYLIME_DIR}')
-import os
-os.environ['KEYLIME_VERIFIER_CONFIG'] = '${VERIFIER_CONFIG_ABS}'
-os.environ['KEYLIME_TEST'] = 'on'
-os.environ['UNIFIED_IDENTITY_ENABLED'] = 'true'
-from keylime import app_key_verification
-print(app_key_verification.is_unified_identity_enabled())
-" 2>&1 | tail -1)
+echo -e "${CYAN}Step 3: Skipping Keylime Registrar (managed by test_complete_control_plane.sh)${NC}"
+echo -e "${YELLOW}  Assuming Keylime Registrar is already running${NC}"
 
-if [ "$FEATURE_ENABLED" = "True" ]; then
-    echo -e "${GREEN}  ✓ unified_identity feature flag is ENABLED${NC}"
-else
-    abort_on_error "unified_identity feature flag is DISABLED (expected: True, got: $FEATURE_ENABLED)"
-fi
-
-pause_at_phase "Step 2 Complete" "Keylime Verifier is running and ready. unified_identity feature is enabled."
-
-# Step 3: Start Keylime Registrar (required for rust-keylime agent registration)
+# Step 4: Start rust-keylime Agent
 echo ""
-echo -e "${CYAN}Step 3: Starting Keylime Registrar (required for agent registration)...${NC}"
-cd "${KEYLIME_DIR}"
+echo -e "${CYAN}Step 4: Starting rust-keylime Agent with delegated certification...${NC}"
 
-# Set registrar database URL to use SQLite
-# Use explicit path to avoid configuration issues
-REGISTRAR_DB_PATH="/tmp/keylime/reg_data.sqlite"
-mkdir -p "$(dirname "$REGISTRAR_DB_PATH")" 2>/dev/null || true
-# Remove old database to ensure fresh schema initialization
-rm -f "$REGISTRAR_DB_PATH" 2>/dev/null || true
-export KEYLIME_REGISTRAR_DATABASE_URL="sqlite:///${REGISTRAR_DB_PATH}"
-# Also set KEYLIME_DIR to ensure proper paths
-export KEYLIME_DIR="${KEYLIME_DIR:-/tmp/keylime}"
-# Set TLS directory for registrar (use same as verifier)
-export KEYLIME_REGISTRAR_TLS_DIR="default"  # Uses cv_ca directory shared with verifier
-# Registrar also needs server cert and key - use verifier's if available
-if [ -f "${KEYLIME_DIR}/cv_ca/server-cert.crt" ] && [ -f "${KEYLIME_DIR}/cv_ca/server-private.pem" ]; then
-    export KEYLIME_REGISTRAR_SERVER_CERT="${KEYLIME_DIR}/cv_ca/server-cert.crt"
-    export KEYLIME_REGISTRAR_SERVER_KEY="${KEYLIME_DIR}/cv_ca/server-private.pem"
-fi
-# Set registrar host and ports
-# The registrar server expects http_port and https_port, but config uses port and tls_port
-# We'll set both to ensure compatibility
-export KEYLIME_REGISTRAR_IP="127.0.0.1"
-export KEYLIME_REGISTRAR_PORT="8890"  # HTTP port (non-TLS) - maps to http_port
-export KEYLIME_REGISTRAR_TLS_PORT="8891"  # HTTPS port (TLS) - maps to https_port
-# Also set the server's expected names
-export KEYLIME_REGISTRAR_HTTP_PORT="8890"
-export KEYLIME_REGISTRAR_HTTPS_PORT="8891"
-
-# Run database migrations before starting registrar
-echo "  Running database migrations..."
-cd "${KEYLIME_DIR}"
-python3 -c "
-import sys
-import os
-sys.path.insert(0, '${KEYLIME_DIR}')
-os.environ['KEYLIME_REGISTRAR_DATABASE_URL'] = '${KEYLIME_REGISTRAR_DATABASE_URL}'
-os.environ['KEYLIME_TEST'] = 'on'
-from keylime.common.migrations import apply
-try:
-    apply('registrar')
-    print('  ✓ Database migrations completed')
-except Exception as e:
-    print(f'  ⚠ Migration warning: {e}')
-    # Continue anyway - registrar might handle it
-" 2>&1 | grep -v "^$" || echo "  ⚠ Migration check completed (may have warnings)"
-
-# Cleanup existing Keylime Registrar before starting (if not already stopped)
-if [ -f /tmp/keylime-registrar.pid ]; then
-    OLD_PID=$(cat /tmp/keylime-registrar.pid 2>/dev/null || echo "")
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-        echo "  Stopping existing Keylime Registrar (PID: $OLD_PID)..."
-        kill "$OLD_PID" 2>/dev/null || true
-        sleep 1
+# Clear TPM state before starting agent to avoid NV_Read errors and inconsistent state
+# (This was previously in Step 1, but Step 1 is skipped for act 2)
+echo "  Clearing TPM state before starting agent..."
+if [ -c /dev/tpm0 ] || [ -c /dev/tpmrm0 ]; then
+    if command -v tpm2_clear >/dev/null 2>&1; then
+        TPM_DEVICE="/dev/tpmrm0"
+        if [ ! -c "$TPM_DEVICE" ]; then
+            TPM_DEVICE="/dev/tpm0"
+        fi
+        
+        # First, try to clear persistent handles that might be stale
+        # These are common handles used by keylime agents
+        echo "    Clearing persistent handles (if any)..."
+        # Agent uses: EK=0x81010001, AK=0x8101000A, App Key=0x8101000B
+        for handle in 0x81010001 0x8101000A 0x8101000B 0x8101000C; do
+            # Check if handle exists before trying to evict
+            if TCTI="device:${TPM_DEVICE}" tpm2_readpublic -c "${handle}" >/dev/null 2>&1; then
+                TCTI="device:${TPM_DEVICE}" tpm2_evictcontrol -C o -c "${handle}" 2>&1 | grep -E "persistent-handle|action" || true
+            fi
+        done
+        
+        # Try to clear TPM (may fail if not authorized, but that's okay)
+        # Use -c flag to clear (requires authorization, may fail)
+        # Fallback to startup -c which just initializes without clearing
+        if TCTI="device:${TPM_DEVICE}" tpm2_clear -c 2>/dev/null; then
+            echo -e "${GREEN}  ✓ TPM cleared/reset${NC}"
+        elif TCTI="device:${TPM_DEVICE}" tpm2_startup -c 2>/dev/null; then
+            echo -e "${GREEN}  ✓ TPM initialized (clear not authorized, but startup successful)${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ TPM clear/startup failed (may need authorization or TPM may be in use)${NC}"
+            echo "  Continuing anyway - agent may handle TPM state"
+        fi
+        
+        # Flush transient contexts to ensure clean state
+        echo "    Flushing transient contexts..."
+        TCTI="device:${TPM_DEVICE}" tpm2_flushcontext -t 2>/dev/null || true
+        TCTI="device:${TPM_DEVICE}" tpm2_flushcontext -s 2>/dev/null || true
+    else
+        echo -e "${YELLOW}  ⚠ tpm2_clear not available, skipping TPM clear${NC}"
     fi
-fi
-pkill -f "keylime.*registrar" >/dev/null 2>&1 || true
-pkill -f "python.*keylime.*registrar" >/dev/null 2>&1 || true
-sleep 1
-
-# Start registrar in background
-echo "  Starting registrar on port 8890..."
-echo "    Database URL: ${KEYLIME_REGISTRAR_DATABASE_URL:-sqlite}"
-# Use nohup to ensure registrar continues running after script exits
-nohup python3 -m keylime.cmd.registrar > /tmp/keylime-registrar.log 2>&1 &
-REGISTRAR_PID=$!
-disown $REGISTRAR_PID 2>/dev/null || true
-echo $REGISTRAR_PID > /tmp/keylime-registrar.pid
-
-# Wait for registrar to start
-echo "  Waiting for registrar to start..."
-REGISTRAR_STARTED=false
-for i in {1..30}; do
-    if curl -s http://localhost:8890/version >/dev/null 2>&1 || \
-       curl -s http://localhost:8890/v2.4/version >/dev/null 2>&1; then
-        echo -e "${GREEN}  ✓ Keylime Registrar started (PID: $REGISTRAR_PID)${NC}"
-        REGISTRAR_STARTED=true
-        break
-    fi
-    # Check if process is still running
-    if ! kill -0 $REGISTRAR_PID 2>/dev/null; then
-        echo -e "${RED}  ✗ Keylime Registrar process died${NC}"
-        echo "  Logs:"
-        tail -50 /tmp/keylime-registrar.log
-        abort_on_error "Keylime Registrar process died"
-    fi
-    sleep 1
-done
-
-if [ "$REGISTRAR_STARTED" = false ]; then
-    echo -e "${RED}  ✗ Keylime Registrar failed to become ready within timeout${NC}"
-    echo "  Logs:"
-    tail -50 /tmp/keylime-registrar.log | grep -E "(ERROR|Starting|port|TLS)" || tail -30 /tmp/keylime-registrar.log
-    abort_on_error "Keylime Registrar failed to become ready"
-fi
-
-pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent registration."
-
-# Step 4: Start rust-keylime Agent (skip if control-plane-only)
-if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
-    echo ""
-    echo -e "${YELLOW}  Skipping rust-keylime Agent (--control-plane-only mode)${NC}"
-    echo -e "${YELLOW}  Only control plane services (SPIRE Server, Keylime Verifier/Registrar) are started${NC}"
 else
-    echo ""
-    echo -e "${CYAN}Step 4: Starting rust-keylime Agent with delegated certification...${NC}"
+    echo -e "${YELLOW}  ⚠ TPM device not found, skipping TPM clear${NC}"
+fi
+echo ""
 
 cd "${RUST_KEYLIME_DIR}"
 
@@ -1682,6 +1374,14 @@ if [ ! -f "target/release/keylime_agent" ]; then
         exit 1
     }
 fi
+
+# Cleanup existing rust-keylime agent before starting
+echo "  Cleaning up existing rust-keylime Agent..."
+pkill -f "keylime_agent" >/dev/null 2>&1 || true
+sleep 1
+rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
+rm -f /tmp/keylime-agent.sock 2>/dev/null || true
+rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
 
 # Start rust-keylime agent
 echo "  Starting rust-keylime agent on port 9002..."
@@ -2117,6 +1817,10 @@ fi
 
 echo -e "${GREEN}  ✓ Agent registration verified${NC}"
 
+# Small delay to ensure registrar has fully processed agent registration
+echo "  Waiting for registrar to fully process agent registration..."
+sleep 2
+
 # Retrieve attested claims (including optional geolocation/GPU metrics)
 CLAIMS_RESULT=$(KEYLIME_DIR="${PYTHON_KEYLIME_DIR}" KEYLIME_FACT_DIR="${PYTHON_KEYLIME_DIR}" KEYLIME_FACT_CONFIG="${VERIFIER_CONFIG_ABS}" KEYLIME_FACT_AGENT_ID="${RUST_AGENT_UUID}" python3 <<'PY'
 import json
@@ -2191,17 +1895,11 @@ fi
 
 echo "  TPM Plugin and SPIRE can now be started."
 
-    pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. Geolocation claims are optional and surface only when sensors report them. Ready for SPIRE integration."
-fi
+pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. Geolocation claims are optional and surface only when sensors report them. Ready for SPIRE integration."
 
-# Step 6: Start TPM Plugin Server (HTTP/UDS) (skip if control-plane-only)
-if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
-    echo ""
-    echo -e "${YELLOW}  Skipping TPM Plugin Server (--control-plane-only mode)${NC}"
-    echo -e "${YELLOW}  Only control plane services (SPIRE Server, Keylime Verifier/Registrar) are started${NC}"
-else
-    echo ""
-    echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
+# Step 6: Start TPM Plugin Server (HTTP/UDS)
+echo ""
+echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
 
     TPM_PLUGIN_SERVER="${SCRIPT_DIR}/tpm-plugin/tpm_plugin_server.py"
 if [ ! -f "$TPM_PLUGIN_SERVER" ]; then
@@ -2217,6 +1915,14 @@ echo -e "${GREEN}  ✓ TPM Plugin Server found: $TPM_PLUGIN_SERVER${NC}"
 
 # Create work directory
 mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
+
+# Cleanup existing TPM Plugin Server before starting
+echo "  Cleaning up existing TPM Plugin Server..."
+pkill -f "tpm_plugin_server" >/dev/null 2>&1 || true
+sleep 1
+rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
+rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
+rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
 
 # Set TPM plugin endpoint (UDS socket)
 TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
@@ -2302,14 +2008,95 @@ if [ "$TPM_SERVER_STARTED" = false ]; then
         tail -20 /tmp/tpm-plugin-server.log
         abort_on_error "TPM Plugin Server failed to start"
     fi
-    fi
-
-    pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE to use TPM operations."
 fi
 
-# Step 7: Start SPIRE Server and Agent
+# Verify App Key is ready and UDS socket is working (needed for SPIRE Agent attestation)
+echo "  Verifying App Key is ready and UDS socket is accessible..."
+APP_KEY_READY=false
+for i in {1..30}; do
+    # First verify socket exists and is accessible
+    if [ ! -S "${TPM_PLUGIN_SOCKET}" ]; then
+        if [ $i -lt 10 ]; then
+            sleep 1
+            continue
+        else
+            echo -e "${YELLOW}  ⚠ UDS socket not found: ${TPM_PLUGIN_SOCKET}${NC}"
+            echo "  Checking if process is running..."
+            if [ -f /tmp/tpm-plugin-server.pid ]; then
+                PID=$(cat /tmp/tpm-plugin-server.pid 2>/dev/null || echo "")
+                if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+                    echo "  Process is running (PID: $PID), but socket not created yet"
+                else
+                    echo "  Process is not running - check logs for errors"
+                    tail -20 /tmp/tpm-plugin-server.log
+                fi
+            fi
+        fi
+    fi
+    
+    # Check logs for App Key generation success
+    if grep -q "App Key generated successfully on startup" /tmp/tpm-plugin-server.log 2>/dev/null; then
+        # Verify we can actually connect via UDS and get the App Key
+        if command -v curl >/dev/null 2>&1 && [ -S "${TPM_PLUGIN_SOCKET}" ]; then
+            # Try to get App Key via UDS (this verifies both socket and App Key are ready)
+            APP_KEY_RESPONSE=$(curl --unix-socket "${TPM_PLUGIN_SOCKET}" -X POST http://localhost/get-app-key \
+                -H "Content-Type: application/json" \
+                -d '{}' \
+                --max-time 2 \
+                2>/dev/null || echo "")
+            
+            # Check if response contains success status (may be truncated in output, so check for key parts)
+            if echo "$APP_KEY_RESPONSE" | grep -qE '"status"\s*:\s*"success"|"app_key_public"'; then
+                echo -e "${GREEN}  ✓ App Key is ready and UDS socket is working${NC}"
+                APP_KEY_READY=true
+                break
+            elif [ -n "$APP_KEY_RESPONSE" ]; then
+                # Response exists but doesn't match - might be an error, check for error indicators
+                if echo "$APP_KEY_RESPONSE" | grep -qi "error\|fail"; then
+                    echo "  UDS connection works, but App Key request returned error: ${APP_KEY_RESPONSE:0:150}"
+                else
+                    # Response exists but format unclear - likely working, just truncated
+                    echo "  UDS connection works, checking App Key format..."
+                    if echo "$APP_KEY_RESPONSE" | grep -q "BEGIN PUBLIC KEY\|app_key_public"; then
+                        echo -e "${GREEN}  ✓ App Key is ready (response contains public key)${NC}"
+                        APP_KEY_READY=true
+                        break
+                    fi
+                fi
+            fi
+        elif [ -S "${TPM_PLUGIN_SOCKET}" ]; then
+            # Socket exists, check logs for App Key
+            if grep -q "App Key generated successfully on startup" /tmp/tpm-plugin-server.log 2>/dev/null; then
+                echo -e "${GREEN}  ✓ App Key generation confirmed in logs, UDS socket exists${NC}"
+                APP_KEY_READY=true
+                break
+            fi
+        fi
+    fi
+    sleep 1
+done
+
+if [ "$APP_KEY_READY" = false ]; then
+    echo -e "${YELLOW}  ⚠ App Key readiness not confirmed${NC}"
+    echo "  Socket status:"
+    if [ -S "${TPM_PLUGIN_SOCKET}" ]; then
+        echo -e "    ${GREEN}✓ UDS socket exists: ${TPM_PLUGIN_SOCKET}${NC}"
+        ls -l "${TPM_PLUGIN_SOCKET}"
+    else
+        echo -e "    ${RED}✗ UDS socket missing: ${TPM_PLUGIN_SOCKET}${NC}"
+    fi
+    echo "  Recent TPM Plugin Server logs:"
+    tail -15 /tmp/tpm-plugin-server.log | grep -E "App Key|UDS|socket|error|Error|started" || tail -10 /tmp/tpm-plugin-server.log
+    echo ""
+    echo "  Verifying TPM_PLUGIN_ENDPOINT: ${TPM_PLUGIN_ENDPOINT}"
+fi
+
+pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE to use TPM operations."
+
+# Step 7: Start SPIRE Agent
+# SPIRE Server is managed by test_complete_control_plane.sh
 echo ""
-echo -e "${CYAN}Step 7: Starting SPIRE Server and Agent...${NC}"
+echo -e "${CYAN}Step 7: Starting SPIRE Agent (SPIRE Server managed by test_complete_control_plane.sh)...${NC}"
 
 if [ ! -d "${PROJECT_DIR}" ]; then
     echo -e "${RED}Error: Project directory not found at ${PROJECT_DIR}${NC}"
@@ -2327,78 +2114,38 @@ echo "  Using rust-keylime agent endpoint: ${KEYLIME_AGENT_IP}:${KEYLIME_AGENT_P
 SPIRE_SERVER="${PROJECT_DIR}/spire/bin/spire-server"
 SPIRE_AGENT="${PROJECT_DIR}/spire/bin/spire-agent"
 
-if [ ! -f "${SPIRE_SERVER}" ] || [ ! -f "${SPIRE_AGENT}" ]; then
-    echo -e "${YELLOW}  ⚠ SPIRE binaries not found, skipping SPIRE integration test${NC}"
+if [ ! -f "${SPIRE_AGENT}" ]; then
+    echo -e "${YELLOW}  ⚠ SPIRE Agent binary not found, skipping SPIRE Agent${NC}"
     echo -e "${GREEN}============================================================${NC}"
     echo -e "${GREEN}Integration Test Summary:${NC}"
-    echo -e "${GREEN}  ✓ Keylime Verifier started${NC}"
     echo -e "${GREEN}  ✓ rust-keylime Agent started${NC}"
-    echo -e "${GREEN}  ✓ unified_identity feature flag is ENABLED${NC}"
-    echo -e "${YELLOW}  ⚠ SPIRE integration test skipped (binaries not found)${NC}"
+    echo -e "${YELLOW}  ⚠ SPIRE Agent skipped (binary not found)${NC}"
     echo -e "${GREEN}============================================================${NC}"
     echo ""
     echo "To complete full integration test:"
-    echo "  1. Build SPIRE: cd ${PROJECT_DIR}/spire && make bin/spire-server bin/spire-agent"
+    echo "  1. Build SPIRE Agent: cd ${PROJECT_DIR}/spire && make bin/spire-agent"
     echo "  2. Run this script again"
     exit 0
 fi
 
-# Start SPIRE Server manually
-cd "${PROJECT_DIR}"
-SERVER_CONFIG="${PROJECT_DIR}/python-app-demo/spire-server.conf"
-if [ ! -f "${SERVER_CONFIG}" ]; then
-    SERVER_CONFIG="${PROJECT_DIR}/spire/conf/server/server.conf"
-fi
+# SPIRE Server is managed by test_complete_control_plane.sh - skipping startup
+echo "  Skipping SPIRE Server startup (managed by test_complete_control_plane.sh)"
+echo "  Assuming SPIRE Server is already running"
 
-if [ -f "${SERVER_CONFIG}" ]; then
-    # Unified-Identity: Configure agent_ttl for effective renewal testing
-    # With Unified-Identity, set agent_ttl to 60s so renewals occur every ~30s (with availability_target=30s)
-    if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ] || [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "1" ] || [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "yes" ]; then
-        if grep -q "Unified-Identity" "$SERVER_CONFIG" 2>/dev/null || [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then
-            echo "    Configuring agent_ttl for Unified-Identity (60s for effective renewal)..."
-            configure_spire_server_agent_ttl "${SERVER_CONFIG}" "60" || {
-                echo -e "${YELLOW}    ⚠ Failed to configure agent_ttl, using config file default${NC}"
-            }
-        fi
-    fi
-    
-    # Cleanup existing SPIRE Server before starting
-    if [ -f /tmp/spire-server.pid ]; then
-        OLD_PID=$(cat /tmp/spire-server.pid 2>/dev/null || echo "")
-        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-            echo "    Stopping existing SPIRE Server (PID: $OLD_PID)..."
-            kill "$OLD_PID" 2>/dev/null || true
-            sleep 2
-        fi
-    fi
-    pkill -f "spire-server" >/dev/null 2>&1 || true
-    sleep 1
-    
-    echo "    Starting SPIRE Server (logs: /tmp/spire-server.log)..."
-    # Use nohup to ensure server continues running after script exits
-    nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
-    SPIRE_SERVER_PID=$!
-    disown $SPIRE_SERVER_PID 2>/dev/null || true
-    echo $SPIRE_SERVER_PID > /tmp/spire-server.pid
-    sleep 3
-fi
-
-# Start SPIRE Agent manually (skip if control-plane-only mode)
-if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
-    echo "    Skipping SPIRE Agent (--control-plane-only mode)"
-    echo "    Only control plane services (SPIRE Server, Keylime Verifier/Registrar) are started"
-else
-    AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
+# Start SPIRE Agent manually
+AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     if [ ! -f "${AGENT_CONFIG}" ]; then
         AGENT_CONFIG="${PROJECT_DIR}/spire/conf/agent/agent.conf"
     fi
 
     if [ -f "${AGENT_CONFIG}" ]; then
     # Stop any existing agent processes first (join tokens are single-use)
+    # Cleanup existing SPIRE Agent before starting
+    echo "    Cleaning up existing SPIRE Agent..."
     if [ -f /tmp/spire-agent.pid ]; then
         OLD_PID=$(cat /tmp/spire-agent.pid 2>/dev/null || echo "")
         if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-            echo "    Stopping existing SPIRE Agent (PID: $OLD_PID)..."
+            echo "      Stopping existing SPIRE Agent (PID: $OLD_PID)..."
             kill "$OLD_PID" 2>/dev/null || true
             sleep 2
         fi
@@ -2406,47 +2153,28 @@ else
     # Also check for any other agent processes
     pkill -f "spire-agent.*run" >/dev/null 2>&1 || true
     sleep 1
+    # Clean up PID, socket, and log files
+    rm -f /tmp/spire-agent.pid 2>/dev/null || true
+    rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
+    rm -f /tmp/spire-agent.log 2>/dev/null || true
+    echo "    Cleanup complete."
     
-    # Wait for server to be ready
-    echo "    Waiting for SPIRE Server to be ready..."
-    for i in {1..30}; do
-        if "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
+    # Wait for server to be ready - SKIPPED for act 2 (server assumed running from test_complete_control_plane.sh)
+    echo "    Skipping SPIRE Server readiness check (act 2 - assuming server is already running)"
     
     # Unified-Identity: TPM-based proof of residency - no join token needed
     JOIN_TOKEN=""
     if [ "${UNIFIED_IDENTITY_ENABLED:-false}" != "true" ]; then
         # Generate join token for agent attestation (only if Unified-Identity is disabled)
-        echo "    Generating join token for SPIRE Agent..."
-        TOKEN_OUTPUT=$("${SPIRE_SERVER}" token generate \
-            -socketPath /tmp/spire-server/private/api.sock 2>&1)
-        JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep "Token:" | awk '{print $2}')
-
-        if [ -z "$JOIN_TOKEN" ]; then
-            echo "    ⚠ Join token generation failed"
-            echo "    Token generation output:"
-            echo "$TOKEN_OUTPUT" | sed 's/^/      /'
-            echo "    Agent may not attest properly without join token"
-        else
-            echo "    ✓ Join token generated: ${JOIN_TOKEN:0:20}..."
-            # Small delay to ensure token is ready before agent uses it
-            sleep 1
-        fi
+        # SKIPPED for act 2 - server assumed running from test_complete_control_plane.sh
+        echo "    Skipping join token generation (act 2 - assuming server is already running)"
+        echo "    ⚠ Note: If Unified-Identity is disabled, ensure join token is configured separately"
     else
         echo "    ✓ Unified-Identity enabled: Using TPM-based proof of residency (no join token needed)"
     fi
     
-    # Export trust bundle before starting agent
-    echo "    Exporting trust bundle..."
-    "${SPIRE_SERVER}" bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/bundle.pem 2>&1
-    if [ -f /tmp/bundle.pem ]; then
-        echo "    ✓ Trust bundle exported to /tmp/bundle.pem"
-    else
-        echo "    ⚠ Trust bundle export failed, but continuing..."
-    fi
+    # Export trust bundle before starting agent - SKIPPED for act 2
+    echo "    Skipping trust bundle export (act 2 - assuming bundle is already available if needed)"
     
     # Configure SVID renewal interval if specified via environment variable
     if [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then
@@ -2466,6 +2194,23 @@ else
     if [ -z "${TPM_PLUGIN_ENDPOINT:-}" ]; then
         export TPM_PLUGIN_ENDPOINT="unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
     fi
+    
+    # Verify TPM_PLUGIN_ENDPOINT is using UDS format (not TCP/IP)
+    if ! echo "${TPM_PLUGIN_ENDPOINT}" | grep -q "^unix://"; then
+        echo -e "${RED}    ✗ ERROR: TPM_PLUGIN_ENDPOINT must use UDS format (unix://), got: ${TPM_PLUGIN_ENDPOINT}${NC}"
+        abort_on_error "TPM_PLUGIN_ENDPOINT must be UDS socket (unix://), not TCP/IP"
+    fi
+    
+    # Extract socket path and verify it exists
+    SOCKET_PATH=$(echo "${TPM_PLUGIN_ENDPOINT}" | sed 's|^unix://||')
+    if [ ! -S "${SOCKET_PATH}" ]; then
+        echo -e "${YELLOW}    ⚠ WARNING: TPM Plugin UDS socket not found: ${SOCKET_PATH}${NC}"
+        echo "    This may cause SPIRE Agent to fail connecting to TPM Plugin"
+        echo "    Check if TPM Plugin Server is running and socket was created"
+    else
+        echo -e "${GREEN}    ✓ TPM Plugin UDS socket verified: ${SOCKET_PATH}${NC}"
+    fi
+    
     echo "    TPM_PLUGIN_ENDPOINT=${TPM_PLUGIN_ENDPOINT}"
     echo "    UNIFIED_IDENTITY_ENABLED=${UNIFIED_IDENTITY_ENABLED}"
     # Use nohup to ensure agent continues running after script exits
@@ -2483,61 +2228,49 @@ else
     echo $SPIRE_AGENT_PID > /tmp/spire-agent.pid
     sleep 3
     fi
-fi
 
-# Wait for SPIRE Server to be ready
-echo "  Waiting for SPIRE Server to be ready..."
-for i in {1..30}; do
-    if "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
-        echo -e "${GREEN}  ✓ SPIRE Server is ready${NC}"
-        # Ensure trust bundle is exported
-        if [ ! -f /tmp/bundle.pem ]; then
-            echo "    Exporting trust bundle..."
-            "${SPIRE_SERVER}" bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/bundle.pem 2>&1
-        fi
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo -e "${RED}  ✗ SPIRE Server failed to become ready within timeout${NC}"
-        echo "  Logs:"
-        tail -50 /tmp/spire-server.log | grep -E "(ERROR|Failed|Starting|port|listening)" || tail -30 /tmp/spire-server.log
-        abort_on_error "SPIRE Server failed to become ready"
-    fi
-    sleep 1
-done
+# Wait for SPIRE Server to be ready - SKIPPED for act 2
+echo "  Skipping SPIRE Server readiness check (act 2 - non-control plane only)"
+echo "  Assuming SPIRE Server is already running and ready"
 
-# Wait for Agent to complete attestation and receive its SVID (skip if control-plane-only)
-if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
-    echo "  Skipping SPIRE Agent attestation wait (--control-plane-only mode)"
-    ATTESTATION_COMPLETE=true
-else
-    echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
+# Wait for Agent to complete attestation and receive its SVID
+echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
     ATTESTATION_COMPLETE=false
     for i in {1..90}; do
     # Check if agent has its SVID by checking for Workload API socket
     # The socket is created as soon as the agent has its SVID and is ready
     if [ -S /tmp/spire-agent/public/api.sock ] 2>/dev/null; then
-        # Verify agent is also listed on server
-        AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
-        if echo "$AGENT_LIST" | grep -q "spiffe://"; then
-            echo -e "${GREEN}  ✓ SPIRE Agent is attested and has SVID${NC}"
-            # Show agent details
-            echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
+        # Verify agent is also listed on server (server running from test_complete_control_plane.sh)
+        if [ -n "${SPIRE_SERVER:-}" ] && [ -f "${SPIRE_SERVER}" ]; then
+            AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
+            if echo "$AGENT_LIST" | grep -q "spiffe://"; then
+                echo -e "${GREEN}  ✓ SPIRE Agent is attested and has SVID${NC}"
+                # Show agent details
+                echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
+                ATTESTATION_COMPLETE=true
+                break
+            fi
+        else
+            # If we can't check server, just check socket existence
+            echo -e "${GREEN}  ✓ SPIRE Agent Workload API socket is ready${NC}"
             ATTESTATION_COMPLETE=true
             break
         fi
     else
         # Fallback: Check if agent is attested on server (even if socket not ready yet)
-        AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
-        if echo "$AGENT_LIST" | grep -q "spiffe://"; then
-            echo -e "${GREEN}  ✓ SPIRE Agent is attested${NC}"
-            # Show agent details
-            echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
-            ATTESTATION_COMPLETE=true
-            break
+        if [ -n "${SPIRE_SERVER:-}" ] && [ -f "${SPIRE_SERVER}" ]; then
+            AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
+            if echo "$AGENT_LIST" | grep -q "spiffe://"; then
+                echo -e "${GREEN}  ✓ SPIRE Agent is attested${NC}"
+                # Show agent details
+                echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
+                ATTESTATION_COMPLETE=true
+                break
+            fi
         fi
     fi
     # Check if attestation request was received (Unified-Identity or join token)
+    # Note: Server logs may be from test_complete_control_plane.sh
     if [ $i -eq 1 ] || [ $((i % 15)) -eq 0 ]; then
         if [ -f /tmp/spire-server.log ]; then
             # Check if server received attestation request with SovereignAttestation (Unified-Identity)
@@ -2553,7 +2286,7 @@ else
                 if grep -q "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log 2>/dev/null; then
                     ERROR_MSG=$(grep "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log | tail -1)
                     # Check if it's a CAMARA rate limiting issue (429)
-                    if echo "$ERROR_MSG" | grep -q "mobile sensor.*429\|status_code.*429\|rate.*limit"; then
+                    if echo "$ERROR_MSG" | grep -q "status_code.*429\|rate.*limit"; then
                         echo -e "${RED}    ✗ Attestation failed due to CAMARA API rate limiting (429)${NC}"
                         echo ""
                         echo -e "${YELLOW}    CAMARA API Rate Limiting Detected:${NC}"
@@ -2617,21 +2350,8 @@ else
             echo -e "${YELLOW}  ⚠ Agent attestation may still be in progress...${NC}"
         fi
     fi
-fi
 
-if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
-    pause_at_phase "Step 7 Complete" "SPIRE Server is running. Control plane services ready (Agent skipped in --control-plane-only mode)."
-    echo ""
-    echo -e "${GREEN}Control plane services started successfully:${NC}"
-    echo "  ✓ SPIRE Server"
-    echo "  ✓ Keylime Verifier"
-    echo "  ✓ Keylime Registrar"
-    echo ""
-    echo -e "${YELLOW}Note: SPIRE Agent, TPM Plugin, rust-keylime Agent, Mobile Sensor microservice, and workload registration are skipped in --control-plane-only mode${NC}"
-    exit 0
-fi
-
-pause_at_phase "Step 7 Complete" "SPIRE Server and Agent are running. Agent has completed attestation. Ready for workload registration."
+pause_at_phase "Step 7 Complete" "SPIRE Agent has completed attestation. Ready for workload registration."
 
 # Step 8: Create Registration Entry
 echo ""
@@ -2893,36 +2613,6 @@ else
 fi
 
 echo ""
-echo "  Checking Keylime Verifier logs for Mobile Sensor verification..."
-if [ -f /tmp/keylime-verifier.log ]; then
-    MOBILE_SENSOR_LOGS=$(grep -i "mobile sensor verification" /tmp/keylime-verifier.log | wc -l)
-    if [ "$MOBILE_SENSOR_LOGS" -gt 0 ]; then
-        echo -e "${GREEN}  ✓ Found $MOBILE_SENSOR_LOGS mobile sensor verification log entries${NC}"
-        echo "  Sample log entries:"
-        grep -i "mobile sensor verification" /tmp/keylime-verifier.log | tail -3 | sed 's/^/    /'
-    else
-        echo -e "${YELLOW}  ⚠ No mobile sensor verification logs found (may be disabled or no mobile geolocation detected)${NC}"
-    fi
-else
-    echo -e "${YELLOW}  ⚠ Keylime Verifier log not found${NC}"
-fi
-
-echo ""
-echo "  Checking Mobile Location Verification microservice logs for verification requests..."
-if [ -f /tmp/mobile-sensor-microservice.log ]; then
-    MOBILE_SERVICE_REQUESTS=$(grep -i "CAMARA_BYPASS\|verify\|sensor_id" /tmp/mobile-sensor-microservice.log | wc -l)
-    if [ "$MOBILE_SERVICE_REQUESTS" -gt 0 ]; then
-        echo -e "${GREEN}  ✓ Found $MOBILE_SERVICE_REQUESTS mobile sensor service log entries${NC}"
-        echo "  Sample log entries:"
-        grep -i "CAMARA_BYPASS\|verify\|sensor_id" /tmp/mobile-sensor-microservice.log | tail -3 | sed 's/^/    /'
-    else
-        echo -e "${YELLOW}  ⚠ No mobile sensor service activity found in logs${NC}"
-    fi
-else
-    echo -e "${YELLOW}  ⚠ Mobile Sensor microservice log not found${NC}"
-fi
-
-echo ""
 echo "  Checking rust-keylime Agent logs for Unified-Identity activity..."
 if [ -f /tmp/rust-keylime-agent.log ]; then
     UNIFIED_IDENTITY_LOGS=$(grep -i "unified-identity" /tmp/rust-keylime-agent.log | wc -l)
@@ -3054,11 +2744,8 @@ COMPONENTS_OK=true
         echo -e "${GREEN}  ✓ SPIRE Server is running${NC}"
     fi
     
-    # Check TPM Plugin Server (skip if control-plane-only)
-    if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
-        echo -e "${YELLOW}  ⚠ TPM Plugin Server skipped (--control-plane-only mode)${NC}"
-    else
-        TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+    # Check TPM Plugin Server
+    TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
         if [ ! -S "$TPM_PLUGIN_SOCKET" ]; then
         echo -e "${YELLOW}  ⚠ TPM Plugin Server not running, starting it...${NC}"
         TPM_PLUGIN_SERVER="${PROJECT_DIR}/tpm-plugin/tpm_plugin_server.py"
@@ -3082,19 +2769,14 @@ COMPONENTS_OK=true
         else
             echo -e "${GREEN}  ✓ TPM Plugin Server is running${NC}"
         fi
-    fi
     
-    # Check rust-keylime agent (skip if control-plane-only)
-    if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
-        echo -e "${YELLOW}  ⚠ rust-keylime agent skipped (--control-plane-only mode)${NC}"
-    else
-        if ! pgrep -f "keylime_agent" >/dev/null 2>&1; then
+    # Check rust-keylime agent
+    if ! pgrep -f "keylime_agent" >/dev/null 2>&1; then
             echo -e "${YELLOW}  ⚠ rust-keylime agent not running${NC}"
             echo "  Note: Agent may be needed for Unified-Identity attestation"
             COMPONENTS_OK=false
-        else
-            echo -e "${GREEN}  ✓ rust-keylime agent is running${NC}"
-        fi
+    else
+        echo -e "${GREEN}  ✓ rust-keylime agent is running${NC}"
     fi
     
     # Check SPIRE Agent
@@ -3219,7 +2901,7 @@ if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
     REATTEST_COUNT=$(printf '%s' "$REATTEST_COUNT" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
     REATTEST_COUNT="${REATTEST_COUNT:-0}"
     echo "  Agent SVID reattestations observed: $REATTEST_COUNT"
-    echo "    (unified_identity: Agent SVID uses reattestation only; Workload SVIDs use rotation)"
+    echo '    (unified_identity: Agent SVID uses reattestation only; Workload SVIDs use rotation)'
 else
     ROTATE_COUNT=$(grep -c "Successfully rotated agent SVID" /tmp/spire-agent.log 2>/dev/null || echo 0)
     # Sanitize: ensure we have a single integer value
@@ -3271,8 +2953,8 @@ if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
     echo "Note: Default behavior is to keep services running. Use --exit-cleanup to enable cleanup."
 else
     echo -e "${GREEN}All services are running in background and will continue after script exit:${NC}"
-    echo "  Keylime Verifier: PID $KEYLIME_PID (port 8881)"
-    echo "  rust-keylime Agent: PID $RUST_AGENT_PID (port 9002)"
+    echo "  Keylime Verifier: PID $(cat /tmp/keylime-verifier.pid 2>/dev/null || echo 'N/A') (port 8881)"
+    echo "  rust-keylime Agent: PID $(cat /tmp/rust-keylime-agent.pid 2>/dev/null || echo 'N/A') (port 9002)"
     echo "  SPIRE Server: PID $(cat /tmp/spire-server.pid 2>/dev/null || echo 'N/A')"
     echo "  SPIRE Agent: PID $(cat /tmp/spire-agent.pid 2>/dev/null || echo 'N/A')"
     echo ""
@@ -3351,7 +3033,6 @@ echo "  $0 --no-exit-cleanup         # keep services running (default)"
 echo ""
 echo "Environment variables:"
 echo "  UNIFIED_IDENTITY_ENABLED=true    # Enable Unified-Identity feature"
-echo "  CONTROL_PLANE_ONLY=true          # Start only control plane services"
 echo "  KEYLIME_VERIFIER_URL             # Keylime Verifier URL (default: https://localhost:8881)"
 echo "  KEYLIME_AGENT_IP                  # Keylime Agent IP (default: 127.0.0.1)"
 echo "  KEYLIME_AGENT_PORT                # Keylime Agent port (default: 9002)"

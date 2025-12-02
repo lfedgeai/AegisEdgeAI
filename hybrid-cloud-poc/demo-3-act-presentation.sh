@@ -24,24 +24,37 @@ CLIENT_LOG="/tmp/mtls-client-app.log"
 SSH_OPTS="-o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes"
 
 # Detect if we're running on the sovereign host
-CURRENT_HOST_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || ip addr show | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1)
-if [ "${CURRENT_HOST_IP}" = "${SOVEREIGN_HOST}" ]; then
+# First, check all IP addresses on this host
+CURRENT_HOST_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' || ip addr show | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' || echo '')
+ON_SOVEREIGN_HOST=false
+
+# Check if any of our IPs match the sovereign host IP
+if echo "$CURRENT_HOST_IPS" | grep -q "^${SOVEREIGN_HOST}$"; then
     ON_SOVEREIGN_HOST=true
 else
-    # Try to check via hostname comparison (fallback)
-    SOVEREIGN_HOSTNAME=$(ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'hostname' 2>/dev/null || echo '')
-    if [ "$(hostname)" = "${SOVEREIGN_HOSTNAME}" ] && [ -n "${SOVEREIGN_HOSTNAME}" ]; then
-        ON_SOVEREIGN_HOST=true
-    else
-        ON_SOVEREIGN_HOST=false
+    # Try to check via hostname comparison (fallback, but avoid SSH if we're already on the host)
+    CURRENT_HOSTNAME=$(hostname 2>/dev/null || echo '')
+    # Only try SSH if we're not already on the host (to avoid unnecessary SSH attempts)
+    if [ -n "${CURRENT_HOSTNAME}" ]; then
+        # Try to get sovereign hostname without SSH first (if we can resolve it)
+        SOVEREIGN_HOSTNAME=$(getent hosts ${SOVEREIGN_HOST} 2>/dev/null | awk '{print $2}' | head -1 || echo '')
+        if [ -z "${SOVEREIGN_HOSTNAME}" ]; then
+            # Fallback to SSH only if we can't resolve it locally
+            SOVEREIGN_HOSTNAME=$(ssh ${SSH_OPTS} -o ConnectTimeout=2 mw@${SOVEREIGN_HOST} 'hostname' 2>/dev/null || echo '')
+        fi
+        if [ "${CURRENT_HOSTNAME}" = "${SOVEREIGN_HOSTNAME}" ] && [ -n "${SOVEREIGN_HOSTNAME}" ]; then
+            ON_SOVEREIGN_HOST=true
+        fi
     fi
 fi
 
 # Function to run command on sovereign host (local or via SSH)
 run_on_sovereign() {
     if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+        # Execute locally - no SSH needed
         eval "$@"
     else
+        # Execute via SSH
         ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "$@"
     fi
 }
@@ -105,48 +118,61 @@ echo ""
 echo -e "${YELLOW}Action: Starting the Control Plane...${NC}"
 echo ""
 
-# Check if services are running
-echo "Checking services on ${SOVEREIGN_HOST}..."
-if run_on_sovereign "pgrep -f 'spire-server|keylime-verifier|keylime-registrar' > /dev/null" 2>/dev/null; then
-    # Verify all three control plane services are running
-    SPIRE_RUNNING=$(run_on_sovereign "pgrep -f 'spire-server' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-    VERIFIER_RUNNING=$(run_on_sovereign "pgrep -f 'keylime-verifier' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-    REGISTRAR_RUNNING=$(run_on_sovereign "pgrep -f 'keylime-registrar' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
-    
-    if [ "${SPIRE_RUNNING}" = "yes" ] && [ "${VERIFIER_RUNNING}" = "yes" ] && [ "${REGISTRAR_RUNNING}" = "yes" ]; then
-        echo -e "${GREEN}✓ SPIRE Server, Keylime Verifier, and Keylime Registrar are running${NC}"
-    else
-        echo -e "${YELLOW}⚠ Some control plane services are not running:${NC}"
-        [ "${SPIRE_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} SPIRE Server" || echo -e "  ${RED}✗${NC} SPIRE Server"
-        [ "${VERIFIER_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} Keylime Verifier" || echo -e "  ${RED}✗${NC} Keylime Verifier"
-        [ "${REGISTRAR_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} Keylime Registrar" || echo -e "  ${RED}✗${NC} Keylime Registrar"
-        echo ""
-        echo -e "${RED}✗ Services not running. Starting control plane services...${NC}"
-        if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
-            cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause
-        else
-            echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause'"
-            exit 1
-        fi
-    fi
+# Check if services are already running
+echo "Checking if control plane services are already running on ${SOVEREIGN_HOST}..."
+SPIRE_RUNNING=$(run_on_sovereign "pgrep -f 'spire-server' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+VERIFIER_RUNNING=$(run_on_sovereign "pgrep -f 'keylime.*verifier|keylime\.cmd\.verifier' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+REGISTRAR_RUNNING=$(run_on_sovereign "pgrep -f 'keylime.*registrar|keylime\.cmd\.registrar' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+
+if [ "${SPIRE_RUNNING}" = "yes" ] && [ "${VERIFIER_RUNNING}" = "yes" ] && [ "${REGISTRAR_RUNNING}" = "yes" ]; then
+    echo -e "${GREEN}✓ SPIRE Server, Keylime Verifier, and Keylime Registrar are already running${NC}"
+    echo "  Skipping control plane startup (services already running)"
 else
-    echo -e "${RED}✗ Services not running. Starting control plane services...${NC}"
+    echo -e "${YELLOW}⚠ Starting control plane services...${NC}"
+    [ "${SPIRE_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} SPIRE Server (already running)" || echo -e "  ${YELLOW}→${NC} Starting SPIRE Server"
+    [ "${VERIFIER_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} Keylime Verifier (already running)" || echo -e "  ${YELLOW}→${NC} Starting Keylime Verifier"
+    [ "${REGISTRAR_RUNNING}" = "yes" ] && echo -e "  ${GREEN}✓${NC} Keylime Registrar (already running)" || echo -e "  ${YELLOW}→${NC} Starting Keylime Registrar"
+    echo ""
+    echo "  Running test_complete_control_plane.sh --no-pause..."
+    echo "  (This may take a minute to start all services...)"
+    
+    # Run test_complete_control_plane.sh
     if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
-        cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause
+        cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete_control_plane.sh --no-pause
     else
-        echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause'"
+        ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete_control_plane.sh --no-pause"
+    fi
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Control plane services started successfully${NC}"
+    else
+        echo -e "${RED}✗ Failed to start control plane services${NC}"
         exit 1
     fi
 fi
 
 echo ""
 echo "Checking services on ${ONPREM_HOST}..."
-if ssh ${SSH_OPTS} mw@${ONPREM_HOST} "sudo netstat -tlnp | grep -E ':(8080|5000|9443)' > /dev/null" 2>/dev/null; then
-    echo -e "${GREEN}✓ Envoy, Mobile Location Service, and mTLS Server are running${NC}"
+# Check if services are already running
+ONPREM_SERVICES_RUNNING=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "sudo netstat -tlnp | grep -E ':(8080|5000|9443)' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+
+if [ "${ONPREM_SERVICES_RUNNING}" = "yes" ]; then
+    echo -e "${GREEN}✓ Envoy, Mobile Location Service, and mTLS Server are already running${NC}"
+    echo "  Skipping onprem services startup (services already running)"
 else
-    echo -e "${RED}✗ Services not running. Please start them first:${NC}"
-    echo "  ssh mw@${ONPREM_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh'"
-    exit 1
+    echo -e "${YELLOW}⚠ Starting onprem services...${NC}"
+    echo "  Running test_onprem.sh on ${ONPREM_HOST}..."
+    echo "  (This may take a minute to start all services...)"
+    
+    # Run test_onprem.sh on the onprem host
+    ssh ${SSH_OPTS} mw@${ONPREM_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Onprem services started successfully${NC}"
+    else
+        echo -e "${RED}✗ Failed to start onprem services${NC}"
+        exit 1
+    fi
 fi
 
 echo ""
@@ -176,13 +202,113 @@ echo "  1. ${GREEN}Workload Attestation${NC} (Software identity)"
 echo "  2. ${GREEN}Host Attestation${NC} (TPM proof)"
 echo "  3. ${GREEN}Geolocation Proof${NC} (From the Keylime Agent Plugin)"
 echo ""
+echo -e "${YELLOW}Action: Starting SPIRE Agent, Keylime Agent, and TPM Plugin...${NC}"
+echo ""
+
+# Start agents using test_complete.sh (control plane already running from Act 1)
+echo "  Starting agents (rust-keylime Agent, TPM Plugin, SPIRE Agent)..."
+echo "    Using test_complete.sh --no-pause (control plane services already running)"
+echo "    (This may take a minute to start all agents...)"
+
+# Run the command in background and capture output
+run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause > /tmp/agents-startup.log 2>&1" &
+AGENTS_STARTUP_PID=$!
+
+# Wait a bit for agents to start, then check status
+sleep 10
+
+# Check if agents are starting/running
+echo "    Checking agent status..."
+KEYLIME_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'keylime_agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+TPM_PLUGIN_RUNNING=$(run_on_sovereign "test -S /tmp/spire-data/tpm-plugin/tpm-plugin.sock" 2>/dev/null && echo "yes" || echo "no")
+SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+
+# Show status
+if [ "${KEYLIME_AGENT_RUNNING}" = "yes" ]; then
+    echo -e "    ${GREEN}✓ rust-keylime Agent is running${NC}"
+else
+    echo -e "    ${YELLOW}⚠ rust-keylime Agent starting...${NC}"
+fi
+
+if [ "${TPM_PLUGIN_RUNNING}" = "yes" ]; then
+    echo -e "    ${GREEN}✓ TPM Plugin Server is running${NC}"
+else
+    echo -e "    ${YELLOW}⚠ TPM Plugin Server starting...${NC}"
+fi
+
+if [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
+    echo -e "    ${GREEN}✓ SPIRE Agent is running${NC}"
+else
+    echo -e "    ${YELLOW}⚠ SPIRE Agent starting...${NC}"
+fi
+
+# Wait a bit more for all agents to fully start
+echo "    Waiting for all agents to be ready..."
+for i in {1..30}; do
+    KEYLIME_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'keylime_agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+    TPM_PLUGIN_RUNNING=$(run_on_sovereign "test -S /tmp/spire-data/tpm-plugin/tpm-plugin.sock" 2>/dev/null && echo "yes" || echo "no")
+    SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+    
+    if [ "${KEYLIME_AGENT_RUNNING}" = "yes" ] && [ "${TPM_PLUGIN_RUNNING}" = "yes" ] && [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
+        echo -e "  ${GREEN}✓ All agents are running${NC}"
+        break
+    fi
+    
+    if [ $((i % 5)) -eq 0 ]; then
+        echo "    Still waiting... (${i}/30 seconds)"
+    fi
+    sleep 1
+done
+
+# Final status check
+KEYLIME_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'keylime_agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+TPM_PLUGIN_RUNNING=$(run_on_sovereign "test -S /tmp/spire-data/tpm-plugin/tpm-plugin.sock" 2>/dev/null && echo "yes" || echo "no")
+SPIRE_AGENT_RUNNING=$(run_on_sovereign "pgrep -f 'spire-agent' > /dev/null" 2>/dev/null && echo "yes" || echo "no")
+
+if [ "${KEYLIME_AGENT_RUNNING}" = "yes" ] && [ "${TPM_PLUGIN_RUNNING}" = "yes" ] && [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
+    echo -e "  ${GREEN}✓ All agents started successfully${NC}"
+else
+    echo -e "  ${YELLOW}⚠ Some agents may still be starting${NC}"
+    [ "${KEYLIME_AGENT_RUNNING}" = "yes" ] && echo -e "    ${GREEN}✓${NC} rust-keylime Agent" || echo -e "    ${RED}✗${NC} rust-keylime Agent"
+    [ "${TPM_PLUGIN_RUNNING}" = "yes" ] && echo -e "    ${GREEN}✓${NC} TPM Plugin" || echo -e "    ${RED}✗${NC} TPM Plugin"
+    [ "${SPIRE_AGENT_RUNNING}" = "yes" ] && echo -e "    ${GREEN}✓${NC} SPIRE Agent" || echo -e "    ${RED}✗${NC} SPIRE Agent"
+    echo "    Check logs: /tmp/agents-startup.log"
+fi
+
+echo ""
 echo -e "${YELLOW}Action: The SPIRE Agent is connecting to the Keylime Plugin...${NC}"
 echo "Watch the logs. It is verifying the GNSS sensor... and now it receives the SVID."
 echo ""
 
 # Show SPIRE Agent attestation logs
 echo "Fetching latest SPIRE Agent attestation logs..."
-run_on_sovereign "tail -20 /tmp/spire-agent.log | grep -E '(attestation|SVID|geolocation|TPM)' | tail -5" 2>/dev/null || echo "  (No recent attestation logs found)"
+
+# Check if SPIRE Agent is running (use the status we already checked)
+if [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
+    # Agent is running, try to get logs
+    ATTESTATION_LOGS=$(run_on_sovereign "timeout 2 tail -50 /tmp/spire-agent.log 2>/dev/null | grep -iE '(attestation|SVID|geolocation|TPM|Plugin|SovereignAttestation|Node attestation)' | tail -5" 2>/dev/null || echo "")
+    if [ -n "$ATTESTATION_LOGS" ] && [ ${#ATTESTATION_LOGS} -gt 0 ]; then
+        echo "$ATTESTATION_LOGS" | sed 's/^/  /'
+    else
+        # Show general agent logs if specific patterns not found
+        AGENT_STATUS=$(run_on_sovereign "timeout 2 tail -20 /tmp/spire-agent.log 2>/dev/null | tail -5" 2>/dev/null || echo "")
+        if [ -n "$AGENT_STATUS" ] && [ ${#AGENT_STATUS} -gt 0 ]; then
+            echo "  (Recent agent activity:)"
+            echo "$AGENT_STATUS" | sed 's/^/  /'
+        else
+            echo "  (SPIRE Agent is running but logs may not be available yet)"
+        fi
+    fi
+else
+    echo -e "  ${YELLOW}⚠ SPIRE Agent is not running${NC}"
+    echo "  (In --control-plane-only mode, SPIRE Agent is not started)"
+    echo "  To start SPIRE Agent, run:"
+    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+        echo "    cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause"
+    else
+        echo "    ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause'"
+    fi
+fi
 
 echo ""
 echo -e "${BOLD}The Visual Proof:${NC}"
@@ -190,9 +316,41 @@ echo "I'm going to decode this SVID. You can see right here—the"
 echo -e "${GREEN}Proof of Residency (PoR)${NC} is embedded directly in the certificate extensions."
 echo ""
 
-# Decode and display SVID
+# Decode and display SVID (with timeout to prevent hanging)
 echo "Fetching and decoding SVID..."
-run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1 && ../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -30" 2>/dev/null || echo "  (SVID fetch in progress...)"
+
+# Check if SPIRE Agent is running (required for SVID fetch)
+if [ "${SPIRE_AGENT_RUNNING}" = "yes" ]; then
+    # Try to fetch SVID
+    SVID_OUTPUT=$(run_on_sovereign "timeout 10 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo && python3 fetch-sovereign-svid-grpc.py > /dev/null 2>&1 && ../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -30'" 2>/dev/null || echo "")
+    if [ -n "$SVID_OUTPUT" ] && [ ${#SVID_OUTPUT} -gt 0 ]; then
+        echo "$SVID_OUTPUT" | sed 's/^/  /'
+    else
+        echo "  (Attempting to fetch SVID...)"
+        # Try to show if SVID file exists
+        if run_on_sovereign "test -f /tmp/svid-dump/svid.pem" 2>/dev/null; then
+            echo "  (SVID file exists, decoding...)"
+            SVID_DECODE=$(run_on_sovereign "timeout 3 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc && scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem 2>/dev/null | head -20'" 2>/dev/null || echo "")
+            if [ -n "$SVID_DECODE" ] && [ ${#SVID_DECODE} -gt 0 ]; then
+                echo "$SVID_DECODE" | sed 's/^/  /'
+            else
+                echo "  (SVID file found but decode failed - may need agent to be running)"
+            fi
+        else
+            echo "  (SVID not yet available - SPIRE Agent may still be initializing)"
+            echo "  (Note: SVID fetch requires SPIRE Agent to be running)"
+        fi
+    fi
+else
+    echo -e "  ${YELLOW}⚠ Cannot fetch SVID: SPIRE Agent is not running${NC}"
+    echo "  (SVID fetch requires SPIRE Agent to be running)"
+    echo "  To start SPIRE Agent, run:"
+    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
+        echo "    cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause"
+    else
+        echo "    ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause'"
+    fi
+fi
 
 echo ""
 echo -e "${YELLOW}Action: The Client App now calls the Server.${NC}"
@@ -205,19 +363,35 @@ echo ""
 
 # Start client in background and show logs
 echo "Starting mTLS client..."
-run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f mtls-client-app.py 2>/dev/null; rm -f ${CLIENT_LOG} && nohup python3 python-app-demo/mtls-client-app.py > ${CLIENT_LOG} 2>&1 &" 2>/dev/null
+run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f mtls-client-app.py 2>/dev/null; sleep 1; rm -f ${CLIENT_LOG} && nohup python3 python-app-demo/mtls-client-app.py > ${CLIENT_LOG} 2>&1 &" 2>/dev/null
 
-sleep 3
+echo "  (Waiting for client to connect...)"
+sleep 4
 
 echo ""
 echo -e "${GREEN}Log Check: Envoy reports '200 OK'. The location is verified as compliant.${NC}"
 echo ""
 echo "Client logs (first few messages):"
-run_on_sovereign "tail -10 ${CLIENT_LOG} 2>/dev/null | grep -E '(Connected|Sending|Received|ACK)' | head -5" 2>/dev/null || echo "  (Client starting...)"
+CLIENT_LOGS=$(run_on_sovereign "timeout 2 tail -15 ${CLIENT_LOG} 2>/dev/null | grep -E '(Connected|Sending|Received|ACK|HELLO)' | head -5" 2>/dev/null || echo "")
+if [ -n "$CLIENT_LOGS" ] && [ ${#CLIENT_LOGS} -gt 0 ]; then
+    echo "$CLIENT_LOGS" | sed 's/^/  /'
+else
+    echo "  (Client starting or checking connection...)"
+    # Show any available client logs
+    CLIENT_ANY=$(run_on_sovereign "timeout 2 tail -5 ${CLIENT_LOG} 2>/dev/null" 2>/dev/null || echo "")
+    if [ -n "$CLIENT_ANY" ] && [ ${#CLIENT_ANY} -gt 0 ]; then
+        echo "$CLIENT_ANY" | sed 's/^/  /'
+    fi
+fi
 
 echo ""
 echo "Envoy logs (verification):"
-ssh ${SSH_OPTS} mw@${ONPREM_HOST} "sudo tail -20 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(sensor|verification|Extracted)' | tail -3" 2>/dev/null || echo "  (Envoy logs not accessible)"
+ENVOY_LOGS=$(ssh ${SSH_OPTS} mw@${ONPREM_HOST} "timeout 2 sudo tail -30 /opt/envoy/logs/envoy.log 2>/dev/null | grep -E '(sensor|verification|Extracted|200 OK)' | tail -3" 2>/dev/null || echo "")
+if [ -n "$ENVOY_LOGS" ] && [ ${#ENVOY_LOGS} -gt 0 ]; then
+    echo "$ENVOY_LOGS" | sed 's/^/  /'
+else
+    echo "  (Envoy logs not accessible or verification not yet logged)"
+fi
 
 echo ""
 read -p "Press Enter to continue to Act 3: Defense..."

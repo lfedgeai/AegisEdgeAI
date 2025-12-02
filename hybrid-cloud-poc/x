@@ -1,0 +1,588 @@
+diff --git a/hybrid-cloud-poc/test_complete.sh b/hybrid-cloud-poc/test_complete.sh
+index 224dae17..b1b310b4 100755
+--- a/hybrid-cloud-poc/test_complete.sh
++++ b/hybrid-cloud-poc/test_complete.sh
+@@ -18,15 +18,6 @@ PYTHON_KEYLIME_DIR="${KEYLIME_DIR}"
+ RUST_KEYLIME_DIR="${SCRIPT_DIR}/rust-keylime"
+ SPIRE_DIR="${SCRIPT_DIR}/spire"
+ 
+-MOBILE_SENSOR_DIR="${SCRIPT_DIR}/mobile-sensor-microservice"
+-MOBILE_SENSOR_HOST="${MOBILE_SENSOR_HOST:-127.0.0.1}"
+-MOBILE_SENSOR_PORT="${MOBILE_SENSOR_PORT:-9050}"
+-MOBILE_SENSOR_BASE_URL="http://${MOBILE_SENSOR_HOST}:${MOBILE_SENSOR_PORT}"
+-MOBILE_SENSOR_DB_ROOT="/tmp/mobile-sensor-service"
+-MOBILE_SENSOR_DB_PATH="${MOBILE_SENSOR_DB_ROOT}/sensor_mapping.db"
+-MOBILE_SENSOR_LOG="/tmp/mobile-sensor-microservice.log"
+-MOBILE_SENSOR_PID_FILE="/tmp/mobile-sensor-microservice.pid"
+-
+ # Colors
+ GREEN='\033[0;32m'
+ RED='\033[0;31m'
+@@ -163,6 +154,10 @@ stop_control_plane_services_only() {
+ stop_all_instances_and_cleanup() {
+     if [ "${CONTROL_PLANE_ONLY:-false}" = "true" ]; then
+         stop_control_plane_services_only
++    elif [ "${AGENTS_ONLY:-false}" = "true" ]; then
++        # In agents-only mode, don't clean up control plane services
++        # Agent cleanup is handled separately in RUN_INITIAL_CLEANUP section
++        echo -e "${CYAN}Step 0: Skipping full cleanup (--agents-only mode, control plane services left running)${NC}"
+     else
+         echo -e "${CYAN}Step 0: Stopping all existing instances and cleaning up all data...${NC}"
+         echo ""
+@@ -193,156 +188,6 @@ pause_at_phase() {
+     fi
+ }
+ 
+-start_mobile_sensor_microservice() {
+-    echo ""
+-    echo -e "${CYAN}Step 1.5: Starting Mobile Location Verification microservice...${NC}"
+-    if [ ! -d "${MOBILE_SENSOR_DIR}" ]; then
+-        abort_on_error "Mobile sensor microservice directory not found: ${MOBILE_SENSOR_DIR}"
+-    fi
+-
+-    echo "  Preparing mobile sensor service data directory..."
+-    mkdir -p "${MOBILE_SENSOR_DB_ROOT}" 2>/dev/null || true
+-    rm -f "${MOBILE_SENSOR_DB_PATH}" 2>/dev/null || true
+-
+-    export MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB_PATH}"
+-    # CAMARA APIs are bypassed by default (set CAMARA_BYPASS=false to enable CAMARA API calls)
+-    # Set CAMARA_BYPASS=false to use real CAMARA API calls
+-    export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
+-    if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
+-        # Default to valid CAMARA sandbox credentials (can be overridden via env var)
+-        export CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
+-    fi
+-    
+-    # Allow lat/lon/accuracy to be overridden via env vars for testing
+-    if [ -n "${MOBILE_SENSOR_LATITUDE:-}" ]; then
+-        export MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE}"
+-        echo "    Using custom latitude from MOBILE_SENSOR_LATITUDE: ${MOBILE_SENSOR_LATITUDE}"
+-    fi
+-    if [ -n "${MOBILE_SENSOR_LONGITUDE:-}" ]; then
+-        export MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE}"
+-        echo "    Using custom longitude from MOBILE_SENSOR_LONGITUDE: ${MOBILE_SENSOR_LONGITUDE}"
+-    fi
+-    if [ -n "${MOBILE_SENSOR_ACCURACY:-}" ]; then
+-        export MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY}"
+-        echo "    Using custom accuracy from MOBILE_SENSOR_ACCURACY: ${MOBILE_SENSOR_ACCURACY}"
+-    fi
+-
+-    cd "${MOBILE_SENSOR_DIR}" || exit 1
+-    
+-    # Ensure port is free before starting
+-    if command -v lsof > /dev/null 2>&1; then
+-        if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
+-            echo "    Port ${MOBILE_SENSOR_PORT} is in use, stopping existing service..."
+-            stop_mobile_sensor_microservice
+-            sleep 2
+-        fi
+-    fi
+-    
+-    echo "  Starting mobile sensor microservice..."
+-    echo "    Endpoint: ${MOBILE_SENSOR_BASE_URL}"
+-    echo "    Database: ${MOBILE_SENSOR_DB_PATH}"
+-    echo "    Log file: ${MOBILE_SENSOR_LOG}"
+-    echo "    CAMARA_BYPASS: ${CAMARA_BYPASS}"
+-    nohup env MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB}" \
+-             CAMARA_BYPASS="${CAMARA_BYPASS}" \
+-             CAMARA_BASIC_AUTH="${CAMARA_BASIC_AUTH:-}" \
+-             MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE:-}" \
+-             MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE:-}" \
+-             MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY:-}" \
+-             python3 service.py --host "${MOBILE_SENSOR_HOST}" --port "${MOBILE_SENSOR_PORT}" > "${MOBILE_SENSOR_LOG}" 2>&1 &
+-    local pid=$!
+-    echo $pid > "${MOBILE_SENSOR_PID_FILE}"
+-    echo "    Mobile sensor microservice PID: ${pid}"
+-    
+-    # Wait a moment for startup logs
+-    sleep 2
+-    
+-    # Show startup logs
+-    if [ -f "${MOBILE_SENSOR_LOG}" ]; then
+-        echo "  Startup logs:"
+-        tail -10 "${MOBILE_SENSOR_LOG}" | grep -E "(Starting|latitude|longitude|accuracy|CAMARA_BYPASS|ready)" | sed 's/^/    /' || true
+-    fi
+-
+-    echo "    Performing readiness health check against /verify (seed sensor_id used)"
+-    local started=false
+-    for i in {1..30}; do
+-        local status
+-        status=$(curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" -d '{}' "${MOBILE_SENSOR_BASE_URL}/verify" || true)
+-        if [ -n "${status}" ] && [ "${status}" != "000" ]; then
+-            echo -e "${GREEN}    ✓ Health check passed (mobile sensor microservice responded HTTP ${status})${NC}"
+-            started=true
+-            break
+-        fi
+-        sleep 1
+-    done
+-
+-    if [ "$started" = false ]; then
+-        echo -e "${RED}    ✗ Mobile sensor microservice failed to start (check ${MOBILE_SENSOR_LOG})${NC}"
+-        if [ -f "${MOBILE_SENSOR_LOG}" ]; then
+-            echo "    Recent logs:"
+-            tail -30 "${MOBILE_SENSOR_LOG}" | sed 's/^/      /'
+-        fi
+-        if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
+-            local check_pid
+-            check_pid=$(cat "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || echo "")
+-            if [ -n "${check_pid}" ]; then
+-                if ps -p "${check_pid}" > /dev/null 2>&1; then
+-                    echo "    Process ${check_pid} is still running"
+-                else
+-                    echo "    Process ${check_pid} is not running (may have crashed)"
+-                fi
+-            fi
+-        fi
+-        return 1
+-    fi
+-    
+-    # Double-check the service is actually listening on the port
+-    if command -v netstat > /dev/null 2>&1; then
+-        if ! netstat -tln 2>/dev/null | grep -q ":${MOBILE_SENSOR_PORT} "; then
+-            echo -e "${YELLOW}    ⚠ Warning: Service may not be listening on port ${MOBILE_SENSOR_PORT}${NC}"
+-        fi
+-    elif command -v ss > /dev/null 2>&1; then
+-        if ! ss -tln 2>/dev/null | grep -q ":${MOBILE_SENSOR_PORT} "; then
+-            echo -e "${YELLOW}    ⚠ Warning: Service may not be listening on port ${MOBILE_SENSOR_PORT}${NC}"
+-        fi
+-    fi
+-
+-    pause_at_phase "Step 1.5 Complete" "Mobile Location Verification microservice is running on ${MOBILE_SENSOR_BASE_URL}."
+-}
+-
+-stop_mobile_sensor_microservice() {
+-    # Kill by PID file if it exists
+-    if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
+-        local pid
+-        pid=$(cat "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || echo "")
+-        if [ -n "$pid" ]; then
+-            kill "$pid" >/dev/null 2>&1 || true
+-        fi
+-        rm -f "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || true
+-    fi
+-    
+-    # Also kill any service.py process listening on the mobile sensor port
+-    # This handles cases where the PID file is missing or the service was started outside the script
+-    if command -v lsof > /dev/null 2>&1; then
+-        local port_pid
+-        port_pid=$(lsof -ti :${MOBILE_SENSOR_PORT} 2>/dev/null || echo "")
+-        if [ -n "$port_pid" ]; then
+-            kill "$port_pid" >/dev/null 2>&1 || true
+-        fi
+-    elif command -v fuser > /dev/null 2>&1; then
+-        fuser -k ${MOBILE_SENSOR_PORT}/tcp >/dev/null 2>&1 || true
+-    fi
+-    
+-    # Kill by process pattern matching (multiple patterns to catch all variations)
+-    pkill -f "service.py.*--port.*${MOBILE_SENSOR_PORT}" >/dev/null 2>&1 || true
+-    pkill -f "python3.*service.py.*--port" >/dev/null 2>&1 || true
+-    pkill -f "service.py.*--host.*127.0.0.1" >/dev/null 2>&1 || true
+-    pkill -f "python3.*service.py.*--host.*127.0.0.1.*--port.*9050" >/dev/null 2>&1 || true
+-    pkill -f "mobile-sensor-microservice.*service.py" >/dev/null 2>&1 || true
+-    
+-    sleep 1
+-}
+-
+ # Function to extract timestamp from log line
+ extract_timestamp() {
+     local line="$1"
+@@ -436,16 +281,6 @@ generate_workflow_log_file() {
+             done > "$TEMP_DIR/rust-keylime.log"
+         fi
+         
+-        # Mobile Location Verification Microservice logs
+-        if [ -f /tmp/mobile-sensor-microservice.log ]; then
+-            grep -E "verify|CAMARA|sensor|verification|request|response" /tmp/mobile-sensor-microservice.log | \
+-            while IFS= read -r line; do
+-                ts=$(extract_timestamp "$line")
+-                nts=$(normalize_timestamp "$ts")
+-                echo "$nts|MOBILE_SENSOR|$line"
+-            done > "$TEMP_DIR/mobile-sensor.log"
+-        fi
+-        
+         # Sort all logs chronologically
+         cat "$TEMP_DIR"/*.log 2>/dev/null | sort -t'|' -k1,1 > "$TEMP_DIR/all-logs-sorted.log"
+         
+@@ -550,20 +385,6 @@ generate_workflow_log_file() {
+         done
+         echo ""
+         
+-        # Step 7: Mobile Location Verification
+-        echo "[Step 13-14] Mobile Location Verification:"
+-        {
+-            grep -E "KEYLIME_VERIFIER.*mobile|KEYLIME_VERIFIER.*sensor|KEYLIME_VERIFIER.*geolocation" "$TEMP_DIR/all-logs-sorted.log"
+-            grep -E "MOBILE_SENSOR" "$TEMP_DIR/all-logs-sorted.log"
+-        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+-            formatted_ts=$(echo "$ts" | sed 's/|.*//')
+-            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
+-            comp_name="Keylime Verifier"
+-            [[ "$component" == "MOBILE_SENSOR" ]] && comp_name="Mobile Location Verification"
+-            echo "  [$formatted_ts] [$comp_name] $clean_line"
+-        done
+-        echo ""
+-        
+         # Step 8: Keylime Verifier Returns Result to SPIRE Server
+         echo "[Step 16] Keylime Verifier Returns Verification Result:"
+         grep -E "KEYLIME_VERIFIER.*Verification successful|KEYLIME_VERIFIER.*Returning|SPIRE_SERVER.*AttestedClaims|SPIRE_SERVER.*received.*AttestedClaims" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
+@@ -619,14 +440,6 @@ generate_workflow_log_file() {
+         done
+         echo ""
+         
+-        # Mobile Location Verification
+-        echo "[4] Mobile Location Verification:"
+-        grep -E "MOBILE_SENSOR|KEYLIME_VERIFIER.*mobile|KEYLIME_VERIFIER.*sensor" "$TEMP_DIR/all-logs-sorted.log" | head -8 | \
+-        while IFS='|' read -r ts component line; do
+-            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
+-        done
+-        echo ""
+-        
+         # Agent SVID Issuance
+         echo "[5] Agent SVID Issuance:"
+         grep -E "SPIRE_SERVER.*Agent SVID|SPIRE_AGENT.*Agent SVID|SPIRE_SERVER.*AttestedClaims" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
+@@ -838,6 +651,8 @@ Options:
+   --no-exit-cleanup    Do not run best-effort cleanup on exit (default behavior)
+   --control-plane-only Start only control plane services (SPIRE Server, Keylime Verifier/Registrar)
+                        Skip SPIRE Agent, TPM Plugin, and rust-keylime Agent
++  --agents-only        Start only agent services (rust-keylime Agent, TPM Plugin, SPIRE Agent)
++                       Skip control plane services (assumes they are already running)
+   --pause              Enable pause points at critical phases (default: auto-detect)
+   --no-pause           Disable pause points (run non-interactively)
+   -h, --help           Show this help message.
+@@ -860,7 +675,6 @@ cleanup() {
+     fi
+     echo ""
+     echo -e "${YELLOW}Cleaning up on exit...${NC}"
+-    stop_mobile_sensor_microservice
+     # Only stop processes on exit, don't delete data (user may want to inspect)
+     pkill -f "keylime_verifier" >/dev/null 2>&1 || true
+     pkill -f "python.*keylime" >/dev/null 2>&1 || true
+@@ -875,6 +689,7 @@ RUN_INITIAL_CLEANUP=true
+ EXIT_CLEANUP_ON_EXIT=false
+ # Control plane only mode: skip SPIRE Agent and related components
+ CONTROL_PLANE_ONLY=false
++AGENTS_ONLY=false
+ # Auto-detect pause mode: enable if interactive terminal, disable otherwise
+ if [ -t 0 ]; then
+     PAUSE_ENABLED="${PAUSE_ENABLED:-true}"
+@@ -1289,6 +1104,10 @@ while [[ $# -gt 0 ]]; do
+             CONTROL_PLANE_ONLY=true
+             shift
+             ;;
++        --agents-only)
++            AGENTS_ONLY=true
++            shift
++            ;;
+         -h|--help)
+             show_usage
+             exit 0
+@@ -1307,14 +1126,41 @@ fi
+ 
+ if [ "${RUN_INITIAL_CLEANUP}" = true ]; then
+     echo ""
+-    stop_all_instances_and_cleanup
+-    echo ""
++    # In agents-only mode, only clean up agent services, not control plane
++    if [ "${AGENTS_ONLY}" = "true" ]; then
++        echo -e "${CYAN}Step 0: Cleaning up agent services only (--agents-only mode)...${NC}"
++        echo "  Stopping agent processes..."
++        pkill -f "keylime_agent" >/dev/null 2>&1 || true
++        pkill -f "tpm_plugin_server" >/dev/null 2>&1 || true
++        pkill -f "spire-agent" >/dev/null 2>&1 || true
++        sleep 2
++        echo "  Removing agent PID files, sockets, and logs..."
++        rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
++        rm -f /tmp/keylime-agent.sock 2>/dev/null || true
++        rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
++        rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
++        rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
++        rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
++        rm -f /tmp/spire-agent.pid 2>/dev/null || true
++        rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
++        rm -f /tmp/spire-agent.log 2>/dev/null || true
++        echo -e "${GREEN}  ✓ Agent services cleaned up (control plane services left running)${NC}"
++        echo ""
++    else
++        stop_all_instances_and_cleanup
++        echo ""
++    fi
+ else
+     echo -e "${CYAN}Step 0: Skipping initial cleanup (--skip-cleanup)${NC}"
+     echo ""
+ fi
+ 
+-# Step 1: Setup Keylime environment with TLS certificates
++# Step 1: Setup Keylime environment with TLS certificates (skip if agents-only)
++if [ "${AGENTS_ONLY}" = "true" ]; then
++    echo ""
++    echo -e "${CYAN}Step 1: Skipping Keylime setup (--agents-only mode)${NC}"
++    echo -e "${YELLOW}  Assuming control plane services are already running${NC}"
++else
+ echo -e "${CYAN}Step 1: Setting up Keylime environment with TLS certificates...${NC}"
+ echo ""
+ 
+@@ -1431,12 +1277,6 @@ else
+ fi
+ 
+ pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
+-
+-# Step 1.5: Start Mobile Location Verification microservice (skip if control-plane-only)
+-if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+-    echo -e "${YELLOW}  Skipping Mobile Location Verification microservice (--control-plane-only mode)${NC}"
+-else
+-    start_mobile_sensor_microservice
+ fi
+ 
+ # Helper function to stop control plane services
+@@ -1559,7 +1399,98 @@ else
+     abort_on_error "unified_identity feature flag is DISABLED (expected: True, got: $FEATURE_ENABLED)"
+ fi
+ 
+-pause_at_phase "Step 2 Complete" "Keylime Verifier is running and ready. unified_identity feature is enabled."
++# Display Golden State policies from verifier logs and API
++echo ""
++echo -e "${CYAN}  Displaying Golden State policies...${NC}"
++
++# First, try to query the verifier API for allowlist/policy names (with timeout to prevent hanging)
++echo "  Querying verifier API for policy information..."
++POLICY_NAMES=""
++# Use timeout and connect-timeout to prevent hanging - try both HTTPS and HTTP
++ALLOWLIST_RESPONSE=""
++if command -v timeout >/dev/null 2>&1; then
++    ALLOWLIST_RESPONSE=$(timeout 2 curl -s -k --connect-timeout 1 --max-time 2 https://localhost:8881/v2.4/allowlists 2>/dev/null || \
++                         timeout 2 curl -s --connect-timeout 1 --max-time 2 http://localhost:8881/v2.4/allowlists 2>/dev/null || echo "")
++else
++    # Fallback if timeout command not available
++    ALLOWLIST_RESPONSE=$(curl -s -k --connect-timeout 1 --max-time 2 https://localhost:8881/v2.4/allowlists 2>/dev/null || \
++                         curl -s --connect-timeout 1 --max-time 2 http://localhost:8881/v2.4/allowlists 2>/dev/null || echo "")
++fi
++
++if [ -n "$ALLOWLIST_RESPONSE" ] && [ "$ALLOWLIST_RESPONSE" != "" ] && echo "$ALLOWLIST_RESPONSE" | grep -q "runtimepolicy"; then
++    POLICY_NAMES=$(echo "$ALLOWLIST_RESPONSE" | grep -oE '"runtimepolicy names":\s*\[[^\]]*\]' | grep -oE '"[^"]*"' | tr -d '"' | head -5)
++fi
++
++if [ -f /tmp/keylime-verifier.log ]; then
++    # Wait a moment for policies to be loaded (reduced from 3 to 1 second for faster execution)
++    sleep 1
++    
++    # Look for policy-related log entries - check for various policy types
++    # Use a single grep pass for efficiency
++    echo "  Checking verifier logs for policy information..."
++    
++    # Single pass through the log file to find all policy-related entries (reduced from 200 to 50 lines for speed)
++    # Use timeout to prevent hanging on large log files
++    if command -v timeout >/dev/null 2>&1; then
++        LOG_TAIL=$(timeout 2 tail -50 /tmp/keylime-verifier.log 2>/dev/null || echo "")
++    else
++        LOG_TAIL=$(tail -50 /tmp/keylime-verifier.log 2>/dev/null || echo "")
++    fi
++    
++    if [ -n "$LOG_TAIL" ] && [ ${#LOG_TAIL} -gt 0 ]; then
++        # Use a single combined grep pattern for efficiency (with timeout protection)
++        if command -v timeout >/dev/null 2>&1; then
++            ALL_POLICY_LINES=$(timeout 1 bash -c "echo \"$LOG_TAIL\" | grep -iE 'allowlist|ima.*policy|policy.*loaded|policy.*name|runtime.*policy|tpm.*policy|measured.*boot|mb.*policy|pcr.*policy|agent.*policy|policy.*agent|golden.*state|database.*policy|policy.*database|loaded.*from.*db|Agent ids in db' | head -10" 2>/dev/null || echo "")
++        else
++            ALL_POLICY_LINES=$(echo "$LOG_TAIL" | grep -iE "allowlist|ima.*policy|policy.*loaded|policy.*name|runtime.*policy|tpm.*policy|measured.*boot|mb.*policy|pcr.*policy|agent.*policy|policy.*agent|golden.*state|database.*policy|policy.*database|loaded.*from.*db|Agent ids in db" 2>/dev/null | head -10 || echo "")
++        fi
++    else
++        ALL_POLICY_LINES=""
++    fi
++    
++    if [ -n "$POLICY_NAMES" ]; then
++        echo -e "${GREEN}  Golden State Policies (from verifier API):${NC}"
++        for policy in $POLICY_NAMES; do
++            echo -e "    • ${CYAN}${policy}${NC}"
++        done
++        echo ""
++    fi
++    
++    if [ -n "$ALL_POLICY_LINES" ] && [ ${#ALL_POLICY_LINES} -gt 0 ]; then
++        echo -e "${GREEN}  Policy Activity (from verifier logs):${NC}"
++        echo "$ALL_POLICY_LINES" | sed 's/^/    /' | head -10
++        echo ""
++        echo -e "${GREEN}  ✓ Policies visible in verifier logs${NC}"
++    else
++        # Show general startup info and note about policies
++        if [ -z "$POLICY_NAMES" ]; then
++            echo -e "${YELLOW}  ⚠ No explicit policy logs found in recent entries${NC}"
++        fi
++        echo -e "${CYAN}  Verifier startup information:${NC}"
++        if command -v timeout >/dev/null 2>&1; then
++            STARTUP_INFO=$(timeout 1 tail -30 /tmp/keylime-verifier.log 2>/dev/null | grep -iE "Starting|initialized|database|Cloud Verifier|port|Agent ids in db" 2>/dev/null | head -3)
++        else
++            STARTUP_INFO=$(tail -30 /tmp/keylime-verifier.log 2>/dev/null | grep -iE "Starting|initialized|database|Cloud Verifier|port|Agent ids in db" 2>/dev/null | head -3)
++        fi
++        if [ -n "$STARTUP_INFO" ] && [ ${#STARTUP_INFO} -gt 0 ]; then
++            echo "$STARTUP_INFO" | sed 's/^/    /'
++        else
++            echo "    (Verifier is starting up - policies will be loaded as agents register)"
++        fi
++        echo ""
++        echo -e "${CYAN}  Note: Golden State policies are stored in the verifier database${NC}"
++        echo -e "${CYAN}        and are applied during agent attestation. Policies include:${NC}"
++        echo -e "${CYAN}        • IMA (Integrity Measurement Architecture) allowlists${NC}"
++        echo -e "${CYAN}        • TPM PCR (Platform Configuration Register) policies${NC}"
++        echo -e "${CYAN}        • Measured Boot policies${NC}"
++        echo -e "${CYAN}        • Hardware integrity baselines${NC}"
++    fi
++else
++    echo -e "${YELLOW}  ⚠ Verifier log not available yet${NC}"
++    echo -e "${CYAN}  Note: Policies will be visible in logs once verifier is fully initialized${NC}"
++fi
++
++pause_at_phase "Step 2 Complete" "Keylime Verifier is running and ready. unified_identity feature is enabled. Golden State policies are loaded."
+ 
+ # Step 3: Start Keylime Registrar (required for rust-keylime agent registration)
+ echo ""
+@@ -1666,6 +1597,22 @@ if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+     echo ""
+     echo -e "${YELLOW}  Skipping rust-keylime Agent (--control-plane-only mode)${NC}"
+     echo -e "${YELLOW}  Only control plane services (SPIRE Server, Keylime Verifier/Registrar) are started${NC}"
++elif [ "${AGENTS_ONLY}" = "true" ]; then
++    # In agents-only mode, cleanup and start the agent
++    echo ""
++    echo -e "${CYAN}Step 4: Starting rust-keylime Agent (--agents-only mode)...${NC}"
++    echo "  Cleaning up existing rust-keylime Agent..."
++    pkill -f "keylime_agent" >/dev/null 2>&1 || true
++    sleep 2
++    rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
++    rm -f /tmp/keylime-agent.sock 2>/dev/null || true
++    rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
++    echo "  Cleanup complete."
++    # Continue with normal agent startup below
++    echo ""
++    echo -e "${CYAN}Step 4: Starting rust-keylime Agent with delegated certification...${NC}"
++
++cd "${RUST_KEYLIME_DIR}"
+ else
+     echo ""
+     echo -e "${CYAN}Step 4: Starting rust-keylime Agent with delegated certification...${NC}"
+@@ -1683,6 +1630,26 @@ if [ ! -f "target/release/keylime_agent" ]; then
+     }
+ fi
+ 
++# Cleanup existing rust-keylime agent before starting (if not already done in agents-only mode)
++if [ "${AGENTS_ONLY}" != "true" ]; then
++    echo "  Cleaning up existing rust-keylime Agent..."
++    pkill -f "keylime_agent" >/dev/null 2>&1 || true
++    sleep 1
++    rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
++    rm -f /tmp/keylime-agent.sock 2>/dev/null || true
++    rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
++fi
++
++# Cleanup existing rust-keylime agent before starting (if not already done in agents-only mode)
++if [ "${AGENTS_ONLY}" != "true" ]; then
++    echo "  Cleaning up existing rust-keylime Agent..."
++    pkill -f "keylime_agent" >/dev/null 2>&1 || true
++    sleep 1
++    rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
++    rm -f /tmp/keylime-agent.sock 2>/dev/null || true
++    rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
++fi
++
+ # Start rust-keylime agent
+ echo "  Starting rust-keylime agent on port 9002..."
+ source "$HOME/.cargo/env" 2>/dev/null || true
+@@ -2199,6 +2166,22 @@ if [ "${CONTROL_PLANE_ONLY}" = "true" ]; then
+     echo ""
+     echo -e "${YELLOW}  Skipping TPM Plugin Server (--control-plane-only mode)${NC}"
+     echo -e "${YELLOW}  Only control plane services (SPIRE Server, Keylime Verifier/Registrar) are started${NC}"
++elif [ "${AGENTS_ONLY}" = "true" ]; then
++    # In agents-only mode, cleanup and start TPM Plugin
++    echo ""
++    echo -e "${CYAN}Step 6: Starting TPM Plugin Server (--agents-only mode)...${NC}"
++    echo "  Cleaning up existing TPM Plugin Server..."
++    pkill -f "tpm_plugin_server" >/dev/null 2>&1 || true
++    sleep 2
++    rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
++    rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
++    rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
++    echo "  Cleanup complete."
++    # Continue with normal plugin startup below
++    echo ""
++    echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
++
++    TPM_PLUGIN_SERVER="${SCRIPT_DIR}/tpm-plugin/tpm_plugin_server.py"
+ else
+     echo ""
+     echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
+@@ -2218,6 +2201,16 @@ echo -e "${GREEN}  ✓ TPM Plugin Server found: $TPM_PLUGIN_SERVER${NC}"
+ # Create work directory
+ mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
+ 
++# Cleanup existing TPM Plugin Server before starting (if not already done in agents-only mode)
++if [ "${AGENTS_ONLY}" != "true" ]; then
++    echo "  Cleaning up existing TPM Plugin Server..."
++    pkill -f "tpm_plugin_server" >/dev/null 2>&1 || true
++    sleep 1
++    rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
++    rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
++    rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
++fi
++
+ # Set TPM plugin endpoint (UDS socket)
+ TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
+ export TPM_PLUGIN_ENDPOINT="unix://${TPM_PLUGIN_SOCKET}"
+@@ -2395,10 +2388,12 @@ else
+ 
+     if [ -f "${AGENT_CONFIG}" ]; then
+     # Stop any existing agent processes first (join tokens are single-use)
++    # Cleanup existing SPIRE Agent before starting
++    echo "    Cleaning up existing SPIRE Agent..."
+     if [ -f /tmp/spire-agent.pid ]; then
+         OLD_PID=$(cat /tmp/spire-agent.pid 2>/dev/null || echo "")
+         if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+-            echo "    Stopping existing SPIRE Agent (PID: $OLD_PID)..."
++            echo "      Stopping existing SPIRE Agent (PID: $OLD_PID)..."
+             kill "$OLD_PID" 2>/dev/null || true
+             sleep 2
+         fi
+@@ -2406,6 +2401,11 @@ else
+     # Also check for any other agent processes
+     pkill -f "spire-agent.*run" >/dev/null 2>&1 || true
+     sleep 1
++    # Clean up PID, socket, and log files
++    rm -f /tmp/spire-agent.pid 2>/dev/null || true
++    rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
++    rm -f /tmp/spire-agent.log 2>/dev/null || true
++    echo "    Cleanup complete."
+     
+     # Wait for server to be ready
+     echo "    Waiting for SPIRE Server to be ready..."
+@@ -2892,36 +2892,6 @@ else
+     echo -e "${YELLOW}  ⚠ Keylime Verifier log not found${NC}"
+ fi
+ 
+-echo ""
+-echo "  Checking Keylime Verifier logs for Mobile Sensor verification..."
+-if [ -f /tmp/keylime-verifier.log ]; then
+-    MOBILE_SENSOR_LOGS=$(grep -i "mobile sensor verification" /tmp/keylime-verifier.log | wc -l)
+-    if [ "$MOBILE_SENSOR_LOGS" -gt 0 ]; then
+-        echo -e "${GREEN}  ✓ Found $MOBILE_SENSOR_LOGS mobile sensor verification log entries${NC}"
+-        echo "  Sample log entries:"
+-        grep -i "mobile sensor verification" /tmp/keylime-verifier.log | tail -3 | sed 's/^/    /'
+-    else
+-        echo -e "${YELLOW}  ⚠ No mobile sensor verification logs found (may be disabled or no mobile geolocation detected)${NC}"
+-    fi
+-else
+-    echo -e "${YELLOW}  ⚠ Keylime Verifier log not found${NC}"
+-fi
+-
+-echo ""
+-echo "  Checking Mobile Location Verification microservice logs for verification requests..."
+-if [ -f /tmp/mobile-sensor-microservice.log ]; then
+-    MOBILE_SERVICE_REQUESTS=$(grep -i "CAMARA_BYPASS\|verify\|sensor_id" /tmp/mobile-sensor-microservice.log | wc -l)
+-    if [ "$MOBILE_SERVICE_REQUESTS" -gt 0 ]; then
+-        echo -e "${GREEN}  ✓ Found $MOBILE_SERVICE_REQUESTS mobile sensor service log entries${NC}"
+-        echo "  Sample log entries:"
+-        grep -i "CAMARA_BYPASS\|verify\|sensor_id" /tmp/mobile-sensor-microservice.log | tail -3 | sed 's/^/    /'
+-    else
+-        echo -e "${YELLOW}  ⚠ No mobile sensor service activity found in logs${NC}"
+-    fi
+-else
+-    echo -e "${YELLOW}  ⚠ Mobile Sensor microservice log not found${NC}"
+-fi
+-
+ echo ""
+ echo "  Checking rust-keylime Agent logs for Unified-Identity activity..."
+ if [ -f /tmp/rust-keylime-agent.log ]; then
