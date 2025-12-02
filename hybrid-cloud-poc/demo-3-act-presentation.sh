@@ -88,7 +88,7 @@ if ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "pgrep -f 'spire-server|keylime-verifier
     echo -e "${GREEN}✓ SPIRE Server and Keylime Verifier are running${NC}"
 else
     echo -e "${RED}✗ Services not running. Please start them first:${NC}"
-    echo "  ssh mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --no-pause'"
+    echo "  ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} 'cd ~/AegisEdgeAI/hybrid-cloud-poc && ./test_complete.sh --control-plane-only --no-pause'"
     exit 1
 fi
 
