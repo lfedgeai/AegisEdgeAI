@@ -84,6 +84,48 @@ class SPIREmTLSClient:
             with open(self.log_file, 'a') as f:
                 f.write(log_msg + '\n')
     
+    def _save_svid(self, svid):
+        """Save SVID certificate chain (workload + agent SVID) to /tmp/svid-dump/svid.pem."""
+        if not svid:
+            return
+        
+        try:
+            # Create directory if it doesn't exist
+            svid_dump_dir = '/tmp/svid-dump'
+            os.makedirs(svid_dump_dir, mode=0o755, exist_ok=True)
+            
+            # Get certificate chain in PEM format (leaf + intermediates)
+            from cryptography.hazmat.primitives import serialization
+            cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
+            
+            # Try to get the full chain including agent SVID (intermediate)
+            # SPIRE X509Source provides the full chain via the underlying workload API
+            # The chain includes: workload SVID (leaf) + agent SVID (intermediate)
+            try:
+                if hasattr(self.source, '_x509_svid') and self.source._x509_svid:
+                    x509_svid = self.source._x509_svid
+                    # Check if there are additional certificates in the chain
+                    if hasattr(x509_svid, 'cert_chain') and x509_svid.cert_chain:
+                        for cert in x509_svid.cert_chain:
+                            if cert != svid.leaf:
+                                cert_pem += cert.public_bytes(serialization.Encoding.PEM)
+                    # Alternative: check for intermediates in the raw response
+                    elif hasattr(x509_svid, 'certificates') and x509_svid.certificates:
+                        for cert in x509_svid.certificates[1:]:  # Skip first (leaf)
+                            cert_pem += cert.public_bytes(serialization.Encoding.PEM)
+            except Exception as e:
+                # If we can't get intermediates, log but continue with leaf only
+                self.log(f"  ⚠ Could not extract intermediate certificates (agent SVID): {e}")
+            
+            # Save to file
+            svid_path = os.path.join(svid_dump_dir, 'svid.pem')
+            with open(svid_path, 'wb') as f:
+                f.write(cert_pem)
+            
+            self.log(f"  ✓ SVID certificate chain saved to {svid_path}")
+        except Exception as e:
+            self.log(f"  ⚠ Warning: Failed to save SVID: {e}")
+    
     def generate_self_signed_cert(self, cert_path, key_path):
         """Generate a self-signed certificate and key for standard cert mode."""
         if not HAS_CRYPTOGRAPHY:
@@ -221,6 +263,9 @@ class SPIREmTLSClient:
             self.log(f"  Certificate Expires: {expiry}")
             self.log("  Monitoring for automatic SVID renewal...")
             self.last_svid_serial = svid.leaf.serial_number
+            
+            # Save initial SVID
+            self._save_svid(svid)
             
             # Get trust bundle for peer certificate verification
             trust_domain = svid.spiffe_id.trust_domain
@@ -392,6 +437,9 @@ class SPIREmTLSClient:
                         f"serial {old_serial} -> {new_serial}, expires {new_expiry}, "
                         f"id={new_svid.spiffe_id}"
                     )
+
+                    # Save renewed SVID
+                    self._save_svid(new_svid)
 
                     # Signal that the current connection should be rebuilt
                     return True

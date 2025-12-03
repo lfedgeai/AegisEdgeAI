@@ -363,29 +363,22 @@ run_on_sovereign "cd ~/AegisEdgeAI/hybrid-cloud-poc && pkill -f 'mtls-client-app
 SERVER_HOST="${SERVER_HOST:-10.1.0.10}"
 SERVER_PORT="${SERVER_PORT:-8080}"
 
-# Use the single-request script if available, otherwise use timeout with regular client
-if run_on_sovereign "test -f ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo/send-single-request.py" 2>/dev/null; then
-    echo "  Using single-request script..."
-    # Execute on sovereign host (10.1.0.11) - use run_on_sovereign which handles local vs SSH
-    # Use timeout to prevent hanging (20 seconds should be enough)
-    CLIENT_OUTPUT=$(run_on_sovereign "timeout 20 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} python3 python-app-demo/send-single-request.py 2>&1'" 2>/dev/null || echo "TIMEOUT: Client script exceeded 20 second timeout")
-    CLIENT_EXIT_CODE=$?
-    if [ -n "$CLIENT_OUTPUT" ]; then
-        echo "$CLIENT_OUTPUT" | sed 's/^/  /'
+# Use mtls-client-app.py with timeout to send one request then stop
+echo "  Using mtls-client-app.py (will send one request then timeout)..."
+# Execute on sovereign host (10.1.0.11) - use run_on_sovereign which handles local vs SSH
+# Use timeout to stop after first request (8 seconds should be enough for connection + one request)
+CLIENT_OUTPUT=$(run_on_sovereign "timeout 8 bash -c 'cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} python3 python-app-demo/mtls-client-app.py 2>&1'" 2>/dev/null || echo "")
+CLIENT_EXIT_CODE=$?
+# Stop client if still running
+run_on_sovereign "pkill -f mtls-client-app.py 2>/dev/null" 2>/dev/null || true
+
+# Show client output (filter to show key events: connection, request sent, response)
+if [ -n "$CLIENT_OUTPUT" ]; then
+    echo "$CLIENT_OUTPUT" | grep -E '(Connecting|Connected|Sending HTTP request|📤|📥|response|Status|ERROR|✓|✗|mTLS Client)' | head -15 | sed 's/^/  /'
+    # Also show any errors
+    if echo "$CLIENT_OUTPUT" | grep -q "ERROR"; then
+        echo "$CLIENT_OUTPUT" | grep "ERROR" | sed 's/^/  /'
     fi
-    if [ $CLIENT_EXIT_CODE -ne 0 ]; then
-        echo -e "  ${YELLOW}⚠ Client script exited with code $CLIENT_EXIT_CODE (this is OK if request was sent)${NC}"
-    fi
-else
-    # Fallback: use regular client with timeout (sends one request then stops)
-    echo "  Using regular client with timeout (single request)..."
-    if [ "${ON_SOVEREIGN_HOST}" = "true" ]; then
-        cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} timeout 8 python3 python-app-demo/mtls-client-app.py 2>&1 | head -30 || true
-    else
-        ssh ${SSH_OPTS} mw@${SOVEREIGN_HOST} "cd ~/AegisEdgeAI/hybrid-cloud-poc && SERVER_HOST=${SERVER_HOST} SERVER_PORT=${SERVER_PORT} timeout 8 python3 python-app-demo/mtls-client-app.py 2>&1 | head -30" 2>/dev/null || true
-    fi
-    # Stop client after timeout
-    run_on_sovereign "pkill -f mtls-client-app.py 2>/dev/null" 2>/dev/null || true
 fi
 
 # Re-enable exit on error

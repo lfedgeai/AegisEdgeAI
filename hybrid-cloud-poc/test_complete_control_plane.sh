@@ -201,12 +201,12 @@ pause_at_phase() {
 
 start_mobile_sensor_microservice() {
     echo ""
-    echo -e "${CYAN}Step 1.5: Starting Mobile Location Verification microservice...${NC}"
+    #echo -e "${CYAN}Step 1.5: Starting Mobile Location Verification microservice...${NC}"
     if [ ! -d "${MOBILE_SENSOR_DIR}" ]; then
         abort_on_error "Mobile sensor microservice directory not found: ${MOBILE_SENSOR_DIR}"
     fi
 
-    echo "  Preparing mobile sensor service data directory..."
+    #echo "  Preparing mobile sensor service data directory..."
     mkdir -p "${MOBILE_SENSOR_DB_ROOT}" 2>/dev/null || true
     rm -f "${MOBILE_SENSOR_DB_PATH}" 2>/dev/null || true
 
@@ -222,15 +222,15 @@ start_mobile_sensor_microservice() {
     # Allow lat/lon/accuracy to be overridden via env vars for testing
     if [ -n "${MOBILE_SENSOR_LATITUDE:-}" ]; then
         export MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE}"
-        echo "    Using custom latitude from MOBILE_SENSOR_LATITUDE: ${MOBILE_SENSOR_LATITUDE}"
+    #    echo "    Using custom latitude from MOBILE_SENSOR_LATITUDE: ${MOBILE_SENSOR_LATITUDE}"
     fi
     if [ -n "${MOBILE_SENSOR_LONGITUDE:-}" ]; then
         export MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE}"
-        echo "    Using custom longitude from MOBILE_SENSOR_LONGITUDE: ${MOBILE_SENSOR_LONGITUDE}"
+    #    echo "    Using custom longitude from MOBILE_SENSOR_LONGITUDE: ${MOBILE_SENSOR_LONGITUDE}"
     fi
     if [ -n "${MOBILE_SENSOR_ACCURACY:-}" ]; then
         export MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY}"
-        echo "    Using custom accuracy from MOBILE_SENSOR_ACCURACY: ${MOBILE_SENSOR_ACCURACY}"
+    #    echo "    Using custom accuracy from MOBILE_SENSOR_ACCURACY: ${MOBILE_SENSOR_ACCURACY}"
     fi
 
     cd "${MOBILE_SENSOR_DIR}" || exit 1
@@ -238,17 +238,17 @@ start_mobile_sensor_microservice() {
     # Ensure port is free before starting
     if command -v lsof > /dev/null 2>&1; then
         if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
-            echo "    Port ${MOBILE_SENSOR_PORT} is in use, stopping existing service..."
+    #        echo "    Port ${MOBILE_SENSOR_PORT} is in use, stopping existing service..."
             stop_mobile_sensor_microservice
             sleep 2
         fi
     fi
     
-    echo "  Starting mobile sensor microservice..."
-    echo "    Endpoint: ${MOBILE_SENSOR_BASE_URL}"
-    echo "    Database: ${MOBILE_SENSOR_DB_PATH}"
-    echo "    Log file: ${MOBILE_SENSOR_LOG}"
-    echo "    CAMARA_BYPASS: ${CAMARA_BYPASS}"
+    #echo "  Starting mobile sensor microservice..."
+    #echo "    Endpoint: ${MOBILE_SENSOR_BASE_URL}"
+    #echo "    Database: ${MOBILE_SENSOR_DB_PATH}"
+    #echo "    Log file: ${MOBILE_SENSOR_LOG}"
+    #echo "    CAMARA_BYPASS: ${CAMARA_BYPASS}"
     nohup env MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB}" \
              CAMARA_BYPASS="${CAMARA_BYPASS}" \
              CAMARA_BASIC_AUTH="${CAMARA_BASIC_AUTH:-}" \
@@ -257,25 +257,25 @@ start_mobile_sensor_microservice() {
              MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY:-}" \
              python3 service.py --host "${MOBILE_SENSOR_HOST}" --port "${MOBILE_SENSOR_PORT}" > "${MOBILE_SENSOR_LOG}" 2>&1 &
     local pid=$!
-    echo $pid > "${MOBILE_SENSOR_PID_FILE}"
-    echo "    Mobile sensor microservice PID: ${pid}"
+    #echo $pid > "${MOBILE_SENSOR_PID_FILE}"
+    #echo "    Mobile sensor microservice PID: ${pid}"
     
     # Wait a moment for startup logs
     sleep 2
     
     # Show startup logs
-    if [ -f "${MOBILE_SENSOR_LOG}" ]; then
-        echo "  Startup logs:"
-        tail -10 "${MOBILE_SENSOR_LOG}" | grep -E "(Starting|latitude|longitude|accuracy|CAMARA_BYPASS|ready)" | sed 's/^/    /' || true
-    fi
+    #if [ -f "${MOBILE_SENSOR_LOG}" ]; then
+    #    echo "  Startup logs:"
+    #    tail -10 "${MOBILE_SENSOR_LOG}" | grep -E "(Starting|latitude|longitude|accuracy|CAMARA_BYPASS|ready)" | sed 's/^/    /' || true
+    #fi
 
-    echo "    Performing readiness health check against /verify (seed sensor_id used)"
+    #echo "    Performing readiness health check against /verify (seed sensor_id used)"
     local started=false
     for i in {1..30}; do
         local status
         status=$(curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" -d '{}' "${MOBILE_SENSOR_BASE_URL}/verify" || true)
         if [ -n "${status}" ] && [ "${status}" != "000" ]; then
-            echo -e "${GREEN}    ✓ Health check passed (mobile sensor microservice responded HTTP ${status})${NC}"
+    #        echo -e "${GREEN}    ✓ Health check passed (mobile sensor microservice responded HTTP ${status})${NC}"
             started=true
             break
         fi
@@ -285,7 +285,7 @@ start_mobile_sensor_microservice() {
     if [ "$started" = false ]; then
         echo -e "${RED}    ✗ Mobile sensor microservice failed to start (check ${MOBILE_SENSOR_LOG})${NC}"
         if [ -f "${MOBILE_SENSOR_LOG}" ]; then
-            echo "    Recent logs:"
+    #        echo "    Recent logs:"
             tail -30 "${MOBILE_SENSOR_LOG}" | sed 's/^/      /'
         fi
         if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
@@ -313,7 +313,7 @@ start_mobile_sensor_microservice() {
         fi
     fi
 
-    pause_at_phase "Step 1.5 Complete" "Mobile Location Verification microservice is running on ${MOBILE_SENSOR_BASE_URL}."
+    #pause_at_phase "Step 1.5 Complete" "Mobile Location Verification microservice is running on ${MOBILE_SENSOR_BASE_URL}."
 }
 
 stop_mobile_sensor_microservice() {
@@ -1484,7 +1484,7 @@ stop_control_plane_services() {
     echo "  ✓ Control plane services stopped"
 }
 
-# Step 2: Start Real Keylime Verifier with unified_identity enabled
+# Step 2: Start Keylime Verifier with unified_identity enabled
 echo ""
 echo -e "${CYAN}Step 2: Starting Real Keylime Verifier with unified_identity enabled...${NC}"
 cd "${KEYLIME_DIR}"

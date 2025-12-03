@@ -177,6 +177,84 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 - Rust toolchain installed on both machines
 - Git installed on both machines
 
+### Demo Act 1: Trusted Infrastructure Setup
+**SOVEREIGN PUBLIC/EDGE CLOUD CONTROL PLANE WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_complete_control_plane.sh --no-pause
+ps -aux | grep spire-server
+ps -aux | grep keylime.cmd.verifier
+ps -aux | grep keylime.cmd.registrar
+```
+**ON PREM API GATEWAY WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./test_onprem.sh
+ps -aux | grep envoy
+ps -aux | grep mobile-sensor-microservice
+ps -aux | grep mtls-server
+```
+### Demo Act 2: The Happy Path (Proof of Geofencing) 
+**SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_complete.sh --no-pause
+```
+**SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_mtls_client.sh
+~/AegisEdgeAI/hybrid-cloud-poc/scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
+```
+**ON PREM API GATEWAY WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-envoy-logs.sh
+```
+**ON PREM MOBILE LOCATION SERVICE WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-mobile-sensor-logs.sh
+```
+**ON PREM SERVER APP WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-mtls-server-logs.sh
+```
+### Demo Act 3: The Defense (The Rogue Admin)
+**SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./watch-spire-agent-attestations.sh
+```
+**SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_mtls_client.sh
+```
+**SOVEREIGN PUBLIC/EDGE CLOUD ROGUE ADMIN WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_rogue_admin.sh
+sudo ./test_toggle_huawei_mobile_sensor.sh off
+sudo ./test_toggle_huawei_mobile_sensor.sh on
+```
+**ON PREM API GATEWAY WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-envoy-logs.sh
+```
+**ON PREM MOBILE LOCATION SERVICE WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-mobile-sensor-logs.sh
+```
+**ON PREM SERVER APP WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-mtls-server-logs.sh
+```
+
 ### Step 1: Setup SPIRE and Keylime (10.1.0.11)
 
 This step sets up the identity services and agents on the sovereign cloud/edge cloud host.
