@@ -21,7 +21,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // A hardware-rooted PoR package produced by the Agent.
 type SovereignAttestation struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -38,7 +38,7 @@ type SovereignAttestation struct {
 	ChallengeNonce string `protobuf:"bytes,4,opt,name=challenge_nonce,json=challengeNonce,proto3" json:"challenge_nonce,omitempty"`
 	// Optional workload code hash used as an additional selector/assertion.
 	WorkloadCodeHash string `protobuf:"bytes,5,opt,name=workload_code_hash,json=workloadCodeHash,proto3" json:"workload_code_hash,omitempty"`
-	// Unified-Identity - Verification: rust-keylime agent UUID for delegated certification correlation.
+	// Unified-Identity - Phase 3: rust-keylime agent UUID for delegated certification correlation.
 	KeylimeAgentUuid string `protobuf:"bytes,6,opt,name=keylime_agent_uuid,json=keylimeAgentUuid,proto3" json:"keylime_agent_uuid,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -116,7 +116,7 @@ func (x *SovereignAttestation) GetKeylimeAgentUuid() string {
 	return ""
 }
 
-// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // AttestedClaims contains verified facts from Keylime about the host.
 type AttestedClaims struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -162,13 +162,15 @@ func (x *AttestedClaims) GetGeolocation() *Geolocation {
 	return nil
 }
 
-// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
+// Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // Geolocation represents geolocation sensor metadata
 type Geolocation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                         // "mobile" or "gnss"
-	SensorId      string                 `protobuf:"bytes,2,opt,name=sensor_id,json=sensorId,proto3" json:"sensor_id,omitempty"` // Sensor identifier (e.g., USB ID "12d1:1433" for mobile)
-	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`                       // Optional for mobile, mandatory for gnss (e.g., GNSS coordinates)
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                               // "mobile" or "gnss"
+	SensorId      string                 `protobuf:"bytes,2,opt,name=sensor_id,json=sensorId,proto3" json:"sensor_id,omitempty"`       // Sensor identifier (e.g., USB ID "12d1:1433" for mobile)
+	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`                             // Optional for mobile, mandatory for gnss (e.g., GNSS coordinates)
+	SensorImei    string                 `protobuf:"bytes,4,opt,name=sensor_imei,json=sensorImei,proto3" json:"sensor_imei,omitempty"` // Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
+	SensorImsi    string                 `protobuf:"bytes,5,opt,name=sensor_imsi,json=sensorImsi,proto3" json:"sensor_imsi,omitempty"` // Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -224,6 +226,20 @@ func (x *Geolocation) GetValue() string {
 	return ""
 }
 
+func (x *Geolocation) GetSensorImei() string {
+	if x != nil {
+		return x.SensorImei
+	}
+	return ""
+}
+
+func (x *Geolocation) GetSensorImsi() string {
+	if x != nil {
+		return x.SensorImsi
+	}
+	return ""
+}
+
 var File_spire_api_types_sovereignattestation_proto protoreflect.FileDescriptor
 
 const file_spire_api_types_sovereignattestation_proto_rawDesc = "" +
@@ -237,11 +253,15 @@ const file_spire_api_types_sovereignattestation_proto_rawDesc = "" +
 	"\x12workload_code_hash\x18\x05 \x01(\tR\x10workloadCodeHash\x12,\n" +
 	"\x12keylime_agent_uuid\x18\x06 \x01(\tR\x10keylimeAgentUuid\"P\n" +
 	"\x0eAttestedClaims\x12>\n" +
-	"\vgeolocation\x18\x01 \x01(\v2\x1c.spire.api.types.GeolocationR\vgeolocation\"T\n" +
+	"\vgeolocation\x18\x01 \x01(\v2\x1c.spire.api.types.GeolocationR\vgeolocation\"\x96\x01\n" +
 	"\vGeolocation\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1b\n" +
 	"\tsensor_id\x18\x02 \x01(\tR\bsensorId\x12\x14\n" +
-	"\x05value\x18\x03 \x01(\tR\x05valueB7Z5github.com/spiffe/spire-api-sdk/proto/spire/api/typesb\x06proto3"
+	"\x05value\x18\x03 \x01(\tR\x05value\x12\x1f\n" +
+	"\vsensor_imei\x18\x04 \x01(\tR\n" +
+	"sensorImei\x12\x1f\n" +
+	"\vsensor_imsi\x18\x05 \x01(\tR\n" +
+	"sensorImsiB7Z5github.com/spiffe/spire-api-sdk/proto/spire/api/typesb\x06proto3"
 
 var (
 	file_spire_api_types_sovereignattestation_proto_rawDescOnce sync.Once

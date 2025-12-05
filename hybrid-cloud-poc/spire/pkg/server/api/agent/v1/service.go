@@ -712,9 +712,11 @@ func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.Fi
 	var protoGeo *types.Geolocation
 	if keylimeClaims.Geolocation != nil {
 		protoGeo = &types.Geolocation{
-			Type:     keylimeClaims.Geolocation.Type,
-			SensorId: keylimeClaims.Geolocation.SensorID,
-			Value:    keylimeClaims.Geolocation.Value,
+			Type:       keylimeClaims.Geolocation.Type,
+			SensorId:   keylimeClaims.Geolocation.SensorID,
+			Value:      keylimeClaims.Geolocation.Value,
+			SensorImei: keylimeClaims.Geolocation.SensorIMEI,
+			SensorImsi: keylimeClaims.Geolocation.SensorIMSI,
 		}
 	}
 

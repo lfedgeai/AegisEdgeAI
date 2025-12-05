@@ -70,6 +70,13 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 			if attestedClaims.Geolocation.Value != "" {
 				geoObj["value"] = attestedClaims.Geolocation.Value
 			}
+			// Unified-Identity: Add IMEI and IMSI for mobile devices
+			if attestedClaims.Geolocation.SensorImei != "" {
+				geoObj["sensor_imei"] = attestedClaims.Geolocation.SensorImei
+			}
+			if attestedClaims.Geolocation.SensorImsi != "" {
+				geoObj["sensor_imsi"] = attestedClaims.Geolocation.SensorImsi
+			}
 			// Add TPM attestation markers
 			if sovereignAttestation != nil {
 				geoObj["tpm-attested-location"] = true

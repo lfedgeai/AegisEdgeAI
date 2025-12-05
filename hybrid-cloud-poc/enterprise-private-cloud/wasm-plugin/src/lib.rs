@@ -14,6 +14,10 @@ const LEGACY_OID_STR: &str = "1.3.6.1.4.1.99999.1";
 #[derive(Serialize, Deserialize)]
 struct VerifyRequest {
     sensor_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sensor_imei: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sensor_imsi: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -58,6 +62,9 @@ impl RootContext for SensorVerificationRoot {
     fn create_http_context(&self, _context_id: u32) -> Option<Box<dyn HttpContext>> {
         Some(Box::new(SensorVerificationFilter {
             sensor_id: None,
+            sensor_type: None,
+            sensor_imei: None,
+            sensor_imsi: None,
             cache: Arc::clone(&self.cache),
         }))
     }
@@ -69,6 +76,9 @@ impl RootContext for SensorVerificationRoot {
 
 struct SensorVerificationFilter {
     sensor_id: Option<String>,
+    sensor_type: Option<String>, // "mobile" or "gnss"
+    sensor_imei: Option<String>,
+    sensor_imsi: Option<String>,
     cache: Arc<Mutex<CacheState>>, // Shared cache from root context
 }
 
@@ -122,10 +132,12 @@ impl Context for SensorVerificationFilter {
         match serde_json::from_str::<VerifyResponse>(&body_str) {
             Ok(response) => {
                 let sensor_id = self.sensor_id.clone().unwrap_or_default();
+                let sensor_imei = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("none");
+                let sensor_imsi = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("none");
                 
                 // Check if response has an error field
                 if let Some(error) = &response.error {
-                    proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Mobile location service returned error: {} for sensor_id: {}", error, sensor_id));
+                    proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Mobile location service returned error: {} for sensor_id: {}, sensor_imei: {}, sensor_imsi: {}", error, sensor_id, sensor_imei, sensor_imsi));
                     self.send_http_response(
                         503,
                         vec![("content-type", "text/plain")],
@@ -137,7 +149,7 @@ impl Context for SensorVerificationFilter {
                 // Get verification result
                 let verified = response.verification_result.unwrap_or(false);
                 
-                proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Verification result for sensor_id {}: {}", sensor_id, verified));
+                proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Verification result for sensor_id: {}, sensor_imei: {}, sensor_imsi: {} - result: {}", sensor_id, sensor_imei, sensor_imsi, verified));
                 
                 // Update cache with verification result and current timestamp
                 let current_time = self.get_current_time();
@@ -245,11 +257,11 @@ impl HttpContext for SensorVerificationFilter {
             }
         };
 
-        // Extract sensor ID from certificate
-        let sensor_id = match extract_sensor_id_from_cert(&cert_pem) {
-            Some(id) => id,
+        // Unified-Identity: Extract sensor_id, sensor_imei, and sensor_imsi from certificate
+        let sensor_info = match extract_sensor_info_from_cert(&cert_pem) {
+            Some(info) => info,
             None => {
-                proxy_wasm::hostcalls::log(LogLevel::Warn, "Geo Claim Missing: No sensor ID found in certificate Unified Identity extension");
+                proxy_wasm::hostcalls::log(LogLevel::Warn, "=== SENSOR INFORMATION MISSING ===\n  sensor_id: MISSING\n  sensor_imei: MISSING\n  sensor_imsi: MISSING\n========================================\nGeo Claim Missing: No sensor information found in certificate Unified Identity extension (sensor may be unplugged)");
                 self.send_http_response(
                     403,
                     vec![("content-type", "text/plain")],
@@ -259,8 +271,29 @@ impl HttpContext for SensorVerificationFilter {
             }
         };
 
-        // Store sensor_id for use in verification
-        self.sensor_id = Some(sensor_id.clone());
+        // Store sensor information for use in verification
+        self.sensor_id = Some(sensor_info.sensor_id.clone());
+        self.sensor_type = sensor_info.sensor_type.clone();
+        self.sensor_imei = sensor_info.sensor_imei.clone();
+        self.sensor_imsi = sensor_info.sensor_imsi.clone();
+        
+        let sensor_id = sensor_info.sensor_id;
+        let sensor_type_str = self.sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
+        let imei_str = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
+        let imsi_str = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
+        
+        // Log sensor information with type
+        if sensor_type_str == "mobile" {
+            proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                "Sensor information stored for verification: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={}",
+                sensor_type_str, sensor_id, imei_str, imsi_str
+            ));
+        } else {
+            proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                "Sensor information stored for verification: type={}, sensor_id={}",
+                sensor_type_str, sensor_id
+            ));
+        }
         
         // Check verification cache (15 second TTL to avoid expensive CAMARA API calls)
         let cache_ttl = Duration::from_secs(15);
@@ -317,9 +350,11 @@ impl HttpContext for SensorVerificationFilter {
         };
         
         if should_verify {
-            // Call mobile location service to verify sensor (blocking - request paused until response)
+            // Unified-Identity: Call mobile location service to verify sensor with sensor_id, sensor_imei, and sensor_imsi
             let verify_body = serde_json::to_string(&VerifyRequest {
                 sensor_id: sensor_id.clone(),
+                sensor_imei: self.sensor_imei.clone(),
+                sensor_imsi: self.sensor_imsi.clone(),
             }).unwrap_or_default();
             
             let headers = vec![
@@ -338,7 +373,14 @@ impl HttpContext for SensorVerificationFilter {
                 Duration::from_secs(5),
             ) {
                 Ok(_) => {
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Dispatched blocking verification request for sensor_id: {} (request paused, waiting for response)", sensor_id));
+                    let sensor_type_str = self.sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
+                    if sensor_type_str == "mobile" {
+                        let sensor_imei = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("none");
+                        let sensor_imsi = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("none");
+                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Dispatched blocking verification request for mobile sensor: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={} (request paused, waiting for response)", sensor_type_str, sensor_id, sensor_imei, sensor_imsi));
+                    } else {
+                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Dispatched blocking verification request for sensor: type={}, sensor_id={} (request paused, waiting for response)", sensor_type_str, sensor_id));
+                    }
                     // Pause request processing until verification response is received
                     Action::Pause
                 }
@@ -377,10 +419,24 @@ impl HttpContext for SensorVerificationFilter {
     }
 }
 
-fn extract_sensor_id_from_cert(cert_pem: &[u8]) -> Option<String> {
+// Unified-Identity: Sensor information extracted from certificate
+struct SensorInfo {
+    sensor_id: String,
+    sensor_type: Option<String>, // "mobile" or "gnss"
+    sensor_imei: Option<String>,
+    sensor_imsi: Option<String>,
+}
+
+fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
     // Parse certificate chain (may contain multiple certificates: leaf + intermediates)
     // The Unified Identity extension is in the intermediate certificate (agent SVID)
-    let pem_str = std::str::from_utf8(cert_pem).ok()?;
+    let pem_str = match std::str::from_utf8(cert_pem) {
+        Ok(s) => s,
+        Err(e) => {
+            proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Failed to parse certificate PEM as UTF-8: {:?}", e));
+            return None;
+        }
+    };
     
     // Split PEM into individual certificates
     let mut cert_blocks = Vec::new();
@@ -391,8 +447,10 @@ fn extract_sensor_id_from_cert(cert_pem: &[u8]) -> Option<String> {
         }
     }
     
+    proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Parsed certificate chain: found {} certificate(s)", cert_blocks.len()));
+    
     // Try each certificate in the chain (leaf first, then intermediates)
-    for cert_block in cert_blocks {
+    for (cert_idx, cert_block) in cert_blocks.iter().enumerate() {
         // Extract base64 content from PEM
         let lines: Vec<&str> = cert_block
             .lines()
@@ -400,37 +458,110 @@ fn extract_sensor_id_from_cert(cert_pem: &[u8]) -> Option<String> {
             .collect();
         let cert_bytes = match base64::decode(&lines.join("")) {
             Ok(bytes) => bytes,
-            Err(_) => continue,
+            Err(e) => {
+                proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Failed to decode base64: {:?}", cert_idx, e));
+                continue;
+            }
         };
 
         // Parse X.509 certificate
         let (_, cert) = match x509_parser::parse_x509_certificate(&cert_bytes) {
             Ok(parsed) => parsed,
-            Err(_) => continue,
+            Err(e) => {
+                proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Failed to parse X.509: {:?}", cert_idx, e));
+                continue;
+            }
         };
 
+        proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Examining {} extension(s)", cert_idx, cert.extensions().len()));
+
         // Find Unified Identity extension in this certificate
-        for ext in cert.extensions() {
+        for (ext_idx, ext) in cert.extensions().iter().enumerate() {
             let oid_str = format!("{}", ext.oid);
             
+            proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Extension {}: OID = {}", cert_idx, ext_idx, oid_str));
+            
             if oid_str == UNIFIED_IDENTITY_OID_STR || oid_str == LEGACY_OID_STR {
+                proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found Unified Identity extension (OID: {})", cert_idx, oid_str));
+                
                 // Parse extension value as JSON
                 let ext_value = &ext.value;
-                if let Ok(json_str) = std::str::from_utf8(ext_value) {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
-                        if let Some(geo) = json.get("grc.geolocation") {
-                            if let Some(sensor_id) = geo.get("sensor_id") {
-                                if let Some(id_str) = sensor_id.as_str() {
-                                    return Some(id_str.to_string());
+                match std::str::from_utf8(ext_value) {
+                    Ok(json_str) => {
+                        proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Extension value (first 500 chars): {}", cert_idx, json_str.chars().take(500).collect::<String>()));
+                        
+                        match serde_json::from_str::<serde_json::Value>(json_str) {
+                            Ok(json) => {
+                                if let Some(geo) = json.get("grc.geolocation") {
+                                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found grc.geolocation claim", cert_idx));
+                                    
+                                    // Unified-Identity: Extract sensor_type, sensor_id (required), sensor_imei, and sensor_imsi (optional)
+                                    if let Some(sensor_id_val) = geo.get("sensor_id") {
+                                        if let Some(sensor_id_str) = sensor_id_val.as_str() {
+                                            let sensor_id = sensor_id_str.to_string();
+                                            
+                                            // Extract sensor_type if present
+                                            let sensor_type = geo.get("type")
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            
+                                            // Extract sensor_imei if present
+                                            let sensor_imei = geo.get("sensor_imei")
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            
+                                            // Extract sensor_imsi if present
+                                            let sensor_imsi = geo.get("sensor_imsi")
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            
+                                            // Print sensor information when found
+                                            let type_str = sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
+                                            let imei_str = sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
+                                            let imsi_str = sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
+                                            
+                                            if type_str == "mobile" {
+                                                proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                                                    "=== SENSOR INFORMATION EXTRACTED ===\n  type: {}\n  sensor_id: {}\n  sensor_imei: {}\n  sensor_imsi: {}\n========================================",
+                                                    type_str, sensor_id, imei_str, imsi_str
+                                                ));
+                                            } else {
+                                                proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                                                    "=== SENSOR INFORMATION EXTRACTED ===\n  type: {}\n  sensor_id: {}\n========================================",
+                                                    type_str, sensor_id
+                                                ));
+                                            }
+                                            
+                                            return Some(SensorInfo {
+                                                sensor_id,
+                                                sensor_type,
+                                                sensor_imei,
+                                                sensor_imsi,
+                                            });
+                                        } else {
+                                            proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Certificate {}: sensor_id found but is not a string: {:?}", cert_idx, sensor_id_val));
+                                        }
+                                    } else {
+                                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("=== SENSOR INFORMATION MISSING ===\n  sensor_id: MISSING\n  sensor_imei: MISSING\n  sensor_imsi: MISSING\n========================================\nCertificate {}: grc.geolocation found but sensor_id is missing", cert_idx));
+                                    }
+                                } else {
+                                    proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Unified Identity extension found but grc.geolocation claim is missing", cert_idx));
                                 }
                             }
+                            Err(e) => {
+                                proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Certificate {}: Failed to parse extension value as JSON: {:?}", cert_idx, e));
+                            }
                         }
+                    }
+                    Err(e) => {
+                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Certificate {}: Extension value is not valid UTF-8: {:?}", cert_idx, e));
                     }
                 }
             }
         }
     }
 
+    proxy_wasm::hostcalls::log(LogLevel::Warn, "=== SENSOR INFORMATION MISSING ===\n  sensor_id: MISSING\n  sensor_imei: MISSING\n  sensor_imsi: MISSING\n========================================\nNo sensor information found in certificate chain");
     None
 }
 

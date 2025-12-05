@@ -71,29 +71,46 @@ class SensorDatabase:
     def _ensure_schema(self) -> None:
         conn = sqlite3.connect(self.db_path)
         try:
+            # Unified-Identity: Updated schema to support sensor_id, sensor_imei, and sensor_imsi
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sensor_map (
-                    sensor_id TEXT PRIMARY KEY,
+                    sensor_id TEXT,
+                    sensor_imei TEXT,
+                    sensor_imsi TEXT,
                     msisdn TEXT NOT NULL,
                     latitude REAL NOT NULL,
                     longitude REAL NOT NULL,
-                    accuracy REAL NOT NULL
+                    accuracy REAL NOT NULL,
+                    PRIMARY KEY (sensor_id, sensor_imei, sensor_imsi)
                 )
                 """
+            )
+            # Create indexes for efficient lookups
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sensor_id ON sensor_map(sensor_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sensor_imei ON sensor_map(sensor_imei)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sensor_imsi ON sensor_map(sensor_imsi)"
             )
             # Use env vars if provided, otherwise defaults
             lat = _get_default_latitude()
             lon = _get_default_longitude()
             acc = _get_default_accuracy()
             # Use INSERT OR REPLACE to update coordinates if they change via env vars
+            # Unified-Identity: Insert with sensor_id only (sensor_imei and sensor_imsi are NULL for backward compatibility)
             conn.execute(
                 """
-                INSERT OR REPLACE INTO sensor_map(sensor_id, msisdn, latitude, longitude, accuracy)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO sensor_map(sensor_id, sensor_imei, sensor_imsi, msisdn, latitude, longitude, accuracy)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     DEFAULT_SENSOR_ID,
+                    None,  # sensor_imei
+                    None,  # sensor_imsi
                     DEFAULT_MSISDN,
                     lat,
                     lon,
@@ -111,18 +128,59 @@ class SensorDatabase:
         finally:
             conn.close()
 
-    def get_sensor(self, sensor_id: str) -> Optional[Tuple[str, float, float, float]]:
+    def get_sensor(
+        self, 
+        sensor_id: Optional[str] = None,
+        sensor_imei: Optional[str] = None,
+        sensor_imsi: Optional[str] = None
+    ) -> Optional[Tuple[str, str, str, str, float, float, float]]:
+        """
+        Unified-Identity: Lookup sensor by sensor_id, sensor_imei, or sensor_imsi.
+        Priority: sensor_id > sensor_imei > sensor_imsi
+        Returns: (sensor_id, sensor_imei, sensor_imsi, msisdn, latitude, longitude, accuracy)
+        """
         conn = sqlite3.connect(self.db_path)
         try:
-            cur = conn.execute(
-                "SELECT msisdn, latitude, longitude, accuracy FROM sensor_map WHERE sensor_id = ?",
-                (sensor_id,),
-            )
-            row = cur.fetchone()
+            row = None
+            lookup_key = None
+            # Try sensor_id first (highest priority)
+            if sensor_id:
+                cur = conn.execute(
+                    "SELECT sensor_id, sensor_imei, sensor_imsi, msisdn, latitude, longitude, accuracy FROM sensor_map WHERE sensor_id = ?",
+                    (sensor_id,),
+                )
+                row = cur.fetchone()
+                if row:
+                    lookup_key = f"sensor_id={sensor_id}"
+                    LOG.debug("Found sensor by sensor_id=%s", sensor_id)
+            
+            # Try sensor_imei if sensor_id didn't match
+            if not row and sensor_imei:
+                cur = conn.execute(
+                    "SELECT sensor_id, sensor_imei, sensor_imsi, msisdn, latitude, longitude, accuracy FROM sensor_map WHERE sensor_imei = ?",
+                    (sensor_imei,),
+                )
+                row = cur.fetchone()
+                if row:
+                    lookup_key = f"sensor_imei={sensor_imei}"
+                    LOG.debug("Found sensor by sensor_imei=%s", sensor_imei)
+            
+            # Try sensor_imsi if neither sensor_id nor sensor_imei matched
+            if not row and sensor_imsi:
+                cur = conn.execute(
+                    "SELECT sensor_id, sensor_imei, sensor_imsi, msisdn, latitude, longitude, accuracy FROM sensor_map WHERE sensor_imsi = ?",
+                    (sensor_imsi,),
+                )
+                row = cur.fetchone()
+                if row:
+                    lookup_key = f"sensor_imsi={sensor_imsi}"
+                    LOG.debug("Found sensor by sensor_imsi=%s", sensor_imsi)
+            
             if not row:
                 return None
-            msisdn, lat, lon, acc = row
-            return msisdn, float(lat), float(lon), float(acc)
+            
+            s_id, s_imei, s_imsi, msisdn, lat, lon, acc = row
+            return s_id, s_imei, s_imsi, msisdn, float(lat), float(lon), float(acc)
         finally:
             conn.close()
 
@@ -278,38 +336,70 @@ def create_app(db_path: Path) -> Flask:
 
         is_healthcheck = not payload or "sensor_id" not in payload
         log_context = "health-check" if is_healthcheck else ""
+        # Unified-Identity: Extract sensor_id, sensor_imei, and sensor_imsi from payload
         sensor_id = (
             str(payload.get("sensor_id", DEFAULT_SENSOR_ID)) if payload else DEFAULT_SENSOR_ID
         )
+        sensor_imei = str(payload.get("sensor_imei", "")) if payload else ""
+        sensor_imsi = str(payload.get("sensor_imsi", "")) if payload else ""
+        
+        # Normalize empty strings to None
+        sensor_imei = sensor_imei if sensor_imei else None
+        sensor_imsi = sensor_imsi if sensor_imsi else None
 
         if is_healthcheck:
             LOG.info("Health-check verification request received (readiness probe)")
         else:
-            LOG.info("Received verification request for sensor_id=%s", sensor_id)
+            LOG.info(
+                "Received verification request: sensor_id=%s, sensor_imei=%s, sensor_imsi=%s",
+                sensor_id,
+                sensor_imei or "none",
+                sensor_imsi or "none"
+            )
 
-        sensor = database.get_sensor(sensor_id)
+        # Unified-Identity: Lookup by sensor_id, sensor_imei, or sensor_imsi
+        sensor = database.get_sensor(sensor_id, sensor_imei, sensor_imsi)
         if not sensor:
-            LOG.warning("Unknown sensor_id=%s", sensor_id)
-            return jsonify({"error": "unknown_sensor_id"}), 404
+            LOG.warning(
+                "Unknown sensor: sensor_id=%s, sensor_imei=%s, sensor_imsi=%s",
+                sensor_id,
+                sensor_imei or "none",
+                sensor_imsi or "none"
+            )
+            return jsonify({"error": "unknown_sensor"}), 404
 
-        msisdn, latitude, longitude, accuracy = sensor
+        s_id, s_imei, s_imsi, msisdn, latitude, longitude, accuracy = sensor
+        
+        # Determine which identifier was used for lookup
+        lookup_key = None
+        if sensor_id and s_id == sensor_id:
+            lookup_key = f"sensor_id={sensor_id}"
+        elif sensor_imei and s_imei == sensor_imei:
+            lookup_key = f"sensor_imei={sensor_imei}"
+        elif sensor_imsi and s_imsi == sensor_imsi:
+            lookup_key = f"sensor_imsi={sensor_imsi}"
+        else:
+            lookup_key = f"sensor_id={s_id}"  # Fallback
         
         # Ensure MSISDN is always from database, never a test user
         if not msisdn or not isinstance(msisdn, str) or msisdn.strip() == "":
-            LOG.error("Invalid MSISDN from database for sensor_id=%s: %s", sensor_id, msisdn)
+            LOG.error("Invalid MSISDN from database for %s: %s", lookup_key, msisdn)
             return jsonify({"error": "invalid_msisdn_from_database"}), 500
         
         # Validate MSISDN format (should start with + and contain digits)
         if not msisdn.startswith("+") or not msisdn[1:].replace(" ", "").isdigit():
-            LOG.warning("MSISDN format may be invalid for sensor_id=%s: %s (proceeding anyway)", sensor_id, msisdn)
+            LOG.warning("MSISDN format may be invalid for %s: %s (proceeding anyway)", lookup_key, msisdn)
         
         if is_healthcheck:
             LOG.info("Health-check using default seeded sensor profile from database")
         else:
             LOG.info(
-                "Resolved sensor_id=%s to msisdn=%s (from database), lat=%.6f, lon=%.6f, accuracy=%.1f",
-                sensor_id,
+                "Resolved sensor using %s to msisdn=%s (from database), sensor_id=%s, sensor_imei=%s, sensor_imsi=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
+                lookup_key,
                 msisdn,
+                s_id or "none",
+                s_imei or "none",
+                s_imsi or "none",
                 latitude,
                 longitude,
                 accuracy,
@@ -424,7 +514,9 @@ def create_app(db_path: Path) -> Flask:
             )
         return jsonify(
             {
-                "sensor_id": sensor_id,
+                "sensor_id": s_id,
+                "sensor_imei": s_imei,
+                "sensor_imsi": s_imsi,
                 "verification_result": verification_result,
                 "latitude": latitude,
                 "longitude": longitude,

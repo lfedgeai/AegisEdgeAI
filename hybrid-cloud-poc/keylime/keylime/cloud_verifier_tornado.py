@@ -334,7 +334,16 @@ def _verify_mobile_sensor_geolocation(
     if not sensor_id:
         raise MobileSensorVerificationError("sensor_id missing in mobile geolocation data")
 
-    response = _call_mobile_sensor_service({"sensor_id": sensor_id})
+    # Unified-Identity: Include sensor_imei and sensor_imsi in the request payload
+    payload = {"sensor_id": sensor_id}
+    sensor_imei = geolocation.get("sensor_imei")
+    sensor_imsi = geolocation.get("sensor_imsi")
+    if sensor_imei:
+        payload["sensor_imei"] = sensor_imei
+    if sensor_imsi:
+        payload["sensor_imsi"] = sensor_imsi
+
+    response = _call_mobile_sensor_service(payload)
     verification_result = response.get("verification_result")
     if verification_result is True:
         logger.info(

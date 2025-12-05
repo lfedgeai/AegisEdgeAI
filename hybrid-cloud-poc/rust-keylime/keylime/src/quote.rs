@@ -12,6 +12,8 @@ pub struct Integ {
 /// type: "mobile" or "gnss"
 /// sensor_id: Sensor identifier (e.g., USB device ID for mobile, device path for GNSS)
 /// value: Optional for mobile, mandatory for gnss (GNSS coordinates, accuracy, etc.)
+/// sensor_imei: Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
+/// sensor_imsi: Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Geolocation {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -20,6 +22,10 @@ pub struct Geolocation {
     pub sensor_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>, // Optional for mobile, mandatory for gnss
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sensor_imei: Option<String>, // Unified-Identity: IMEI for mobile devices
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sensor_imsi: Option<String>, // Unified-Identity: IMSI for mobile devices
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]

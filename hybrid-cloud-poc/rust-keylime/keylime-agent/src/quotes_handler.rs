@@ -42,6 +42,74 @@ fn extract_usb_id(line: &str) -> String {
     }
 }
 
+/// Unified-Identity: Call get_imei_imsi_huawei.sh and parse IMEI/IMSI from output
+/// Returns (imei, imsi) as Option<String> tuple
+fn get_imei_imsi() -> (Option<String>, Option<String>) {
+    // Try multiple possible script paths
+    let script_paths = [
+        "/home/mw/AegisEdgeAI/hybrid-cloud-poc/get_imei_imsi_huawei.sh",
+        "./get_imei_imsi_huawei.sh",
+        "get_imei_imsi_huawei.sh",
+    ];
+
+    for script_path in &script_paths {
+        match Command::new("bash").arg(script_path).output() {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                
+                // Log script execution for debugging
+                if !output.status.success() {
+                    warn!("Unified-Identity: Script {} exited with non-zero status: {}", script_path, output.status);
+                    if !stderr.is_empty() {
+                        warn!("Unified-Identity: Script stderr: {}", stderr);
+                    }
+                }
+                
+                let mut imei = None;
+                let mut imsi = None;
+
+                // Parse output lines
+                for line in stdout.lines() {
+                    // Look for "Modem IMEI: <value>"
+                    if line.contains("Modem IMEI:") {
+                        if let Some(colon_pos) = line.find(':') {
+                            let value = line[colon_pos + 1..].trim();
+                            if !value.is_empty() && value != "Unknown" {
+                                imei = Some(value.to_string());
+                                debug!("Unified-Identity: Found IMEI in script output: {}", value);
+                            }
+                        }
+                    }
+                    // Look for "SIM IMSI:   <value>"
+                    if line.contains("SIM IMSI:") {
+                        if let Some(colon_pos) = line.find(':') {
+                            let value = line[colon_pos + 1..].trim();
+                            if !value.is_empty() && value != "Missing" && value != "Locked/Unreadable" {
+                                imsi = Some(value.to_string());
+                                debug!("Unified-Identity: Found IMSI in script output: {}", value);
+                            }
+                        }
+                    }
+                }
+
+                if imei.is_some() || imsi.is_some() {
+                    info!("Unified-Identity: Retrieved IMEI/IMSI from script {}: IMEI={:?}, IMSI={:?}", script_path, imei, imsi);
+                    return (imei, imsi);
+                } else {
+                    debug!("Unified-Identity: Script {} ran successfully but no IMEI/IMSI found in output", script_path);
+                    debug!("Unified-Identity: Script stdout (first 500 chars): {}", stdout.chars().take(500).collect::<String>());
+                }
+            }
+            Err(e) => {
+                warn!("Unified-Identity: Failed to run script {}: {}", script_path, e);
+            }
+        }
+    }
+
+    (None, None)
+}
+
 fn detect_geolocation_sensor() -> Option<Geolocation> {
     match Command::new("lsusb").output() {
         Ok(output) => {
@@ -52,10 +120,16 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
                 if line_lower.contains("mobile") {
                     let sensor_id = extract_usb_id(line);
                     info!("Unified-Identity: Mobile geolocation sensor detected via lsusb: {}", sensor_id);
+                    
+                    // Unified-Identity: Get IMEI and IMSI from get_imei_imsi_huawei.sh
+                    let (imei, imsi) = get_imei_imsi();
+                    
                     return Some(Geolocation {
                         r#type: Some("mobile".to_string()),
                         sensor_id: Some(sensor_id),
                         value: None,
+                        sensor_imei: imei,
+                        sensor_imsi: imsi,
                     });
                 }
 
@@ -72,6 +146,8 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
                         r#type: Some("gnss".to_string()),
                         sensor_id: Some(sensor_id),
                         value: Some("".to_string()),
+                        sensor_imei: None,
+                        sensor_imsi: None,
                     });
                 }
             }
@@ -93,6 +169,8 @@ fn detect_geolocation_sensor() -> Option<Geolocation> {
                 r#type: Some("gnss".to_string()),
                 sensor_id: Some(path.to_string()),
                 value: Some("".to_string()),
+                sensor_imei: None,
+                sensor_imsi: None,
             });
         }
     }

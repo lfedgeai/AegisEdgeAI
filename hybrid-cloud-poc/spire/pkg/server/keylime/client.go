@@ -41,10 +41,14 @@ type Config struct {
 // type: "mobile" or "gnss"
 // sensor_id: Sensor identifier (e.g., USB device ID for mobile, device path for GNSS)
 // value: Optional for mobile, mandatory for gnss (GNSS coordinates, accuracy, etc.)
+// sensor_imei: Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
+// sensor_imsi: Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
 type Geolocation struct {
-	Type     string `json:"type"`      // "mobile" or "gnss"
-	SensorID string `json:"sensor_id"` // Sensor identifier
-	Value    string `json:"value"`     // Optional for mobile, mandatory for gnss
+	Type       string `json:"type"`        // "mobile" or "gnss"
+	SensorID   string `json:"sensor_id"`   // Sensor identifier
+	Value      string `json:"value"`       // Optional for mobile, mandatory for gnss
+	SensorIMEI string `json:"sensor_imei,omitempty"` // Unified-Identity: IMEI for mobile devices
+	SensorIMSI string `json:"sensor_imsi,omitempty"` // Unified-Identity: IMSI for mobile devices
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification
@@ -235,11 +239,24 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 		if verifyResp.Results.AttestedClaims.Geolocation.Value != "" {
 			geoLog += fmt.Sprintf(", value=%s", verifyResp.Results.AttestedClaims.Geolocation.Value)
 		}
+		if verifyResp.Results.AttestedClaims.Geolocation.SensorIMEI != "" {
+			geoLog += fmt.Sprintf(", sensor_imei=%s", verifyResp.Results.AttestedClaims.Geolocation.SensorIMEI)
+		}
+		if verifyResp.Results.AttestedClaims.Geolocation.SensorIMSI != "" {
+			geoLog += fmt.Sprintf(", sensor_imsi=%s", verifyResp.Results.AttestedClaims.Geolocation.SensorIMSI)
+		}
 	}
 	c.logger.WithFields(logrus.Fields{
 		"audit_id":    verifyResp.Results.AuditID,
 		"geolocation": geoLog,
 	}).Info("Unified-Identity - Verification: Successfully received AttestedClaims from Keylime")
+	
+	// Debug: Log raw response to see what Keylime is actually sending
+	if verifyResp.Results.AttestedClaims.Geolocation != nil {
+		c.logger.WithFields(logrus.Fields{
+			"raw_geolocation": verifyResp.Results.AttestedClaims.Geolocation,
+		}).Debug("Unified-Identity - Verification: Raw Geolocation struct from Keylime")
+	}
 
 	return &verifyResp.Results.AttestedClaims, nil
 }

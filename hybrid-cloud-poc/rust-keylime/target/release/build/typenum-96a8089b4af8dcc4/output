@@ -1,2 +1,2 @@
-cargo:rustc-env=TYPENUM_BUILD_CONSTS=/home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-2/rust-keylime/target/release/build/typenum-96a8089b4af8dcc4/out/consts.rs
-cargo:rustc-env=TYPENUM_BUILD_OP=/home/mw/AegisEdgeAI/hybrid-cloud-poc/code-rollout-phase-2/rust-keylime/target/release/build/typenum-96a8089b4af8dcc4/out/op.rs
+cargo:rustc-env=TYPENUM_BUILD_CONSTS=/home/mw/AegisEdgeAI/hybrid-cloud-poc/rust-keylime/target/release/build/typenum-96a8089b4af8dcc4/out/consts.rs
+cargo:rustc-env=TYPENUM_BUILD_OP=/home/mw/AegisEdgeAI/hybrid-cloud-poc/rust-keylime/target/release/build/typenum-96a8089b4af8dcc4/out/op.rs
