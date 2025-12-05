@@ -64,38 +64,74 @@ def _camara_bypass_enabled() -> bool:
 class SensorDatabase:
     """Simple SQLite-backed storage for sensor metadata."""
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, recreate_db: bool = False):
         self.db_path = db_path
+        # Delete database if requested (for schema migration)
+        if recreate_db and self.db_path.exists():
+            LOG.info("Deleting existing database for schema migration: %s", self.db_path)
+            self.db_path.unlink()
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
         conn = sqlite3.connect(self.db_path)
         try:
-            # Unified-Identity: Updated schema to support sensor_id, sensor_imei, and sensor_imsi
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sensor_map (
-                    sensor_id TEXT,
-                    sensor_imei TEXT,
-                    sensor_imsi TEXT,
-                    msisdn TEXT NOT NULL,
-                    latitude REAL NOT NULL,
-                    longitude REAL NOT NULL,
-                    accuracy REAL NOT NULL,
-                    PRIMARY KEY (sensor_id, sensor_imei, sensor_imsi)
+            # Check if table exists and has the correct schema
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='sensor_map'"
+            )
+            table_exists = cursor.fetchone() is not None
+            
+            if table_exists:
+                # Check if schema has sensor_imei and sensor_imsi columns
+                cursor = conn.execute("PRAGMA table_info(sensor_map)")
+                columns = [row[1] for row in cursor.fetchall()]
+                
+                if 'sensor_imei' not in columns or 'sensor_imsi' not in columns:
+                    # Old schema detected - drop and recreate
+                    LOG.info("Old database schema detected. Dropping and recreating table with new schema...")
+                    conn.execute("DROP TABLE IF EXISTS sensor_map")
+                    conn.commit()
+                    table_exists = False
+            
+            if not table_exists:
+                # Unified-Identity: Create table with new schema supporting sensor_id, sensor_imei, and sensor_imsi
+                conn.execute(
+                    """
+                    CREATE TABLE sensor_map (
+                        sensor_id TEXT,
+                        sensor_imei TEXT,
+                        sensor_imsi TEXT,
+                        msisdn TEXT NOT NULL,
+                        latitude REAL NOT NULL,
+                        longitude REAL NOT NULL,
+                        accuracy REAL NOT NULL,
+                        PRIMARY KEY (sensor_id, sensor_imei, sensor_imsi)
+                    )
+                    """
                 )
-                """
-            )
-            # Create indexes for efficient lookups
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_sensor_id ON sensor_map(sensor_id)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_sensor_imei ON sensor_map(sensor_imei)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_sensor_imsi ON sensor_map(sensor_imsi)"
-            )
+                # Create indexes for efficient lookups (only when table is created)
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sensor_id ON sensor_map(sensor_id)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sensor_imei ON sensor_map(sensor_imei)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sensor_imsi ON sensor_map(sensor_imsi)"
+                )
+                conn.commit()
+            else:
+                # Table exists with correct schema - ensure indexes exist
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sensor_id ON sensor_map(sensor_id)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sensor_imei ON sensor_map(sensor_imei)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sensor_imsi ON sensor_map(sensor_imsi)"
+                )
+                conn.commit()
             # Use env vars if provided, otherwise defaults
             lat = _get_default_latitude()
             lon = _get_default_longitude()
@@ -305,7 +341,8 @@ class CamaraClient:
 
 def create_app(db_path: Path) -> Flask:
     app = Flask(__name__)
-    database = SensorDatabase(db_path)
+    # Recreate database if schema is outdated (checked inside SensorDatabase.__init__)
+    database = SensorDatabase(db_path, recreate_db=False)
     bypass_camara = _camara_bypass_enabled()
     # Only create CamaraClient if bypass is disabled AND auth is provided
     camara_client = None
