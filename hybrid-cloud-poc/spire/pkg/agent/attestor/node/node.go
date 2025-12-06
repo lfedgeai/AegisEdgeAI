@@ -22,6 +22,8 @@ import (
 	"github.com/spiffe/spire/pkg/agent/plugin/keymanager"
 	"github.com/spiffe/spire/pkg/agent/plugin/nodeattestor"
 	"github.com/spiffe/spire/pkg/agent/storage"
+	"github.com/spiffe/spire/pkg/agent/tpmplugin"
+	agentutil "github.com/spiffe/spire/pkg/agent/util"
 	"github.com/spiffe/spire/pkg/common/bundleutil"
 	"github.com/spiffe/spire/pkg/common/cryptoutil"
 	"github.com/spiffe/spire/pkg/common/fflag"
@@ -30,7 +32,6 @@ import (
 	telemetry_agent "github.com/spiffe/spire/pkg/common/telemetry/agent"
 	telemetry_common "github.com/spiffe/spire/pkg/common/telemetry/common"
 	"github.com/spiffe/spire/pkg/common/tlspolicy"
-	"github.com/spiffe/spire/pkg/common/util"
 	"github.com/spiffe/spire/pkg/common/x509util"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -237,9 +238,18 @@ func (a *attestor) newSVID(ctx context.Context, key keymanager.Key, bundle *spif
 	}
 	defer conn.Close()
 
-	csr, err := util.MakeCSRWithoutURISAN(key)
+	// Unified-Identity - Verification: Use TPM App Key for CSR when enabled
+	csr, signer, err := agentutil.MakeCSRForAttestation(key, a.c.Log)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("failed to generate CSR for attestation: %w", err)
+	}
+	
+	// Note: The signer used for CSR creation may be a TPM signer or regular key
+	// The certificate issued by the server will contain the public key from the CSR
+	// For mTLS, we use the TPM signer in GetAgentCertificate callback (already implemented)
+	// For State storage, we keep the regular key (TPM signer doesn't implement keymanager.Key)
+	if _, ok := signer.(*tpmplugin.TPMSigner); ok {
+		a.c.Log.Info("Unified-Identity - Verification: CSR created with TPM App Key, certificate will contain TPM App Key public key")
 	}
 
 	newSVID, reattestable, err := a.getSVID(ctx, conn, csr, a.c.NodeAttestor)
@@ -257,11 +267,19 @@ func (a *attestor) newSVID(ctx context.Context, key keymanager.Key, bundle *spif
 
 func (a *attestor) serverConn(bundle *spiffebundle.Bundle) (*grpc.ClientConn, error) {
 	if bundle != nil {
+		// Unified-Identity: Don't enable PreferPKCS1v15 for initial attestation connection
+		// The attestation connection uses regular TLS (not mTLS), so we don't need PKCS#1 v1.5
+		// PreferPKCS1v15 should only be enabled for mTLS connections where the agent presents
+		// a certificate signed with the TPM App Key
+		tlsPolicy := a.c.TLSPolicy
+		// Note: We intentionally do NOT set PreferPKCS1v15 here for attestation
+		// This allows the server certificate to use any compatible signature algorithm
+		
 		return client.NewServerGRPCClient(client.ServerClientConfig{
 			Address:     a.c.ServerAddress,
 			TrustDomain: a.c.TrustDomain,
 			GetBundle:   bundle.X509Authorities,
-			TLSPolicy:   a.c.TLSPolicy,
+			TLSPolicy:   tlsPolicy,
 		})
 	}
 

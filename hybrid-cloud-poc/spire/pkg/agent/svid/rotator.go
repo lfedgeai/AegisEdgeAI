@@ -15,6 +15,8 @@ import (
 	node_attestor "github.com/spiffe/spire/pkg/agent/attestor/node"
 	"github.com/spiffe/spire/pkg/agent/client"
 	"github.com/spiffe/spire/pkg/agent/plugin/keymanager"
+	"github.com/spiffe/spire/pkg/agent/tpmplugin"
+	agentutil "github.com/spiffe/spire/pkg/agent/util"
 	"github.com/spiffe/spire/pkg/common/backoff"
 	"github.com/spiffe/spire/pkg/common/nodeutil"
 	"github.com/spiffe/spire/pkg/common/rotationutil"
@@ -250,9 +252,18 @@ func (r *rotator) reattest(ctx context.Context) (err error) {
 		return err
 	}
 
-	csr, err := util.MakeCSRWithoutURISAN(key)
+	// Unified-Identity - Verification: Use TPM App Key for CSR when enabled
+	csr, signer, err := agentutil.MakeCSRForAttestation(key, r.c.Log)
 	if err != nil {
 		return err
+	}
+	
+	// Note: The signer used for CSR may be a TPM signer or regular key
+	// The certificate will contain the public key from the CSR
+	// For mTLS, we use the TPM signer in GetAgentCertificate callback
+	// For State storage, we keep the regular key
+	if _, ok := signer.(*tpmplugin.TPMSigner); ok {
+		r.c.Log.Info("Unified-Identity - Verification: Reattestation CSR created with TPM App Key")
 	}
 
 	conn, err := r.serverConn(bundle)
@@ -300,9 +311,18 @@ func (r *rotator) rotateSVID(ctx context.Context) (err error) {
 		return err
 	}
 
-	csr, err := util.MakeCSRWithoutURISAN(key)
+	// Unified-Identity - Verification: Use TPM App Key for CSR when enabled
+	csr, signer, err := agentutil.MakeCSRForAttestation(key, r.c.Log)
 	if err != nil {
 		return err
+	}
+	
+	// Note: The signer used for CSR may be a TPM signer or regular key
+	// The certificate will contain the public key from the CSR
+	// For mTLS, we use the TPM signer in GetAgentCertificate callback
+	// For State storage, we keep the regular key
+	if _, ok := signer.(*tpmplugin.TPMSigner); ok {
+		r.c.Log.Info("Unified-Identity - Verification: Rotation CSR created with TPM App Key")
 	}
 
 	svid, err := r.client.RenewSVID(ctx, csr)
@@ -363,11 +383,16 @@ func (r *rotator) generateKey(ctx context.Context) (keymanager.Key, error) {
 }
 
 func (r *rotator) serverConn(bundle *spiffebundle.Bundle) (*grpc.ClientConn, error) {
+	// Unified-Identity: Re-attestation uses standard TLS (no client cert), same as initial attestation
+	// This is different from mTLS used for workload SVID operations (fetchEntries, etc.)
+	// Re-attestation does NOT provide GetAgentCertificate, so NewServerGRPCClient uses TLSClientConfig (standard TLS)
+	// mTLS with TPM App Key is only used for persistent connections after attestation (workload SVID operations)
 	return client.NewServerGRPCClient(client.ServerClientConfig{
 		Address:     r.c.ServerAddr,
 		TrustDomain: r.c.TrustDomain,
 		GetBundle:   bundle.X509Authorities,
 		TLSPolicy:   r.c.TLSPolicy,
+		// Note: GetAgentCertificate is NOT provided here, so this uses standard TLS (not mTLS)
 	})
 }
 

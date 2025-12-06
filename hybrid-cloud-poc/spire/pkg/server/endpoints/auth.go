@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/andres-erbsen/clock"
+	"github.com/sirupsen/logrus"
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
@@ -71,11 +72,40 @@ func (e *Endpoints) serverSpiffeVerificationFunc(bundleSource x509bundle.Source)
 	)
 
 	return func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-		if rawCerts == nil {
+		if rawCerts == nil || len(rawCerts) == 0 {
+			// Client didn't provide a certificate (normal during initial attestation)
+			// This is standard TLS, not mTLS - no restrictions needed
 			return nil
 		}
 
-		return verifyPeerCertificate(rawCerts, nil)
+		// Unified-Identity: Client provided a certificate (mTLS connection)
+		// This happens AFTER initial attestation is complete
+		// For mTLS with TPM App Key, we need TLS 1.2 to support PKCS#1 v1.5 signatures.
+		// However, we can't modify the TLS config here (it's already established).
+		// The TLS version was negotiated during ClientHello, so if we're here with a client cert,
+		// it means mTLS is being used. The client should have limited to TLS 1.2 via PreferPKCS1v15.
+
+		// Log certificate details for debugging
+		if len(rawCerts) > 0 {
+			cert, err := x509.ParseCertificate(rawCerts[0])
+			if err == nil {
+				e.Log.WithFields(logrus.Fields{
+					"subject":      cert.Subject.String(),
+					"issuer":       cert.Issuer.String(),
+					"serial":       cert.SerialNumber.String(),
+					"sig_algorithm": cert.SignatureAlgorithm.String(),
+					"has_uris":     len(cert.URIs) > 0,
+				}).Debug("Unified-Identity - Verification: Verifying client certificate (mTLS)")
+			}
+		}
+
+		err := verifyPeerCertificate(rawCerts, nil)
+		if err != nil {
+			e.Log.WithError(err).WithFields(logrus.Fields{
+				"cert_count": len(rawCerts),
+			}).Warn("Unified-Identity - Verification: Client certificate verification failed")
+		}
+		return err
 	}
 }
 

@@ -539,6 +539,26 @@ func (c *client) release(conn *nodeConn) {
 }
 
 func (c *client) newServerGRPCClient() (*grpc.ClientConn, error) {
+	// Unified-Identity: Only apply TLS restrictions (PreferPKCS1v15) AFTER attestation is complete
+	// Initial attestation uses standard TLS (no client cert) and should have no restrictions
+	// mTLS with TPM App Key (after attestation) needs TLS 1.2 and PKCS#1 v1.5
+	
+	// Check if we have a certificate chain (after attestation)
+	chain, _, _ := c.c.KeysAndBundle()
+	hasCertChain := len(chain) > 0
+	
+	tlsPolicy := c.c.TLSPolicy
+	// Only enable PreferPKCS1v15 when we have a certificate chain (mTLS after attestation)
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) && c.tpmPlugin != nil && hasCertChain {
+		// We have a certificate chain, so this is mTLS (after attestation)
+		// Enable PreferPKCS1v15 to limit TLS to 1.2 and prefer PKCS#1 v1.5 signatures
+		tlsPolicy.PreferPKCS1v15 = true
+		c.c.Log.Info("Unified-Identity - Verification: Enabling PreferPKCS1v15 TLS policy for TPM App Key mTLS (after attestation)")
+	} else if !hasCertChain {
+		// No certificate chain yet - this is initial attestation (standard TLS, no restrictions)
+		c.c.Log.Debug("Unified-Identity - Verification: Initial attestation (no cert chain), using standard TLS without restrictions")
+	}
+
 	return NewServerGRPCClient(ServerClientConfig{
 		Address:     c.c.Addr,
 		TrustDomain: c.c.TrustDomain,
@@ -554,9 +574,34 @@ func (c *client) newServerGRPCClient() (*grpc.ClientConn, error) {
 			for _, cert := range chain {
 				agentCert.Certificate = append(agentCert.Certificate, cert.Raw)
 			}
+
+			// Unified-Identity - Verification: Use TPM App Key for mTLS signing when enabled
+			// Only use TPM App Key when we have a certificate chain (after attestation)
+			if fflag.IsSet(fflag.FlagUnifiedIdentity) && c.tpmPlugin != nil && len(chain) > 0 {
+				// Get App Key public key from TPM plugin
+				appKeyResult, err := c.tpmPlugin.GenerateAppKey(false)
+				if err != nil {
+					c.c.Log.WithError(err).Warn("Unified-Identity - Verification: Failed to get App Key, using regular key for mTLS")
+					return agentCert
+				}
+
+				if appKeyResult != nil && appKeyResult.AppKeyPublic != "" {
+					// Create TPM signer with App Key
+					tpmSigner, err := tpmplugin.NewTPMSigner(c.tpmPlugin, appKeyResult.AppKeyPublic, c.c.Log)
+					if err != nil {
+						c.c.Log.WithError(err).Warn("Unified-Identity - Verification: Failed to create TPM signer, using regular key for mTLS")
+						return agentCert
+					}
+
+					// Replace private key with TPM signer
+					agentCert.PrivateKey = tpmSigner
+					c.c.Log.Info("Unified-Identity - Verification: Using TPM App Key for mTLS signing")
+				}
+			}
+
 			return agentCert
 		},
-		TLSPolicy: c.c.TLSPolicy,
+		TLSPolicy: tlsPolicy,
 		dialOpts:  c.dialOpts,
 	})
 }

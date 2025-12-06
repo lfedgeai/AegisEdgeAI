@@ -123,32 +123,32 @@ func NewTPMPluginGateway(pluginPath, workDir, endpoint string, log logrus.FieldL
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification
-// GenerateAppKey generates a TPM App Key using the TPM plugin
-// Returns the public key (PEM) and context file path
+// GenerateAppKey gets the TPM App Key from the TPM plugin
+// The App Key is generated on TPM plugin server startup, so this just retrieves it
+// Returns the public key (PEM)
 func (g *TPMPluginGateway) GenerateAppKey(force bool) (*AppKeyResult, error) {
-	g.log.Info("Unified-Identity - Verification: Generating TPM App Key via plugin")
+	g.log.Info("Unified-Identity - Verification: Getting TPM App Key via plugin")
 	return g.generateAppKeyHTTP(force)
 }
 
-// generateAppKeyHTTP generates App Key via HTTP/UDS
+// generateAppKeyHTTP gets App Key via HTTP/UDS (App Key is generated on TPM plugin server startup)
 func (g *TPMPluginGateway) generateAppKeyHTTP(force bool) (*AppKeyResult, error) {
-	request := map[string]interface{}{
-		"work_dir": g.workDir,
-		"force":    force,
-	}
+	// Note: App Key is generated on TPM plugin server startup, so we just get it
+	// The 'force' parameter is ignored since the server manages key generation
+	request := map[string]interface{}{}
 
 	var result AppKeyResult
-	if err := g.httpRequest("POST", "/generate-app-key", request, &result); err != nil {
-		return nil, fmt.Errorf("failed to generate App Key via HTTP: %w", err)
+	if err := g.httpRequest("POST", "/get-app-key", request, &result); err != nil {
+		return nil, fmt.Errorf("failed to get App Key via HTTP: %w", err)
 	}
 
 	if result.Status != "success" {
-		return nil, fmt.Errorf("App Key generation failed: status=%s", result.Status)
+		return nil, fmt.Errorf("App Key retrieval failed: status=%s", result.Status)
 	}
 
 	g.log.WithFields(logrus.Fields{
 		"public_key_len": len(result.AppKeyPublic),
-	}).Info("Unified-Identity - Verification: TPM App Key generated successfully via HTTP/UDS")
+	}).Info("Unified-Identity - Verification: TPM App Key retrieved successfully via HTTP/UDS")
 
 	return &result, nil
 }
@@ -218,6 +218,97 @@ func (g *TPMPluginGateway) requestCertificateHTTP(appKeyPublic, endpoint, challe
 	g.log.WithField("cert_len", len(certBytes)).Info("Unified-Identity - Verification: App Key certificate received successfully via HTTP/UDS")
 
 	return certBytes, result.AgentUUID, nil
+}
+
+// Unified-Identity - Verification: Hardware Integration & Delegated Certification
+// SignData signs data using the TPM App Key via the TPM plugin
+// data: Data to sign (should be a digest when called from crypto.Signer.Sign())
+// Returns the signature bytes
+func (g *TPMPluginGateway) SignData(data []byte) ([]byte, error) {
+	return g.SignDataWithHash(data, "sha256", "rsassa", -1)
+}
+
+// SignDataWithHash signs data using the TPM App Key via the TPM plugin with a specific hash algorithm
+// data: Data to sign (should be a digest when called from crypto.Signer.Sign())
+// hashAlg: Hash algorithm to use (e.g., "sha256", "sha384", "sha512")
+// scheme: Signature scheme to use ("rsassa" for PKCS#1 v1.5, "rsapss" for RSA-PSS)
+// saltLength: Salt length for RSA-PSS (-1 for default, which is hash length)
+// Returns the signature bytes
+func (g *TPMPluginGateway) SignDataWithHash(data []byte, hashAlg string, scheme string, saltLength int) ([]byte, error) {
+	g.log.WithFields(logrus.Fields{
+		"hash_alg":    hashAlg,
+		"scheme":      scheme,
+		"salt_length": saltLength,
+	}).Debug("Unified-Identity - Verification: Signing data using TPM App Key via plugin")
+
+	request := map[string]interface{}{
+		"data":        base64.StdEncoding.EncodeToString(data),
+		"hash_alg":    hashAlg,
+		"is_digest":   true, // crypto.Signer.Sign() receives a digest, so we tell the plugin not to hash again
+		"scheme":      scheme,
+		"salt_length": saltLength,
+	}
+
+	var result struct {
+		Status    string `json:"status"`
+		Signature string `json:"signature"`
+	}
+
+	if err := g.httpRequest("POST", "/sign-data", request, &result); err != nil {
+		return nil, fmt.Errorf("failed to sign data via HTTP: %w", err)
+	}
+
+	if result.Status != "success" {
+		return nil, fmt.Errorf("signing failed: status=%s", result.Status)
+	}
+
+	// Decode base64 signature
+	signatureBytes, err := base64.StdEncoding.DecodeString(result.Signature)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 signature: %w", err)
+	}
+
+	g.log.WithField("signature_len", len(signatureBytes)).Debug("Unified-Identity - Verification: Data signed successfully via HTTP/UDS")
+
+	return signatureBytes, nil
+}
+
+// VerifySignature verifies a signature using the TPM App Key via the TPM plugin
+// data: Data that was signed (should be a digest when called from verification)
+// signature: Signature bytes to verify
+// hashAlg: Hash algorithm used (e.g., "sha256", "sha384", "sha512")
+// isDigest: If true, data is already a digest and should not be hashed again
+// Returns true if verification succeeds
+func (g *TPMPluginGateway) VerifySignature(data []byte, signature []byte, hashAlg string, isDigest bool) (bool, error) {
+	g.log.WithField("hash_alg", hashAlg).Debug("Unified-Identity - Verification: Verifying signature using TPM App Key via plugin")
+
+	request := map[string]interface{}{
+		"data":      base64.StdEncoding.EncodeToString(data),
+		"signature": base64.StdEncoding.EncodeToString(signature),
+		"hash_alg":  hashAlg,
+		"is_digest": isDigest,
+	}
+
+	var result struct {
+		Status  string `json:"status"`
+		Verified bool   `json:"verified,omitempty"`
+		Error   string `json:"error,omitempty"`
+	}
+
+	if err := g.httpRequest("POST", "/verify-signature", request, &result); err != nil {
+		return false, fmt.Errorf("failed to verify signature via HTTP: %w", err)
+	}
+
+	if result.Status != "success" {
+		return false, fmt.Errorf("verification failed: %s", result.Error)
+	}
+
+	if !result.Verified {
+		return false, fmt.Errorf("signature verification failed")
+	}
+
+	g.log.Debug("Unified-Identity - Verification: Signature verified successfully via HTTP/UDS")
+	return true, nil
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification

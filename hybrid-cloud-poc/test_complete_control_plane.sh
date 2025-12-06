@@ -249,7 +249,9 @@ start_mobile_sensor_microservice() {
     #echo "    Database: ${MOBILE_SENSOR_DB_PATH}"
     #echo "    Log file: ${MOBILE_SENSOR_LOG}"
     #echo "    CAMARA_BYPASS: ${CAMARA_BYPASS}"
-    nohup env MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB}" \
+    # Use setsid + nohup to ensure mobile sensor service continues running after script exits
+    # setsid creates a new session, preventing SIGHUP when parent shell exits
+    setsid nohup env MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB}" \
              CAMARA_BYPASS="${CAMARA_BYPASS}" \
              CAMARA_BASIC_AUTH="${CAMARA_BASIC_AUTH:-}" \
              MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE:-}" \
@@ -1498,8 +1500,9 @@ echo "    Config: ${KEYLIME_VERIFIER_CONFIG}"
 echo "    Work dir: ${KEYLIME_DIR}"
 # Ensure we're in the Keylime directory so relative paths work
 cd "${KEYLIME_DIR}"
-# Start verifier with explicit config - use nohup to ensure it stays running
-nohup python3 -m keylime.cmd.verifier > /tmp/keylime-verifier.log 2>&1 &
+# Start verifier with explicit config - use setsid + nohup to ensure it stays running
+# setsid creates a new session, preventing SIGHUP when parent shell exits
+setsid nohup python3 -m keylime.cmd.verifier > /tmp/keylime-verifier.log 2>&1 &
 KEYLIME_PID=$!
 disown $KEYLIME_PID 2>/dev/null || true
 echo $KEYLIME_PID > /tmp/keylime-verifier.pid
@@ -1628,8 +1631,9 @@ sleep 1
 # Start registrar in background
 echo "  Starting registrar on port 8890..."
 echo "    Database URL: ${KEYLIME_REGISTRAR_DATABASE_URL:-sqlite}"
-# Use nohup to ensure registrar continues running after script exits
-nohup python3 -m keylime.cmd.registrar > /tmp/keylime-registrar.log 2>&1 &
+# Use setsid + nohup to ensure registrar continues running after script exits
+# setsid creates a new session, preventing SIGHUP when parent shell exits
+setsid nohup python3 -m keylime.cmd.registrar > /tmp/keylime-registrar.log 2>&1 &
 REGISTRAR_PID=$!
 disown $REGISTRAR_PID 2>/dev/null || true
 echo $REGISTRAR_PID > /tmp/keylime-registrar.pid
@@ -1775,8 +1779,9 @@ if [ -f "${SERVER_CONFIG}" ]; then
     done
     
     echo "    Starting SPIRE Server (logs: /tmp/spire-server.log)..."
-    # Use nohup to ensure server continues running after script exits
-    nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
+    # Use setsid + nohup to ensure server continues running after script exits
+    # setsid creates a new session, preventing SIGHUP when parent shell exits
+    setsid nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
     SPIRE_SERVER_PID=$!
     disown $SPIRE_SERVER_PID 2>/dev/null || true
     echo $SPIRE_SERVER_PID > /tmp/spire-server.pid
@@ -1887,15 +1892,16 @@ if false; then
     fi
     echo "    TPM_PLUGIN_ENDPOINT=${TPM_PLUGIN_ENDPOINT}"
     echo "    UNIFIED_IDENTITY_ENABLED=${UNIFIED_IDENTITY_ENABLED}"
-    # Use nohup to ensure agent continues running after script exits
+    # Use setsid + nohup to ensure agent continues running after script exits
+    # setsid creates a new session, preventing SIGHUP when parent shell exits
     # Unified-Identity: No join token needed - agent uses TPM-based proof of residency
     if [ "${UNIFIED_IDENTITY_ENABLED}" = "true" ]; then
         echo "    Using TPM-based proof of residency (unified_identity node attestor)"
-        nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
+        setsid nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
     elif [ -n "$JOIN_TOKEN" ]; then
-        nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
+        setsid nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
     else
-        nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
+        setsid nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
     fi
     SPIRE_AGENT_PID=$!
     disown $SPIRE_AGENT_PID 2>/dev/null || true

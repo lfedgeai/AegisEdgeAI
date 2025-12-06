@@ -1599,8 +1599,9 @@ else
     if [ -n "${TCTI:-}" ]; then
         export TCTI
     fi
-    # Use nohup to ensure agent continues running after script exits
-    nohup env RUST_LOG=keylime=debug,keylime_agent=debug UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
+    # Use setsid + nohup to ensure agent continues running after script exits
+    # setsid creates a new session, preventing SIGHUP when parent shell exits
+    setsid nohup env RUST_LOG=keylime=debug,keylime_agent=debug UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
     RUST_AGENT_PID=$!
     disown $RUST_AGENT_PID 2>/dev/null || true
     RUST_AGENT_PID=$!
@@ -1932,8 +1933,9 @@ echo "  Setting TPM_PLUGIN_ENDPOINT=${TPM_PLUGIN_ENDPOINT}"
 # Start TPM Plugin Server
 echo "  Starting TPM Plugin Server on UDS: ${TPM_PLUGIN_SOCKET}..."
 export UNIFIED_IDENTITY_ENABLED=true
-# Use nohup to ensure TPM Plugin Server continues running after script exits
-nohup python3 "$TPM_PLUGIN_SERVER" \
+# Use setsid + nohup to ensure TPM Plugin Server continues running after script exits
+# setsid creates a new session, preventing SIGHUP when parent shell exits
+setsid nohup python3 "$TPM_PLUGIN_SERVER" \
     --socket-path "${TPM_PLUGIN_SOCKET}" \
     --work-dir /tmp/spire-data/tpm-plugin \
     > /tmp/tpm-plugin-server.log 2>&1 &
@@ -2213,15 +2215,16 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     
     echo "    TPM_PLUGIN_ENDPOINT=${TPM_PLUGIN_ENDPOINT}"
     echo "    UNIFIED_IDENTITY_ENABLED=${UNIFIED_IDENTITY_ENABLED}"
-    # Use nohup to ensure agent continues running after script exits
+    # Use setsid + nohup to ensure agent continues running after script exits
+    # setsid creates a new session, preventing SIGHUP when parent shell exits
     # Unified-Identity: No join token needed - agent uses TPM-based proof of residency
     if [ "${UNIFIED_IDENTITY_ENABLED}" = "true" ]; then
         echo "    Using TPM-based proof of residency (unified_identity node attestor)"
-        nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
+        setsid nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
     elif [ -n "$JOIN_TOKEN" ]; then
-        nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
+        setsid nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
     else
-        nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
+        setsid nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
     fi
     SPIRE_AGENT_PID=$!
     disown $SPIRE_AGENT_PID 2>/dev/null || true
@@ -2772,7 +2775,8 @@ COMPONENTS_OK=true
     if ! "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
         echo -e "${YELLOW}  ⚠ SPIRE Server not running, starting it...${NC}"
         SERVER_CONFIG="${PROJECT_DIR}/python-app-demo/spire-server.conf"
-        nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
+        # Use setsid to create new session, preventing SIGHUP when parent shell exits
+        setsid nohup "${SPIRE_SERVER}" run -config "${SERVER_CONFIG}" > /tmp/spire-server.log 2>&1 &
         SPIRE_SERVER_PID=$!
         disown $SPIRE_SERVER_PID 2>/dev/null || true
         echo $SPIRE_SERVER_PID > /tmp/spire-server.pid
@@ -2795,7 +2799,8 @@ COMPONENTS_OK=true
         if [ -f "$TPM_PLUGIN_SERVER" ]; then
             mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
             export UNIFIED_IDENTITY_ENABLED=true
-            nohup python3 "$TPM_PLUGIN_SERVER" \
+            # Use setsid to create new session, preventing SIGHUP when parent shell exits
+            setsid nohup python3 "$TPM_PLUGIN_SERVER" \
                 --socket-path "$TPM_PLUGIN_SOCKET" \
                 --work-dir /tmp/spire-data/tpm-plugin \
                 > /tmp/tpm-plugin-server.log 2>&1 &
@@ -2856,13 +2861,15 @@ COMPONENTS_OK=true
         rm -f /tmp/spire-agent.log
         if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
             echo "    Starting SPIRE Agent with TPM-based proof of residency (unified_identity)..."
-            nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
+            # Use setsid to create new session, preventing SIGHUP when parent shell exits
+            setsid nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" > /tmp/spire-agent.log 2>&1 &
             SPIRE_AGENT_PID=$!
             disown $SPIRE_AGENT_PID 2>/dev/null || true
             echo $SPIRE_AGENT_PID > /tmp/spire-agent.pid
         elif [ -n "$JOIN_TOKEN" ]; then
             echo "    Starting SPIRE Agent with join token..."
-            nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" \
+            # Use setsid to create new session, preventing SIGHUP when parent shell exits
+            setsid nohup "${SPIRE_AGENT}" run -config "${AGENT_CONFIG}" \
                 -joinToken "$JOIN_TOKEN" > /tmp/spire-agent.log 2>&1 &
             SPIRE_AGENT_PID=$!
             disown $SPIRE_AGENT_PID 2>/dev/null || true

@@ -73,6 +73,10 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             self.handle_get_app_key(request_data)
         elif path == "/request-certificate":
             self.handle_request_certificate(request_data)
+        elif path == "/sign-data":
+            self.handle_sign_data(request_data)
+        elif path == "/verify-signature":
+            self.handle_verify_signature(request_data)
         else:
             self.send_error(404, f"Unknown endpoint: {path}")
     
@@ -149,6 +153,105 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             self.send_json_response(200, response)
         except Exception as e:
             logger.error("Unified-Identity - Verification: Error requesting certificate: %s", e)
+            self.send_error(500, f"Internal error: {e}")
+    
+    def handle_sign_data(self, request_data: dict):
+        """Handle /sign-data endpoint - signs data using TPM App Key"""
+        try:
+            import base64
+            
+            data_b64 = request_data.get("data")
+            hash_alg = request_data.get("hash_alg", "sha256")
+            is_digest = request_data.get("is_digest", False)  # Default to False for backward compatibility
+            scheme = request_data.get("scheme", "rsassa")  # "rsassa" (PKCS#1 v1.5) or "rsapss" (RSA-PSS)
+            salt_length = request_data.get("salt_length", -1)  # Salt length for RSA-PSS (-1 for default)
+            
+            if not data_b64:
+                self.send_error(400, "Unified-Identity - Verification: data is required")
+                return
+            
+            # Decode base64 data
+            try:
+                data = base64.b64decode(data_b64)
+            except Exception as e:
+                self.send_error(400, f"Unified-Identity - Verification: Invalid base64 data: {e}")
+                return
+            
+            plugin = self.plugin
+            if plugin is None:
+                self.send_error(500, "Unified-Identity - Verification: Plugin not initialized")
+                return
+            
+            # Sign the data using TPM App Key with the specified scheme
+            success, signature_bytes, error = plugin.sign_data(data, hash_alg, is_digest, scheme, salt_length)
+            
+            if not success:
+                self.send_error(500, f"Unified-Identity - Verification: Failed to sign data: {error}")
+                return
+            
+            # Encode signature as base64
+            signature_b64 = base64.b64encode(signature_bytes).decode('utf-8')
+            
+            response = {
+                "status": "success",
+                "signature": signature_b64
+            }
+            
+            self.send_json_response(200, response)
+        except Exception as e:
+            logger.error("Unified-Identity - Verification: Error signing data: %s", e)
+            self.send_error(500, f"Internal error: {e}")
+    
+    def handle_verify_signature(self, request_data: dict):
+        """Handle /verify-signature endpoint - verifies signature using TPM App Key"""
+        try:
+            import base64
+
+            data_b64 = request_data.get("data")
+            signature_b64 = request_data.get("signature")
+            hash_alg = request_data.get("hash_alg", "sha256")
+            is_digest = request_data.get("is_digest", False)
+
+            if not data_b64:
+                self.send_error(400, "Unified-Identity - Verification: data is required")
+                return
+
+            if not signature_b64:
+                self.send_error(400, "Unified-Identity - Verification: signature is required")
+                return
+
+            # Decode base64 data and signature
+            try:
+                data = base64.b64decode(data_b64)
+                signature = base64.b64decode(signature_b64)
+            except Exception as e:
+                self.send_error(400, f"Unified-Identity - Verification: Invalid base64 data: {e}")
+                return
+
+            plugin = self.plugin
+            if plugin is None:
+                self.send_error(500, "Unified-Identity - Verification: Plugin not initialized")
+                return
+
+            # Verify the signature using TPM App Key
+            success, error = plugin.verify_signature(data, signature, hash_alg, is_digest)
+
+            if not success:
+                response = {
+                    "status": "error",
+                    "error": error or "Verification failed"
+                }
+                self.send_json_response(200, response)  # 200 because verification failed, not HTTP error
+                return
+
+            response = {
+                "status": "success",
+                "verified": True
+            }
+
+            self.send_json_response(200, response)
+        except Exception as e:
+            logger.error("Unified-Identity - Verification: Error verifying signature: %s", e)
             self.send_error(500, f"Internal error: {e}")
     
     def send_json_response(self, status_code: int, data: dict):

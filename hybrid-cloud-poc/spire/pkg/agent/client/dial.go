@@ -59,6 +59,13 @@ func NewServerGRPCClient(config ServerClientConfig) (*grpc.ClientConn, error) {
 		tlsConfig = tlsconfig.MTLSClientConfig(newX509SVIDSource(config.GetAgentCertificate), bundleSource, authorizer)
 	}
 
+	// Log TLS configuration before applying policy
+	authorities := config.GetBundle()
+	if len(authorities) == 0 {
+		// This is a problem - empty bundle means we can't verify server certificate
+		return nil, fmt.Errorf("cannot create TLS client: bundle is empty (no X509 authorities) for trust domain %q", config.TrustDomain)
+	}
+
 	err = tlspolicy.ApplyPolicy(tlsConfig, config.TLSPolicy)
 	if err != nil {
 		return nil, err
@@ -91,8 +98,20 @@ func newBundleSource(td spiffeid.TrustDomain, getter func() []*x509.Certificate)
 }
 
 func (s *bundleSource) GetX509BundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*x509bundle.Bundle, error) {
-	bundle := x509bundle.FromX509Authorities(s.td, s.getter())
-	return bundle.GetX509BundleForTrustDomain(trustDomain)
+	authorities := s.getter()
+	if len(authorities) == 0 {
+		// Empty bundle means we can't verify server certificate
+		// This should not happen during normal operation - the bundle should be loaded
+		// before attempting to connect to the server
+		return nil, fmt.Errorf("no X509 authorities in bundle for trust domain %q - cannot verify server certificate", trustDomain)
+	}
+	
+	bundle := x509bundle.FromX509Authorities(s.td, authorities)
+	result, err := bundle.GetX509BundleForTrustDomain(trustDomain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get bundle for trust domain %q: %w (bundle has %d authorities)", trustDomain, err, len(authorities))
+	}
+	return result, nil
 }
 
 type x509SVIDSource struct {

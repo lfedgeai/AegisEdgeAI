@@ -219,7 +219,9 @@ main() {
     echo -e "${GREEN}Control Plane Services Ready!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    if [ -t 0 ]; then
+    if [ "$NO_PAUSE" = "true" ]; then
+        echo "  (--no-pause: continuing automatically...)"
+    elif [ -t 0 ]; then
         read -p "Press Enter to continue to on-prem setup..."
     else
         echo "  (Non-interactive mode - continuing automatically in 3 seconds...)"
@@ -253,7 +255,9 @@ main() {
     echo -e "${GREEN}On-Prem Services Ready!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    if [ -t 0 ]; then
+    if [ "$NO_PAUSE" = "true" ]; then
+        echo "  (--no-pause: continuing automatically...)"
+    elif [ -t 0 ]; then
         read -p "Press Enter to continue to complete integration test..."
     else
         echo "  (Non-interactive mode - continuing automatically in 3 seconds...)"
@@ -282,6 +286,28 @@ main() {
     echo "  On-Prem: ssh ${SSH_USER}@${ONPREM_HOST} 'tail -f /opt/envoy/logs/envoy.log'"
     echo ""
 }
+
+# Parse command-line arguments
+NO_PAUSE=false
+for arg in "$@"; do
+    case $arg in
+        --no-pause)
+            NO_PAUSE=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--no-pause]"
+            echo ""
+            echo "Options:"
+            echo "  --no-pause    Skip all pause prompts and continue automatically"
+            echo "  --help, -h    Show this help message"
+            exit 0
+            ;;
+        *)
+            # Unknown option, pass through
+            ;;
+    esac
+done
 
 # Run main function
 main "$@"
