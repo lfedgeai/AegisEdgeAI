@@ -538,6 +538,36 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
     if [ -d ".venv" ] && [ -f "service.py" ]; then
         source .venv/bin/activate
+        
+        # Clean up existing database - service will create fresh one on startup with IMEI/IMSI values
+        MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB:-sensor_mapping.db}"
+        # Check common database locations and delete if found
+        DB_PATHS=(
+            "$MOBILE_SENSOR_DB"
+            "/tmp/mobile-sensor-service/sensor_mapping.db"
+            "$REPO_ROOT/mobile-sensor-microservice/sensor_mapping.db"
+            "$(pwd)/sensor_mapping.db"
+        )
+        DB_DELETED=false
+        for db_path in "${DB_PATHS[@]}"; do
+            if [ -f "$db_path" ]; then
+                printf '  Cleaning up existing database: %s\n' "$db_path"
+                rm -f "$db_path" 2>/dev/null && DB_DELETED=true
+            fi
+        done
+        # Also check and clean mobile-sensor-service directory
+        if [ -d "/tmp/mobile-sensor-service" ]; then
+            if [ -f "/tmp/mobile-sensor-service/sensor_mapping.db" ]; then
+                printf '  Cleaning up existing database: /tmp/mobile-sensor-service/sensor_mapping.db\n'
+                rm -f /tmp/mobile-sensor-service/sensor_mapping.db 2>/dev/null && DB_DELETED=true
+            fi
+        fi
+        if [ "$DB_DELETED" = true ]; then
+            printf '  [OK] Database cleaned up - service will create fresh database on startup\n'
+        else
+            printf '  [INFO] No existing database found - service will create new one on startup\n'
+        fi
+        
         # Default to bypass mode (can be overridden by setting CAMARA_BYPASS=false and providing CAMARA_BASIC_AUTH)
         export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
         if [ -n "$CAMARA_BASIC_AUTH" ] && [ "$CAMARA_BYPASS" != "true" ]; then

@@ -154,23 +154,67 @@ class SensorDatabase:
             acc = _get_default_accuracy()
             sensor_imei = _get_default_sensor_imei()
             sensor_imsi = _get_default_sensor_imsi()
-            # Use INSERT OR REPLACE to update coordinates if they change via env vars
-            # Unified-Identity: Insert with sensor_id, sensor_imei, and sensor_imsi
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO sensor_map(sensor_id, sensor_imei, sensor_imsi, msisdn, latitude, longitude, accuracy)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    DEFAULT_SENSOR_ID,
-                    sensor_imei,  # sensor_imei
-                    sensor_imsi,  # sensor_imsi
-                    DEFAULT_MSISDN,
-                    lat,
-                    lon,
-                    acc,
-                ),
+            
+            # Check if a row exists with this sensor_id and NULL IMEI/IMSI (old schema)
+            cursor = conn.execute(
+                "SELECT sensor_id FROM sensor_map WHERE sensor_id = ? AND (sensor_imei IS NULL OR sensor_imsi IS NULL)",
+                (DEFAULT_SENSOR_ID,)
             )
+            old_row = cursor.fetchone()
+            
+            # Check if a row exists with this sensor_id and the new IMEI/IMSI values
+            cursor = conn.execute(
+                "SELECT sensor_id FROM sensor_map WHERE sensor_id = ? AND sensor_imei = ? AND sensor_imsi = ?",
+                (DEFAULT_SENSOR_ID, sensor_imei, sensor_imsi)
+            )
+            new_row = cursor.fetchone()
+            
+            if old_row and not new_row:
+                # Delete old row with NULL IMEI/IMSI and insert new one
+                LOG.info("Migrating database: removing old row with NULL IMEI/IMSI and inserting new row with IMEI/IMSI")
+                conn.execute(
+                    "DELETE FROM sensor_map WHERE sensor_id = ? AND (sensor_imei IS NULL OR sensor_imsi IS NULL)",
+                    (DEFAULT_SENSOR_ID,)
+                )
+            
+            if not new_row:
+                # Insert new row with sensor_id, sensor_imei, and sensor_imsi
+                conn.execute(
+                    """
+                    INSERT INTO sensor_map(sensor_id, sensor_imei, sensor_imsi, msisdn, latitude, longitude, accuracy)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        DEFAULT_SENSOR_ID,
+                        sensor_imei,
+                        sensor_imsi,
+                        DEFAULT_MSISDN,
+                        lat,
+                        lon,
+                        acc,
+                    ),
+                )
+            else:
+                # Update existing row with new coordinates (IMEI/IMSI already correct)
+                conn.execute(
+                    """
+                    UPDATE sensor_map 
+                    SET msisdn = ?,
+                        latitude = ?,
+                        longitude = ?,
+                        accuracy = ?
+                    WHERE sensor_id = ? AND sensor_imei = ? AND sensor_imsi = ?
+                    """,
+                    (
+                        DEFAULT_MSISDN,
+                        lat,
+                        lon,
+                        acc,
+                        DEFAULT_SENSOR_ID,
+                        sensor_imei,
+                        sensor_imsi,
+                    ),
+                )
             conn.commit()
             LOG.info(
                 "Mobile sensor database initialized with sensor_id=%s, sensor_imei=%s, sensor_imsi=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
