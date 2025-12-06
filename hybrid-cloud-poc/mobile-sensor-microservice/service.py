@@ -11,6 +11,8 @@ import logging
 import os
 import sqlite3
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -21,6 +23,8 @@ LOG = logging.getLogger("mobile_sensor_service")
 
 DEFAULT_SCOPE = "dpv:FraudPreventionAndDetection#device-location-read"
 DEFAULT_SENSOR_ID = "12d1:1433"
+DEFAULT_SENSOR_IMEI = "356345043865103"
+DEFAULT_SENSOR_IMSI = "214070610960475"
 DEFAULT_MSISDN = "+34696810912"
 DEFAULT_LATITUDE = 40.33
 DEFAULT_LONGITUDE = -3.7707
@@ -49,6 +53,18 @@ def _get_default_accuracy() -> float:
         return float(os.getenv("MOBILE_SENSOR_ACCURACY", str(DEFAULT_ACCURACY)))
     except (ValueError, TypeError):
         return DEFAULT_ACCURACY
+
+
+def _get_default_sensor_imei() -> Optional[str]:
+    """Get default sensor IMEI from env var or use default."""
+    imei = os.getenv("MOBILE_SENSOR_IMEI", DEFAULT_SENSOR_IMEI)
+    return imei if imei else None
+
+
+def _get_default_sensor_imsi() -> Optional[str]:
+    """Get default sensor IMSI from env var or use default."""
+    imsi = os.getenv("MOBILE_SENSOR_IMSI", DEFAULT_SENSOR_IMSI)
+    return imsi if imsi else None
 CAMARA_BASE = os.getenv(
     "CAMARA_BASE_URL", "https://sandbox.opengateway.telefonica.com/apigateway"
 )
@@ -136,8 +152,10 @@ class SensorDatabase:
             lat = _get_default_latitude()
             lon = _get_default_longitude()
             acc = _get_default_accuracy()
+            sensor_imei = _get_default_sensor_imei()
+            sensor_imsi = _get_default_sensor_imsi()
             # Use INSERT OR REPLACE to update coordinates if they change via env vars
-            # Unified-Identity: Insert with sensor_id only (sensor_imei and sensor_imsi are NULL for backward compatibility)
+            # Unified-Identity: Insert with sensor_id, sensor_imei, and sensor_imsi
             conn.execute(
                 """
                 INSERT OR REPLACE INTO sensor_map(sensor_id, sensor_imei, sensor_imsi, msisdn, latitude, longitude, accuracy)
@@ -145,8 +163,8 @@ class SensorDatabase:
                 """,
                 (
                     DEFAULT_SENSOR_ID,
-                    None,  # sensor_imei
-                    None,  # sensor_imsi
+                    sensor_imei,  # sensor_imei
+                    sensor_imsi,  # sensor_imsi
                     DEFAULT_MSISDN,
                     lat,
                     lon,
@@ -155,8 +173,10 @@ class SensorDatabase:
             )
             conn.commit()
             LOG.info(
-                "Mobile sensor database initialized with sensor_id=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
+                "Mobile sensor database initialized with sensor_id=%s, sensor_imei=%s, sensor_imsi=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
                 DEFAULT_SENSOR_ID,
+                sensor_imei or "none",
+                sensor_imsi or "none",
                 lat,
                 lon,
                 acc,
@@ -224,11 +244,16 @@ class SensorDatabase:
 class CamaraClient:
     """Encapsulates CAMARA API calls."""
 
-    def __init__(self, basic_auth: str, scope: str = DEFAULT_SCOPE):
+    def __init__(self, basic_auth: str, scope: str = DEFAULT_SCOPE, auth_req_id: Optional[str] = None):
         if not basic_auth:
             raise ValueError("CAMARA_BASIC_AUTH environment variable is required")
         self.basic_auth = basic_auth
         self.scope = scope
+        self.auth_req_id = auth_req_id  # Pre-obtained auth_req_id (optional)
+        # Token caching (thread-safe)
+        self._access_token: Optional[str] = None
+        self._token_expires_at: Optional[float] = None  # Unix timestamp
+        self._token_lock = threading.Lock()  # Lock for thread-safe token access
 
     def _headers(self, content_type: str) -> dict:
         return {
@@ -245,6 +270,11 @@ class CamaraClient:
         }
 
     def authorize(self, msisdn: str) -> str:
+        # If auth_req_id was pre-obtained, reuse it instead of calling the API
+        if self.auth_req_id:
+            LOG.info("Using pre-obtained auth_req_id (skipping /bc-authorize API call)")
+            return self.auth_req_id
+        
         payload = {
             "login_hint": f"tel:{msisdn}",
             "scope": self.scope,
@@ -282,6 +312,7 @@ class CamaraClient:
         return auth_req_id
 
     def request_access_token(self, auth_req_id: str) -> str:
+        """Request a new access token and cache it with expiration."""
         payload = {
             "grant_type": "urn:openid:params:grant-type:ciba",
             "auth_req_id": auth_req_id,
@@ -297,7 +328,70 @@ class CamaraClient:
         token = data.get("access_token")
         if not token:
             raise RuntimeError("Missing access_token in token response")
+        
+        # Extract expiration time with validation
+        expires_at = None
+        try:
+            if "expires_in" in data:
+                # expires_in is in seconds from now
+                expires_in = int(data.get("expires_in", 3600))
+                if expires_in <= 0:
+                    LOG.warning("Invalid expires_in value (%d), defaulting to 1 hour", expires_in)
+                    expires_in = 3600
+                expires_at = time.time() + expires_in
+            elif "expires_at" in data:
+                # expires_at is a Unix timestamp
+                expires_at = float(data.get("expires_at"))
+                if expires_at <= time.time():
+                    LOG.warning("expires_at is in the past, defaulting to 1 hour from now")
+                    expires_at = time.time() + 3600
+            else:
+                # Default to 1 hour if no expiration info provided
+                LOG.warning("No expiration info in token response, defaulting to 1 hour")
+                expires_at = time.time() + 3600
+        except (ValueError, TypeError) as exc:
+            LOG.warning("Error parsing expiration info: %s, defaulting to 1 hour", exc)
+            expires_at = time.time() + 3600
+        
+        # Cache the token and expiration
+        self._access_token = token
+        self._token_expires_at = expires_at
+        
+        LOG.debug(
+            "Access token obtained and cached (expires at: %s)",
+            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(expires_at)) if expires_at else "unknown"
+        )
+        
         return token
+    
+    def get_access_token(self, msisdn: Optional[str] = None) -> str:
+        """
+        Get a valid access token, reusing cached token if still valid,
+        or obtaining a new one if expired or missing.
+        Thread-safe implementation to prevent race conditions.
+        
+        Args:
+            msisdn: Optional MSISDN (not used, kept for API compatibility)
+        """
+        current_time = time.time()
+        
+        # Thread-safe check and refresh
+        with self._token_lock:
+            # Check if we have a valid cached token
+            if self._access_token and self._token_expires_at:
+                # Add 60 second buffer to avoid using tokens that expire very soon
+                if current_time < (self._token_expires_at - 60):
+                    LOG.debug("Reusing cached access token (expires in %d seconds)", int(self._token_expires_at - current_time))
+                    return self._access_token
+                else:
+                    LOG.info("Cached access token expired or expiring soon, obtaining new token")
+            
+            # Need to get a new token
+            if not self.auth_req_id:
+                raise RuntimeError("Cannot get access token: auth_req_id is not available")
+            
+            # Request new token (this will update the cache)
+            return self.request_access_token(self.auth_req_id)
 
     def verify_location(
         self,
@@ -329,6 +423,13 @@ class CamaraClient:
             json=payload,
             timeout=30,
         )
+        
+        # If we get 401 Unauthorized, the token might be expired - invalidate cache
+        if resp.status_code == 401:
+            LOG.warning("Received 401 Unauthorized - token may be expired, invalidating cache")
+            self._access_token = None
+            self._token_expires_at = None
+        
         resp.raise_for_status()
         data = resp.json()
         result = bool(data.get("verificationResult"))
@@ -349,7 +450,60 @@ def create_app(db_path: Path) -> Flask:
     if not bypass_camara:
         camara_auth = os.getenv("CAMARA_BASIC_AUTH", "")
         if camara_auth:
-            camara_client = CamaraClient(camara_auth)
+            # Check if auth_req_id was pre-obtained (e.g., from environment variable)
+            pre_obtained_auth_req_id = os.getenv("CAMARA_AUTH_REQ_ID", "")
+            
+            # If not pre-obtained, call /bc-authorize during service initialization with retries
+            if not pre_obtained_auth_req_id:
+                LOG.info("Obtaining auth_req_id from CAMARA /bc-authorize API during service initialization...")
+                max_retries = 3
+                retry_delay = 1  # Start with 1 second
+                initialization_success = False
+                
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        temp_client = CamaraClient(camara_auth)
+                        # Use default MSISDN for initialization
+                        pre_obtained_auth_req_id = temp_client.authorize(DEFAULT_MSISDN)
+                        LOG.info(
+                            "Successfully obtained auth_req_id during initialization (attempt %d/%d) - "
+                            "will be reused for all requests",
+                            attempt,
+                            max_retries
+                        )
+                        initialization_success = True
+                        break  # Success, exit retry loop
+                    except Exception as exc:
+                        if attempt < max_retries:
+                            LOG.warning(
+                                "Failed to obtain auth_req_id during initialization (attempt %d/%d): %s. "
+                                "Retrying in %d seconds...",
+                                attempt,
+                                max_retries,
+                                exc,
+                                retry_delay
+                            )
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff: 1s, 2s, 4s
+                        else:
+                            # All retries exhausted
+                            LOG.error(
+                                "Failed to obtain auth_req_id after %d attempts: %s. "
+                                "CAMARA verification will not work. Enabling bypass mode.",
+                                max_retries,
+                                exc
+                            )
+                            # Enable bypass mode since we can't get auth_req_id
+                            bypass_camara = True
+                            camara_client = None
+                            pre_obtained_auth_req_id = None
+                
+                # Create camara_client only if initialization succeeded
+                if initialization_success and pre_obtained_auth_req_id:
+                    camara_client = CamaraClient(camara_auth, auth_req_id=pre_obtained_auth_req_id)
+            else:
+                LOG.info("Using pre-obtained CAMARA_AUTH_REQ_ID from environment (will skip /bc-authorize calls)")
+                camara_client = CamaraClient(camara_auth, auth_req_id=pre_obtained_auth_req_id)
         else:
             # If bypass is not explicitly enabled but no auth provided, enable bypass as fallback
             LOG.warning("CAMARA_BASIC_AUTH not set and CAMARA_BYPASS not enabled. Enabling bypass mode as fallback.")
@@ -458,22 +612,25 @@ def create_app(db_path: Path) -> Flask:
                 LOG.info("Starting CAMARA API flow for sensor_id=%s", sensor_id)
                 LOG.info("Step 1: Calling CAMARA authorize API...")
             try:
+                # Get auth_req_id (will reuse cached if available)
                 auth_req_id = camara_client.authorize(msisdn)  # type: ignore[union-attr]
                 if is_healthcheck:
                     LOG.info("Health-check: Step 1: Received auth_req_id (length=%d)", len(auth_req_id) if auth_req_id else 0)
-                    LOG.info("Health-check: Step 2: Calling CAMARA token API...")
+                    LOG.info("Health-check: Step 2: Getting access token (will reuse if valid)...")
                 else:
                     LOG.info("Step 1: Received auth_req_id=%s", auth_req_id)
-                    LOG.info("Step 2: Calling CAMARA token API...")
-                access_token = camara_client.request_access_token(auth_req_id)  # type: ignore[union-attr]
+                    LOG.info("Step 2: Getting access token (will reuse if valid)...")
+                
+                # Get access token (will reuse cached token if still valid)
+                access_token = camara_client.get_access_token()  # type: ignore[union-attr]
                 if is_healthcheck:
                     LOG.info(
-                        "Health-check: Step 2: Received access_token (length=%d)",
+                        "Health-check: Step 2: Got access_token (length=%d)",
                         len(access_token) if access_token else 0,
                     )
                     LOG.info("Health-check: Step 3: Calling CAMARA location verify API (readiness probe)")
                 else:
-                    LOG.info("Step 2: Received access_token (length=%d)", len(access_token) if access_token else 0)
+                    LOG.info("Step 2: Got access_token (length=%d)", len(access_token) if access_token else 0)
                     LOG.info(
                         "Step 3: Calling CAMARA location verify API with msisdn=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
                         msisdn,
@@ -481,9 +638,28 @@ def create_app(db_path: Path) -> Flask:
                         longitude,
                         accuracy,
                     )
-                verification_result = camara_client.verify_location(  # type: ignore[union-attr]
-                    msisdn, latitude, longitude, accuracy, access_token, log_context=log_context
-                )
+                
+                # Try verification - if it fails with 401, retry with a fresh token
+                try:
+                    verification_result = camara_client.verify_location(  # type: ignore[union-attr]
+                        msisdn, latitude, longitude, accuracy, access_token, log_context=log_context
+                    )
+                except requests.HTTPError as http_err:
+                    # If we get 401, the token might have expired - get a fresh one and retry (max 1 retry)
+                    if hasattr(http_err, 'response') and http_err.response is not None and http_err.response.status_code == 401:
+                        LOG.warning("Verification failed with 401 - token may have expired, getting fresh token and retrying once...")
+                        try:
+                            access_token = camara_client.get_access_token()  # type: ignore[union-attr]
+                            verification_result = camara_client.verify_location(  # type: ignore[union-attr]
+                                msisdn, latitude, longitude, accuracy, access_token, log_context=log_context
+                            )
+                        except requests.HTTPError as retry_err:
+                            # If retry also fails with 401, log error and re-raise
+                            if hasattr(retry_err, 'response') and retry_err.response is not None and retry_err.response.status_code == 401:
+                                LOG.error("Verification failed with 401 even after token refresh - authentication may be invalid")
+                            raise
+                    else:
+                        raise
                 if is_healthcheck:
                     LOG.info("Health-check: Step 3: CAMARA verification result=%s", verification_result)
                 else:
@@ -576,6 +752,8 @@ def run_server(socket_path: Optional[str], host: str, port: int) -> None:
     lat = _get_default_latitude()
     lon = _get_default_longitude()
     acc = _get_default_accuracy()
+    sensor_imei = _get_default_sensor_imei()
+    sensor_imsi = _get_default_sensor_imsi()
     bypass = _camara_bypass_enabled()
     
     LOG.info("=" * 70)
@@ -583,6 +761,8 @@ def run_server(socket_path: Optional[str], host: str, port: int) -> None:
     LOG.info("=" * 70)
     LOG.info("Database: %s", db_path)
     LOG.info("Default sensor_id: %s", DEFAULT_SENSOR_ID)
+    LOG.info("Default sensor_imei: %s (from env: %s)", sensor_imei or "none", "MOBILE_SENSOR_IMEI" if os.getenv("MOBILE_SENSOR_IMEI") else "default")
+    LOG.info("Default sensor_imsi: %s (from env: %s)", sensor_imsi or "none", "MOBILE_SENSOR_IMSI" if os.getenv("MOBILE_SENSOR_IMSI") else "default")
     LOG.info("Default latitude: %.6f (from env: %s)", lat, "MOBILE_SENSOR_LATITUDE" if os.getenv("MOBILE_SENSOR_LATITUDE") else "default")
     LOG.info("Default longitude: %.6f (from env: %s)", lon, "MOBILE_SENSOR_LONGITUDE" if os.getenv("MOBILE_SENSOR_LONGITUDE") else "default")
     LOG.info("Default accuracy: %.1f (from env: %s)", acc, "MOBILE_SENSOR_ACCURACY" if os.getenv("MOBILE_SENSOR_ACCURACY") else "default")

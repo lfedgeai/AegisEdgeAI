@@ -513,6 +513,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         # Allow override via environment variable, otherwise use default (may be invalid)
         if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
             # Default credentials (may be invalid - user should provide valid credentials)
+            # client_id: 4729f9d2-2ef7-457a-be33-0edf88d90f04; client_secret: e97c4384-2806-449a-ac75-e2d2d73e9d46
             CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
             printf '  [WARN] CAMARA_BYPASS=false but no CAMARA_BASIC_AUTH provided\n'
             printf '         Using default CAMARA_BASIC_AUTH (may be invalid)\n'
@@ -526,6 +527,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         if [ -n "$CAMARA_BASIC_AUTH" ]; then
             printf '%s\n' "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
             printf '  [OK] Mobile sensor service environment configured\n'
+            printf '  [INFO] Service will obtain auth_req_id from /bc-authorize during initialization\n'
         fi
     else
         printf '  [OK] CAMARA_BYPASS=true (CAMARA API calls will be skipped)\n'
