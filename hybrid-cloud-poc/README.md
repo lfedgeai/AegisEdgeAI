@@ -241,21 +241,11 @@ spire-server bundle show
 
 **SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (e.g., 10.1.0.11)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
-
-# Clean up old client log file
-rm -f /tmp/mtls-client-app.log
-
-# Set environment variables
-export CLIENT_USE_SPIRE="true"
-export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
-export SERVER_HOST="10.1.0.10"  # e.g., 10.1.0.10
-export SERVER_PORT="8080"
-export CA_CERT_PATH="~/.mtls-demo/envoy-cert.pem"
-
-# Run the client
-python3 mtls-client-app.py
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_mtls_client.sh
 ```
+
+**Note:** The client automatically saves the workload SVID certificate chain to `/tmp/svid-dump/svid.pem` for inspection.
 
 **What happens:**
 
@@ -352,11 +342,9 @@ tail -f /tmp/mtls-server.log | grep -E '(Sensor ID|X-Sensor-ID)'
 **Inspect Unified Identity Claims:**
 ```bash
 # On e.g., 10.1.0.11
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
-python3 fetch-sovereign-svid-grpc.py
-
+# The SVID is automatically saved by test_mtls_client.sh to /tmp/svid-dump/svid.pem
 # Inspect the SVID and claims
-../scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
+./scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
 ```
 
 **Expected output shows:**
