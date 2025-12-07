@@ -77,6 +77,18 @@ def _camara_bypass_enabled() -> bool:
     return os.getenv("CAMARA_BYPASS", "").lower() in ("1", "true", "yes", "on")
 
 
+def _get_auth_req_id_file_path() -> Path:
+    """Get the file path for storing auth_req_id persistently."""
+    # Use the same directory as the database for consistency
+    db_path = Path(os.getenv("MOBILE_SENSOR_DB", "sensor_mapping.db"))
+    # If db_path is relative, use current directory; if absolute, use its directory
+    if db_path.is_absolute():
+        db_dir = db_path.parent
+    else:
+        db_dir = Path.cwd()
+    return db_dir / "camara_auth_req_id.txt"
+
+
 class SensorDatabase:
     """Simple SQLite-backed storage for sensor metadata."""
 
@@ -293,11 +305,60 @@ class CamaraClient:
             raise ValueError("CAMARA_BASIC_AUTH environment variable is required")
         self.basic_auth = basic_auth
         self.scope = scope
-        self.auth_req_id = auth_req_id  # Pre-obtained auth_req_id (optional)
         # Token caching (thread-safe)
         self._access_token: Optional[str] = None
         self._token_expires_at: Optional[float] = None  # Unix timestamp
         self._token_lock = threading.Lock()  # Lock for thread-safe token access
+        
+        # Get auth_req_id from parameter, environment variable, or file (in that order)
+        if auth_req_id:
+            self.auth_req_id = auth_req_id
+        else:
+            # Try loading from file if not provided
+            self.auth_req_id = self._load_auth_req_id_from_file()
+        
+        # If we have an auth_req_id (from any source), save it to file for persistence
+        if self.auth_req_id:
+            self._save_auth_req_id_to_file(self.auth_req_id)
+    
+    def _get_auth_req_id_file_path(self) -> Path:
+        """Get the file path for storing auth_req_id persistently."""
+        return _get_auth_req_id_file_path()
+    
+    def _load_auth_req_id_from_file(self) -> Optional[str]:
+        """Load auth_req_id from persistent file if it exists."""
+        try:
+            file_path = self._get_auth_req_id_file_path()
+            if file_path.exists():
+                auth_req_id = file_path.read_text(encoding="utf-8").strip()
+                if auth_req_id:
+                    LOG.info("Loaded auth_req_id from file: %s", file_path)
+                    return auth_req_id
+        except Exception as exc:
+            LOG.warning("Failed to load auth_req_id from file: %s", exc)
+        return None
+    
+    def _save_auth_req_id_to_file(self, auth_req_id: str) -> None:
+        """Save auth_req_id to persistent file."""
+        try:
+            file_path = self._get_auth_req_id_file_path()
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(auth_req_id, encoding="utf-8")
+            # Set restrictive permissions (read/write for owner only)
+            file_path.chmod(0o600)
+            LOG.debug("Saved auth_req_id to file: %s", file_path)
+        except Exception as exc:
+            LOG.warning("Failed to save auth_req_id to file: %s", exc)
+    
+    def _clear_auth_req_id_file(self) -> None:
+        """Clear the persistent auth_req_id file."""
+        try:
+            file_path = self._get_auth_req_id_file_path()
+            if file_path.exists():
+                file_path.unlink()
+                LOG.debug("Cleared auth_req_id file: %s", file_path)
+        except Exception as exc:
+            LOG.warning("Failed to clear auth_req_id file: %s", exc)
 
     def _headers(self, content_type: str) -> dict:
         return {
@@ -314,6 +375,15 @@ class CamaraClient:
         }
 
     def authorize(self, msisdn: str) -> str:
+        """
+        Get auth_req_id, reusing stored value if available, or calling API if not.
+        Only calls the /bc-authorize API when:
+        1. There is no stored auth_req_id
+        2. Camera bypass is disabled (checked at caller level)
+        
+        If get_access_token() fails, it clears auth_req_id, causing this method
+        to call the API again on the next invocation.
+        """
         # If auth_req_id was pre-obtained, reuse it instead of calling the API
         if self.auth_req_id:
             LOG.info("Using pre-obtained auth_req_id (skipping /bc-authorize API call)")
@@ -353,6 +423,11 @@ class CamaraClient:
         auth_req_id = data.get("auth_req_id")
         if not auth_req_id:
             raise RuntimeError("Missing auth_req_id in authorize response")
+        
+        # Store the auth_req_id in memory and save to file for persistence
+        self.auth_req_id = auth_req_id
+        self._save_auth_req_id_to_file(auth_req_id)
+        
         return auth_req_id
 
     def request_access_token(self, auth_req_id: str) -> str:
@@ -414,6 +489,9 @@ class CamaraClient:
         or obtaining a new one if expired or missing.
         Thread-safe implementation to prevent race conditions.
         
+        If the token request fails (e.g., auth_req_id is invalid), clears auth_req_id
+        so that authorize() will be called again to get a fresh auth_req_id.
+        
         Args:
             msisdn: Optional MSISDN (not used, kept for API compatibility)
         """
@@ -435,7 +513,20 @@ class CamaraClient:
                 raise RuntimeError("Cannot get access token: auth_req_id is not available")
             
             # Request new token (this will update the cache)
-            return self.request_access_token(self.auth_req_id)
+            # If this fails, clear auth_req_id so authorize() will be called again
+            try:
+                return self.request_access_token(self.auth_req_id)
+            except (requests.HTTPError, RuntimeError) as exc:
+                # If token request fails, the auth_req_id may be invalid/expired
+                # Clear it (both in memory and file) so that authorize() will be called again to get a fresh one
+                LOG.warning(
+                    "Failed to get access token with current auth_req_id: %s. "
+                    "Clearing auth_req_id so authorize() will be called again.",
+                    exc
+                )
+                self.auth_req_id = None
+                self._clear_auth_req_id_file()
+                raise
 
     def verify_location(
         self,
@@ -497,50 +588,59 @@ def create_app(db_path: Path) -> Flask:
             # Check if auth_req_id was pre-obtained (e.g., from environment variable)
             pre_obtained_auth_req_id = os.getenv("CAMARA_AUTH_REQ_ID", "")
             
-            # If not pre-obtained, call /bc-authorize during service initialization with retries
+            # If not pre-obtained, try loading from file or call /bc-authorize during service initialization
             if not pre_obtained_auth_req_id:
-                LOG.info("Obtaining auth_req_id from CAMARA /bc-authorize API during service initialization...")
-                max_retries = 3
-                retry_delay = 1  # Start with 1 second
+                # Create temp client - it will load from file if it exists
+                temp_client = CamaraClient(camara_auth)
                 initialization_success = False
                 
-                for attempt in range(1, max_retries + 1):
-                    try:
-                        temp_client = CamaraClient(camara_auth)
-                        # Use default MSISDN for initialization
-                        pre_obtained_auth_req_id = temp_client.authorize(DEFAULT_MSISDN)
-                        LOG.info(
-                            "Successfully obtained auth_req_id during initialization (attempt %d/%d) - "
-                            "will be reused for all requests",
-                            attempt,
-                            max_retries
-                        )
-                        initialization_success = True
-                        break  # Success, exit retry loop
-                    except Exception as exc:
-                        if attempt < max_retries:
-                            LOG.warning(
-                                "Failed to obtain auth_req_id during initialization (attempt %d/%d): %s. "
-                                "Retrying in %d seconds...",
+                # Check if auth_req_id was loaded from file
+                if temp_client.auth_req_id:
+                    LOG.info("Loaded auth_req_id from persistent file (will skip /bc-authorize API call)")
+                    pre_obtained_auth_req_id = temp_client.auth_req_id
+                    initialization_success = True
+                else:
+                    # No file exists, need to call API
+                    LOG.info("No auth_req_id in file. Obtaining from CAMARA /bc-authorize API during service initialization...")
+                    max_retries = 3
+                    retry_delay = 1  # Start with 1 second
+                    
+                    for attempt in range(1, max_retries + 1):
+                        try:
+                            # Use default MSISDN for initialization
+                            pre_obtained_auth_req_id = temp_client.authorize(DEFAULT_MSISDN)
+                            LOG.info(
+                                "Successfully obtained auth_req_id during initialization (attempt %d/%d) - "
+                                "will be reused for all requests",
                                 attempt,
-                                max_retries,
-                                exc,
-                                retry_delay
+                                max_retries
                             )
-                            time.sleep(retry_delay)
-                            retry_delay *= 2  # Exponential backoff: 1s, 2s, 4s
-                        else:
-                            # All retries exhausted
-                            LOG.error(
-                                "Failed to obtain auth_req_id after %d attempts: %s. "
-                                "CAMARA verification will not work. Enabling bypass mode.",
-                                max_retries,
-                                exc
-                            )
-                            # Enable bypass mode since we can't get auth_req_id
-                            bypass_camara = True
-                            camara_client = None
-                            pre_obtained_auth_req_id = None
+                            initialization_success = True
+                            break  # Success, exit retry loop
+                        except Exception as exc:
+                            if attempt < max_retries:
+                                LOG.warning(
+                                    "Failed to obtain auth_req_id during initialization (attempt %d/%d): %s. "
+                                    "Retrying in %d seconds...",
+                                    attempt,
+                                    max_retries,
+                                    exc,
+                                    retry_delay
+                                )
+                                time.sleep(retry_delay)
+                                retry_delay *= 2  # Exponential backoff: 1s, 2s, 4s
+                            else:
+                                # All retries exhausted
+                                LOG.error(
+                                    "Failed to obtain auth_req_id after %d attempts: %s. "
+                                    "CAMARA verification will not work. Enabling bypass mode.",
+                                    max_retries,
+                                    exc
+                                )
+                                # Enable bypass mode since we can't get auth_req_id
+                                bypass_camara = True
+                                camara_client = None
+                                pre_obtained_auth_req_id = None
                 
                 # Create camara_client only if initialization succeeded
                 if initialization_success and pre_obtained_auth_req_id:
@@ -656,7 +756,7 @@ def create_app(db_path: Path) -> Flask:
                 LOG.info("Starting CAMARA API flow for sensor_id=%s", sensor_id)
                 LOG.info("Step 1: Calling CAMARA authorize API...")
             try:
-                # Get auth_req_id (will reuse cached if available)
+                # Get auth_req_id (will reuse cached if available, or call API if not stored)
                 auth_req_id = camara_client.authorize(msisdn)  # type: ignore[union-attr]
                 if is_healthcheck:
                     LOG.info("Health-check: Step 1: Received auth_req_id (length=%d)", len(auth_req_id) if auth_req_id else 0)
@@ -666,7 +766,22 @@ def create_app(db_path: Path) -> Flask:
                     LOG.info("Step 2: Getting access token (will reuse if valid)...")
                 
                 # Get access token (will reuse cached token if still valid)
-                access_token = camara_client.get_access_token()  # type: ignore[union-attr]
+                # If this fails, auth_req_id will be cleared and we'll retry authorize
+                try:
+                    access_token = camara_client.get_access_token()  # type: ignore[union-attr]
+                except (requests.HTTPError, RuntimeError) as token_err:
+                    # If token request fails, auth_req_id was cleared in get_access_token
+                    # Retry authorize to get a fresh auth_req_id, then retry token request
+                    LOG.warning(
+                        "Failed to get access token: %s. Retrying authorize to get fresh auth_req_id...",
+                        token_err
+                    )
+                    auth_req_id = camara_client.authorize(msisdn)  # type: ignore[union-attr]
+                    if is_healthcheck:
+                        LOG.info("Health-check: Step 1 (retry): Received auth_req_id (length=%d)", len(auth_req_id) if auth_req_id else 0)
+                    else:
+                        LOG.info("Step 1 (retry): Received auth_req_id=%s", auth_req_id)
+                    access_token = camara_client.get_access_token()  # type: ignore[union-attr]
                 if is_healthcheck:
                     LOG.info(
                         "Health-check: Step 2: Got access_token (length=%d)",
