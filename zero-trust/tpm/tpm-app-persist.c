@@ -80,13 +80,21 @@ static int swtpm_present(void) {
     const char *host = getenv("TPM_HOST"); if (!host) host = "127.0.0.1";
     const char *port_str = getenv("TPM_PORT"); if (!port_str) port_str = "2321";
     
+    // Validate and parse port number
+    char *endptr;
+    long port_long = strtol(port_str, &endptr, 10);
+    if (*endptr != '\0' || port_long < 1 || port_long > 65535) {
+        fprintf(stderr, "[WARN] Invalid TPM_PORT '%s', defaulting to 2321\n", port_str);
+        port_long = 2321;
+    }
+    
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return 0;
     
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port = htons((uint16_t)atoi(port_str));
+    addr.sin_port = htons((uint16_t)port_long);
     
     if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0) {
         close(sock);
@@ -97,8 +105,12 @@ static int swtpm_present(void) {
     struct timeval timeout;
     timeout.tv_sec = 1;
     timeout.tv_usec = 0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        fprintf(stderr, "[WARN] Failed to set SO_RCVTIMEO socket option\n");
+    }
+    if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
+        fprintf(stderr, "[WARN] Failed to set SO_SNDTIMEO socket option\n");
+    }
     
     int result = connect(sock, (struct sockaddr*)&addr, sizeof(addr));
     close(sock);
