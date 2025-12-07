@@ -62,7 +62,7 @@ else
 fi
 
 # Handle ARM64 compilation if packages were not available
-if [ "$ARM64_DETECTED" = "1" ] && [ "$COMPILE_SWTPM" = "1" -o "$COMPILE_TPM2_TOOLS" = "1" -o "$COMPILE_TPM2_TSS" = "1" ]; then
+if [ "$ARM64_DETECTED" = "1" ] && { [ "$COMPILE_SWTPM" = "1" ] || [ "$COMPILE_TPM2_TOOLS" = "1" ] || [ "$COMPILE_TPM2_TSS" = "1" ]; }; then
   echo "Compiling TPM stack from source for ARM64..."
   
   # Create build directory

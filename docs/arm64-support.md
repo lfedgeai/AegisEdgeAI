@@ -371,7 +371,7 @@ export TPM2TOOLS_TCTI="swtpm:host=127.0.0.1,port=2321"
 ```
 /etc/profile.d/arm64-tpm-env.sh          # ARM64 environment setup
 /usr/local/bin/swtpm                     # Software TPM binary
-/usr/local/bin/tmp2_*                    # TPM2 tools
+/usr/local/bin/tpm2_*                    # TPM2 tools
 /usr/local/lib/libtss2-*.so              # TPM2 libraries
 /var/lib/swtpm-localca/                  # TPM state directory
 ```

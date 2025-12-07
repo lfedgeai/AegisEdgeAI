@@ -201,6 +201,20 @@ create_arm64_config() {
     
     # Create systemd service for swtpm if systemd is available
     if command_exists systemctl; then
+        # Create swtpm user and group if they don't exist
+        if ! getent group swtpm >/dev/null 2>&1; then
+            sudo groupadd -r swtpm
+            echo "Created swtpm group"
+        fi
+        if ! getent passwd swtpm >/dev/null 2>&1; then
+            sudo useradd -r -g swtpm -d /var/lib/swtpm-localca -s /sbin/nologin -c "Software TPM user" swtpm
+            echo "Created swtpm user"
+        fi
+        
+        # Create TPM state directory
+        sudo mkdir -p /var/lib/swtpm-localca
+        sudo chown swtpm:swtpm /var/lib/swtpm-localca
+        
         cat > /tmp/swtpm-arm64.service << 'EOF'
 [Unit]
 Description=Software TPM Emulator for ARM64

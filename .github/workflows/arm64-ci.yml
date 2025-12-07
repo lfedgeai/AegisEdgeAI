@@ -211,8 +211,11 @@ jobs:
         # Start software TPM with timeout
         timeout 30s ./swtpm.sh || echo "SWTPM startup completed"
         
-        # Wait for TPM to be ready
-        sleep 3
+        # Wait for TPM to be ready by polling tpm2_getcap
+        for i in $(seq 1 10); do
+          tpm2_getcap properties-fixed > /dev/null 2>&1 && break
+          sleep 1
+        done
         
         # Test basic TPM operations
         ./tpm-ek-ak-persist.sh || echo "TPM operations completed with warnings"
