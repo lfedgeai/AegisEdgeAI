@@ -2175,8 +2175,56 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
         echo "    ✓ Unified-Identity enabled: Using TPM-based proof of residency (no join token needed)"
     fi
     
-    # Export trust bundle before starting agent - SKIPPED for act 2
-    echo "    Skipping trust bundle export (act 2 - assuming bundle is already available if needed)"
+    # Export trust bundle before starting agent
+    # The agent needs the trust bundle to verify the SPIRE Server's certificate
+    echo "    Exporting trust bundle from SPIRE Server..."
+    TRUST_BUNDLE_PATH="/tmp/bundle.pem"
+    SERVER_SOCKET="/tmp/spire-server/private/api.sock"
+    
+    if [ -f "${SPIRE_SERVER}" ] && [ -S "${SERVER_SOCKET}" ]; then
+        # Export trust bundle from SPIRE Server
+        if "${SPIRE_SERVER}" bundle show -socketPath "${SERVER_SOCKET}" > "${TRUST_BUNDLE_PATH}" 2>/dev/null; then
+            if [ -f "${TRUST_BUNDLE_PATH}" ] && [ -s "${TRUST_BUNDLE_PATH}" ]; then
+                echo -e "${GREEN}    ✓ Trust bundle exported to ${TRUST_BUNDLE_PATH}${NC}"
+            else
+                echo -e "${YELLOW}    ⚠ Trust bundle file is empty or missing${NC}"
+            fi
+        else
+            echo -e "${YELLOW}    ⚠ Failed to export trust bundle from SPIRE Server${NC}"
+            echo "    Attempting to wait for server to be ready..."
+            # Wait a bit more for server to be fully ready
+            for j in {1..10}; do
+                sleep 1
+                if "${SPIRE_SERVER}" bundle show -socketPath "${SERVER_SOCKET}" > "${TRUST_BUNDLE_PATH}" 2>/dev/null; then
+                    if [ -f "${TRUST_BUNDLE_PATH}" ] && [ -s "${TRUST_BUNDLE_PATH}" ]; then
+                        echo -e "${GREEN}    ✓ Trust bundle exported to ${TRUST_BUNDLE_PATH}${NC}"
+                        break
+                    fi
+                fi
+                if [ $j -eq 10 ]; then
+                    echo -e "${RED}    ✗ Failed to export trust bundle after waiting${NC}"
+                    echo "    Server socket: ${SERVER_SOCKET}"
+                    echo "    Server health: $("${SPIRE_SERVER}" healthcheck -socketPath "${SERVER_SOCKET}" 2>&1 || echo "not responding")"
+                fi
+            done
+        fi
+    else
+        echo -e "${YELLOW}    ⚠ SPIRE Server not found or not ready, cannot export trust bundle${NC}"
+        if [ ! -f "${SPIRE_SERVER}" ]; then
+            echo "    SPIRE Server binary not found: ${SPIRE_SERVER}"
+        fi
+        if [ ! -S "${SERVER_SOCKET}" ]; then
+            echo "    SPIRE Server socket not found: ${SERVER_SOCKET}"
+        fi
+    fi
+    
+    # Verify trust bundle exists (agent requires it)
+    if [ ! -f "${TRUST_BUNDLE_PATH}" ] || [ ! -s "${TRUST_BUNDLE_PATH}" ]; then
+        echo -e "${RED}    ✗ Trust bundle not available at ${TRUST_BUNDLE_PATH}${NC}"
+        echo "    SPIRE Agent requires the trust bundle to connect to SPIRE Server"
+        echo "    Please ensure SPIRE Server is running and accessible"
+        abort_on_error "Trust bundle not available - SPIRE Agent cannot start without it"
+    fi
     
     # Configure SVID renewal interval if specified via environment variable
     if [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then

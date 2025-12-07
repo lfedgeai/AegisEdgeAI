@@ -10,6 +10,8 @@ This POC addresses the challenges of the traditional non-verifiable security mod
 
 ## The Problem: A Fragile and Non-Verifiable Security Model
 
+*See Slide 6 for the problem diagram*
+
 Current security approaches for AI inference applications, secret stores, system agents, and model repositories face **critical gaps** that are amplified in edge AI deployments. The traditional security model relies on bearer tokens, proof-of-possession tokens, and IP-based geofencing, which are vulnerable to replay attacks, account manipulation, and location spoofing.
 
 ### Host-Affinity Realization Challenges
@@ -32,7 +34,7 @@ Current security approaches for AI inference applications, secret stores, system
 
 - GPU health, utilization, and host integrity are typically checked by isolated, non-verifiable monitoring systems. This creates a critical gap where a compromised host can easily feed false data to the monitoring system.
 
-![The Problem: A Fragile and Non-Verifiable Security Model](images/slide-06-problem-diagram.png)
+![The Problem: A Fragile and Non-Verifiable Security Model](images/Slide6.PNG)
 
 *Figure: Slide 6 - The Problem: A Fragile and Non-Verifiable Security Model*
 
@@ -47,6 +49,8 @@ The diagram highlights three critical security challenges:
 - **Static and Isolated Security Challenges**: Non-verifiable monitoring systems
 
 ## The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity
+
+*See Slide 7 for the solution architecture diagram*
 
 Our solution addresses these challenges through hardware-rooted cryptographic proofs that bind workload identity, host integrity, and geolocation into a unified, verifiable credential.
 
@@ -72,7 +76,7 @@ This produces a PoG workload certificate/token, enabling verifiable enforcement 
 
 Real-time data about the host's health, GNSS/mobile sensor status (e.g., connected/disconnected), and GPU status (e.g., temperature and utilization) is collected by specialized plugins and included in the attestation process.
 
-![The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity](images/slide-07-solution-diagram.png)
+![The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity](images/Slide7.PNG)
 
 *Figure: Slide 7 - The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity*
 
@@ -101,6 +105,8 @@ This document covers:
 - Security mechanisms and design points
 
 ## Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture
+
+*See Slide 12 for the complete implementation architecture diagram*
 
 The current implementation demonstrates a hybrid cloud unified identity system connecting a Sovereign Cloud/Edge Cloud environment with a Customer on-Prem Private Cloud.
 
@@ -141,7 +147,7 @@ The current implementation demonstrates a hybrid cloud unified identity system c
    - Envoy verifies geolocation through Mobile Geolocation Service (CAMARA API)
    - Envoy communicates to Server App using standard mTLS
 
-![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/slide-12-implementation-architecture.png)
+![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/Slide12.PNG)
 
 *Figure: Slide 12 - Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture*
 
@@ -178,6 +184,9 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 - Git installed on both machines
 
 ### Demo Act 1: Trusted Infrastructure Setup
+
+*See Slide 12 for the architecture diagram*
+
 **SOVEREIGN PUBLIC/EDGE CLOUD CONTROL PLANE WINDOW:** (10.1.0.11)
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc
@@ -194,7 +203,10 @@ ps -aux | grep envoy
 ps -aux | grep mobile-sensor-microservice
 ps -aux | grep mtls-server
 ```
-### Demo Act 2: The Happy Path (Proof of Geofencing) 
+### Demo Act 2: The Happy Path (Proof of Geofencing)
+
+*See Slides 7 and 12 for solution architecture and implementation details*
+
 **SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (10.1.0.11)
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc
@@ -222,6 +234,9 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
 ./watch-mtls-server-logs.sh
 ```
 ### Demo Act 3: The Defense (The Rogue Admin)
+
+*This demonstrates protection against insider threats as described in Slide 6*
+
 **SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (10.1.0.11)
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc
@@ -579,18 +594,28 @@ For a guided demonstration following the slide deck structure, use the 3-Act dem
 ./demo-3-act-presentation.sh
 ```
 
-This script guides the audience through:
+This script guides the audience through the presentation slides:
 
 ### **Introduction: The Sovereign Challenge**
-- Explains the problem: fragile IP-based geofencing and insider threats
-- Introduces the Unified Identity solution
+*Refer to Slides 1-6*
+
+- **Slide 1-5**: Introduction and context
+- **Slide 6**: The Problem - A Fragile and Non-Verifiable Security Model
+  - Explains the problem: fragile IP-based geofencing and insider threats
+  - Introduces the Unified Identity solution
 
 ### **Act 1: The Setup (Trusted Infrastructure)**
+*Refer to Slide 12: Implementation Architecture*
+
 - Shows the architecture (Sovereign Cloud ↔ On-Prem Private Cloud)
 - Demonstrates Keylime Verifier establishing hardware root of trust with TPM
 - Verifies all services are running
+- **Slide 12** displays the complete end-to-end solution architecture
 
-### **Act 2: The Happy Path (Proof of Residency)**
+### **Act 2: The Happy Path (Proof of Geofencing)**
+*Refer to Slides 7 and 12*
+
+- **Slide 7**: The Solution - Zero-Trust, HW-Rooted, Unified Identity
 - Shows SPIRE Agent fetching Unified SVID with:
   - Workload Attestation (Software identity)
   - Host Attestation (TPM proof)
@@ -598,16 +623,22 @@ This script guides the audience through:
 - Decodes and displays the SVID certificate structure
 - Demonstrates successful client connection with 200 OK from Envoy
 - Shows WASM Plugin verification of Proof of Geofencing (PoG)
+- **Slide 12** shows the implementation flow
 
 ### **Act 3: The Defense (The Rogue Admin)**
+*Refer to Slide 6: Problem - Insider Threats*
+
 - Simulates rogue admin disconnecting USB Mobile Sensor
 - Shows Keylime Agent detecting the USB disconnect event
 - Demonstrates Degraded SVID issuance (valid for network, missing PoR)
 - Shows client reconnection attempt
 - **Key demonstration**: Envoy WASM Plugin returns **403 Forbidden** with error **"Geo Claim Missing"**
 - Proves the system blocks requests when geolocation proof is missing
+- Addresses the insider threat scenario from **Slide 6**
 
 ### **Conclusion: Value Delivered**
+*Refer to Slides 13-18*
+
 - Summarizes the move from Phase I (replayable credentials) to Phase II (HW-anchored proofs)
 - Highlights three key achievements:
   1. Strong Residency Guarantees (auditable)

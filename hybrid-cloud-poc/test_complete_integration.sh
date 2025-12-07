@@ -287,20 +287,101 @@ main() {
     echo ""
 }
 
+# Function to perform cleanup on both hosts
+cleanup_all() {
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║  Unified-Identity: Cleanup All Services                       ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo -e "${CYAN}Cleaning up services on both hosts...${NC}"
+    echo ""
+    
+    # Cleanup on control plane host
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}Cleaning up Control Plane Services on ${CONTROL_PLANE_HOST}${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Cleanup control plane services
+    if run_script "run_on_control_plane" "test_complete_control_plane.sh" "--cleanup-only" \
+        "Cleaning up Control Plane Services (SPIRE Server, Keylime Verifier/Registrar)"; then
+        echo -e "${GREEN}✓ Control plane cleanup completed${NC}"
+    else
+        echo -e "${YELLOW}⚠ Control plane cleanup had issues (may be expected if services weren't running)${NC}"
+    fi
+    
+    # Cleanup agent services on control plane (if any)
+    echo ""
+    echo -e "${CYAN}Cleaning up Agent Services on ${CONTROL_PLANE_HOST}${NC}"
+    echo ""
+    if run_script "run_on_control_plane" "test_complete.sh" "--cleanup-only" \
+        "Cleaning up Agent Services (SPIRE Agent, rust-keylime Agent, TPM Plugin)"; then
+        echo -e "${GREEN}✓ Agent services cleanup completed${NC}"
+    else
+        echo -e "${YELLOW}⚠ Agent services cleanup had issues (may be expected if services weren't running)${NC}"
+    fi
+    
+    # Cleanup on on-prem host
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}Cleaning up On-Prem Services on ${ONPREM_HOST}${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Cleanup on-prem services
+    set +e
+    run_on_onprem "cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh --cleanup-only" 2>&1 | tee "/tmp/remote_test_onprem_cleanup.log"
+    ONPREM_CLEANUP_EXIT_CODE=$?
+    set -e
+    
+    if [ $ONPREM_CLEANUP_EXIT_CODE -eq 0 ]; then
+        echo ""
+        echo -e "${GREEN}✓ On-prem cleanup completed${NC}"
+    else
+        echo ""
+        echo -e "${YELLOW}⚠ On-prem cleanup had issues (may be expected if services weren't running)${NC}"
+    fi
+    
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}Cleanup Complete!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${CYAN}All services have been stopped and data cleaned up on:${NC}"
+    echo "  • Control Plane Host: ${CONTROL_PLANE_HOST}"
+    echo "  • On-Prem Host: ${ONPREM_HOST}"
+    echo ""
+}
+
 # Parse command-line arguments
 NO_PAUSE=false
 for arg in "$@"; do
     case $arg in
+        --cleanup-only)
+            # Check SSH connectivity before cleanup
+            echo -e "${CYAN}Checking SSH connectivity...${NC}"
+            if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then
+                if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${CONTROL_PLANE_HOST}" "echo 'OK'" >/dev/null 2>&1; then
+                    echo -e "${YELLOW}⚠ Cannot SSH to control plane host: ${CONTROL_PLANE_HOST} (continuing anyway)${NC}"
+                fi
+            fi
+            if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${ONPREM_HOST}" "echo 'OK'" >/dev/null 2>&1; then
+                echo -e "${YELLOW}⚠ Cannot SSH to on-prem host: ${ONPREM_HOST} (continuing anyway)${NC}"
+            fi
+            cleanup_all
+            exit 0
+            ;;
         --no-pause)
             NO_PAUSE=true
             shift
             ;;
         --help|-h)
-            echo "Usage: $0 [--no-pause]"
+            echo "Usage: $0 [--cleanup-only] [--no-pause]"
             echo ""
             echo "Options:"
-            echo "  --no-pause    Skip all pause prompts and continue automatically"
-            echo "  --help, -h    Show this help message"
+            echo "  --cleanup-only Stop services, remove data, and exit"
+            echo "  --no-pause     Skip all pause prompts and continue automatically"
+            echo "  --help, -h     Show this help message"
             exit 0
             ;;
         *)
