@@ -207,82 +207,18 @@ ps -aux | grep mtls-server
 
 *See Slides 7 and 12 for solution architecture and implementation details*
 
-**SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (10.1.0.11)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
-./test_complete.sh --no-pause
-```
-**SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (10.1.0.11)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
-./test_mtls_client.sh
-~/AegisEdgeAI/hybrid-cloud-poc/scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem
-```
-**ON PREM API GATEWAY WINDOW:** (10.1.0.10)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
-./watch-envoy-logs.sh
-```
-**ON PREM MOBILE LOCATION SERVICE WINDOW:** (10.1.0.10)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
-./watch-mobile-sensor-logs.sh
-```
-**ON PREM SERVER APP WINDOW:** (10.1.0.10)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
-./watch-mtls-server-logs.sh
-```
-### Demo Act 3: The Defense (The Rogue Admin)
+This act demonstrates the complete flow from workload attestation through successful geolocation verification.
 
-*This demonstrates protection against insider threats as described in Slide 6*
+#### Step 3: Start SPIRE Agent and Workload Services (10.1.0.11)
 
 **SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (10.1.0.11)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
-./watch-spire-agent-attestations.sh
-```
-**SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (10.1.0.11)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
-./test_mtls_client.sh
-```
-**SOVEREIGN PUBLIC/EDGE CLOUD ROGUE ADMIN WINDOW:** (10.1.0.11)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
-./test_rogue_admin.sh
-sudo ./test_toggle_huawei_mobile_sensor.sh off
-sudo ./test_toggle_huawei_mobile_sensor.sh on
-```
-**ON PREM API GATEWAY WINDOW:** (10.1.0.10)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
-./watch-envoy-logs.sh
-```
-**ON PREM MOBILE LOCATION SERVICE WINDOW:** (10.1.0.10)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
-./watch-mobile-sensor-logs.sh
-```
-**ON PREM SERVER APP WINDOW:** (10.1.0.10)
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
-./watch-mtls-server-logs.sh
-```
-
-### Step 1: Setup SPIRE and Keylime (10.1.0.11)
-
-This step sets up the identity services and agents on the sovereign cloud/edge cloud host.
-
-**Run the complete setup script:**
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc
 ./test_complete.sh --no-pause
 ```
 
 **What this script does:**
-- Installs and configures SPIRE Server and Agent
-- Sets up Keylime Verifier and Registrar
+- Configures SPIRE Agent with TPM support
 - Configures rust-keylime Agent with TPM support
 - Creates SPIRE TPM Plugin server (sidecar)
 - Registers agents with Keylime Registrar
@@ -291,22 +227,16 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc
 - Verifies workload SVID issuance with unified identity
 
 **Expected output:**
-- SPIRE Server running on port 8081
 - SPIRE Agent running with Workload API on Unix socket
-- Keylime Verifier running on port 8881
-- Keylime Registrar running on port 8890
 - rust-keylime Agent running on port 9002
 - TPM Plugin Server running and ready for certification requests
 
 **Monitor logs (optional):**
 ```bash
 # In separate terminals, watch logs:
-tail -f /tmp/spire-server.log          # SPIRE Server
 tail -f /tmp/spire-agent.log            # SPIRE Agent
-tail -f /tmp/keylime-verifier.log      # Keylime Verifier
 tail -f /tmp/rust-keylime-agent.log     # rust-keylime Agent
 tail -f /tmp/tpm-plugin-server.log      # SPIRE TPM Plugin
-tail -f /tmp/mobile-sensor-microservice.log  # Mobile Location Service
 
 # Or use the attestation watch script (filters for attestation events):
 ./watch-spire-agent-attestations.sh    # SPIRE Agent attestations only
@@ -319,69 +249,11 @@ spire-agent healthcheck
 
 # Check SPIRE Server status
 spire-server bundle show
-
-# Verify Keylime Agent registration
-curl http://localhost:8890/v2.2/agents
 ```
 
-### Step 2: Setup Enterprise On-Prem Server (10.1.0.10)
+#### Step 4: Start mTLS Client and Verify End-to-End Flow (10.1.0.11)
 
-This step sets up the gateway, mobile location service, and backend server on the customer on-prem private cloud host.
-
-**Run the on-prem setup script:**
-```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
-./test_onprem.sh
-```
-
-**What this script does:**
-- Fetches SPIRE CA bundle from 10.1.0.11 (for verifying SPIRE client certificates)
-- Generates Envoy certificates (separate from backend)
-- Creates combined CA bundle (SPIRE + Envoy) for backend server
-- Builds WASM filter with time-based caching for sensor verification
-- Configures mobile location service with CAMARA credentials
-- Auto-starts all services in background:
-  - Mobile Location Service (port 5000)
-  - mTLS Server (port 9443)
-  - Envoy Proxy (port 8080)
-- Verifies all services are running
-
-**Expected output:**
-- Envoy Proxy listening on port 8080
-- Mobile Location Service running on port 5000
-- mTLS Server running on port 9443
-- WASM filter loaded and ready for sensor verification
-
-**Monitor logs (optional):**
-```bash
-cd enterprise-private-cloud
-
-# Option 1: Individual terminal windows
-./watch-envoy-logs.sh          # Terminal 1 - Envoy logs
-./watch-mtls-server-logs.sh    # Terminal 2 - mTLS server logs
-./watch-mobile-sensor-logs.sh   # Terminal 3 - Mobile sensor service logs
-
-# Option 2: All logs in one tmux session
-./watch-all-logs.sh
-```
-
-**Verify setup:**
-```bash
-# Check Envoy is running
-sudo netstat -tlnp | grep 8080
-
-# Check Mobile Location Service
-curl http://localhost:5000/health
-
-# Check mTLS Server
-curl -k https://localhost:9443/health
-```
-
-### Step 3: Start mTLS Client (10.1.0.11)
-
-This step demonstrates a client application using SPIRE unified identity to connect to the on-prem server.
-
-**Start the mTLS client:**
+**SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (10.1.0.11)
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
 
@@ -433,7 +305,13 @@ Server: 10.1.0.10:8080
 tail -f /tmp/mtls-client-app.log
 ```
 
-### Step 4: Verify End-to-End Flow
+#### Step 5: Verify End-to-End Flow and Inspect Unified Identity Claims
+
+**ON PREM API GATEWAY WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-envoy-logs.sh
+```
 
 **Check Envoy logs for sensor verification:**
 ```bash
@@ -447,10 +325,22 @@ sudo tail -f /opt/envoy/logs/envoy.log | grep -E '(sensor|verification|cache|TTL
 - `Cache expired` (after 15s, re-verifying)
 - `Sensor verification successful`
 
+**ON PREM MOBILE LOCATION SERVICE WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-mobile-sensor-logs.sh
+```
+
 **Check Mobile Location Service logs:**
 ```bash
 # On 10.1.0.10
 tail -f /tmp/mobile-sensor.log | grep -E '(CAMARA|authorize|token|verify_location)'
+```
+
+**ON PREM SERVER APP WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-mtls-server-logs.sh
 ```
 
 **Check mTLS Server logs:**
@@ -473,10 +363,9 @@ tail -f /tmp/mtls-server.log | grep -E '(Sensor ID|X-Sensor-ID)'
 - Unified identity SVID issuance with geolocation claims
 - Workload SVID inheritance from agent SVID
 
-### Step 5: Inspect Unified Identity Claims
-
-**Dump workload SVID with AttestedClaims:**
+**Inspect Unified Identity Claims:**
 ```bash
+# On 10.1.0.11
 cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
 python3 fetch-sovereign-svid-grpc.py
 
@@ -491,6 +380,66 @@ python3 fetch-sovereign-svid-grpc.py
   - `grc.geolocation.*` (sensor_id, type, latitude, longitude)
   - `grc.tpm-attestation.*` (App Key cert, TPM quote data)
   - `grc.workload.*` (workload ID, key source)
+
+### Demo Act 3: The Defense (The Rogue Admin)
+
+*This demonstrates protection against insider threats as described in Slide 6*
+
+This act demonstrates how the system detects and blocks insider threats when hardware integrity is compromised.
+
+**SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./watch-spire-agent-attestations.sh
+```
+**SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_mtls_client.sh
+```
+**SOVEREIGN PUBLIC/EDGE CLOUD ROGUE ADMIN WINDOW:** (10.1.0.11)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc
+./test_rogue_admin.sh
+
+# Simulate rogue admin disconnecting the USB Mobile Sensor
+sudo ./test_toggle_huawei_mobile_sensor.sh off
+
+# Wait for system to detect the change and issue degraded SVID
+# Then reconnect sensor to restore normal operation
+sudo ./test_toggle_huawei_mobile_sensor.sh on
+```
+
+**What happens:**
+1. Rogue admin disconnects USB Mobile Sensor (simulating physical tampering)
+2. Keylime Agent detects the USB disconnect event via Dynamic Hardware Integrity monitoring
+3. Hardware integrity score drops, triggering degraded attestation
+4. SPIRE Agent attempts to refresh SVID but receives Degraded SVID (valid for network, missing Proof of Residency)
+5. Client retries connection with degraded SVID
+6. Envoy WASM Plugin verifies certificate and detects missing geolocation claim
+7. **Key demonstration**: Envoy returns **403 Forbidden** with error **"Geo Claim Missing"**
+8. System successfully blocks the request, proving protection against insider threats
+
+**ON PREM API GATEWAY WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-envoy-logs.sh
+```
+**ON PREM MOBILE LOCATION SERVICE WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-mobile-sensor-logs.sh
+```
+**ON PREM SERVER APP WINDOW:** (10.1.0.10)
+```bash
+cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+./watch-mtls-server-logs.sh
+```
+
+**Expected log entries:**
+- Envoy logs show: `403 Forbidden` with `Geo Claim Missing` error
+- SPIRE Agent logs show: Degraded SVID issuance (missing geolocation claims)
+- Keylime Agent logs show: USB sensor disconnect detection
 
 ### Troubleshooting
 
