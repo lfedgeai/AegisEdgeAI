@@ -1,3 +1,8 @@
+# OS files
+.DS_Store
+**/.DS_Store
+
+# TPM files
 zero-trust/tpm/*.ctx
 zero-trust/tpm/*.pem
 zero-trust/tpm/*.pub
@@ -8,10 +13,17 @@ zero-trust/tpm/*.out
 zero-trust/tpm/*.msg
 zero-trust/tpm/*.pcrs
 zero-trust/tpm/*.hash
+
+# Python cache
 **/*.pyc
 **/__pycache__/
+
+# Runtime directories
 zero-trust/agents/*
 zero-trust/logs/*
+
+# CodeQL
+_codeql_detected_source_root
 
 # Compiled binaries
 zero-trust/spire-tpm-plugin/tpm-app-persist
