@@ -246,9 +246,8 @@ EOF
 test_compilation() {
     echo -e "${BLUE}[TEST]${NC} ARM64 Compilation"
     
-    if [ -f "./zero-trust/tpm/Makefile" ] && [ -f "./zero-trust/spire-tpm-plugin/tpm-app-persist.c" ]; then
-        # Copy source file to tpm directory for compilation test
-        cp "./zero-trust/spire-tpm-plugin/tpm-app-persist.c" "./zero-trust/tpm/"
+    if [ -f "./zero-trust/tpm/Makefile" ] && [ -f "./zero-trust/tpm/tpm-app-persist.c" ]; then
+        # Source file already in tpm directory
         
         cd ./zero-trust/tpm
         
