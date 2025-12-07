@@ -22,6 +22,8 @@
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 
+#define TPM_CONTEXT_MARSHAL_BUFFER_SIZE 4096
+
 #define CHECK_RC(expr, label) \
     do { TSS2_RC _rc = (expr); if (_rc != TSS2_RC_SUCCESS) { \
         fprintf(stderr, "%s failed: 0x%x at %s:%d\n", #expr, _rc, __FILE__, __LINE__); \
@@ -101,7 +103,8 @@ static int swtpm_present(void) {
         return 0;
     }
     
-    // Set timeout for connection attempt
+    // Set timeout for connection attempt (optional optimization)
+    // If these fail, the connection test will still work but may take longer to timeout
     struct timeval timeout;
     timeout.tv_sec = 1;
     timeout.tv_usec = 0;
@@ -212,7 +215,7 @@ int main(int argc, char **argv) {
         if (rc == TSS2_RC_SUCCESS) {
             TPMS_CONTEXT *outctx = NULL;
             if (Esys_ContextSave(ctx, existing, &outctx) == TSS2_RC_SUCCESS && outctx) {
-                uint8_t buf[4096] = {0};
+                uint8_t buf[TPM_CONTEXT_MARSHAL_BUFFER_SIZE] = {0};
                 size_t offset = 0;
                 if (Tss2_MU_TPMS_CONTEXT_Marshal(outctx, buf, sizeof(buf), &offset) == TSS2_RC_SUCCESS) {
                     write_file(agent_ctx_path, buf, offset);
