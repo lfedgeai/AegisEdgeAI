@@ -198,7 +198,7 @@ ps -aux | grep keylime.cmd.registrar
 **ON PREM API GATEWAY WINDOW:** (10.1.0.10)
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
-./test_onprem.sh
+./test_onprem.sh --no-pause
 ps -aux | grep envoy
 ps -aux | grep mobile-sensor-microservice
 ps -aux | grep mtls-server

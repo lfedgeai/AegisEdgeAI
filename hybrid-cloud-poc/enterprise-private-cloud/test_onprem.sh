@@ -114,6 +114,29 @@ cleanup_existing_services() {
     echo -e "${GREEN}  ✓ Cleanup complete${NC}"
 }
 
+# Pause function for critical phases (only in interactive terminals)
+pause_at_phase() {
+    local phase_name="$1"
+    local description="$2"
+    
+    # Only pause if:
+    # 1. Running in interactive terminal (tty check)
+    # 2. PAUSE_ENABLED is true (default: true for interactive, false for non-interactive)
+    if [ -t 0 ] && [ "${PAUSE_ENABLED:-true}" = "true" ]; then
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "⏸  PAUSE: ${phase_name}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        if [ -n "$description" ]; then
+            echo "${description}"
+            echo ""
+        fi
+        echo "Press Enter to continue..."
+        read -r
+        echo ""
+    fi
+}
+
 # Usage helper
 show_usage() {
     cat <<EOF
@@ -121,6 +144,8 @@ Usage: $(basename "$0") [options]
 
 Options:
   --cleanup-only       Stop services, remove logs, and exit.
+  --pause              Enable pause points at critical phases (default: auto-detect)
+  --no-pause           Disable pause points (run non-interactively)
   -h, --help          Show this help message.
 
 This script sets up the enterprise on-prem environment:
@@ -132,6 +157,7 @@ This script sets up the enterprise on-prem environment:
 Examples:
   $0                  # Run full setup
   $0 --cleanup-only   # Stop all services and clean up logs
+  $0 --no-pause       # Run without pause prompts
   $0 --help           # Show this help message
 EOF
 }
@@ -142,6 +168,14 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --cleanup-only)
             RUN_CLEANUP_ONLY=true
+            shift
+            ;;
+        --no-pause)
+            export PAUSE_ENABLED=false
+            shift
+            ;;
+        --pause)
+            export PAUSE_ENABLED=true
             shift
             ;;
         -h|--help)
@@ -169,6 +203,7 @@ fi
 # Run cleanup at the start (only on test machine)
 if [ "$IS_TEST_MACHINE" = "true" ]; then
     cleanup_existing_services
+    pause_at_phase "Cleanup Complete" "Existing services have been stopped and cleaned up."
 fi
 
 # 1. Install dependencies
