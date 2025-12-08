@@ -1,0 +1,90 @@
+import os
+
+svg_content = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450">
+  <defs>
+    <marker id="arrow-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#DC2626" />
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#16A34A" />
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6B7280" />
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+  <rect width="800" height="450" fill="#F9FAFB" rx="10" />
+  <g transform="translate(20, 20)">
+    <rect width="370" height="410" fill="#FFFFFF" rx="8" stroke="#E5E7EB" stroke-width="2" filter="url(#shadow)" />
+    <rect width="370" height="50" fill="#FEE2E2" rx="8" />
+    <text x="185" y="32" font-family="Arial, sans-serif" font-weight="bold" font-size="16" text-anchor="middle" fill="#991B1B">The Problem: IP-Based Security</text>
+    <g transform="translate(30, 80)">
+      <rect x="0" y="0" width="80" height="60" fill="#E5E7EB" rx="4" stroke="#4B5563" />
+      <text x="40" y="25" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#374151">Rogue Workload</text>
+      <text x="40" y="45" font-family="Arial, sans-serif" font-weight="bold" font-size="10" text-anchor="middle" fill="#DC2626">Location: USA</text>
+    </g>
+    <g transform="translate(140, 90)">
+      <path d="M0,20 L80,20" stroke="#DC2626" stroke-width="2" stroke-dasharray="4,4" marker-end="url(#arrow-red)" />
+      <text x="40" y="15" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#DC2626">VPN Spoof</text>
+      <text x="40" y="40" font-family="Arial, sans-serif" font-weight="bold" font-size="10" text-anchor="middle" fill="#374151">"I am in Spain"</text>
+    </g>
+    <g transform="translate(260, 80)">
+      <rect x="0" y="0" width="80" height="60" fill="#DBEAFE" rx="4" stroke="#2563EB" />
+      <text x="40" y="25" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#1E40AF">Legacy Firewall</text>
+      <text x="40" y="45" font-family="Arial, sans-serif" font-style="italic" font-size="9" text-anchor="middle" fill="#1E40AF">Checks IP Only</text>
+    </g>
+    <path d="M300,140 L300,200" stroke="#16A34A" stroke-width="3" marker-end="url(#arrow-green)" />
+    <g transform="translate(240, 210)">
+      <path d="M10,0 H110 V50 H10 Z" fill="#FEF3C7" stroke="#D97706" stroke-width="2" rx="4" />
+      <path d="M10,10 H110 M10,20 H110 M10,30 H110" stroke="#D97706" opacity="0.3" />
+      <text x="60" y="30" font-family="Arial, sans-serif" font-weight="bold" font-size="12" text-anchor="middle" fill="#92400E">Sovereign Data</text>
+    </g>
+    <rect x="50" y="300" width="270" height="60" rx="4" fill="#FEF2F2" stroke="#EF4444" />
+    <circle cx="80" cy="330" r="12" fill="#DC2626" />
+    <text x="80" y="335" font-family="Arial, sans-serif" font-weight="bold" font-size="16" text-anchor="middle" fill="#FFF">!</text>
+    <text x="110" y="325" font-family="Arial, sans-serif" font-weight="bold" font-size="14" fill="#991B1B">Security Breach</text>
+    <text x="110" y="345" font-family="Arial, sans-serif" font-size="12" fill="#7F1D1D">Data leaked outside border.</text>
+  </g>
+  <g transform="translate(410, 20)">
+    <rect width="370" height="410" fill="#FFFFFF" rx="8" stroke="#E5E7EB" stroke-width="2" filter="url(#shadow)" />
+    <rect width="370" height="50" fill="#ECFDF5" rx="8" />
+    <text x="185" y="32" font-family="Arial, sans-serif" font-weight="bold" font-size="16" text-anchor="middle" fill="#065F46">The Solution: Hardware Trust</text>
+    <g transform="translate(30, 80)">
+      <rect x="0" y="0" width="80" height="60" fill="#E5E7EB" rx="4" stroke="#4B5563" />
+      <text x="40" y="25" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#374151">Rogue Workload</text>
+      <text x="40" y="45" font-family="Arial, sans-serif" font-weight="bold" font-size="10" text-anchor="middle" fill="#DC2626">Location: USA</text>
+    </g>
+    <g transform="translate(140, 90)">
+      <path d="M0,20 L80,20" stroke="#6B7280" stroke-width="2" marker-end="url(#arrow-gray)" />
+      <text x="40" y="15" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#374151">Attestation Req</text>
+      <text x="40" y="40" font-family="Arial, sans-serif" font-weight="bold" font-size="9" text-anchor="middle" fill="#059669">TPM + GPS Proof</text>
+    </g>
+    <g transform="translate(260, 70)">
+      <rect x="0" y="0" width="90" height="80" fill="#D1FAE5" rx="4" stroke="#059669" />
+      <text x="45" y="20" font-family="Arial, sans-serif" font-weight="bold" font-size="11" text-anchor="middle" fill="#064E3B">Sovereign</text>
+      <text x="45" y="35" font-family="Arial, sans-serif" font-weight="bold" font-size="11" text-anchor="middle" fill="#064E3B">Verifier</text>
+      <text x="15" y="60" font-family="Arial, sans-serif" font-size="10" fill="#065F46">TPM: Yes</text>
+      <text x="15" y="75" font-family="Arial, sans-serif" font-size="10" fill="#DC2626">Loc: No (USA)</text>
+    </g>
+    <path d="M305,150 L305,180" stroke="#DC2626" stroke-width="3" />
+    <path d="M290,165 L320,165" stroke="#DC2626" stroke-width="3" />
+    <g transform="translate(240, 210)">
+      <path d="M10,0 H110 V50 H10 Z" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="2" rx="4" />
+      <path d="M10,10 H110 M10,20 H110 M10,30 H110" stroke="#9CA3AF" opacity="0.3" />
+      <text x="60" y="30" font-family="Arial, sans-serif" font-weight="bold" font-size="12" text-anchor="middle" fill="#6B7280">Sovereign Data</text>
+      <path d="M90,35 L100,25" stroke="#6B7280" stroke-width="2" />
+    </g>
+    <rect x="50" y="300" width="270" height="60" rx="4" fill="#F0FDF4" stroke="#16A34A" />
+    <circle cx="80" cy="330" r="12" fill="#16A34A" />
+    <path d="M74,330 L78,334 L86,326" fill="none" stroke="white" stroke-width="2" />
+    <text x="110" y="325" font-family="Arial, sans-serif" font-weight="bold" font-size="14" fill="#065F46">Access Denied</text>
+    <text x="110" y="345" font-family="Arial, sans-serif" font-size="12" fill="#047857">Spoofing caught.</text>
+  </g>
+</svg>"""
+
+with open("security_architecture.svg", "w", encoding="utf-8") as f:
+    f.write(svg_content)
+
+print("File 'security_architecture.svg' has been created successfully!")
