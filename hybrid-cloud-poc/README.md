@@ -10,33 +10,11 @@ This POC addresses the challenges of the traditional non-verifiable security mod
 
 ## The Problem: A Fragile and Non-Verifiable Security Model
 
-*See Slide 6 for the problem diagram*
-
 Current security approaches for AI inference applications, secret stores, system agents, and model repositories face **critical gaps** that are amplified in edge AI deployments. The traditional security model relies on bearer tokens, proof-of-possession tokens, and IP-based geofencing, which are vulnerable to replay attacks, account manipulation, and location spoofing.
-
-### Host-Affinity Realization Challenges
-
-- **Bearer tokens (RFC 6750)**: Protect inference applications, secret stores, and model repositories but can be replayed if stolen through compromise of:
-  - Identity providers (e.g., Okta)
-  - Metadata servers (e.g., Kubernetes bootstrap token, SPIRE bootstrap token)
-
-- **Proof-of-Possession tokens (RFC 7800)**: Bind a private key to the token, reducing replay risk, but remain vulnerable to:
-  - Container orchestration abuse (MITRE T1611)
-  - RBAC and policy abuse (T1059 & T1203)
-  - Supply chain compromise (T1584)
-  - These abuses can allow valid workloads to execute on disallowed hosts/regions
-
-### Geolocation-Affinity Realization Challenges
-
-- **IP-based geofencing**: Firewall rules based on source IP provide only weak location assurances — easily bypassed via VPNs, proxies, or IP spoofing.
-
-### Static and Isolated Security Challenges
-
-- GPU health, utilization, and host integrity are typically checked by isolated, non-verifiable monitoring systems. This creates a critical gap where a compromised host can easily feed false data to the monitoring system.
 
 ![The Problem: A Fragile and Non-Verifiable Security Model](images/Slide6.PNG)
 
-*Figure: Slide 6 - The Problem: A Fragile and Non-Verifiable Security Model*
+*The Problem: A Fragile and Non-Verifiable Security Model*
 
 The diagram illustrates a traditional security architecture for AI inference applications showing:
 1. End user host sending inference data with bearer tokens and source IP to Bank Inference application in Sovereign Cloud
@@ -50,35 +28,11 @@ The diagram highlights three critical security challenges:
 
 ## The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity
 
-*See Slide 7 for the solution architecture diagram*
-
 Our solution addresses these challenges through hardware-rooted cryptographic proofs that bind workload identity, host integrity, and geolocation into a unified, verifiable credential.
-
-### Proof of Residency (PoR)
-
-**Challenge addressed:** Weak bearer/proof-of-possession token models for system and AI agents in sensitive edge contexts.
-
-**Approach:** Cryptographically bind — rather than rely on convention or configuration — the following elements to issue a PoR workload certificate/token:
-- **Workload identity** (e.g., executable code hash)
-- **Approved host platform hardware identity** (e.g., TPM PKI key)
-- **Platform policy** (e.g., Linux kernel version, measured boot state)
-
-### Proof of Geofencing (PoG)
-
-**Challenge addressed:** Token misuse risks and unreliable Source IP checks for location-sensitive edge workloads.
-
-**Approach:** Cryptographically bind the PoR attestation above **plus**:
-- **Approved host platform location hardware identity** (e.g., GNSS module or mobile sensor hardware/firmware version)
-
-This produces a PoG workload certificate/token, enabling verifiable enforcement of geographic policy at the workload level.
-
-### Dynamic Hardware Integrity
-
-Real-time data about the host's health, GNSS/mobile sensor status (e.g., connected/disconnected), and GPU status (e.g., temperature and utilization) is collected by specialized plugins and included in the attestation process.
 
 ![The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity](images/Slide7.PNG)
 
-*Figure: Slide 7 - The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity*
+*The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity*
 
 The diagram shows the solution architecture with:
 1. **Workload Identity Agent** sending inference data with Proof of Geofencing workload certificate/token to AI Inference Host
@@ -135,7 +89,7 @@ The current implementation demonstrates a hybrid cloud unified identity system c
 
 ![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/Slide11.PNG)
 
-*Figure: Slide 11 - Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture*
+*Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture*
 
 **Sovereign Cloud/Edge Cloud (left, orange boundary):**
 - Contains: Host Identity (Keylime Verifier & Registrar), Workload Identity (SPIRE Server), Keylime Agent, SPIRE Agent, SPIRE TPM Plugin, Mobile location sensor (USB tethered smartphone), TPM, and Client App
