@@ -8,7 +8,7 @@ zero-trust/tpm/*.out
 zero-trust/tpm/*.msg
 zero-trust/tpm/*.pcrs
 zero-trust/tpm/*.hash
-
+zero-trust/utils/__pycache__/*
 # Python cache files
 **/*.pyc
 **/__pycache__/
