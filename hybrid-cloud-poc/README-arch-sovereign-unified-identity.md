@@ -109,8 +109,8 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
    - The agent must prove its identity using TPM-based attestation
 
 4. **SPIRE Agent Requests App Key Information**
-   - The SPIRE Agent requests the App Key public key and context from the SPIRE Agent TPM Plugin Server (sidecar)
-   - The SPIRE Agent TPM Plugin Server (sidecar) returns the App Key public key (PEM format) and context file path
+   - The SPIRE Agent sends a POST request to `/get-app-key` endpoint on the SPIRE Agent TPM Plugin Server (sidecar) via UDS
+   - The SPIRE Agent TPM Plugin Server (sidecar) returns the App Key public key (PEM format) in JSON response
 
 5. **Delegated Certification Request**
    - The SPIRE Agent requests an App Key certificate from the SPIRE Agent TPM Plugin Server (sidecar)
@@ -172,20 +172,20 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 
 13. **Verifier Extracts Geolocation from Quote**
     - The verifier extracts geolocation sensor information from the TPM quote response
-    - If a mobile sensor is detected (sensor_id present), the verifier proceeds to location verification
-    - Geolocation data includes: sensor type (mobile/gnss), sensor_id, and optional value (for GNSS)
+    - If a mobile sensor is detected (sensor_id, sensor_imei, or sensor_imsi present), the verifier proceeds to location verification
+    - Geolocation data includes: sensor type (mobile/gnss), sensor_id, sensor_imei, sensor_imsi, and optional value (for GNSS)
 
 14. **Verifier Calls Mobile Location Verification Microservice** (if mobile geolocation detected)
-    - The verifier extracts the sensor_id from the geolocation data
+    - The verifier extracts the sensor_id, sensor_imei, and/or sensor_imsi from the geolocation data
     - The verifier calls the mobile location verification microservice via REST API (HTTP)
-    - Request: `POST /verify` with `{"sensor_id": "<sensor_id>"}`
+    - Request: `POST /verify` with `{"sensor_id": "<sensor_id>", "sensor_imei": "<imei>", "sensor_imsi": "<imsi>"}` (all fields optional)
     - The microservice:
-      - Looks up the sensor_id in SQLite database to get phone number (MSISDN) and default coordinates
-      - Calls CAMARA APIs in sequence:
-        1. `POST /bc-authorize` with login_hint (phone number) and scope
-        2. `POST /token` with grant_type and auth_req_id
+      - Looks up the sensor in SQLite database (priority: sensor_id > sensor_imei > sensor_imsi) to get phone number (MSISDN) and default coordinates
+      - Calls CAMARA APIs in sequence (if CAMARA_BYPASS=false):
+        1. `POST /bc-authorize` with login_hint (phone number) and scope (reuses cached auth_req_id if available)
+        2. `POST /token` with grant_type and auth_req_id (reuses cached access_token if still valid)
         3. `POST /location/v0/verify` with access_token, ueId, latitude, longitude, accuracy
-      - Returns verification result: `{"verification_result": true/false, ...}`
+      - Returns verification result: `{"verification_result": true/false, "sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "...", "latitude": ..., "longitude": ..., "accuracy": ...}`
     - If verification_result is false, or if the microservice is unreachable, the verifier fails the attestation
 
 15. **Verifier Retrieves Attested Claims**
@@ -226,7 +226,10 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **Separation of Concerns**: Quote generation (platform attestation) is separate from App Key certification (workload identity)
 - **No Periodic Polling**: Unlike traditional Keylime, agents aren't continuously monitored; verification happens on-demand per attestation request
 - **Agent Registration Model**: Agents register with the Keylime Registrar (persistent storage) but are not registered with the Keylime Verifier (on-demand lookup only)
-- **Mobile Location Verification**: When mobile geolocation is detected in the TPM quote, the verifier calls the mobile location verification microservice to verify the device location via CAMARA APIs; attestation fails if location verification fails
+- **Mobile Location Verification**: When mobile geolocation is detected in the TPM quote (sensor_id, sensor_imei, or sensor_imsi present), the verifier calls the mobile location verification microservice to verify the device location via CAMARA APIs; attestation fails if location verification fails
+- **TPM Plugin Server Communication**: SPIRE Agent communicates with TPM Plugin Server via JSON over UDS (Unix Domain Socket) for security and performance
+- **Delegated Certification Transport**: TPM Plugin Server uses HTTPS/mTLS (port 9002) to communicate with rust-keylime agent (UDS support deferred)
+- **Token Caching**: Mobile location verification microservice caches CAMARA auth_req_id (persisted to file) and access_token (with expiration) to reduce API calls and improve performance
 
 This flow provides hardware-backed identity attestation where the SPIRE Agent proves its identity using the TPM, and the SPIRE Server verifies this proof through the Keylime Verifier before issuing credentials.
 
@@ -360,11 +363,12 @@ rust-keylime Agent (High Privilege, Port 9002)
 
 **Step 2: SPIRE Agent TPM Plugin Server (Sidecar) Startup**
 ```
-SPIRE Agent TPM Plugin Server (Python Sidecar, UDS Socket)
+SPIRE Agent TPM Plugin Server (Python Sidecar, UDS Socket: /tmp/spire-data/tpm-plugin/tpm-plugin.sock)
     │
-    ├─> Generate App Key in TPM
+    ├─> Generate App Key in TPM on startup
     ├─> Store App Key context/handle
-    └─> Ready for certification
+    ├─> Start HTTP/UDS server
+    └─> Ready for certification requests
 ```
 ### ATTESTATION: SPIRE AGENT ATTESTATION REQUEST
 
@@ -388,32 +392,42 @@ SPIRE Agent (Low Privilege)
 ```
 SPIRE Agent
     │
-    └─> Request App Key from SPIRE Agent TPM Plugin Server (Sidecar)
+    └─> POST /get-app-key (JSON over UDS)
         │
-        └─> GET App Key public key (PEM)
-        └─> GET App Key context path
+        └─> SPIRE Agent TPM Plugin Server (Sidecar, UDS: /tmp/spire-data/tpm-plugin/tpm-plugin.sock)
             │
-            <─ SPIRE Agent TPM Plugin Server (Sidecar)
+            └─> Return: { "status": "success", "app_key_public": "<PEM>" }
                 │
-                └─> Return: App Key public key (PEM), App Key context path
+                <─ SPIRE Agent
+                    │
+                    └─> Receives: App Key public key (PEM format)
 ```
 
 **Step 5: Delegated Certification Request**
 ```
 SPIRE Agent TPM Plugin Server (Sidecar)
     │
-    └─> POST /v2.2/delegated_certification/certify_app_key (HTTPS/mTLS)
+    └─> POST /request-certificate (JSON over UDS)
+        │   Request: { "app_key_public": "<PEM>", "challenge_nonce": "<nonce>", "endpoint": "https://127.0.0.1:9002" }
         │
-        └─> rust-keylime Agent (High Privilege, Port 9002)
+        └─> DelegatedCertificationClient
             │
-            ├─> Perform TPM2_Certify
-            │   ├─> Load App Key from context
-            │   ├─> Use AK to sign App Key public key
-            │   └─> Generate certificate (attest + sig)
-            │
-            └─> Return: { certificate: { certify_data, signature }, agent_uuid }
+            └─> POST /v2.2/delegated_certification/certify_app_key (HTTPS/mTLS)
                 │
-                <─ SPIRE Agent TPM Plugin Server (Sidecar)
+                └─> rust-keylime Agent (High Privilege, Port 9002)
+                    │
+                    ├─> Perform TPM2_Certify
+                    │   ├─> Load App Key from context
+                    │   ├─> Use AK to sign App Key public key
+                    │   └─> Generate certificate (attest + sig)
+                    │
+                    └─> Return: { certificate: { certify_data, signature }, agent_uuid }
+                        │
+                        <─ SPIRE Agent TPM Plugin Server (Sidecar)
+                            │
+                            └─> Return: { "status": "success", "app_key_certificate": "<base64>", "agent_uuid": "<uuid>" }
+                                │
+                                <─ SPIRE Agent
 ```
 
 **Step 6: SPIRE Agent Builds and Sends SovereignAttestation**
@@ -496,21 +510,22 @@ Keylime Verifier (Port 8881)
 Keylime Verifier (Port 8881)
     │
     ├─> Extract geolocation from quote
-    ├─> Extract sensor_id if mobile type
+    ├─> Extract sensor_id, sensor_imei, sensor_imsi if mobile type
     │
-    └─> POST /verify
+    └─> POST /verify (HTTP/JSON)
+        │   Request: { "sensor_id": "12d1:1433", "sensor_imei": "...", "sensor_imsi": "..." }
         │
-        └─> Mobile Location Verification Microservice (Port 9050)
+        └─> Mobile Location Verification Microservice (Port 9050, configurable via mobile_sensor_endpoint)
             │
-            ├─> Lookup sensor_id in SQLite database
+            ├─> Lookup sensor in SQLite database (priority: sensor_id > sensor_imei > sensor_imsi)
             │   └─> Get MSISDN, lat, lon, accuracy
             │
-            ├─> Call CAMARA APIs:
-            │   ├─> POST /bc-authorize
-            │   ├─> POST /token
+            ├─> Call CAMARA APIs (if CAMARA_BYPASS=false):
+            │   ├─> POST /bc-authorize (reuse cached auth_req_id if available)
+            │   ├─> POST /token (reuse cached access_token if valid)
             │   └─> POST /location/v0/verify
             │
-            └─> Return: { verification_result: true/false, latitude, longitude, accuracy }
+            └─> Return: { "verification_result": true/false, "sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "...", "latitude": ..., "longitude": ..., "accuracy": ... }
                 │
                 <─ Keylime Verifier
 ```
@@ -608,9 +623,10 @@ SPIRE Server (Port 8081)
    - Prevents replay attacks
 
 6. **Mobile Location Verification**
-   - Geolocation sensor ID extracted from TPM quote
-   - Verifier calls mobile location verification microservice
-   - Microservice verifies device location via CAMARA APIs
+   - Geolocation sensor identifiers (sensor_id, sensor_imei, sensor_imsi) extracted from TPM quote
+   - Verifier calls mobile location verification microservice with sensor identifiers
+   - Microservice looks up sensor in database (priority: sensor_id > sensor_imei > sensor_imsi)
+   - Microservice verifies device location via CAMARA APIs (with token caching for performance)
    - Attestation fails if location verification fails
    - Enables geofencing and location-based policy enforcement
 
@@ -621,24 +637,33 @@ SPIRE Server (Port 8081)
 **Status:** ✅ Implemented and integrated
 
 **Implementation Details:**
-- **Database**: SQLite database (`sensor_mapping.db`) stores sensor_id → MSISDN, latitude, longitude, accuracy mappings
-- **Default Seed**: `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7.0`
-- **Communication**: Keylime Verifier connects to microservice via REST API (HTTP/JSON) over TCP (port 9050)
+- **Database**: SQLite database (`sensor_mapping.db`) stores sensor_id, sensor_imei, sensor_imsi → MSISDN, latitude, longitude, accuracy mappings
+  - Schema: `sensor_map(sensor_id TEXT, sensor_imei TEXT, sensor_imsi TEXT, msisdn TEXT, latitude REAL, longitude REAL, accuracy REAL, PRIMARY KEY (sensor_id, sensor_imei, sensor_imsi))`
+  - Lookup priority: sensor_id > sensor_imei > sensor_imsi
+- **Default Seed**: `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7.0` (with optional sensor_imei and sensor_imsi)
+- **Communication**: Keylime Verifier connects to microservice via REST API (HTTP/JSON) over TCP (port 9050 by default, configurable via `mobile_sensor_endpoint`)
   - Note: UDS support was deferred (similar to SPIRE Agent TPM Plugin Server (Sidecar) → Keylime Agent communication)
-- **Sensor ID Extraction**: Verifier extracts `sensor_id` from TPM quote response geolocation data (no hardcoded defaults)
+- **Sensor ID Extraction**: Verifier extracts `sensor_id`, `sensor_imei`, and/or `sensor_imsi` from TPM quote response geolocation data (no hardcoded defaults)
 - **CAMARA API Flow**: Microservice implements three-step CAMARA API sequence:
-  1. `POST /bc-authorize` with `login_hint` (phone number) and `scope`
-  2. `POST /token` with `grant_type=urn:openid:params:grant-type:ciba` and `auth_req_id`
+  1. `POST /bc-authorize` with `login_hint` (phone number) and `scope` (auth_req_id is cached and reused)
+  2. `POST /token` with `grant_type=urn:openid:params:grant-type:ciba` and `auth_req_id` (access token is cached with expiration)
   3. `POST /location/v0/verify` with `access_token`, `ueId` (phone number), `latitude`, `longitude`, `accuracy`
-- **Verification Result**: Microservice returns `{"verification_result": true/false, ...}` to verifier
+- **Token Caching**: The microservice caches `auth_req_id` (persisted to file) and `access_token` (with expiration) to reduce API calls
+- **Verification Result**: Microservice returns `{"verification_result": true/false, "sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "...", "latitude": ..., "longitude": ..., "accuracy": ...}` to verifier
 - **Attestation Gating**: If `verification_result` is `false`, or if the verifier cannot reach the microservice, the Keylime Verifier fails the attestation with error "mobile sensor location verification failed" and the SPIRE Server does not issue the SVID to the SPIRE Agent
 - **Configuration**: 
   - `mobile_sensor_enabled` in verifier config (default: false, set to true to enable)
   - `mobile_sensor_endpoint` in verifier config (default: `http://127.0.0.1:9050`)
   - `CAMARA_BYPASS` environment variable (default: false, set to true to skip CAMARA APIs for testing)
+  - `CAMARA_BASIC_AUTH` environment variable (required for CAMARA API authentication)
+  - `CAMARA_AUTH_REQ_ID` environment variable (optional, pre-obtained auth_req_id)
+  - `MOBILE_SENSOR_DB` environment variable (default: `sensor_mapping.db`)
   - `MOBILE_SENSOR_LATITUDE`, `MOBILE_SENSOR_LONGITUDE`, `MOBILE_SENSOR_ACCURACY` environment variables for coordinate overrides
+  - `MOBILE_SENSOR_IMEI`, `MOBILE_SENSOR_IMSI` environment variables for sensor identifiers
 
 **Location:**
-- `code-rollout-phase-3/mobile-sensor-microservice/service.py` - Flask microservice implementation
-- `code-rollout-phase-2/keylime/keylime/cloud_verifier_tornado.py` - Verifier integration (`_verify_mobile_sensor_geolocation`)
+- `mobile-sensor-microservice/service.py` - Flask microservice implementation
+- `keylime/keylime/cloud_verifier_tornado.py` - Verifier integration (`_verify_mobile_sensor_geolocation`)
 - `keylime/verifier.conf.minimal` - Configuration (`[verifier]` section)
+- `tpm-plugin/tpm_plugin_server.py` - SPIRE Agent TPM Plugin Server (sidecar) implementation
+- `tpm-plugin/delegated_certification.py` - Delegated certification client implementation
