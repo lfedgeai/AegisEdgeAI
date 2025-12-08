@@ -1,8 +1,3 @@
-# OS files
-.DS_Store
-**/.DS_Store
-
-# TPM files
 zero-trust/tpm/*.ctx
 zero-trust/tpm/*.pem
 zero-trust/tpm/*.pub
@@ -14,19 +9,22 @@ zero-trust/tpm/*.msg
 zero-trust/tpm/*.pcrs
 zero-trust/tpm/*.hash
 
-# Python cache
+# Python cache files
 **/*.pyc
 **/__pycache__/
+*.py[cod]
+*$py.class
 
-# Runtime directories
+# Agent and log directories
 zero-trust/agents/*
 zero-trust/logs/*
 
-# CodeQL
-_codeql_detected_source_root
-
-# Compiled binaries
+# Compiled binaries and build artifacts
 zero-trust/spire-tpm-plugin/tpm-app-persist
+zero-trust/spire-tpm-plugin/tpm-app-evict
+zero-trust/spire-tpm-plugin/tpm-app-sign
+zero-trust/spire-tpm-plugin/tpm-app-selftest
+zero-trust/spire-tpm-plugin/ma-app-*
 zero-trust/spire-tpm-plugin/*.o
 zero-trust/spire-tpm-plugin/*.ctx
 zero-trust/spire-tpm-plugin/*.pem
@@ -38,3 +36,13 @@ zero-trust/spire-tpm-plugin/*.out
 zero-trust/spire-tpm-plugin/*.msg
 zero-trust/spire-tpm-plugin/*.pcrs
 zero-trust/spire-tpm-plugin/*.hash
+
+# Static libraries and libtool files
+zero-trust/spire-tpm-plugin/usr/
+*.a
+*.la
+*.so
+*.so.*
+
+# TPM binaries
+zero-trust/tpm/tpm-app-persist
