@@ -177,18 +177,85 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc
 ./test_complete_control_plane.sh --no-pause
+
+# Verify processes are running
 ps -aux | grep spire-server
 ps -aux | grep keylime.cmd.verifier
 ps -aux | grep keylime.cmd.registrar
+
+# Health checks (optional but recommended)
+# Check SPIRE Server health
+./spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock
+
+# Check Keylime Verifier endpoint
+curl -k https://localhost:8881/version || curl http://localhost:8881/version
+
+# Check Keylime Registrar endpoint
+curl http://localhost:8890/version
+
+# Check service logs for errors
+tail -20 /tmp/spire-server.log
+tail -20 /tmp/keylime-verifier.log
+tail -20 /tmp/keylime-registrar.log
 ```
+
 **ON PREM API GATEWAY WINDOW:** (e.g., 10.1.0.10)
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
 ./test_onprem.sh --no-pause
+
+# Verify processes are running
 ps -aux | grep envoy
 ps -aux | grep mobile-sensor-microservice
 ps -aux | grep mtls-server
+
+# Health checks (optional but recommended)
+# Check Envoy is listening on port 8080
+sudo ss -tlnp | grep :8080 || sudo netstat -tlnp | grep :8080
+
+# Check Mobile Location Service endpoint
+curl http://localhost:5000/verify -X POST -H "Content-Type: application/json" -d '{}'
+
+# Check mTLS Server is listening on port 9443
+sudo ss -tlnp | grep :9443 || sudo netstat -tlnp | grep :9443
+
+# Check service logs for errors
+tail -20 /opt/envoy/logs/envoy.log
+tail -20 /tmp/mobile-sensor.log
+tail -20 /tmp/mtls-server.log
 ```
+
+**Quick Verification Summary:**
+
+After running both setup scripts, verify all services are healthy:
+
+**On Control Plane (10.1.0.11):**
+```bash
+# All services should show running processes
+ps aux | grep -E "spire-server|keylime.cmd.verifier|keylime.cmd.registrar" | grep -v grep
+
+# Quick health check one-liner
+echo "SPIRE Server: $(./spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock 2>&1 | head -1)"
+echo "Keylime Verifier: $(curl -s -k https://localhost:8881/version 2>&1 | head -1 || echo 'not responding')"
+echo "Keylime Registrar: $(curl -s http://localhost:8890/version 2>&1 | head -1 || echo 'not responding')"
+```
+
+**On On-Prem Gateway (10.1.0.10):**
+```bash
+# All services should show running processes
+ps aux | grep -E "envoy|mobile-sensor|mtls-server" | grep -v grep
+
+# Quick health check one-liner
+echo "Envoy (port 8080): $(sudo ss -tlnp 2>/dev/null | grep :8080 >/dev/null && echo 'listening' || echo 'not listening')"
+echo "Mobile Service (port 5000): $(curl -s -X POST http://localhost:5000/verify -H 'Content-Type: application/json' -d '{}' 2>&1 | head -1 || echo 'not responding')"
+echo "mTLS Server (port 9443): $(sudo ss -tlnp 2>/dev/null | grep :9443 >/dev/null && echo 'listening' || echo 'not listening')"
+```
+
+**Common Issues:**
+- If services don't start: Check logs in `/tmp/` (control plane) or `/opt/envoy/logs/` and `/tmp/` (on-prem)
+- If ports are in use: Run cleanup scripts or manually stop conflicting services
+- If health checks fail: Wait a few seconds for services to fully initialize, then retry
+
 ### Demo Act 2: The Happy Path (Proof of Geofencing)
 
 *See Slides 7 and 11 for solution architecture and implementation details*
