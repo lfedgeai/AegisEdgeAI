@@ -104,9 +104,11 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 ### Attestation: SPIRE Agent Attestation Request
 
 3. **SPIRE Agent Initiates Attestation**
-   - The SPIRE Agent initiates attestation by opening a gRPC stream to the SPIRE Server
+   - The SPIRE Agent initiates attestation by opening a gRPC stream to the SPIRE Server over **standard TLS** (TLS 1.2/1.3)
+   - The gRPC connection uses standard TLS for transport security (server authentication only)
    - The SPIRE Server sends a challenge nonce to the agent
-   - The agent must prove its identity using TPM-based attestation
+   - The agent must prove its identity using TPM-based attestation (SovereignAttestation message)
+   - **Note**: The initial gRPC connection uses standard TLS, not mTLS - the TPM App Key is used for attestation proof, not TLS client authentication
 
 4. **SPIRE Agent Requests App Key Information**
    - The SPIRE Agent sends a POST request to `/get-app-key` endpoint on the SPIRE Agent TPM Plugin Server (sidecar) via UDS
@@ -229,6 +231,10 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **Mobile Location Verification**: When mobile geolocation is detected in the TPM quote (sensor_id, sensor_imei, or sensor_imsi present), the verifier calls the mobile location verification microservice to verify the device location via CAMARA APIs; attestation fails if location verification fails
 - **TPM Plugin Server Communication**: SPIRE Agent communicates with TPM Plugin Server via JSON over UDS (Unix Domain Socket) for security and performance
 - **Delegated Certification Transport**: TPM Plugin Server uses HTTPS/mTLS (port 9002) to communicate with rust-keylime agent (UDS support deferred)
+- **SPIRE Agent Attestation Transport**: SPIRE Agent uses standard TLS (not mTLS) for gRPC communication with SPIRE Server
+- **TPM App Key Usage**: TPM App Key is used for attestation proof (in SovereignAttestation message), not for TLS client certificate authentication
+- **SPIRE Agent Attestation Transport**: SPIRE Agent uses standard TLS (not mTLS) for gRPC communication with SPIRE Server
+- **TPM App Key Usage**: TPM App Key is used for attestation proof (in SovereignAttestation message), not for TLS client certificate authentication
 - **Token Caching**: Mobile location verification microservice caches CAMARA auth_req_id (persisted to file) and access_token (with expiration) to reduce API calls and improve performance
 
 This flow provides hardware-backed identity attestation where the SPIRE Agent proves its identity using the TPM, and the SPIRE Server verifies this proof through the Keylime Verifier before issuing credentials.
@@ -261,18 +267,31 @@ The workload SVID flow follows the standard SPIRE pattern, with the key differen
 
 4. **SPIRE Agent Requests Workload SVID**
    - The SPIRE Agent sends a request to the SPIRE Server for the workload SVID
+   - **Important**: After attestation, SPIRE Agent uses **non-standard mTLS** with TPM App Key for workload SVID requests
+   - **mTLS Flow**:
+     1. SPIRE Agent initiates gRPC connection to SPIRE Server
+     2. During TLS handshake, SPIRE Agent needs to sign TLS CertificateVerify message
+     3. SPIRE Agent calls TPM Plugin Server `/sign-data` endpoint via UDS:
+        - Request: `{"data": "<base64_hash_of_tls_handshake>", "hash_alg": "sha256", "is_digest": true, "scheme": "rsapss"}`
+        - TPM Plugin Server uses `tpm2_sign` to sign the hash with TPM App Key (private key stays in TPM)
+        - Response: `{"status": "success", "signature": "<base64_signature>"}`
+     4. SPIRE Agent uses the signature in TLS CertificateVerify message
+     5. SPIRE Server verifies the signature using App Key public key (from agent SVID)
    - The request includes:
      - The workload's SPIFFE ID (from the matched registration entry)
-     - The agent's own SVID (for authentication)
+     - The agent's own SVID (for authentication, contains App Key public key)
      - Workload selector information
+   - **Transport**: gRPC over mTLS (non-standard, using TPM App Key for client authentication)
 
 ### Verification: SPIRE Server Issues Workload SVID
 
 5. **SPIRE Server Validates Request**
-   - The SPIRE Server authenticates the agent using the agent's SVID
+   - The SPIRE Server authenticates the agent using **non-standard mTLS** with TPM App Key
+   - The server verifies the TLS client signature (signed by TPM App Key private key)
    - The server verifies the agent SVID's certificate chain and signature
    - The server validates that the agent is authorized to request SVIDs for the specified workload
    - **Note**: Workload SVID requests skip Keylime verification - workloads inherit attested claims from the agent SVID
+   - **mTLS Authentication**: The TPM App Key signature proves the agent controls the TPM App Key (hardware-backed authentication)
 
 6. **SPIRE Server Extracts Agent Attestation Claims**
    - The SPIRE Server extracts the AttestedClaims from the agent SVID
@@ -376,16 +395,20 @@ SPIRE Agent TPM Plugin Server (Python Sidecar, UDS Socket: /tmp/spire-data/tpm-p
 ```
 SPIRE Agent (Low Privilege)
     │
-    └─> Initiate gRPC stream: AttestAgent()
+    └─> Initiate gRPC stream: AttestAgent() over TLS (standard TLS, not mTLS)
+        │   Transport: gRPC over TLS 1.2/1.3 (server authentication only)
+        │   Protocol: AttestAgent() gRPC method
         │
         └─> SPIRE Server (Port 8081)
             │
-            ├─> Receives attestation request
+            ├─> Receives attestation request over TLS
             └─> Send challenge nonce
                 │
                 <─ SPIRE Agent
                     │
                     └─> Receives challenge nonce
+                        │
+                        └─> Note: Connection uses standard TLS (not mTLS with TPM App Key)
 ```
 
 **Step 4: SPIRE Agent Requests App Key Information**
@@ -434,18 +457,23 @@ SPIRE Agent TPM Plugin Server (Sidecar)
 ```
 SPIRE Agent
     │
-    ├─> Build SovereignAttestation:
-    │   ├─> App Key public key
-    │   ├─> App Key certificate (AK-signed)
-    │   ├─> Challenge nonce
-    │   ├─> Agent UUID
-    │   └─> TPM quote: empty (verifier fetches)
+    ├─> Build SovereignAttestation message:
+    │   ├─> app_key_public: App Key public key (PEM format)
+    │   ├─> app_key_certificate: App Key certificate (AK-signed, base64-encoded bytes)
+    │   ├─> challenge_nonce: Challenge nonce from SPIRE Server
+    │   ├─> keylime_agent_uuid: Agent UUID
+    │   └─> tpm_signed_attestation: empty string (verifier fetches quote directly)
     │
-    └─> POST /agent/attest-agent
+    └─> Send SovereignAttestation via gRPC: AttestAgent() over TLS
+        │   Transport: Standard TLS (not mTLS)
+        │   Protocol: gRPC AttestAgent() method
+        │   Note: TPM App Key is used for attestation proof, NOT for TLS client cert
         │
         └─> SPIRE Server (Port 8081)
             │
-            └─> Receives SovereignAttestation
+            └─> Receives SovereignAttestation over TLS
+                │
+                └─> Extracts: App Key public key, certificate, nonce, agent UUID
 ```
 ### VERIFICATION: SPIRE SERVER VERIFICATION
 
@@ -629,6 +657,75 @@ SPIRE Server (Port 8081)
    - Microservice verifies device location via CAMARA APIs (with token caching for performance)
    - Attestation fails if location verification fails
    - Enables geofencing and location-based policy enforcement
+
+---
+
+## SPIRE Agent Attestation: TLS vs mTLS Communication
+
+### Standard TLS for Attestation Transport
+
+**SPIRE Agent → SPIRE Server Communication:**
+- **Transport Protocol**: Standard TLS (TLS 1.2/1.3) over gRPC
+- **Connection Type**: Server-authenticated TLS (not mTLS)
+- **Port**: 8081 (default SPIRE Server port)
+- **Protocol**: gRPC `AttestAgent()` method
+- **Authentication**: SPIRE Server presents its TLS certificate; SPIRE Agent verifies server identity
+- **Client Authentication**: None (standard TLS, not mTLS)
+
+### TPM App Key Usage: Two-Phase Approach
+
+**Phase 1: Initial Attestation (Standard TLS)**
+- The TPM App Key is **NOT** used for TLS client certificate authentication during initial attestation
+- The TPM App Key is used for **attestation proof** within the `SovereignAttestation` message
+- The App Key private key remains in the TPM and is never exported
+- The App Key public key and AK-signed certificate are sent in the `SovereignAttestation` message
+- **Transport**: Standard TLS (server authentication only)
+
+**TPM App Key in Initial Attestation:**
+1. **App Key Public Key**: Sent in `SovereignAttestation.app_key_public` field (PEM format)
+2. **App Key Certificate**: Sent in `SovereignAttestation.app_key_certificate` field (base64-encoded bytes)
+   - This certificate is signed by the TPM's Attestation Key (AK) via TPM2_Certify
+   - Proves the App Key exists in the TPM and is bound to the challenge nonce
+3. **Attestation Proof**: The App Key certificate serves as cryptographic proof of TPM-based identity
+
+**Phase 2: Post-Attestation mTLS (Non-Standard mTLS with TPM App Key)**
+- **After successful attestation**, SPIRE Agent uses **non-standard mTLS** with TPM App Key for workload SVID requests
+- The TPM App Key private key (stays in TPM) is used to sign TLS handshake messages
+- SPIRE Agent calls TPM Plugin Server `/sign-data` endpoint to sign TLS CertificateVerify message or client certificate
+- This provides hardware-backed client authentication for subsequent gRPC calls to SPIRE Server
+- **Transport**: Non-standard mTLS (TPM App Key for client authentication)
+
+**How Non-Standard mTLS Works:**
+1. SPIRE Agent requests TPM Plugin Server to sign TLS handshake data using TPM App Key
+2. TPM Plugin Server uses `tpm2_sign` to sign the data (hash of TLS handshake messages) with TPM App Key
+3. SPIRE Agent uses the signature in TLS CertificateVerify message or client certificate
+4. SPIRE Server verifies the signature using the App Key public key (from agent SVID or attestation)
+5. This proves the agent controls the TPM App Key (hardware-backed authentication)
+
+**Why Non-Standard mTLS?**
+- TPM App Key private key cannot be exported (stays in TPM)
+- Standard TLS libraries expect private keys to be accessible for TLS handshake
+- Non-standard approach: SPIRE Agent uses TPM Plugin Server to sign TLS handshake messages on-demand
+- This provides hardware-backed client authentication without exporting the private key
+
+**Security Model:**
+- **Initial Attestation**: Standard TLS (server authentication) + TPM App Key attestation proof
+- **Post-Attestation**: Non-standard mTLS (TPM App Key for client authentication)
+- **Identity Proof**: TPM App Key certificate (hardware-backed attestation)
+- **Verification**: Keylime Verifier validates the App Key certificate signature and TPM quote
+- **Result**: Hardware-rooted identity proof with hardware-backed mTLS client authentication
+
+**Comparison: Standard mTLS vs Non-Standard TPM App Key mTLS**
+
+| Aspect | Standard mTLS | TPM App Key (Initial Attestation) | TPM App Key (Post-Attestation) |
+|--------|---------------|-----------------------------------|--------------------------------|
+| **Phase** | N/A | Initial attestation | Workload SVID requests |
+| **Transport** | TLS with client certificate | Standard TLS (no client cert) | Non-standard mTLS (TPM App Key) |
+| **Client Auth** | TLS client certificate | Attestation message (SovereignAttestation) | TLS CertificateVerify (TPM-signed) |
+| **Private Key** | Exported from TPM (if TPM-backed) | Stays in TPM (never exported) | Stays in TPM (sign via TPM Plugin Server) |
+| **Proof Mechanism** | TLS handshake with client cert | App Key certificate in gRPC message | TPM App Key signature in TLS handshake |
+| **Verification** | TLS certificate chain validation | Keylime Verifier validates TPM evidence | SPIRE Server verifies TPM App Key signature |
+| **Hardware Binding** | Optional (if using TPM-backed cert) | Required (App Key in TPM) | Required (App Key in TPM) |
 
 ---
 
