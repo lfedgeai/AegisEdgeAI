@@ -6,12 +6,44 @@
 
 set -euo pipefail
 
-SVID_FILE="${1:-/tmp/svid-dump/svid.pem}"
-SPIRE_BUNDLE="${2:-/tmp/bundle.pem}"
+# Parse arguments
+SUPPRESS_CHAIN_WARNINGS=false
+SVID_FILE=""
+SPIRE_BUNDLE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --agent-svid|--suppress-chain-warnings)
+            SUPPRESS_CHAIN_WARNINGS=true
+            shift
+            ;;
+        --*)
+            echo "Error: Unknown option: $1"
+            echo "Usage: $0 [--agent-svid] [path-to-svid.pem] [path-to-spire-bundle.pem]"
+            exit 1
+            ;;
+        *)
+            if [ -z "$SVID_FILE" ]; then
+                SVID_FILE="$1"
+            elif [ -z "$SPIRE_BUNDLE" ]; then
+                SPIRE_BUNDLE="$1"
+            else
+                echo "Error: Too many arguments"
+                echo "Usage: $0 [--agent-svid] [path-to-svid.pem] [path-to-spire-bundle.pem]"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Set defaults if not provided
+SVID_FILE="${SVID_FILE:-/tmp/svid-dump/svid.pem}"
+SPIRE_BUNDLE="${SPIRE_BUNDLE:-/tmp/bundle.pem}"
 
 if [ ! -f "$SVID_FILE" ]; then
     echo "Error: SVID certificate not found at $SVID_FILE"
-    echo "Usage: $0 [path-to-svid.pem] [path-to-spire-bundle.pem]"
+    echo "Usage: $0 [--agent-svid] [path-to-svid.pem] [path-to-spire-bundle.pem]"
     exit 1
 fi
 
@@ -31,6 +63,7 @@ echo ""
 # Export variables for Python script
 export DUMP_SVID_FILE="$SVID_FILE"
 export DUMP_SPIRE_BUNDLE="$SPIRE_BUNDLE"
+export SUPPRESS_CHAIN_WARNINGS="$SUPPRESS_CHAIN_WARNINGS"
 
 # Unified certificate dump and verification
 python3 <<'PYEOF'
@@ -291,52 +324,72 @@ for block in blocks:
         print(f"⚠ Warning: Failed to parse one certificate: {exc}")
         continue
 
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print("Certificate Chain Hierarchy")
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print("SPIRE Certificate Chain Structure:")
-print("  [0] Workload SVID      → Certificate for your application/workload")
-print("  [1] SPIRE Agent SVID   → Certificate for the SPIRE agent (if present)")
-print("  [N] SPIRE Server Root  → Root CA certificate (from bundle)")
-print("")
-print("Signing Relationship:")
-print("  Expected: Workload SVID → Agent SVID → Server Root CA")
-if len(certs) >= 2:
-    # Check if we have agent SVID
-    agent_svid_found = False
-    for idx, cert in enumerate(certs):
-        spiffe_id = extract_spiffe_id(cert)
-        if spiffe_id and "/spire/agent/" in spiffe_id:
-            agent_svid_found = True
-            break
-    if agent_svid_found:
-        print("  Actual:   Workload SVID → Agent SVID → Server Root CA ✓")
-    else:
-        print("  Actual:   Workload SVID → Server Root CA (Agent SVID missing)")
-elif len(certs) == 1:
-    print("  Actual:   Workload SVID → Server Root CA (Agent SVID missing)")
-else:
-    print("  Actual:   (No certificates found)")
-print("")
+# Check if we should suppress chain warnings (for agent SVID dumps)
+suppress_warnings = os.environ.get("SUPPRESS_CHAIN_WARNINGS", "false").lower() == "true"
+
+# Detect if this is an agent SVID (single cert with agent SPIFFE ID)
+is_agent_svid = False
 if len(certs) == 1:
-    print("⚠ NOTE: SPIRE Agent SVID is missing from the certificate chain.")
-    print("  The workload SVID is signed directly by the SPIRE Server.")
-    print("  This may indicate:")
-    print("    • The agent SVID was not included when fetching the workload SVID")
-    print("    • SPIRE is configured to sign workload SVIDs directly")
-    print("    • The agent SVID needs to be fetched separately and added to the chain")
+    spiffe_id = extract_spiffe_id(certs[0])
+    if spiffe_id and "/spire/agent/" in spiffe_id:
+        is_agent_svid = True
+
+# Auto-detect agent SVID or use flag
+if is_agent_svid or suppress_warnings:
+    suppress_warnings = True
+
+print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+if suppress_warnings and is_agent_svid:
+    print("Agent SVID Certificate")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("This is the SPIRE Agent's own SVID certificate (single certificate).")
     print("")
-elif len(certs) >= 2:
-    # Verify we have agent SVID
-    agent_svid_found = False
-    for idx, cert in enumerate(certs):
-        spiffe_id = extract_spiffe_id(cert)
-        if spiffe_id and "/spire/agent/" in spiffe_id:
-            agent_svid_found = True
-            break
-    if agent_svid_found:
-        print("✓ NOTE: Full certificate chain present (Workload SVID + Agent SVID)")
+else:
+    print("Certificate Chain Hierarchy")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("SPIRE Certificate Chain Structure:")
+    print("  [0] Workload SVID      → Certificate for your application/workload")
+    print("  [1] SPIRE Agent SVID   → Certificate for the SPIRE agent (if present)")
+    print("  [N] SPIRE Server Root  → Root CA certificate (from bundle)")
     print("")
+    print("Signing Relationship:")
+    print("  Expected: Workload SVID → Agent SVID → Server Root CA")
+    if len(certs) >= 2:
+        # Check if we have agent SVID
+        agent_svid_found = False
+        for idx, cert in enumerate(certs):
+            spiffe_id = extract_spiffe_id(cert)
+            if spiffe_id and "/spire/agent/" in spiffe_id:
+                agent_svid_found = True
+                break
+        if agent_svid_found:
+            print("  Actual:   Workload SVID → Agent SVID → Server Root CA ✓")
+        else:
+            print("  Actual:   Workload SVID → Server Root CA (Agent SVID missing)")
+    elif len(certs) == 1:
+        print("  Actual:   Workload SVID → Server Root CA (Agent SVID missing)")
+    else:
+        print("  Actual:   (No certificates found)")
+    print("")
+    if len(certs) == 1 and not suppress_warnings:
+        print("⚠ NOTE: SPIRE Agent SVID is missing from the certificate chain.")
+        print("  The workload SVID is signed directly by the SPIRE Server.")
+        print("  This may indicate:")
+        print("    • The agent SVID was not included when fetching the workload SVID")
+        print("    • SPIRE is configured to sign workload SVIDs directly")
+        print("    • The agent SVID needs to be fetched separately and added to the chain")
+        print("")
+    elif len(certs) >= 2:
+        # Verify we have agent SVID
+        agent_svid_found = False
+        for idx, cert in enumerate(certs):
+            spiffe_id = extract_spiffe_id(cert)
+            if spiffe_id and "/spire/agent/" in spiffe_id:
+                agent_svid_found = True
+                break
+        if agent_svid_found:
+            print("✓ NOTE: Full certificate chain present (Workload SVID + Agent SVID)")
+        print("")
 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 print("Certificate Chain Summary")
 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -622,23 +675,32 @@ print("━━━━━━━━━━━━━━━━━━━━━━━━�
 print("Summary")
 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 print("")
-print("Certificate Chain Components:")
-print("  🔹 Workload SVID: Your application's identity certificate")
-print("  🔸 SPIRE Agent SVID: The agent that issued the workload SVID (if present in chain)")
-print("  🔷 SPIRE Server Root CA: The trust anchor that signs agent SVIDs")
-print("")
-print("Certificate Hierarchy:")
-if len(certs) == 1:
-    print("  • Workload SVID is signed directly by SPIRE Server")
-    print("  ⚠ SPIRE Agent SVID is NOT present in the chain")
+if suppress_warnings and is_agent_svid:
+    print("Certificate Type:")
+    print("  🔸 SPIRE Agent SVID: The agent's own identity certificate")
+    print("  🔷 SPIRE Server Root CA: The trust anchor that signs agent SVIDs")
     print("")
-    print("  To include the Agent SVID in the chain:")
-    print("    1. Fetch the agent SVID from SPIRE agent")
-    print("    2. Append it to the workload SVID file")
-    print("    3. The chain should be: Workload SVID + Agent SVID")
+    print("Certificate Hierarchy:")
+    print("  • Agent SVID is signed by SPIRE Server Root CA")
 else:
-    print("  • Workload SVID is signed by SPIRE Agent SVID")
-    print("  • SPIRE Agent SVID is signed by SPIRE Server Root CA")
+    print("Certificate Chain Components:")
+    print("  🔹 Workload SVID: Your application's identity certificate")
+    print("  🔸 SPIRE Agent SVID: The agent that issued the workload SVID (if present in chain)")
+    print("  🔷 SPIRE Server Root CA: The trust anchor that signs agent SVIDs")
+    print("")
+    print("Certificate Hierarchy:")
+    if len(certs) == 1:
+        print("  • Workload SVID is signed directly by SPIRE Server")
+        if not suppress_warnings:
+            print("  ⚠ SPIRE Agent SVID is NOT present in the chain")
+            print("")
+            print("  To include the Agent SVID in the chain:")
+            print("    1. Fetch the agent SVID from SPIRE agent")
+            print("    2. Append it to the workload SVID file")
+            print("    3. The chain should be: Workload SVID + Agent SVID")
+    else:
+        print("  • Workload SVID is signed by SPIRE Agent SVID")
+        print("  • SPIRE Agent SVID is signed by SPIRE Server Root CA")
 if verification_result is True:
     print("")
     print("✓ Certificate chain verified against SPIRE Server Root CA from bundle")

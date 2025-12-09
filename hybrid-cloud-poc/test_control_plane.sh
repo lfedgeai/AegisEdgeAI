@@ -1531,7 +1531,7 @@ stop_control_plane_services() {
 
 # Step 2: Start Keylime Verifier with unified_identity enabled
 echo ""
-echo -e "${CYAN}Step 2: Starting Real Keylime Verifier with unified_identity enabled...${NC}"
+echo -e "${CYAN}Step 2: Starting Keylime Verifier with unified_identity enabled...${NC}"
 cd "${KEYLIME_DIR}"
 
 # Cleanup existing Keylime Verifier before starting

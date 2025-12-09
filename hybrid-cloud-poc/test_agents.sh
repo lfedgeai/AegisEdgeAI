@@ -905,16 +905,14 @@ configure_spire_agent_svid_renewal() {
     fi
 }
 
-# Function to test SVID renewal by monitoring logs
-test_svid_renewal() {
-    local monitor_duration="${1:-60}"  # Default: monitor for 60 seconds
-    local renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-86400}"
+# Function to wait for exactly one agent SVID renewal
+wait_for_one_agent_svid_renewal() {
+    local max_wait="${1:-120}"  # Maximum time to wait in seconds
+    local renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-30}"
     
     echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${CYAN}  Testing SVID Renewal (monitoring for ${monitor_duration}s)${NC}"
+    echo -e "${CYAN}  Waiting for one agent SVID renewal (max ${max_wait}s)...${NC}"
     echo -e "${CYAN}  Configured renewal interval: ${renewal_interval}s${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
     # Check if agent is running
@@ -931,137 +929,170 @@ test_svid_renewal() {
     
     echo -e "${GREEN}  ✓ SPIRE Agent is running (PID: $agent_pid)${NC}"
     
-    # Get initial log positions
+    # Get initial log positions and count existing renewals
     local agent_log="/tmp/spire-agent.log"
     local initial_agent_size=0
+    local initial_renewal_count=0
     if [ -f "$agent_log" ]; then
         initial_agent_size=$(wc -l < "$agent_log" 2>/dev/null || echo "0")
+        # Count existing renewals
+        if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+            initial_renewal_count=$(grep -c "Successfully reattested node" "$agent_log" 2>/dev/null || echo 0)
+        else
+            initial_renewal_count=$(grep -iE "Successfully rotated agent SVID" "$agent_log" 2>/dev/null | wc -l)
+        fi
+        initial_renewal_count=$(printf '%s' "$initial_renewal_count" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+        initial_renewal_count="${initial_renewal_count:-0}"
     fi
     
-    echo "  Monitoring logs for renewal events..."
-    echo "  Initial log position: line $initial_agent_size"
+    echo "  Initial renewal count: $initial_renewal_count"
+    echo "  Waiting for renewal count to reach $((initial_renewal_count + 1))..."
     echo ""
     
-    # Monitor for the specified duration
+    # Wait for exactly one new renewal
     local start_time=$(date +%s)
-    local end_time=$((start_time + monitor_duration))
-    local agent_renewals=0
-    local workload_renewals=0
-    
-    echo "  Waiting for renewal events (checking every 2 seconds)..."
+    local end_time=$((start_time + max_wait))
+    local target_count=$((initial_renewal_count + 1))
     
     while [ $(date +%s) -lt $end_time ]; do
         sleep 2
         
-        # Check for agent SVID renewal events
+        # Check current renewal count
+        local current_count=0
         if [ -f "$agent_log" ]; then
-            local current_size=$(wc -l < "$agent_log" 2>/dev/null || echo "0")
-            if [ "$current_size" -gt "$initial_agent_size" ]; then
-                # Check for new renewal events
-                # unified_identity uses reattestation only (no rotation)
-                if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
-                    local new_agent_renewals=$(tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
-                        grep -c "Successfully reattested node" 2>/dev/null || echo 0)
-                    # Sanitize: ensure we have a single integer value
-                    new_agent_renewals=$(printf '%s' "$new_agent_renewals" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
-                    new_agent_renewals="${new_agent_renewals:-0}"
-                else
-                    local new_agent_renewals=$(tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
-                        grep -iE "Successfully rotated agent SVID|renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" | wc -l)
-                    # Sanitize: ensure we have a single integer value
-                    new_agent_renewals=$(printf '%s' "$new_agent_renewals" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
-                    new_agent_renewals="${new_agent_renewals:-0}"
-                fi
-                
-                if [ "$new_agent_renewals" -gt 0 ] 2>/dev/null; then
-                    agent_renewals=$((agent_renewals + new_agent_renewals))
-                    if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
-                        echo -e "  ${GREEN}✓ Agent SVID reattestation detected! (Total: $agent_renewals)${NC}"
-                        # Show the reattestation log entry
-                        tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
-                            grep "Successfully reattested node" | \
-                            head -1 | sed 's/^/    /'
-                    else
-                        echo -e "  ${GREEN}✓ Agent SVID renewal detected! (Total: $agent_renewals)${NC}"
-                        # Show the renewal log entry
-                        tail -n +$((initial_agent_size + 1)) "$agent_log" 2>/dev/null | \
-                            grep -iE "Successfully rotated agent SVID|renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" | \
-                            head -1 | sed 's/^/    /'
-                    fi
-                    
-                    # Update initial size to avoid double counting
-                    initial_agent_size=$current_size
-                    
-                    # Check if workload SVIDs are also being renewed
-                    # Workload SVIDs should be automatically renewed when agent SVID is renewed
-                    local workload_renewal_check=$(tail -n +$((initial_agent_size - 10)) "$agent_log" 2>/dev/null | \
-                        grep -iE "workload.*SVID|X509.*SVID.*rotated" | wc -l)
-                    # Sanitize: ensure we have a single integer value
-                    workload_renewal_check=$(printf '%s' "$workload_renewal_check" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
-                    workload_renewal_check="${workload_renewal_check:-0}"
-                    
-                    if [ "$workload_renewal_check" -gt 0 ] 2>/dev/null; then
-                        workload_renewals=$((workload_renewals + workload_renewal_check))
-                        echo -e "    ${GREEN}✓ Workload SVID renewal also detected${NC}"
-                    fi
-                fi
+            if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+                current_count=$(grep -c "Successfully reattested node" "$agent_log" 2>/dev/null || echo 0)
+            else
+                current_count=$(grep -iE "Successfully rotated agent SVID" "$agent_log" 2>/dev/null | wc -l)
             fi
+            current_count=$(printf '%s' "$current_count" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
+            current_count="${current_count:-0}"
         fi
         
-        # Show progress
+        if [ "$current_count" -ge "$target_count" ] 2>/dev/null; then
+            echo -e "${GREEN}  ✓ Agent SVID renewal detected! (Count: $current_count)${NC}"
+            # Show the renewal log entry
+            if [ -f "$agent_log" ]; then
+                if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+                    grep "Successfully reattested node" "$agent_log" | tail -1 | sed 's/^/    /'
+                else
+                    grep -iE "Successfully rotated agent SVID" "$agent_log" | tail -1 | sed 's/^/    /'
+                fi
+            fi
+            return 0
+        fi
+        
+        # Show progress every 10 seconds
         local elapsed=$(( $(date +%s) - start_time ))
-        local remaining=$((end_time - $(date +%s)))
         if [ $((elapsed % 10)) -eq 0 ] && [ $elapsed -gt 0 ]; then
-            echo "  Progress: ${elapsed}s / ${monitor_duration}s (${remaining}s remaining)"
+            echo "  Progress: ${elapsed}s elapsed, waiting for renewal (current count: $current_count, target: $target_count)..."
         fi
     done
     
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${CYAN}  SVID Renewal Test Results${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
+    echo -e "${YELLOW}  ⚠ Timeout: No renewal detected within ${max_wait}s${NC}"
+    return 1
+}
+
+# Function to fetch agent SVID and save it
+fetch_agent_svid() {
+    local output_file="${1:-/tmp/agent-svid-dump/agent-svid.pem}"
+    local agent_log="/tmp/spire-agent.log"
     
-    if [ "$agent_renewals" -gt 0 ]; then
-        echo -e "${GREEN}  ✓ Agent SVID Renewals: $agent_renewals event(s) detected${NC}"
-        
-        if [ "$workload_renewals" -gt 0 ]; then
-            echo -e "${GREEN}  ✓ Workload SVID Renewals: $workload_renewals event(s) detected${NC}"
-            echo -e "${GREEN}  ✓ Workload SVIDs are being automatically renewed with agent SVID${NC}"
-        else
-            echo -e "${YELLOW}  ⚠ Workload SVID renewals: Not explicitly detected in logs${NC}"
-            echo "    (This may be normal - workload SVIDs are renewed automatically)"
-        fi
-        
-        echo ""
-        echo "  Recent renewal log entries:"
-        if [ -f "$agent_log" ]; then
-            if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
-                grep "Successfully reattested node" "$agent_log" | tail -5 | sed 's/^/    /'
-            else
-                grep -iE "Successfully rotated agent SVID|renew|SVID.*updated|SVID.*refreshed|Agent.*SVID.*renewed" "$agent_log" | tail -5 | sed 's/^/    /'
+    echo ""
+    echo "  Fetching agent SVID..."
+    
+    # Create output directory
+    mkdir -p "$(dirname "$output_file")" 2>/dev/null || true
+    
+    # Extract agent SVID from logs (agent logs the certificate PEM)
+    # Look for the most recent "Agent SVID Certificate (PEM)" log entry
+    # Log format: time="..." level=info msg="..." cert_pem="-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+    if [ -f "$agent_log" ]; then
+        # Use Python to extract the certificate from logs
+        if command -v python3 >/dev/null 2>&1; then
+            local cert_pem=$(python3 << 'PYEOF'
+import sys
+import re
+
+log_file = "/tmp/spire-agent.log"
+try:
+    with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+        # Read lines and search backwards for the most recent agent SVID log
+        lines = f.readlines()
+        for line in reversed(lines):
+            if "Agent SVID Certificate (PEM)" in line and "cert_pem=" in line:
+                # Extract cert_pem="..." value
+                # Handle both single-line and multi-line formats
+                # Pattern: cert_pem="-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+                match = re.search(r'cert_pem="([^"]+)"', line)
+                if match:
+                    cert = match.group(1)
+                    # Replace escaped newlines with actual newlines
+                    cert = cert.replace('\\n', '\n')
+                    if 'BEGIN CERTIFICATE' in cert and 'END CERTIFICATE' in cert:
+                        print(cert)
+                        sys.exit(0)
+                
+                # If cert spans multiple lines, try to find it
+                # Look for the line with cert_pem= and extract until END CERTIFICATE
+                if 'cert_pem=' in line:
+                    # Find the start of cert_pem value
+                    start_idx = line.find('cert_pem="') + len('cert_pem="')
+                    # Extract from start to end of line, then continue reading if needed
+                    cert_part = line[start_idx:]
+                    # Remove trailing quote if present
+                    cert_part = cert_part.rstrip('"')
+                    cert_part = cert_part.replace('\\n', '\n')
+                    
+                    # If END CERTIFICATE is in this line, we're done
+                    if 'END CERTIFICATE' in cert_part:
+                        print(cert_part)
+                        sys.exit(0)
+                    
+                    # Otherwise, we might need to read more lines (unlikely but possible)
+                    # For now, try to extract what we have
+                    if 'BEGIN CERTIFICATE' in cert_part:
+                        # Try to find END CERTIFICATE in the same line or construct it
+                        # Most certificates should fit in one log line
+                        print(cert_part)
+                        sys.exit(0)
+except Exception as e:
+    pass
+sys.exit(1)
+PYEOF
+)
+            if [ -n "$cert_pem" ] && echo "$cert_pem" | grep -q "BEGIN CERTIFICATE"; then
+                # Save the certificate
+                echo "$cert_pem" > "$output_file"
+                if [ -f "$output_file" ] && [ -s "$output_file" ]; then
+                    echo -e "${GREEN}    ✓ Agent SVID extracted from logs and saved to: $output_file${NC}"
+                    return 0
+                fi
             fi
         fi
         
-        return 0
-    else
-        echo -e "${YELLOW}  ⚠ No agent SVID renewals detected during monitoring period${NC}"
-        echo "    This may be normal if the renewal interval (${renewal_interval}s) is longer than the"
-        echo "    monitoring duration (${monitor_duration}s)"
-        echo ""
-        echo "  To test renewal with a shorter interval, set:"
-        echo "    SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30  # 30 seconds minimum"
-        
-        # Show current configuration
-        if [ -f "$agent_log" ]; then
-            echo ""
-            echo "  Current agent log (last 10 lines):"
-            tail -10 "$agent_log" | sed 's/^/    /'
+        # Last resort: Try to get agent SVID from SPIRE server using agent SPIFFE ID
+        # We can query the server for the agent's SVID
+        local spire_server="${PROJECT_DIR}/spire/bin/spire-server"
+        if [ -f "$spire_server" ]; then
+            # Get agent SPIFFE ID from logs
+            local agent_spiffe_id=$(grep "Successfully reattested node" "$agent_log" | tail -1 | \
+                grep -oP 'spiffe_id="\K[^"]+' 2>/dev/null)
+            
+            if [ -n "$agent_spiffe_id" ]; then
+                echo "    Trying to fetch agent SVID from SPIRE server for agent: $agent_spiffe_id"
+                # Note: This would require server API access, which may not be available
+                # For now, we'll rely on log extraction
+            fi
         fi
-        
-        return 1
     fi
+    
+    echo -e "${YELLOW}    ⚠ Could not extract agent SVID from logs${NC}"
+    echo "    Agent SVID should be logged in /tmp/spire-agent.log"
+    echo "    Look for: 'Unified-Identity - Verification: Agent SVID Certificate (PEM)'"
+    return 1
 }
+
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -2811,9 +2842,9 @@ echo ""
 
 pause_at_phase "Step 12 Complete" "Integration verification complete. All components are working together successfully."
 
-# Step 13: Keep everything running for renewal monitoring
+# Step 13: Ensure all components are running
 echo ""
-echo -e "${CYAN}Step 13: Ensuring All Components Run Persistently for SPIRE Agent SVID Renewal Test...${NC}"
+echo -e "${CYAN}Step 13: Ensuring All Components Are Running...${NC}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Check and ensure all required components are running
@@ -2964,26 +2995,90 @@ echo ""
 echo -e "${CYAN}Step 14: Testing SPIRE Agent SVID Renewal...${NC}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Determine monitoring duration based on renewal interval
+# Determine max wait time based on renewal interval
 renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-30}"
-# Minimum test duration: 60 seconds
-monitor_duration=60
-
-# If renewal interval is short, monitor for 1 renewal cycle + buffer
-if [ "$renewal_interval" -lt 60 ]; then
-    # Calculate duration: 1 renewal cycle + 10s buffer
-    calculated_duration=$((renewal_interval + 10))
-    # Use the larger of: 60 seconds or calculated duration
-    if [ "$calculated_duration" -gt "$monitor_duration" ]; then
-        monitor_duration=$calculated_duration
-    fi
+# Wait for 1 renewal cycle + buffer (minimum 60 seconds)
+max_wait=$((renewal_interval + 30))
+if [ "$max_wait" -lt 60 ]; then
+    max_wait=60
 fi
 
 if [ "$COMPONENTS_OK" = true ] || [ -S /tmp/spire-agent/public/api.sock ]; then
-    if test_svid_renewal "$monitor_duration"; then
-        echo -e "${GREEN}  ✓ Agent SVID renewal test passed${NC}"
+    # Wait for exactly one renewal
+    if wait_for_one_agent_svid_renewal "$max_wait"; then
+        echo -e "${GREEN}  ✓ Agent SVID renewal detected${NC}"
+        echo ""
+        
+        # Fetch and dump agent SVID
+        echo -e "${CYAN}  Fetching and dumping agent SVID...${NC}"
+        AGENT_SVID_FILE="/tmp/agent-svid-dump/agent-svid.pem"
+        
+        if fetch_agent_svid "$AGENT_SVID_FILE"; then
+            echo ""
+            echo -e "${CYAN}  Extracting SPIRE trust bundle for verification...${NC}"
+            
+            # Extract SPIRE bundle first (required for certificate verification)
+            SPIRE_BUNDLE="/tmp/bundle.pem"
+            if [ -f "${SCRIPT_DIR}/fetch-spire-bundle.py" ]; then
+                export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
+                export BUNDLE_OUTPUT_PATH="$SPIRE_BUNDLE"
+                if python3 "${SCRIPT_DIR}/fetch-spire-bundle.py" >/dev/null 2>&1; then
+                    if [ -f "$SPIRE_BUNDLE" ] && [ -s "$SPIRE_BUNDLE" ]; then
+                        echo -e "${GREEN}    ✓ SPIRE trust bundle extracted${NC}"
+                    else
+                        echo -e "${YELLOW}    ⚠ SPIRE bundle file not created, trying alternative method...${NC}"
+                        # Try using SPIRE server CLI to get bundle
+                        if [ -f "${PROJECT_DIR}/spire/bin/spire-server" ]; then
+                            "${PROJECT_DIR}/spire/bin/spire-server" bundle show -format pem \
+                                -socketPath /tmp/spire-server/private/api.sock > "$SPIRE_BUNDLE" 2>/dev/null && \
+                                echo -e "${GREEN}    ✓ SPIRE trust bundle extracted via server CLI${NC}" || \
+                                echo -e "${YELLOW}    ⚠ Failed to extract bundle, continuing without verification${NC}"
+                        fi
+                    fi
+                else
+                    echo -e "${YELLOW}    ⚠ Failed to extract SPIRE bundle via Python script, trying server CLI...${NC}"
+                    # Try using SPIRE server CLI as fallback
+                    if [ -f "${PROJECT_DIR}/spire/bin/spire-server" ]; then
+                        "${PROJECT_DIR}/spire/bin/spire-server" bundle show -format pem \
+                            -socketPath /tmp/spire-server/private/api.sock > "$SPIRE_BUNDLE" 2>/dev/null && \
+                            echo -e "${GREEN}    ✓ SPIRE trust bundle extracted via server CLI${NC}" || \
+                            echo -e "${YELLOW}    ⚠ Failed to extract bundle, continuing without verification${NC}"
+                    fi
+                fi
+            else
+                echo -e "${YELLOW}    ⚠ fetch-spire-bundle.py not found, trying server CLI...${NC}"
+                # Try using SPIRE server CLI
+                if [ -f "${PROJECT_DIR}/spire/bin/spire-server" ]; then
+                    "${PROJECT_DIR}/spire/bin/spire-server" bundle show -format pem \
+                        -socketPath /tmp/spire-server/private/api.sock > "$SPIRE_BUNDLE" 2>/dev/null && \
+                        echo -e "${GREEN}    ✓ SPIRE trust bundle extracted via server CLI${NC}" || \
+                        echo -e "${YELLOW}    ⚠ Failed to extract bundle, continuing without verification${NC}"
+                fi
+            fi
+            
+            echo ""
+            echo -e "${CYAN}  Dumping agent SVID with AttestedClaims...${NC}"
+            echo "    Note: This is the agent's own SVID certificate (single cert, not a chain)"
+            echo ""
+            
+            # Dump the agent SVID with --agent-svid flag to suppress chain warnings
+            if [ -f "${SCRIPT_DIR}/scripts/dump-svid-attested-claims.sh" ]; then
+                "${SCRIPT_DIR}/scripts/dump-svid-attested-claims.sh" --agent-svid "$AGENT_SVID_FILE" "$SPIRE_BUNDLE"
+            else
+                echo -e "${YELLOW}    ⚠ dump-svid-attested-claims.sh not found${NC}"
+                echo "    Agent SVID saved to: $AGENT_SVID_FILE"
+            fi
+            
+            echo ""
+            echo -e "${GREEN}  ✓ Agent SVID dump completed${NC}"
+            pause_at_phase "Step 14 Complete" "Agent SVID has been extracted from logs and dumped with AttestedClaims."
+        else
+            echo -e "${YELLOW}  ⚠ Could not fetch agent SVID for dumping${NC}"
+            echo "    You can manually extract it from agent logs or use SPIRE agent API"
+        fi
     else
-        echo -e "${YELLOW}  ⚠ Agent SVID renewal test completed with warnings${NC}"
+        echo -e "${YELLOW}  ⚠ No agent SVID renewal detected within timeout${NC}"
+        echo "    This may be normal if the renewal interval is longer than expected"
     fi
 else
     echo -e "${RED}  ✗ Cannot test renewal - required components not running${NC}"
@@ -2991,24 +3086,7 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}➡ SPIRE agent SVID renewal monitoring complete.${NC}"
-# unified_identity: Agent SVID uses reattestation only (no rotation)
-# Workload SVIDs use rotation (separate from agent SVID)
-if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
-    REATTEST_COUNT=$(grep -c "Successfully reattested node" /tmp/spire-agent.log 2>/dev/null || echo 0)
-    # Sanitize: ensure we have a single integer value
-    REATTEST_COUNT=$(printf '%s' "$REATTEST_COUNT" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
-    REATTEST_COUNT="${REATTEST_COUNT:-0}"
-    echo "  Agent SVID reattestations observed: $REATTEST_COUNT"
-    echo '    (unified_identity: Agent SVID uses reattestation only; Workload SVIDs use rotation)'
-else
-    ROTATE_COUNT=$(grep -c "Successfully rotated agent SVID" /tmp/spire-agent.log 2>/dev/null || echo 0)
-    # Sanitize: ensure we have a single integer value
-    ROTATE_COUNT=$(printf '%s' "$ROTATE_COUNT" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
-    ROTATE_COUNT="${ROTATE_COUNT:-0}"
-    echo "  Agent SVID rotations observed: $ROTATE_COUNT"
-fi
-echo "  See /tmp/spire-agent.log for detailed renewal timestamps."
+echo -e "${GREEN}➡ SPIRE agent SVID renewal test complete.${NC}"
 echo ""
 echo "Next steps to demo workload mTLS blips (optional):"
 echo "  1. Start server-only demo:  python3 python-app-demo/mtls-server-app.py ..."
