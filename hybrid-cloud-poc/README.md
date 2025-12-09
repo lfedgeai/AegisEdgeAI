@@ -8,7 +8,7 @@ This POC addresses the challenges of the traditional non-verifiable security mod
 
 **Slides:** [View Presentation](https://onedrive.live.com/?id=746ADA9DC9BA7CB7%21sa416cb345794427ab085a20f8ccc0edd&cid=746ADA9DC9BA7CB7&redeem=aHR0cHM6Ly8xZHJ2Lm1zL2IvYy83NDZhZGE5ZGM5YmE3Y2I3L0VUVExGcVNVVjNwQ3NJV2lENHpNRHQwQlh6U3djQ01HWDhjQS1xbGxLZm1Zdnc%5FZT1PTnJqZjE&parId=746ADA9DC9BA7CB7%21s95775661177f4ef5a4ba84313cd3795a&o=OneUp)
 
-## The Problem: A Fragile and Non-Verifiable Security Model
+## The Problem
 
 Current security approaches for AI inference applications, secret stores, system agents, and model repositories face **critical gaps** that are amplified in edge AI deployments. The traditional security model relies on bearer tokens, proof-of-possession tokens, and IP-based geofencing, which are vulnerable to replay attacks, account manipulation, and location spoofing.
 
@@ -24,7 +24,7 @@ The diagram highlights three critical security challenges:
 - **Geolocation-Affinity Realization Challenges**: IP-based geofencing bypass via VPNs/proxies
 - **Static and Isolated Security Challenges**: Non-verifiable monitoring systems
 
-## The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity
+## The Solution
 
 Our solution addresses these challenges through hardware-rooted cryptographic proofs that bind workload identity, host integrity, and geolocation into a unified, verifiable credential.
 
