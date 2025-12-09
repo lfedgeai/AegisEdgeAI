@@ -38,8 +38,12 @@
 **/*.tmp
 
 # Environment files with secrets
+**/.env
 **/.env.local
 **/.env.*.local
+**/.envrc
+# But allow .env.example
+!**/.env.example
 
 # OS files
 **/Thumbs.db
