@@ -83,7 +83,7 @@ mTLS Server (10.1.0.10:9443)
    scp /tmp/spire-bundle.pem mw@10.1.0.10:/tmp/spire-bundle.pem
    ```
    
-   **Note:** The `fetch-spire-bundle.py` script is in the repo root and is also called automatically by `test_complete.sh`.
+   **Note:** The `fetch-spire-bundle.py` script is in the repo root and is also called automatically by `test_agents.sh`.
 
 2. **Copy server certificates** (if not already on 10.1.0.10):
    ```bash

@@ -11,7 +11,7 @@ This document outlines comprehensive options to address the security issues iden
 ### Problem
 Hardcoded `CAMARA_BASIC_AUTH` credentials in:
 - `enterprise-private-cloud/test_onprem.sh` (line 552)
-- `test_complete_control_plane.sh` (line 219)
+- `test_control_plane.sh` (line 219)
 
 ### Fix Options
 
@@ -30,7 +30,7 @@ Hardcoded `CAMARA_BASIC_AUTH` credentials in:
 
 **Implementation:**
 ```bash
-# In test_onprem.sh and test_complete_control_plane.sh
+# In test_onprem.sh and test_control_plane.sh
 if [ "$CAMARA_BYPASS" != "true" ] && [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
     echo "ERROR: CAMARA_BASIC_AUTH is required when CAMARA_BYPASS=false"
     echo "Set it with: export CAMARA_BASIC_AUTH='Basic <base64_encoded>'"

@@ -34,7 +34,7 @@ Create a file named `camara_basic_auth.txt` in one of these locations (checked i
 - `/tmp/mobile-sensor-service/camara_basic_auth.txt`
 - `camara_basic_auth.txt` (current directory)
 
-**For `test_complete_control_plane.sh`:**
+**For `test_control_plane.sh`:**
 - `mobile-sensor-microservice/camara_basic_auth.txt` (recommended)
 - `camara_basic_auth.txt` (repo root)
 - `mobile-sensor-service/camara_basic_auth.txt` (DB root directory)

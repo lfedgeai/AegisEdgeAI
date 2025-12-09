@@ -4,7 +4,7 @@
 # with TPM attestation and geolocation claims.
 # 
 # Prerequisites: All services must be running (SPIRE Server/Agent, Keylime Verifier, rust-keylime Agent)
-# This script can be called standalone or reused by test_complete.sh
+# This script can be called standalone or reused by test_agents.sh
 #
 # Usage:
 #   ./scripts/demo.sh          # Standalone mode with full output

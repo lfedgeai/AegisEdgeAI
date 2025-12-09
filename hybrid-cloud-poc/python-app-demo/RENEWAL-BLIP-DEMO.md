@@ -4,7 +4,7 @@ This document provides a complete guide for demonstrating automatic SVID renewal
 
 ## Prerequisites
 
-- SPIRE Server and Agent binaries built (or use the test_complete.sh script)
+- SPIRE Server and Agent binaries built (or use the test_agents.sh script)
 - Python 3 with `spiffe` library installed: `pip install spiffe`
 - TPM Plugin Server (if using Unified-Identity features)
 - Keylime Verifier and Agent (if using Unified-Identity features)
@@ -96,7 +96,7 @@ SPIRE_AGENT="./spire/bin/spire-agent"
 
 # Configure renewal interval if using environment variable
 if [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then
-    # The test_complete.sh script handles this automatically
+    # The test_agents.sh script handles this automatically
     # Or use the configure_spire_agent_svid_renewal function
     echo "Configuring SVID renewal interval: ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}s"
 fi
@@ -238,7 +238,7 @@ tail -f /tmp/spire-agent.log | grep -iE "renew|svid"
 - **~30-35s**: Apps detect renewal, reconnect with new certificates
 - **~60s**: Next renewal cycle (if using 30s interval)
 
-## Quick Start (Using test_complete.sh)
+## Quick Start (Using test_agents.sh)
 
 For a complete automated setup:
 
@@ -247,7 +247,7 @@ For a complete automated setup:
 export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30
 
 # Run complete test with renewal monitoring
-./test_complete.sh --test-renewal --no-pause
+./test_agents.sh --test-renewal --no-pause
 
 # This will:
 # 1. Start SPIRE Server
@@ -399,7 +399,7 @@ export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30
 
 # Run complete test (starts everything and monitors renewal)
 cd /home/mw/AegisEdgeAI/hybrid-cloud-poc
-./test_complete.sh --test-renewal --no-pause
+./test_agents.sh --test-renewal --no-pause
 ```
 
 ### Method 2: Step-by-Step Manual Setup

@@ -2,7 +2,7 @@
 # Unified-Identity: Agent Services Integration Test (Act 2)
 # Tests agent services: rust-keylime Agent + TPM Plugin + SPIRE Agent -> Sovereign SVID Generation
 # Hardware Integration & Delegated Certification
-# Note: Control plane services (SPIRE Server, Keylime Verifier/Registrar) are managed by test_complete_control_plane.sh
+# Note: Control plane services (SPIRE Server, Keylime Verifier/Registrar) are managed by test_control_plane.sh
 
 set -euo pipefail
 # Exit immediately on error - abort if anything goes wrong
@@ -161,8 +161,8 @@ stop_agent_services_only() {
 }
 
 # Override with wrapper that adds Step 0 prefix
-# For test_complete.sh (act 2 - non-control plane), only clean up agent services
-# Control plane services are managed by test_complete_control_plane.sh
+# For test_agents.sh (act 2 - non-control plane), only clean up agent services
+# Control plane services are managed by test_control_plane.sh
 stop_all_instances_and_cleanup() {
     # Only clean up agent services (control plane is managed separately)
     stop_agent_services_only
@@ -1120,10 +1120,10 @@ else
 fi
 
 # Step 1: Setup Keylime environment with TLS certificates
-# Skipped for act 2 - non-control plane only (handled by test_complete_control_plane.sh)
+# Skipped for act 2 - non-control plane only (handled by test_control_plane.sh)
 echo ""
 echo -e "${CYAN}Step 1: Skipping Keylime setup (act 2 - non-control plane only)${NC}"
-echo -e "${YELLOW}  Assuming control plane services are already running from test_complete_control_plane.sh${NC}"
+echo -e "${YELLOW}  Assuming control plane services are already running from test_control_plane.sh${NC}"
 
 # Verify control plane services are running before proceeding
 echo "  Verifying control plane services are running..."
@@ -1164,12 +1164,12 @@ if [ "$CONTROL_PLANE_READY" = false ]; then
     echo ""
     echo -e "${RED}ERROR: Control plane services are not running!${NC}"
     echo ""
-    echo "Please run test_complete_control_plane.sh first to start:"
+    echo "Please run test_control_plane.sh first to start:"
     echo "  - SPIRE Server"
     echo "  - Keylime Verifier"
     echo "  - Keylime Registrar"
     echo ""
-    echo "Then run this script (test_complete.sh) to start agent services."
+    echo "Then run this script (test_agents.sh) to start agent services."
     abort_on_error "Control plane services must be running before starting agent services"
 fi
 
@@ -1303,14 +1303,14 @@ fi
 pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
 fi
 
-# Step 2: Keylime Verifier (skipped - managed by test_complete_control_plane.sh)
+# Step 2: Keylime Verifier (skipped - managed by test_control_plane.sh)
 echo ""
-echo -e "${CYAN}Step 2: Skipping Keylime Verifier (managed by test_complete_control_plane.sh)${NC}"
+echo -e "${CYAN}Step 2: Skipping Keylime Verifier (managed by test_control_plane.sh)${NC}"
 echo -e "${YELLOW}  Assuming Keylime Verifier is already running${NC}"
 
-# Step 3: Keylime Registrar (skipped - managed by test_complete_control_plane.sh)
+# Step 3: Keylime Registrar (skipped - managed by test_control_plane.sh)
 echo ""
-echo -e "${CYAN}Step 3: Skipping Keylime Registrar (managed by test_complete_control_plane.sh)${NC}"
+echo -e "${CYAN}Step 3: Skipping Keylime Registrar (managed by test_control_plane.sh)${NC}"
 echo -e "${YELLOW}  Assuming Keylime Registrar is already running${NC}"
 
 # Step 4: Start rust-keylime Agent
@@ -2096,9 +2096,9 @@ fi
 pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE to use TPM operations."
 
 # Step 7: Start SPIRE Agent
-# SPIRE Server is managed by test_complete_control_plane.sh
+# SPIRE Server is managed by test_control_plane.sh
 echo ""
-echo -e "${CYAN}Step 7: Starting SPIRE Agent (SPIRE Server managed by test_complete_control_plane.sh)...${NC}"
+echo -e "${CYAN}Step 7: Starting SPIRE Agent (SPIRE Server managed by test_control_plane.sh)...${NC}"
 
 if [ ! -d "${PROJECT_DIR}" ]; then
     echo -e "${RED}Error: Project directory not found at ${PROJECT_DIR}${NC}"
@@ -2130,8 +2130,8 @@ if [ ! -f "${SPIRE_AGENT}" ]; then
     exit 0
 fi
 
-# SPIRE Server is managed by test_complete_control_plane.sh - skipping startup
-echo "  Skipping SPIRE Server startup (managed by test_complete_control_plane.sh)"
+# SPIRE Server is managed by test_control_plane.sh - skipping startup
+echo "  Skipping SPIRE Server startup (managed by test_control_plane.sh)"
 echo "  Assuming SPIRE Server is already running"
 
 # Start SPIRE Agent manually
@@ -2161,14 +2161,14 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     rm -f /tmp/spire-agent.log 2>/dev/null || true
     echo "    Cleanup complete."
     
-    # Wait for server to be ready - SKIPPED for act 2 (server assumed running from test_complete_control_plane.sh)
+        # Wait for server to be ready - SKIPPED for act 2 (server assumed running from test_control_plane.sh)
     echo "    Skipping SPIRE Server readiness check (act 2 - assuming server is already running)"
     
     # Unified-Identity: TPM-based proof of residency - no join token needed
     JOIN_TOKEN=""
     if [ "${UNIFIED_IDENTITY_ENABLED:-false}" != "true" ]; then
         # Generate join token for agent attestation (only if Unified-Identity is disabled)
-        # SKIPPED for act 2 - server assumed running from test_complete_control_plane.sh
+            # SKIPPED for act 2 - server assumed running from test_control_plane.sh
         echo "    Skipping join token generation (act 2 - assuming server is already running)"
         echo "    ⚠ Note: If Unified-Identity is disabled, ensure join token is configured separately"
     else
@@ -2291,7 +2291,7 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
     # Check if agent has its SVID by checking for Workload API socket
     # The socket is created as soon as the agent has its SVID and is ready
     if [ -S /tmp/spire-agent/public/api.sock ] 2>/dev/null; then
-        # Verify agent is also listed on server (server running from test_complete_control_plane.sh)
+        # Verify agent is also listed on server (server running from test_control_plane.sh)
         if [ -n "${SPIRE_SERVER:-}" ] && [ -f "${SPIRE_SERVER}" ]; then
             AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
             if echo "$AGENT_LIST" | grep -q "spiffe://"; then
@@ -2321,7 +2321,7 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
         fi
     fi
     # Check if attestation request was received (Unified-Identity or join token)
-    # Note: Server logs may be from test_complete_control_plane.sh
+    # Note: Server logs may be from test_control_plane.sh
     if [ $i -eq 1 ] || [ $((i % 15)) -eq 0 ]; then
         if [ -f /tmp/spire-server.log ]; then
             # Check if server received attestation request with SovereignAttestation (Unified-Identity)
@@ -2348,7 +2348,7 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
                         echo "      1. Wait a few minutes and retry the test"
                         echo "      2. Set CAMARA_BYPASS=true to skip CAMARA API calls for testing:"
                         echo "         export CAMARA_BYPASS=true"
-                        echo "         ./test_complete.sh"
+                        echo "         ./test_agents.sh"
                         echo ""
                         echo "      Error details:"
                         echo "$ERROR_MSG" | sed 's/^/        /'

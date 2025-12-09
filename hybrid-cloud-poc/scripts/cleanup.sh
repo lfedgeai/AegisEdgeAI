@@ -290,7 +290,7 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
     
-    # Step 4: Clean up all log files and temporary files (relevant to test_complete.sh only)
+    # Step 4: Clean up all log files and temporary files (relevant to test_agents.sh only)
     echo "  4. Removing log files and temporary files..."
     # SPIRE log files
     rm -f /tmp/spire-server.log 2>/dev/null || true
@@ -304,7 +304,7 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
     # TPM plugin log files
     rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
-    # Mobile sensor microservice log files (used in test_complete.sh)
+    # Mobile sensor microservice log files (used in test_agents.sh)
     rm -f /tmp/mobile-sensor-microservice.log 2>/dev/null || true
     # Phase/workflow log files
     rm -f /tmp/bundle.pem 2>/dev/null || true
@@ -318,10 +318,10 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/tpm-plugin-*.log.old 2>/dev/null || true
     rm -f /tmp/mobile-sensor-*.log.old 2>/dev/null || true
     rm -f /tmp/phase3_*.log.old 2>/dev/null || true
-    # Temporary config files (relevant to test_complete.sh)
+    # Temporary config files (relevant to test_agents.sh)
     rm -f /tmp/keylime-agent-*.conf 2>/dev/null || true
     rm -f /tmp/*.conf.tmp 2>/dev/null || true
-    # Python cache and temporary files (relevant to test_complete.sh components)
+    # Python cache and temporary files (relevant to test_agents.sh components)
     find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
     find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
     find /tmp -name "*.tmp" -type f 2>/dev/null | grep -E "(keylime|spire|tpm|mobile)" | xargs rm -f 2>/dev/null || true

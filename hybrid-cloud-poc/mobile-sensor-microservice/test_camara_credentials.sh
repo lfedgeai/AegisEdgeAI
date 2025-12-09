@@ -31,24 +31,24 @@ else
     echo "✓ PASS: Hardcoded credentials removed from test_onprem.sh"
 fi
 
-# Test 3: Check test_complete_control_plane.sh
+# Test 3: Check test_control_plane.sh
 echo ""
-echo "Test 3: Verifying test_complete_control_plane.sh has file reading logic..."
-if grep -q "camara_basic_auth.txt" "$REPO_ROOT/test_complete_control_plane.sh"; then
-    echo "✓ PASS: test_complete_control_plane.sh contains file reading logic"
+echo "Test 3: Verifying test_control_plane.sh has file reading logic..."
+if grep -q "camara_basic_auth.txt" "$REPO_ROOT/test_control_plane.sh"; then
+    echo "✓ PASS: test_control_plane.sh contains file reading logic"
 else
-    echo "✗ FAIL: test_complete_control_plane.sh does not contain file reading logic"
+    echo "✗ FAIL: test_control_plane.sh does not contain file reading logic"
     exit 1
 fi
 
-# Test 4: Check if hardcoded credentials are removed from test_complete_control_plane.sh
+# Test 4: Check if hardcoded credentials are removed from test_control_plane.sh
 echo ""
-echo "Test 4: Verifying hardcoded credentials are removed from test_complete_control_plane.sh..."
-if grep -q "NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng==" "$REPO_ROOT/test_complete_control_plane.sh"; then
-    echo "✗ FAIL: Hardcoded credentials still present in test_complete_control_plane.sh"
+echo "Test 4: Verifying hardcoded credentials are removed from test_control_plane.sh..."
+if grep -q "NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng==" "$REPO_ROOT/test_control_plane.sh"; then
+    echo "✗ FAIL: Hardcoded credentials still present in test_control_plane.sh"
     exit 1
 else
-    echo "✓ PASS: Hardcoded credentials removed from test_complete_control_plane.sh"
+    echo "✓ PASS: Hardcoded credentials removed from test_control_plane.sh"
 fi
 
 # Test 5: Test file reading function (simulate)
@@ -95,11 +95,11 @@ if grep -q "\$REPO_ROOT/camara_basic_auth.txt" "$REPO_ROOT/enterprise-private-cl
     LOCATIONS_FOUND=$((LOCATIONS_FOUND + 1))
 fi
 
-# Check test_complete_control_plane.sh locations
-if grep -q "\${MOBILE_SENSOR_DIR}/camara_basic_auth.txt" "$REPO_ROOT/test_complete_control_plane.sh"; then
+# Check test_control_plane.sh locations
+if grep -q "\${MOBILE_SENSOR_DIR}/camara_basic_auth.txt" "$REPO_ROOT/test_control_plane.sh"; then
     LOCATIONS_FOUND=$((LOCATIONS_FOUND + 1))
 fi
-if grep -q "\${SCRIPT_DIR}/camara_basic_auth.txt" "$REPO_ROOT/test_complete_control_plane.sh"; then
+if grep -q "\${SCRIPT_DIR}/camara_basic_auth.txt" "$REPO_ROOT/test_control_plane.sh"; then
     LOCATIONS_FOUND=$((LOCATIONS_FOUND + 1))
 fi
 
@@ -120,10 +120,10 @@ else
     exit 1
 fi
 
-if grep -q "CAMARA_BYPASS=false but CAMARA_BASIC_AUTH is not set" "$REPO_ROOT/test_complete_control_plane.sh"; then
-    echo "✓ PASS: Error message present in test_complete_control_plane.sh"
+if grep -q "CAMARA_BYPASS=false but CAMARA_BASIC_AUTH is not set" "$REPO_ROOT/test_control_plane.sh"; then
+    echo "✓ PASS: Error message present in test_control_plane.sh"
 else
-    echo "✗ FAIL: Error message missing in test_complete_control_plane.sh"
+    echo "✗ FAIL: Error message missing in test_control_plane.sh"
     exit 1
 fi
 

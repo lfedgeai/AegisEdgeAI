@@ -11,8 +11,8 @@ All tests passed successfully! ✓
 ### Results:
 - ✓ **Test 1**: `test_onprem.sh` contains file reading logic
 - ✓ **Test 2**: Hardcoded credentials removed from `test_onprem.sh`
-- ✓ **Test 3**: `test_complete_control_plane.sh` contains file reading logic
-- ✓ **Test 4**: Hardcoded credentials removed from `test_complete_control_plane.sh`
+- ✓ **Test 3**: `test_control_plane.sh` contains file reading logic
+- ✓ **Test 4**: Hardcoded credentials removed from `test_control_plane.sh`
 - ✓ **Test 5**: File reading logic works correctly
 - ✓ **Test 6**: Multiple file locations are checked (4 locations found)
 - ✓ **Test 7**: Error messages present in both scripts
@@ -42,7 +42,7 @@ All tests passed successfully! ✓
 ## Syntax Validation
 
 - ✓ `test_onprem.sh` - Syntax OK
-- ✓ `test_complete_control_plane.sh` - Syntax OK
+- ✓ `test_control_plane.sh` - Syntax OK
 
 ---
 
@@ -68,7 +68,7 @@ All tests passed successfully! ✓
 - ✅ `/tmp/mobile-sensor-service/camara_basic_auth.txt`
 - ✅ `$(pwd)/camara_basic_auth.txt`
 
-**For `test_complete_control_plane.sh`:**
+**For `test_control_plane.sh`:**
 - ✅ `${MOBILE_SENSOR_DIR}/camara_basic_auth.txt`
 - ✅ `${SCRIPT_DIR}/camara_basic_auth.txt`
 - ✅ `${MOBILE_SENSOR_DB_ROOT}/camara_basic_auth.txt`

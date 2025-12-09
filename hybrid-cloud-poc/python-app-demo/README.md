@@ -22,7 +22,7 @@ This demo demonstrates the **workload SVID flow**, where a Python application:
 - SPIRE binaries built
 - All services running (SPIRE Server, SPIRE Agent, Keylime Verifier, rust-keylime Agent)
 
-**Note:** This demo is typically run as part of the main integration test (`../test_complete.sh`), which sets up all required services.
+**Note:** This demo is typically run as part of the main integration test (`../test_agents.sh`), which sets up all required services.
 
 ### Install Python Dependencies
 
@@ -42,7 +42,7 @@ The recommended way to run this demo is as part of the complete integration test
 
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc
-./test_complete.sh
+./test_agents.sh
 ```
 
 This will:
@@ -748,7 +748,7 @@ These claims are embedded in the agent SVID and inherited by workload SVIDs thro
 
 ## Integration with Main Test
 
-This demo is integrated into the main integration test (`../test_complete.sh`):
+This demo is integrated into the main integration test (`../test_agents.sh`):
 
 - **Step 8**: Creates registration entry for the workload
 - **Step 10**: Fetches workload SVID with AttestedClaims
@@ -843,6 +843,6 @@ python3 mtls-client-app.py
 
 ## See Also
 
-- **Main Integration Test**: `../test_complete.sh` - Complete end-to-end test including this demo
+- **Main Integration Test**: `../test_agents.sh` - Complete end-to-end test including this demo
 - **Architecture Documentation**: `../README-arch-sovereign-unified-identity.md` - Detailed architecture flow
 - **Main README**: `../README.md` - Project overview and quick start

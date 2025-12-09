@@ -1710,24 +1710,24 @@ fi
 
 pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent registration."
 
-# Step 4: Skipping rust-keylime Agent (control plane only - agent services managed by test_complete.sh)
+# Step 4: Skipping rust-keylime Agent (control plane only - agent services managed by test_agents.sh)
 echo ""
 echo -e "${YELLOW}  Skipping rust-keylime Agent (control plane only mode)${NC}"
-echo -e "${YELLOW}  Agent services are managed by test_complete.sh${NC}"
+echo -e "${YELLOW}  Agent services are managed by test_agents.sh${NC}"
 
 # Removed: All rust-keylime Agent startup code (not needed for control plane only)
 
 # Step 5: Skipping Agent Registration verification (control plane only)
 echo ""
 echo -e "${YELLOW}  Skipping Agent Registration verification (control plane only mode)${NC}"
-echo -e "${YELLOW}  Agent registration is managed by test_complete.sh${NC}"
+echo -e "${YELLOW}  Agent registration is managed by test_agents.sh${NC}"
 
 # Removed: All agent registration verification code (not needed for control plane only)
 
 # Step 6: Skipping TPM Plugin Server (control plane only)
 echo ""
 echo -e "${YELLOW}  Skipping TPM Plugin Server (control plane only mode)${NC}"
-echo -e "${YELLOW}  TPM Plugin Server is managed by test_complete.sh${NC}"
+echo -e "${YELLOW}  TPM Plugin Server is managed by test_agents.sh${NC}"
 
 # Removed: All TPM Plugin Server startup code (not needed for control plane only)
 
@@ -1831,9 +1831,9 @@ if [ -f "${SERVER_CONFIG}" ]; then
     sleep 3
 fi
 
-# Skipping SPIRE Agent (control plane only - agent services managed by test_complete.sh)
+# Skipping SPIRE Agent (control plane only - agent services managed by test_agents.sh)
 echo "    Skipping SPIRE Agent (control plane only mode)"
-echo "    Agent services are managed by test_complete.sh"
+echo "    Agent services are managed by test_agents.sh"
 
 # Removed: All SPIRE Agent startup code (not needed for control plane only)
 
@@ -2013,7 +2013,7 @@ if false; then
                         echo "      1. Wait a few minutes and retry the test"
                         echo "      2. Set CAMARA_BYPASS=true to skip CAMARA API calls for testing:"
                         echo "         export CAMARA_BYPASS=true"
-                        echo "         ./test_complete.sh"
+                        echo "         ./test_agents.sh"
                         echo ""
                         echo "      Error details:"
                         echo "$ERROR_MSG" | sed 's/^/        /'
@@ -2075,5 +2075,5 @@ echo "  ✓ SPIRE Server"
 echo "  ✓ Keylime Verifier"
 echo "  ✓ Keylime Registrar"
 echo ""
-echo -e "${YELLOW}Note: Agent services (SPIRE Agent, TPM Plugin, rust-keylime Agent) are managed by test_complete.sh${NC}"
+echo -e "${YELLOW}Note: Agent services (SPIRE Agent, TPM Plugin, rust-keylime Agent) are managed by test_agents.sh${NC}"
 exit 0

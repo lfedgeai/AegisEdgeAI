@@ -202,7 +202,7 @@ main() {
     echo ""
     
     # Step 1: Start Control Plane on 10.1.0.11
-    if ! run_script "run_on_control_plane" "test_complete_control_plane.sh" "--no-pause" \
+    if ! run_script "run_on_control_plane" "test_control_plane.sh" "--no-pause" \
         "Step 1: Starting Control Plane Services (SPIRE Server, Keylime Verifier/Registrar)"; then
         echo -e "${RED}Control plane setup failed. Aborting.${NC}"
         exit 1
@@ -265,7 +265,7 @@ main() {
     fi
     
     # Step 3: Run Complete Integration Test on 10.1.0.11
-    if ! run_script "run_on_control_plane" "test_complete.sh" "--no-pause" \
+    if ! run_script "run_on_control_plane" "test_agents.sh" "--no-pause" \
         "Step 3: Running Complete Integration Test (Agent Attestation, Workload SVID)"; then
         echo -e "${RED}Complete integration test failed.${NC}"
         exit 1
@@ -303,7 +303,7 @@ cleanup_all() {
     echo ""
     
     # Cleanup control plane services
-    if run_script "run_on_control_plane" "test_complete_control_plane.sh" "--cleanup-only" \
+    if run_script "run_on_control_plane" "test_control_plane.sh" "--cleanup-only" \
         "Cleaning up Control Plane Services (SPIRE Server, Keylime Verifier/Registrar)"; then
         echo -e "${GREEN}✓ Control plane cleanup completed${NC}"
     else
@@ -314,7 +314,7 @@ cleanup_all() {
     echo ""
     echo -e "${CYAN}Cleaning up Agent Services on ${CONTROL_PLANE_HOST}${NC}"
     echo ""
-    if run_script "run_on_control_plane" "test_complete.sh" "--cleanup-only" \
+    if run_script "run_on_control_plane" "test_agents.sh" "--cleanup-only" \
         "Cleaning up Agent Services (SPIRE Agent, rust-keylime Agent, TPM Plugin)"; then
         echo -e "${GREEN}✓ Agent services cleanup completed${NC}"
     else

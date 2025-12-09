@@ -123,7 +123,7 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 **SOVEREIGN PUBLIC/EDGE CLOUD CONTROL PLANE WINDOW:** (e.g., 10.1.0.11)
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc
-./test_complete_control_plane.sh --no-pause
+./test_control_plane.sh --no-pause
 
 # Verify processes are running
 ps -aux | grep spire-server
@@ -214,7 +214,7 @@ This act demonstrates the complete flow from workload attestation through succes
 **SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (e.g., 10.1.0.11)
 ```bash
 cd ~/AegisEdgeAI/hybrid-cloud-poc
-./test_complete.sh --no-pause
+./test_agents.sh --no-pause
 ```
 
 **What this script does:**
@@ -482,7 +482,9 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
 - [Unified Identity Architecture](README-arch-sovereign-unified-identity.md) - Complete end-to-end flow and architecture details
 - [Enterprise Private Cloud README](enterprise-private-cloud/README.md) - Detailed setup and architecture
 - [Python App Demo README](python-app-demo/README.md) - Client/server usage
-- [test_complete.sh](test_complete.sh) - Complete integration test script
+- [test_agents.sh](test_agents.sh) - Agent services integration test script
+- [test_control_plane.sh](test_control_plane.sh) - Control plane services test script
+- [test_integration.sh](test_integration.sh) - Complete integration test script
 
 ## Logs
 
