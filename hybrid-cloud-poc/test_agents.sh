@@ -173,10 +173,37 @@ pause_at_phase() {
     local phase_name="$1"
     local description="$2"
     
-    # Only pause if:
-    # 1. Running in interactive terminal (tty check)
-    # 2. PAUSE_ENABLED is true (default: true for interactive, false for non-interactive)
-    if [ -t 0 ] && [ "${PAUSE_ENABLED:-true}" = "true" ]; then
+    # Pause if PAUSE_ENABLED is true (default: true for interactive, false for non-interactive)
+    if [ "${PAUSE_ENABLED:-true}" = "true" ]; then
+        echo ""
+        echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BOLD}⏸  PAUSE: ${phase_name}${NC}"
+        echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        if [ -n "$description" ]; then
+            echo -e "${CYAN}${description}${NC}"
+            echo ""
+        fi
+        
+        # If we have a TTY, do interactive pause; otherwise wait a bit
+        if [ -t 0 ]; then
+            echo -e "${YELLOW}Press Enter to continue...${NC}"
+            read -r
+        else
+            # Non-interactive mode: wait a few seconds to allow viewing output
+            echo -e "${YELLOW}Waiting 5 seconds (non-interactive mode)...${NC}"
+            sleep 5
+        fi
+        echo ""
+    fi
+}
+
+# Special pause function for demo purposes - always pauses even with --no-pause
+pause_for_demo() {
+    local phase_name="$1"
+    local description="$2"
+    
+    # Always pause if running in interactive terminal (important for demos)
+    if [ -t 0 ]; then
         echo ""
         echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "${BOLD}⏸  PAUSE: ${phase_name}${NC}"
