@@ -60,7 +60,7 @@ This document covers:
 
 ## Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture
 
-*See Slide 11 for the complete implementation architecture diagram*
+*See Slide 19 for the complete implementation architecture diagram*
 
 The current implementation demonstrates a hybrid cloud unified identity system connecting a Sovereign Cloud/Edge Cloud environment with a Customer on-Prem Private Cloud.
 
@@ -87,7 +87,7 @@ The current implementation demonstrates a hybrid cloud unified identity system c
 - **Geolocation Service:**
   - Mobile Geolocation Service (CAMARA API)
 
-![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/Slide11.PNG)
+![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/Slide19.PNG)
 
 *Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture*
 
@@ -125,7 +125,7 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 
 ### Demo Act 1: Trusted Infrastructure Setup
 
-*See Slide 11 for the architecture diagram*
+*See Slide 19 for the architecture diagram*
 
 **SOVEREIGN PUBLIC/EDGE CLOUD CONTROL PLANE WINDOW:** (e.g., 10.1.0.11)
 ```bash
@@ -212,7 +212,7 @@ echo "mTLS Server (port 9443): $(sudo ss -tlnp 2>/dev/null | grep :9443 >/dev/nu
 
 ### Demo Act 2: The Happy Path (Proof of Geofencing)
 
-*See Slides 7 and 11 for solution architecture and implementation details*
+*See Slides 7 and 19 for solution architecture and implementation details*
 
 This act demonstrates the complete flow from workload attestation through successful geolocation verification.
 
@@ -560,7 +560,7 @@ This script guides the audience through the presentation slides:
 - **Slide 12** displays the complete end-to-end solution architecture
 
 ### **Act 2: The Happy Path (Proof of Geofencing)**
-*Refer to Slides 7 and 11*
+*Refer to Slides 7 and 19*
 
 - **Slide 7**: The Solution - Zero-Trust, HW-Rooted, Unified Identity
 - Shows SPIRE Agent fetching Unified SVID with:
@@ -570,7 +570,7 @@ This script guides the audience through the presentation slides:
 - Decodes and displays the SVID certificate structure
 - Demonstrates successful client connection with 200 OK from Envoy
 - Shows WASM Plugin verification of Proof of Geofencing (PoG)
-- **Slide 11** shows the implementation flow
+- **Slide 19** shows the implementation flow
 
 ### **Act 3: The Defense (The Rogue Admin)**
 *Refer to Slide 6: Problem - Insider Threats*
