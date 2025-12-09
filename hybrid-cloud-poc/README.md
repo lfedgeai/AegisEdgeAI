@@ -14,8 +14,6 @@ Current security approaches for AI inference applications, secret stores, system
 
 ![The Problem: A Fragile and Non-Verifiable Security Model](images/Slide6.PNG)
 
-*The Problem: A Fragile and Non-Verifiable Security Model*
-
 The diagram illustrates a traditional security architecture for AI inference applications showing:
 1. End user host sending inference data with bearer tokens and source IP to Bank Inference application in Sovereign Cloud
 2. Workload host requesting secrets from Customer-managed key vault using bearer/proof-of-possession tokens
@@ -31,8 +29,6 @@ The diagram highlights three critical security challenges:
 Our solution addresses these challenges through hardware-rooted cryptographic proofs that bind workload identity, host integrity, and geolocation into a unified, verifiable credential.
 
 ![The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity](images/Slide7.PNG)
-
-*The Solution: A Zero-Trust, HW-Rooted, Unified, Extensible & Verifiable Identity*
 
 The diagram shows the solution architecture with:
 1. **Workload Identity Agent** sending inference data with Proof of Geofencing workload certificate/token to AI Inference Host
@@ -60,14 +56,12 @@ This document covers:
 
 ## Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture
 
-*See Slide 19 for the complete implementation architecture diagram*
-
 The current implementation demonstrates a hybrid cloud unified identity system connecting a Sovereign Cloud/Edge Cloud environment with a Customer on-Prem Private Cloud.
 
 ### Architecture Overview
 
 **Sovereign Cloud Or Edge Cloud (Client Side):**
-- **Identity Services:**
+- **Control Plane Identity Services:**
   - Host Identity (Keylime Verifier & Registrar)
   - Workload Identity (SPIRE Server)
 - **Agents and Plugins:**
@@ -89,10 +83,9 @@ The current implementation demonstrates a hybrid cloud unified identity system c
 
 ![Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture](images/Slide19.PNG)
 
-*Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture*
-
 **Sovereign Cloud/Edge Cloud (left, orange boundary):**
-- Contains: Host Identity (Keylime Verifier & Registrar), Workload Identity (SPIRE Server), Keylime Agent, SPIRE Agent, SPIRE TPM Plugin, Mobile location sensor (USB tethered smartphone), TPM, and Client App
+- Control Plane Identity Services: Host Identity (Keylime Verifier & Registrar), Workload Identity (SPIRE Server)
+- Agents and Plugins: Keylime Agent, SPIRE Agent, SPIRE TPM Plugin, Mobile location sensor (USB tethered smartphone), TPM, and Client App using unified identity (SPIRE SVID)
 - System flow: SPIRE agent gets/refreshes unified identity with TPM-attested geolocation from SPIRE server
 - Client App flow: Client app inherits unified identity from SPIRE server – intermediate cert in cert hierarchy
 
