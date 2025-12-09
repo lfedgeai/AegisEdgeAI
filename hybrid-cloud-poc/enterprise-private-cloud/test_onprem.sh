@@ -545,15 +545,46 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     
     # Set CAMARA_BASIC_AUTH for mobile location service (only if bypass is disabled)
     if [ "$CAMARA_BYPASS" != "true" ]; then
-        # Allow override via environment variable, otherwise use default (may be invalid)
+        # Priority: 1) Environment variable, 2) File (camara_basic_auth.txt), 3) Error
         if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
-            # Default credentials (may be invalid - user should provide valid credentials)
-            # client_id: 4729f9d2-2ef7-457a-be33-0edf88d90f04; client_secret: e97c4384-2806-449a-ac75-e2d2d73e9d46
-            CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
-            printf '  [WARN] CAMARA_BYPASS=false but no CAMARA_BASIC_AUTH provided\n'
-            printf '         Using default CAMARA_BASIC_AUTH (may be invalid)\n'
-            printf '         Set CAMARA_BASIC_AUTH environment variable with valid credentials\n'
-            printf '         Format: export CAMARA_BASIC_AUTH="Basic <base64(client_id:client_secret)>"\n'
+            # Try to load from file (similar to how auth_req_id is stored)
+            # Check in multiple possible locations
+            CAMARA_AUTH_FILE=""
+            for possible_path in \
+                "$REPO_ROOT/mobile-sensor-microservice/camara_basic_auth.txt" \
+                "$REPO_ROOT/camara_basic_auth.txt" \
+                "/tmp/mobile-sensor-service/camara_basic_auth.txt" \
+                "$(pwd)/camara_basic_auth.txt"; do
+                if [ -f "$possible_path" ]; then
+                    CAMARA_AUTH_FILE="$possible_path"
+                    break
+                fi
+            done
+            
+            if [ -n "$CAMARA_AUTH_FILE" ] && [ -f "$CAMARA_AUTH_FILE" ]; then
+                # Read file, trim only newlines/carriage returns, preserve spaces
+                CAMARA_BASIC_AUTH=$(cat "$CAMARA_AUTH_FILE" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -c 200)
+                if [ -n "$CAMARA_BASIC_AUTH" ]; then
+                    printf '  [OK] Loaded CAMARA_BASIC_AUTH from file: %s\n' "$CAMARA_AUTH_FILE"
+                else
+                    CAMARA_BASIC_AUTH=""
+                fi
+            fi
+            
+            # If still not set, show error
+            if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
+                printf '  [ERROR] CAMARA_BYPASS=false but CAMARA_BASIC_AUTH is not set\n'
+                printf '          CAMARA_BASIC_AUTH must be provided via one of:\n'
+                printf '          1. Environment variable: export CAMARA_BASIC_AUTH="Basic <base64(client_id:client_secret)>"\n'
+                printf '          2. File: Create camara_basic_auth.txt with the credentials\n'
+                printf '             Location options:\n'
+                printf '             - %s/mobile-sensor-microservice/camara_basic_auth.txt\n' "$REPO_ROOT"
+                printf '             - %s/camara_basic_auth.txt\n' "$REPO_ROOT"
+                printf '             - /tmp/mobile-sensor-service/camara_basic_auth.txt\n'
+                printf '          Format: Basic <base64(client_id:client_secret)>\n'
+                printf '          See mobile-sensor-microservice/README.md for instructions\n'
+                exit 1
+            fi
         else
             printf '  [OK] Using CAMARA_BASIC_AUTH from environment\n'
         fi

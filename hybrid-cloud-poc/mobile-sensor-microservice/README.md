@@ -86,3 +86,19 @@ Run the tests with:
 python -m pytest mobile-sensor-microservice/tests
 ```
 
+### CAMARA Credentials Setup
+
+For information on setting up CAMARA credentials (including file-based storage to avoid hardcoded credentials), see:
+- **[CAMARA_CREDENTIALS_SETUP.md](CAMARA_CREDENTIALS_SETUP.md)** - Complete guide for setting up credentials
+
+### Testing Credential Loading
+
+Test scripts are available to verify the credential loading logic:
+```bash
+cd mobile-sensor-microservice
+./test_camara_credentials.sh          # Basic verification tests
+./test_integration_scenarios.sh        # Integration tests
+```
+
+See **[TEST_RESULTS.md](TEST_RESULTS.md)** for detailed test results.
+

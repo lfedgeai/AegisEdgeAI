@@ -214,9 +214,52 @@ start_mobile_sensor_microservice() {
     # CAMARA APIs are bypassed by default (set CAMARA_BYPASS=false to enable CAMARA API calls)
     # Set CAMARA_BYPASS=false to use real CAMARA API calls
     export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
+    
+    # Set CAMARA_BASIC_AUTH (priority: 1) Environment variable, 2) File (camara_basic_auth.txt), 3) Error if bypass disabled
     if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
-        # Default to valid CAMARA sandbox credentials (can be overridden via env var)
-        export CAMARA_BASIC_AUTH="Basic NDcyOWY5ZDItMmVmNy00NTdhLWJlMzMtMGVkZjg4ZDkwZjA0OmU5N2M0Mzg0LTI4MDYtNDQ5YS1hYzc1LWUyZDJkNzNlOWQ0Ng=="
+        # Try to load from file (similar to how auth_req_id is stored)
+        # Check in multiple possible locations
+        CAMARA_AUTH_FILE=""
+        for possible_path in \
+            "${MOBILE_SENSOR_DIR}/camara_basic_auth.txt" \
+            "${SCRIPT_DIR}/camara_basic_auth.txt" \
+            "${MOBILE_SENSOR_DB_ROOT}/camara_basic_auth.txt" \
+            "$(pwd)/camara_basic_auth.txt"; do
+            if [ -f "$possible_path" ]; then
+                CAMARA_AUTH_FILE="$possible_path"
+                break
+            fi
+        done
+        
+        if [ -n "$CAMARA_AUTH_FILE" ] && [ -f "$CAMARA_AUTH_FILE" ]; then
+            # Read file, trim only newlines/carriage returns, preserve spaces
+            CAMARA_BASIC_AUTH=$(cat "$CAMARA_AUTH_FILE" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -c 200)
+            if [ -n "$CAMARA_BASIC_AUTH" ]; then
+                echo "  [OK] Loaded CAMARA_BASIC_AUTH from file: $CAMARA_AUTH_FILE"
+            else
+                CAMARA_BASIC_AUTH=""
+            fi
+        fi
+        
+        # If still not set and bypass is disabled, show error
+        if [ -z "${CAMARA_BASIC_AUTH:-}" ] && [ "$CAMARA_BYPASS" != "true" ]; then
+            echo "  [ERROR] CAMARA_BYPASS=false but CAMARA_BASIC_AUTH is not set"
+            echo "          CAMARA_BASIC_AUTH must be provided via one of:"
+            echo "          1. Environment variable: export CAMARA_BASIC_AUTH=\"Basic <base64(client_id:client_secret)>\""
+            echo "          2. File: Create camara_basic_auth.txt with the credentials"
+            echo "             Location options:"
+            echo "             - ${MOBILE_SENSOR_DIR}/camara_basic_auth.txt"
+            echo "             - ${SCRIPT_DIR}/camara_basic_auth.txt"
+            echo "             - ${MOBILE_SENSOR_DB_ROOT}/camara_basic_auth.txt"
+            echo "          Format: Basic <base64(client_id:client_secret)>"
+            echo "          See mobile-sensor-microservice/README.md for instructions"
+            exit 1
+        fi
+    fi
+    
+    # Export if set (either from env var or file)
+    if [ -n "${CAMARA_BASIC_AUTH:-}" ]; then
+        export CAMARA_BASIC_AUTH
     fi
     
     # Allow lat/lon/accuracy to be overridden via env vars for testing
