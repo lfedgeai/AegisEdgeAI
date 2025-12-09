@@ -2074,7 +2074,6 @@ echo -e "${GREEN}Control plane services started successfully:${NC}"
 echo "  ✓ SPIRE Server"
 echo "  ✓ Keylime Verifier"
 echo "  ✓ Keylime Registrar"
-echo "  ✓ Mobile Sensor Microservice"
 echo ""
 echo -e "${YELLOW}Note: Agent services (SPIRE Agent, TPM Plugin, rust-keylime Agent) are managed by test_complete.sh${NC}"
 exit 0
