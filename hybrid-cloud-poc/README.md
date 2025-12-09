@@ -42,7 +42,7 @@ The architecture includes:
 
 ## Unified Identity Architecture
 
-For detailed information on the unified identity product architecture, including the complete end-to-end flow, attestation mechanisms, and component interactions, see:
+For detailed information on the unified identity architecture, including the complete end-to-end flow, attestation mechanisms, and component interactions, see:
 
 **[README-arch-sovereign-unified-identity.md](README-arch-sovereign-unified-identity.md)**
 
