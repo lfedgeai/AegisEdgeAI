@@ -207,7 +207,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 fi
 
 # 1. Install dependencies
-echo -e "\n${GREEN}[1/6] Installing dependencies...${NC}"
+echo -e "\n${GREEN}[1/7] Installing dependencies...${NC}"
 
 # Clean up any problematic Envoy repository that might have been added previously
 if command -v apt-get &> /dev/null; then
@@ -267,7 +267,7 @@ if ! command -v envoy &> /dev/null; then
 fi
 
 # 2. Create directories
-echo -e "\n${GREEN}[2/6] Creating directories...${NC}"
+echo -e "\n${GREEN}[2/7] Creating directories...${NC}"
 sudo mkdir -p /opt/envoy/{certs,plugins,logs}
 sudo mkdir -p /opt/mobile-sensor-service
 sudo mkdir -p /opt/mtls-server
@@ -287,7 +287,7 @@ else
 fi
 
 # 3. Setup certificates
-echo -e "\n${GREEN}[3/6] Setting up certificates...${NC}"
+echo -e "\n${GREEN}[3/7] Setting up certificates...${NC}"
 
 # Create certs directory
 sudo mkdir -p /opt/envoy/certs
@@ -454,7 +454,7 @@ else
 fi
 
 # 4. Setup mobile location service
-echo -e "\n${GREEN}[4/6] Setting up mobile location service...${NC}"
+echo -e "\n${GREEN}[4/7] Setting up mobile location service...${NC}"
 cd "$REPO_ROOT/mobile-sensor-microservice"
 if [ ! -d ".venv" ]; then
     python3 -m venv .venv

@@ -2959,6 +2959,7 @@ COMPONENTS_OK=true
         fi
     fi
     
+# Step 14: Test SPIRE Agent SVID Renewal
 echo ""
 echo -e "${CYAN}Step 14: Testing SPIRE Agent SVID Renewal...${NC}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

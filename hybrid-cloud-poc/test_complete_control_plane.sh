@@ -1731,9 +1731,9 @@ echo -e "${YELLOW}  TPM Plugin Server is managed by test_complete.sh${NC}"
 
 # Removed: All TPM Plugin Server startup code (not needed for control plane only)
 
-# Step 7: Start SPIRE Server (control plane only - no agent)
+# Step 4: Start SPIRE Server (control plane only - no agent)
 echo ""
-echo -e "${CYAN}Step 7: Starting SPIRE Server...${NC}"
+echo -e "${CYAN}Step 4: Starting SPIRE Server...${NC}"
 
 if [ ! -d "${PROJECT_DIR}" ]; then
     echo -e "${RED}Error: Project directory not found at ${PROJECT_DIR}${NC}"
@@ -2068,7 +2068,7 @@ if false; then
     fi
 fi
 
-pause_at_phase "Step 7 Complete" "SPIRE Server is running. Control plane services ready."
+pause_at_phase "Step 4 Complete" "SPIRE Server is running. Control plane services ready."
 echo ""
 echo -e "${GREEN}Control plane services started successfully:${NC}"
 echo "  ✓ SPIRE Server"
