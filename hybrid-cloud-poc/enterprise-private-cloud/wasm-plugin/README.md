@@ -34,9 +34,12 @@ This will:
 ## How It Works
 
 1. **Certificate Extraction**: The filter gets the client certificate from the TLS connection
-2. **Sensor ID Extraction**: Parses the X.509 certificate to find the Unified Identity extension (OID `1.3.6.1.4.1.99999.2`)
-3. **JSON Parsing**: Extracts the JSON from the extension and parses `grc.geolocation.sensor_id`
-4. **Verification**: Calls the mobile location service at `localhost:5000/verify` with the sensor ID
+2. **Sensor Information Extraction**: Parses the X.509 certificate to find the Unified Identity extension (OID `1.3.6.1.4.1.99999.2`)
+3. **JSON Parsing**: Extracts the JSON from the extension and parses `grc.geolocation` (sensor_id, sensor_type, sensor_imei, sensor_imsi)
+4. **Sensor Type Handling**:
+   - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely (allow request directly)
+   - **Mobile sensors**: Calls the mobile location service at `localhost:5000/verify` with sensor_id, sensor_imei, and sensor_imsi
+     - Note: CAMARA API caching is handled by the mobile location service (15-minute TTL, configurable), not in the WASM filter
 5. **Header Injection**: If verification succeeds, adds `X-Sensor-ID` header and forwards to backend
 
 ## Advantages Over Lua Filter

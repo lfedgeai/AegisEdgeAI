@@ -178,17 +178,20 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
     - Geolocation data includes: sensor type (mobile/gnss), sensor_id, sensor_imei, sensor_imsi, and optional value (for GNSS)
 
 14. **Verifier Calls Mobile Location Verification Microservice** (if mobile geolocation detected)
-    - The verifier extracts the sensor_id, sensor_imei, and/or sensor_imsi from the geolocation data
-    - The verifier calls the mobile location verification microservice via REST API (HTTP)
-    - Request: `POST /verify` with `{"sensor_id": "<sensor_id>", "sensor_imei": "<imei>", "sensor_imsi": "<imsi>"}` (all fields optional)
-    - The microservice:
-      - Looks up the sensor in SQLite database (priority: sensor_id > sensor_imei > sensor_imsi) to get phone number (MSISDN) and default coordinates
-      - Calls CAMARA APIs in sequence (if CAMARA_BYPASS=false):
-        1. `POST /bc-authorize` with login_hint (phone number) and scope (reuses cached auth_req_id if available)
-        2. `POST /token` with grant_type and auth_req_id (reuses cached access_token if still valid)
-        3. `POST /location/v0/verify` with access_token, ueId, latitude, longitude, accuracy
-      - Returns verification result: `{"verification_result": true/false, "sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "...", "latitude": ..., "longitude": ..., "accuracy": ...}`
-    - If verification_result is false, or if the microservice is unreachable, the verifier fails the attestation
+    - The verifier extracts the sensor_id, sensor_type, sensor_imei, and/or sensor_imsi from the geolocation data
+    - **Sensor Type Handling**:
+      - **GPS/GNSS sensors** (`sensor_type == "gnss"`): Trusted hardware, skip mobile location verification entirely. Attestation proceeds without CAMARA API calls.
+      - **Mobile sensors** (`sensor_type == "mobile"`): The verifier calls the mobile location verification microservice via REST API (HTTP)
+        - Request: `POST /verify` with `{"sensor_id": "<sensor_id>", "sensor_imei": "<imei>", "sensor_imsi": "<imsi>"}` (all fields optional)
+        - The microservice:
+          - Looks up the sensor in SQLite database (priority: sensor_id > sensor_imei > sensor_imsi) to get phone number (MSISDN) and default coordinates
+          - Calls CAMARA APIs in sequence (if CAMARA_BYPASS=false):
+            1. `POST /bc-authorize` with login_hint (phone number) and scope (reuses cached auth_req_id if available)
+            2. `POST /token` with grant_type and auth_req_id (reuses cached access_token if still valid)
+            3. `POST /location/v0/verify` with access_token, ueId, latitude, longitude, accuracy
+               - **Caching**: The `verify_location` result is cached with configurable TTL (default: 15 minutes). The actual CAMARA API is called at most once per TTL period; subsequent calls within the TTL return the cached result. This significantly reduces CAMARA API calls.
+          - Returns verification result: `{"verification_result": true/false, "sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "...", "latitude": ..., "longitude": ..., "accuracy": ...}`
+        - If verification_result is false, or if the microservice is unreachable, the verifier fails the attestation
 
 15. **Verifier Retrieves Attested Claims**
    - The verifier calls the fact provider to get optional metadata (if available)
@@ -228,7 +231,9 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **Separation of Concerns**: Quote generation (platform attestation) is separate from App Key certification (workload identity)
 - **No Periodic Polling**: Unlike traditional Keylime, agents aren't continuously monitored; verification happens on-demand per attestation request
 - **Agent Registration Model**: Agents register with the Keylime Registrar (persistent storage) but are not registered with the Keylime Verifier (on-demand lookup only)
-- **Mobile Location Verification**: When mobile geolocation is detected in the TPM quote (sensor_id, sensor_imei, or sensor_imsi present), the verifier calls the mobile location verification microservice to verify the device location via CAMARA APIs; attestation fails if location verification fails
+- **Mobile Location Verification**: When mobile geolocation is detected in the TPM quote (sensor_id, sensor_imei, or sensor_imsi present), the verifier checks the sensor_type:
+  - **GPS/GNSS sensors** (`sensor_type == "gnss"`): Trusted hardware, skip mobile location verification entirely. Attestation proceeds without CAMARA API calls.
+  - **Mobile sensors** (`sensor_type == "mobile"`): The verifier calls the mobile location verification microservice to verify the device location via CAMARA APIs (with result caching, default 15-minute TTL); attestation fails if location verification fails
 - **TPM Plugin Server Communication**: SPIRE Agent communicates with TPM Plugin Server via JSON over UDS (Unix Domain Socket) for security and performance
 - **Delegated Certification Transport**: TPM Plugin Server uses HTTPS/mTLS (port 9002) to communicate with rust-keylime agent (UDS support deferred)
 - **SPIRE Agent Attestation Transport**: SPIRE Agent uses standard TLS (not mTLS) for gRPC communication with SPIRE Server
@@ -236,6 +241,8 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **SPIRE Agent Attestation Transport**: SPIRE Agent uses standard TLS (not mTLS) for gRPC communication with SPIRE Server
 - **TPM App Key Usage**: TPM App Key is used for attestation proof (in SovereignAttestation message), not for TLS client certificate authentication
 - **Token Caching**: Mobile location verification microservice caches CAMARA auth_req_id (persisted to file) and access_token (with expiration) to reduce API calls and improve performance
+- **Location Verification Caching**: The `verify_location` API result is cached with configurable TTL (default: 15 minutes). The actual CAMARA API is called at most once per TTL period; subsequent calls within the TTL return the cached result. This significantly reduces CAMARA API calls and improves performance.
+- **GPS/GNSS Sensor Bypass**: GPS/GNSS sensors (trusted hardware) bypass mobile location verification entirely, allowing attestation to proceed without CAMARA API calls
 
 This flow provides hardware-backed identity attestation where the SPIRE Agent proves its identity using the TPM, and the SPIRE Server verifies this proof through the Keylime Verifier before issuing credentials.
 
@@ -358,6 +365,108 @@ This structure allows verifiers to:
 - Validate the workload's identity directly
 - Trace back to the agent's TPM attestation for policy enforcement
 - Enforce geofencing and platform policies based on agent attestation
+
+---
+
+## End-to-End Flow: Enterprise On-Prem Runtime Access (Envoy WASM Filter)
+
+After workloads receive their SPIRE SVIDs, they can use these certificates to access enterprise on-prem services. The Envoy proxy with WASM filter verifies the sensor identity at runtime.
+
+### Setup: Enterprise On-Prem Gateway
+
+1. **Envoy Proxy Setup**
+   - Envoy proxy runs on enterprise on-prem gateway (e.g., 10.1.0.10:8080)
+   - Configured to terminate mTLS from SPIRE clients
+   - Verifies SPIRE certificate signatures using SPIRE CA bundle
+   - Uses WASM filter to extract sensor information from certificate chain
+
+2. **Mobile Location Service Setup**
+   - Mobile location service runs on enterprise on-prem gateway (localhost:5000)
+   - Handles CAMARA API calls with caching (15-minute TTL, configurable)
+   - No caching in WASM filter - all caching centralized in mobile location service
+
+### Runtime: Workload Access Request
+
+3. **Workload Initiates Request**
+   - Workload (on 10.1.0.11) makes HTTPS request to enterprise gateway (10.1.0.10:8080)
+   - Uses SPIRE workload SVID certificate chain for mTLS client authentication
+   - Certificate chain includes: [Workload SVID, Agent SVID] (Agent SVID contains Unified Identity extension)
+
+4. **Envoy Terminates mTLS**
+   - Envoy terminates the mTLS connection
+   - Verifies SPIRE certificate chain using SPIRE CA bundle
+   - Extracts certificate chain for WASM filter processing
+
+5. **WASM Filter Extracts Sensor Information**
+   - WASM filter parses the certificate chain
+   - Extracts Unified Identity extension (OID `1.3.6.1.4.1.99999.2`) from Agent SVID (intermediate certificate)
+   - Parses JSON to extract: `sensor_id`, `sensor_type`, `sensor_imei`, `sensor_imsi`
+   - **No Caching**: WASM filter does NOT implement any caching. All caching is handled by the mobile location service.
+
+6. **WASM Filter Sensor Type Handling**
+   - **GPS/GNSS sensors** (`sensor_type == "gnss"`):
+     - Trusted hardware, bypass mobile location service entirely
+     - Logs bypass message and allows request directly
+     - Adds `X-Sensor-ID` header and forwards to backend
+   - **Mobile sensors** (`sensor_type == "mobile"`):
+     - Calls mobile location service at `localhost:5000/verify` (blocking call)
+     - Request: `POST /verify` with `{"sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "..."}`
+     - Mobile location service:
+       - Looks up sensor in database
+       - Checks `verify_location` cache (TTL: 15 minutes, configurable)
+       - If cache hit: Returns cached result (no CAMARA API call)
+       - If cache miss/expired: Calls CAMARA APIs and caches result
+     - If verification succeeds: Adds `X-Sensor-ID` header and forwards to backend
+     - If verification fails: Returns 403 Forbidden
+
+7. **Request Forwarding**
+   - If verification succeeds (or GPS sensor bypassed), Envoy forwards request to backend mTLS server (10.1.0.10:9443)
+   - Request includes `X-Sensor-ID` header for audit trail
+   - Backend server logs sensor ID for compliance
+
+### Key Design Points
+
+- **No Caching in WASM Filter**: The WASM filter does NOT implement any caching. All caching (CAMARA API result caching with 15-minute TTL) is handled by the mobile location service. This simplifies the filter logic and ensures a single source of truth for caching behavior.
+- **GPS Sensor Bypass**: GPS/GNSS sensors (trusted hardware) bypass mobile location service entirely, allowing requests directly without verification
+- **Mobile Sensor Verification**: Mobile sensors require CAMARA API verification via mobile location service (with caching)
+- **Blocking Verification**: For mobile sensors, requests pause until mobile location service responds
+- **Certificate Chain**: WASM filter extracts sensor information from Agent SVID (intermediate certificate) in the certificate chain
+- **Centralized Caching**: All caching logic centralized in mobile location service, making it easier to maintain and debug
+
+### Flow Diagram
+
+```
+Workload (10.1.0.11)
+    │
+    │ mTLS (SPIRE cert chain: [Workload SVID, Agent SVID])
+    v
+Envoy Proxy (10.1.0.10:8080)
+    │
+    ├─> 1. Terminate mTLS
+    ├─> 2. Verify SPIRE cert chain (using SPIRE CA bundle)
+    ├─> 3. WASM filter extracts sensor info from Agent SVID (Unified Identity extension)
+    │
+    ├─> 4. Check sensor_type:
+    │   ├─> If "gnss": Bypass mobile location service, allow directly
+    │   └─> If "mobile":
+    │       │
+    │       └─> POST /verify → Mobile Location Service (localhost:5000)
+    │           │
+    │           ├─> Check verify_location cache (TTL: 15 min)
+    │           │   ├─> Cache hit: Return cached result
+    │           │   └─> Cache miss: Call CAMARA APIs, cache result
+    │           │
+    │           └─> Return verification result
+    │
+    ├─> 5. If verified/bypassed: Add X-Sensor-ID header, forward to backend
+    └─>    If not verified: Return 403 Forbidden
+    │
+    v
+Backend mTLS Server (10.1.0.10:9443)
+    │
+    └─> Receives request with X-Sensor-ID header
+        └─> Logs sensor ID for audit trail
+```
 
 ---
 
@@ -538,24 +647,36 @@ Keylime Verifier (Port 8881)
 Keylime Verifier (Port 8881)
     │
     ├─> Extract geolocation from quote
-    ├─> Extract sensor_id, sensor_imei, sensor_imsi if mobile type
+    ├─> Extract sensor_type, sensor_id, sensor_imei, sensor_imsi
     │
-    └─> POST /verify (HTTP/JSON)
-        │   Request: { "sensor_id": "12d1:1433", "sensor_imei": "...", "sensor_imsi": "..." }
-        │
-        └─> Mobile Location Verification Microservice (Port 9050, configurable via mobile_sensor_endpoint)
-            │
-            ├─> Lookup sensor in SQLite database (priority: sensor_id > sensor_imei > sensor_imsi)
-            │   └─> Get MSISDN, lat, lon, accuracy
-            │
-            ├─> Call CAMARA APIs (if CAMARA_BYPASS=false):
-            │   ├─> POST /bc-authorize (reuse cached auth_req_id if available)
-            │   ├─> POST /token (reuse cached access_token if valid)
-            │   └─> POST /location/v0/verify
-            │
-            └─> Return: { "verification_result": true/false, "sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "...", "latitude": ..., "longitude": ..., "accuracy": ... }
-                │
-                <─ Keylime Verifier
+    ├─> Check sensor_type:
+    │   ├─> If sensor_type == "gnss" (GPS/GNSS):
+    │   │   └─> Trusted hardware, skip mobile location verification
+    │   │       └─> Continue attestation without CAMARA API calls
+    │   │
+    │   └─> If sensor_type == "mobile":
+    │       │
+    │       └─> POST /verify (HTTP/JSON)
+    │           │   Request: { "sensor_id": "12d1:1433", "sensor_imei": "...", "sensor_imsi": "..." }
+    │           │
+    │           └─> Mobile Location Verification Microservice (Port 9050, configurable via mobile_sensor_endpoint)
+    │               │
+    │               ├─> Lookup sensor in SQLite database (priority: sensor_id > sensor_imei > sensor_imsi)
+    │               │   └─> Get MSISDN, lat, lon, accuracy
+    │               │
+    │               ├─> Check verify_location cache (TTL: 15 minutes, configurable)
+    │               │   ├─> If cache hit: Return cached result (no API call)
+    │               │   └─> If cache miss/expired: Proceed to CAMARA APIs
+    │               │
+    │               ├─> Call CAMARA APIs (if CAMARA_BYPASS=false):
+    │               │   ├─> POST /bc-authorize (reuse cached auth_req_id if available)
+    │               │   ├─> POST /token (reuse cached access_token if valid)
+    │               │   └─> POST /location/v0/verify
+    │               │       └─> Cache result with TTL (default: 15 minutes)
+    │               │
+    │               └─> Return: { "verification_result": true/false, "sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "...", "latitude": ..., "longitude": ..., "accuracy": ... }
+    │                   │
+    │                   <─ Keylime Verifier
 ```
 
 **Step 12: Verifier Retrieves Attested Claims**
@@ -651,11 +772,14 @@ SPIRE Server (Port 8081)
    - Prevents replay attacks
 
 6. **Mobile Location Verification**
-   - Geolocation sensor identifiers (sensor_id, sensor_imei, sensor_imsi) extracted from TPM quote
-   - Verifier calls mobile location verification microservice with sensor identifiers
-   - Microservice looks up sensor in database (priority: sensor_id > sensor_imei > sensor_imsi)
-   - Microservice verifies device location via CAMARA APIs (with token caching for performance)
-   - Attestation fails if location verification fails
+   - Geolocation sensor identifiers (sensor_type, sensor_id, sensor_imei, sensor_imsi) extracted from TPM quote
+   - **GPS/GNSS sensors** (`sensor_type == "gnss"`): Trusted hardware, skip mobile location verification entirely. Attestation proceeds without CAMARA API calls.
+   - **Mobile sensors** (`sensor_type == "mobile"`): Verifier calls mobile location verification microservice with sensor identifiers
+     - Microservice looks up sensor in database (priority: sensor_id > sensor_imei > sensor_imsi)
+     - Microservice verifies device location via CAMARA APIs:
+       - Token caching: auth_req_id (persisted) and access_token (with expiration) are cached
+       - Location verification caching: `verify_location` results are cached with configurable TTL (default: 15 minutes). The actual CAMARA API is called at most once per TTL period; subsequent calls within the TTL return the cached result.
+     - Attestation fails if location verification fails
    - Enables geofencing and location-based policy enforcement
 
 ---
@@ -746,6 +870,7 @@ SPIRE Server (Port 8081)
   2. `POST /token` with `grant_type=urn:openid:params:grant-type:ciba` and `auth_req_id` (access token is cached with expiration)
   3. `POST /location/v0/verify` with `access_token`, `ueId` (phone number), `latitude`, `longitude`, `accuracy`
 - **Token Caching**: The microservice caches `auth_req_id` (persisted to file) and `access_token` (with expiration) to reduce API calls
+- **Location Verification Caching**: The `verify_location` API result is cached with configurable TTL (default: 15 minutes). The actual CAMARA API is called at most once per TTL period; subsequent calls within the TTL return the cached result. This significantly reduces CAMARA API calls and improves performance.
 - **Verification Result**: Microservice returns `{"verification_result": true/false, "sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "...", "latitude": ..., "longitude": ..., "accuracy": ...}` to verifier
 - **Attestation Gating**: If `verification_result` is `false`, or if the verifier cannot reach the microservice, the Keylime Verifier fails the attestation with error "mobile sensor location verification failed" and the SPIRE Server does not issue the SVID to the SPIRE Agent
 - **Configuration**: 
@@ -754,6 +879,7 @@ SPIRE Server (Port 8081)
   - `CAMARA_BYPASS` environment variable (default: false, set to true to skip CAMARA APIs for testing)
   - `CAMARA_BASIC_AUTH` environment variable (required for CAMARA API authentication)
   - `CAMARA_AUTH_REQ_ID` environment variable (optional, pre-obtained auth_req_id)
+  - `CAMARA_VERIFY_CACHE_TTL_SECONDS` environment variable (default: 900 seconds = 15 minutes). Controls how long `verify_location` results are cached. Set to 0 to disable caching.
   - `MOBILE_SENSOR_DB` environment variable (default: `sensor_mapping.db`)
   - `MOBILE_SENSOR_LATITUDE`, `MOBILE_SENSOR_LONGITUDE`, `MOBILE_SENSOR_ACCURACY` environment variables for coordinate overrides
   - `MOBILE_SENSOR_IMEI`, `MOBILE_SENSOR_IMSI` environment variables for sensor identifiers
@@ -764,3 +890,31 @@ SPIRE Server (Port 8081)
 - `keylime/verifier.conf.minimal` - Configuration (`[verifier]` section)
 - `tpm-plugin/tpm_plugin_server.py` - SPIRE Agent TPM Plugin Server (sidecar) implementation
 - `tpm-plugin/delegated_certification.py` - Delegated certification client implementation
+
+---
+
+## Enterprise On-Prem Envoy WASM Filter
+
+**Status:** ✅ Implemented and integrated
+
+**Implementation Details:**
+- **Purpose**: Envoy proxy filter that verifies sensor identity from SPIRE certificates at the enterprise on-prem gateway
+- **Location**: `enterprise-private-cloud/wasm-plugin/src/lib.rs`
+- **Certificate Extraction**: Extracts sensor_id, sensor_type, sensor_imei, and sensor_imsi from SPIRE certificate Unified Identity extension (OID `1.3.6.1.4.1.99999.2`)
+- **Sensor Type Handling**:
+  - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely (allow request directly without verification)
+  - **Mobile sensors**: Calls mobile location service at `localhost:5000/verify` for CAMARA API verification
+- **No Caching in WASM Filter**: The WASM filter does NOT implement any caching. All caching (CAMARA API result caching with 15-minute TTL) is handled by the mobile location service. This simplifies the filter logic and ensures a single source of truth for caching behavior.
+- **Blocking Verification**: For mobile sensors, requests pause until mobile location service responds
+- **Header Injection**: If verification succeeds, adds `X-Sensor-ID` header and forwards to backend mTLS server
+- **Error Handling**: Returns 403 Forbidden if verification fails or sensor information is missing
+
+**Architecture Benefits:**
+- **Simplified Filter Logic**: No cache state management, expiration logic, or synchronization in the WASM filter
+- **Single Source of Truth**: All caching logic centralized in the mobile location service
+- **Performance**: GPS sensors bypass verification entirely (trusted hardware)
+- **Maintainability**: Easier to debug and maintain without distributed caching logic
+
+**Location:**
+- `enterprise-private-cloud/wasm-plugin/src/lib.rs` - WASM filter implementation
+- `enterprise-private-cloud/envoy/envoy.yaml` - Envoy configuration

@@ -269,8 +269,12 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc
 4. Workload SVID inherits unified identity claims from agent SVID (geolocation, TPM attestation)
 5. Client uses workload SVID for mTLS connection to Envoy
 6. Envoy verifies SPIRE certificate signature using SPIRE CA bundle
-7. Envoy WASM filter extracts sensor ID from certificate chain
-8. Envoy calls Mobile Location Service to verify geolocation
+7. Envoy WASM filter extracts sensor ID and type from certificate chain
+8. Envoy WASM filter behavior:
+    - GPS/GNSS sensors: Trusted hardware, bypass mobile location service (allow directly)
+    - Mobile sensors: Calls Mobile Location Service to verify geolocation
+      - Mobile Location Service handles CAMARA API caching (15-min TTL, configurable)
+      - CAMARA API is called at most once per TTL period; cached results are reused
 9. If verified, Envoy forwards request to backend mTLS server with `X-Sensor-ID` header
 10. Backend server logs the sensor ID for audit trail
 
@@ -310,9 +314,13 @@ sudo tail -f /opt/envoy/logs/envoy.log | grep -E '(sensor|verification|cache|TTL
 ```
 
 **Expected log entries:**
-- `Extracted sensor_id: 12d1:1433`
-- `Using cached verification` (after first request, within 15s)
-- `Cache expired` (after 15s, re-verifying)
+- For mobile sensors:
+  - `[LOCATION VERIFY] Initiating location verification...`
+  - `[CACHE MISS]` or `[API CALL]` (first call)
+  - `[CACHE HIT]` (subsequent calls within cache TTL)
+  - `[LOCATION VERIFY] Location verification completed: result=true`
+- For GPS/GNSS sensors:
+  - `GPS/GNSS sensor: Trusted hardware, no mobile location service call needed - allowing request`
 - `Sensor verification successful`
 
 **ON PREM MOBILE LOCATION SERVICE WINDOW:** (e.g., 10.1.0.10)
@@ -324,8 +332,15 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
 **Check Mobile Location Service logs:**
 ```bash
 # On e.g., 10.1.0.10
-tail -f /tmp/mobile-sensor.log | grep -E '(CAMARA|authorize|token|verify_location)'
+tail -f /tmp/mobile-sensor.log | grep -E '(CAMARA|authorize|token|verify_location|\[CACHE|\[LOCATION VERIFY|\[API)'
 ```
+
+**Expected log entries:**
+- `CAMARA verify_location caching: ENABLED (TTL: 900 seconds = 15.0 minutes)`
+- `[LOCATION VERIFY] Initiating location verification...`
+- `[CACHE MISS]` or `[API CALL]` (first call)
+- `[CACHE HIT]` (subsequent calls within cache TTL)
+- `[API RESPONSE] CAMARA verify_location API response... [CACHED for 900 seconds]`
 
 **ON PREM SERVER APP WINDOW:** (e.g., 10.1.0.10)
 ```bash

@@ -73,11 +73,52 @@ To use the CAMARA API, you need valid credentials from Telefonica Open Gateway:
 ```bash
 # With valid CAMARA credentials:
 export CAMARA_BASIC_AUTH="Basic <your_base64_encoded_credentials>"
+export CAMARA_VERIFY_CACHE_TTL_SECONDS=900  # Optional: 15 minutes (default)
 python mobile-sensor-microservice/service.py --port 5000 --host 0.0.0.0
 
 # For testing without CAMARA (bypass mode):
 export CAMARA_BYPASS=true
 python mobile-sensor-microservice/service.py --port 5000 --host 0.0.0.0
+```
+
+### CAMARA API Caching
+
+The service implements intelligent caching for CAMARA `verify_location` API calls:
+
+- **Default TTL**: 15 minutes (900 seconds), configurable via `CAMARA_VERIFY_CACHE_TTL_SECONDS`
+- **Behavior**: The actual CAMARA API is called at most once per TTL period
+- **Cache hits**: Subsequent calls within the TTL return the cached result without making API calls
+- **Benefits**: 
+  - Reduces CAMARA API calls significantly
+  - Improves response time for cached requests
+  - Reduces API rate limiting issues
+  - Lowers operational costs
+
+**Logging**: All cache operations are logged with clear tags:
+- `[CACHE HIT]` - Using cached result (NO API CALL)
+- `[CACHE MISS]` - No cache available (CALLING API)
+- `[CACHE EXPIRED]` - Cache expired (CALLING API)
+- `[API CALL]` - Making actual CAMARA API call
+- `[API RESPONSE]` - Response received (with cache status)
+- `[LOCATION VERIFY]` - Location verification initiated/completed
+
+### Logging
+
+The service provides comprehensive logging for all operations:
+
+- **Startup**: Logs cache configuration (enabled/disabled, TTL)
+- **Location Verification**: Every verification call is logged with `[LOCATION VERIFY]` tags
+- **Cache Status**: Clear indication of cache hits, misses, and API calls
+- **CAMARA Bypass**: Logs when bypass is enabled and verification is skipped
+
+Example log entries:
+```
+CAMARA verify_location caching: ENABLED (TTL: 900 seconds = 15.0 minutes)
+[LOCATION VERIFY] Initiating location verification for sensor_id=12d1:1433...
+[CACHE MISS] No cached CAMARA verify_location result available (TTL: 900 seconds) - CALLING API
+[API CALL] CAMARA verify_location API call...
+[API RESPONSE] CAMARA verify_location API response... [CACHED for 900 seconds]
+[LOCATION VERIFY] Location verification completed for sensor_id=12d1:1433: result=true
 ```
 
 ### Unit Tests

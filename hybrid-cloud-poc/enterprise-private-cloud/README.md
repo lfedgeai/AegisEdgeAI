@@ -18,11 +18,13 @@ Envoy Proxy (10.1.0.10:8080)
     |
     | 1. Terminates mTLS
     | 2. Verifies SPIRE cert signature (using SPIRE CA bundle)
-    | 3. WASM filter extracts sensor ID from certificate chain
+    | 3. WASM filter extracts sensor ID and type from certificate chain
     |    (Unified Identity extension in intermediate cert)
-    | 4. WASM filter calls mobile location service (blocking)
-    |    - Uses time-based cache (15s TTL) to reduce CAMARA API calls
-    |    - Requests pause until verification completes
+    | 4. WASM filter behavior:
+    |    - GPS/GNSS sensors: Trusted hardware, bypass mobile location service (allow directly)
+    |    - Mobile sensors: Calls mobile location service (blocking)
+    |      - Mobile location service handles CAMARA API caching (15-min TTL, configurable)
+    |      - Requests pause until verification completes
     | 5. If verified: adds X-Sensor-ID header and forwards request
     |    If not verified: returns 403 Forbidden
     |
@@ -47,10 +49,12 @@ mTLS Server (10.1.0.10:9443)
   - Uses SPIRE bundle to verify SPIRE client certificates
   - Uses backend server certificate to verify backend server when connecting upstream
 - **WASM Filter**: 
-  - Extracts sensor ID from certificate chain (Unified Identity extension in intermediate certificate, OID 1.3.6.1.4.1.99999.2)
-  - **Blocking verification**: Requests pause until mobile location service responds
-  - **Time-based caching**: 15-second TTL to reduce CAMARA API calls
-  - Calls mobile location service only when cache expires or sensor ID changes
+  - Extracts sensor ID, sensor_type, sensor_imei, and sensor_imsi from certificate chain (Unified Identity extension in intermediate certificate, OID 1.3.6.1.4.1.99999.2)
+  - **Sensor Type Handling**:
+    - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely (allow request directly)
+    - **Mobile sensors**: Calls mobile location service for CAMARA API verification
+  - **Blocking verification**: For mobile sensors, requests pause until mobile location service responds
+  - **Caching**: CAMARA API caching is handled by the mobile location service (15-minute TTL, configurable), not in the WASM filter
   - Adds `X-Sensor-ID` header to verified requests
   - Returns 403 Forbidden if verification fails
 
