@@ -125,6 +125,103 @@ verify_control_plane() {
     wait_for_services "run_on_control_plane" "${checks[@]}"
 }
 
+# Function to test CAMARA caching and GPS bypass features
+test_camara_caching_and_gps_bypass() {
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}Step 4: Testing CAMARA Caching and GPS Bypass Features${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    echo -e "${CYAN}Test 1: CAMARA API Caching (First Call - Should Call API)${NC}"
+    echo "  Making first verification request..."
+    FIRST_RESPONSE=$(run_on_onprem "curl -s -X POST http://localhost:5000/verify -H 'Content-Type: application/json' -d '{\"sensor_id\": \"12d1:1433\"}'" 2>/dev/null || echo "")
+    FIRST_STATUS=$(echo "$FIRST_RESPONSE" | grep -o '"verification_result":[^,}]*' | cut -d: -f2 | tr -d ' ' || echo "")
+    
+    if [ -n "$FIRST_RESPONSE" ]; then
+        echo -e "${GREEN}  ✓ First call completed${NC}"
+        echo "  Response: $FIRST_RESPONSE"
+        
+        # Check logs for API call
+        echo ""
+        echo "  Checking logs for API call..."
+        API_CALL_LOG=$(run_on_onprem "grep -E '\[API CALL\]|\[CACHE MISS\]|\[CACHE HIT\]' /tmp/mobile-sensor.log 2>/dev/null | tail -5" 2>/dev/null || echo "")
+        if echo "$API_CALL_LOG" | grep -q "\[API CALL\]\|\[CACHE MISS\]"; then
+            echo -e "${GREEN}  ✓ First call made API request (cache miss expected)${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ Could not verify API call in logs${NC}"
+        fi
+    else
+        echo -e "${RED}  ✗ First call failed${NC}"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Test 2: CAMARA API Caching (Second Call - Should Use Cache)${NC}"
+    echo "  Waiting 2 seconds, then making second verification request..."
+    sleep 2
+    SECOND_RESPONSE=$(run_on_onprem "curl -s -X POST http://localhost:5000/verify -H 'Content-Type: application/json' -d '{\"sensor_id\": \"12d1:1433\"}'" 2>/dev/null || echo "")
+    SECOND_STATUS=$(echo "$SECOND_RESPONSE" | grep -o '"verification_result":[^,}]*' | cut -d: -f2 | tr -d ' ' || echo "")
+    
+    if [ -n "$SECOND_RESPONSE" ]; then
+        echo -e "${GREEN}  ✓ Second call completed${NC}"
+        echo "  Response: $SECOND_RESPONSE"
+        
+        # Check logs for cache hit
+        echo ""
+        echo "  Checking logs for cache hit..."
+        CACHE_HIT_LOG=$(run_on_onprem "grep -E '\[CACHE HIT\]|\[API CALL\]' /tmp/mobile-sensor.log 2>/dev/null | tail -5" 2>/dev/null || echo "")
+        if echo "$CACHE_HIT_LOG" | grep -q "\[CACHE HIT\]"; then
+            echo -e "${GREEN}  ✓ Second call used cache (cache hit confirmed)${NC}"
+        elif echo "$CACHE_HIT_LOG" | grep -q "\[API CALL\]"; then
+            echo -e "${YELLOW}  ⚠ Second call still made API request (cache may not be working)${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ Could not verify cache behavior in logs${NC}"
+        fi
+    else
+        echo -e "${RED}  ✗ Second call failed${NC}"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Test 3: Mobile Location Service Logging${NC}"
+    echo "  Checking for location verify logging..."
+    LOCATION_VERIFY_LOG=$(run_on_onprem "grep -E '\[LOCATION VERIFY\]' /tmp/mobile-sensor.log 2>/dev/null | tail -3" 2>/dev/null || echo "")
+    if [ -n "$LOCATION_VERIFY_LOG" ]; then
+        echo -e "${GREEN}  ✓ Location verify logging present${NC}"
+        echo "$LOCATION_VERIFY_LOG" | sed 's/^/    /'
+    else
+        echo -e "${YELLOW}  ⚠ Could not find location verify logs${NC}"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Test 4: Cache Configuration${NC}"
+    echo "  Checking cache TTL configuration..."
+    CACHE_CONFIG_LOG=$(run_on_onprem "grep -E 'CAMARA verify_location caching' /tmp/mobile-sensor.log 2>/dev/null | head -1" 2>/dev/null || echo "")
+    if [ -n "$CACHE_CONFIG_LOG" ]; then
+        echo -e "${GREEN}  ✓ Cache configuration logged${NC}"
+        echo "$CACHE_CONFIG_LOG" | sed 's/^/    /'
+    else
+        echo -e "${YELLOW}  ⚠ Could not find cache configuration in logs${NC}"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Test 5: GPS Sensor Bypass (WASM Filter)${NC}"
+    echo "  Note: GPS sensors should bypass mobile location service"
+    echo "  This is verified by checking Envoy logs for GPS sensor requests..."
+    GPS_BYPASS_LOG=$(run_on_onprem "sudo grep -E 'GPS/GNSS.*no mobile location service call needed' /opt/envoy/logs/envoy.log 2>/dev/null | tail -2" 2>/dev/null || echo "")
+    if [ -n "$GPS_BYPASS_LOG" ]; then
+        echo -e "${GREEN}  ✓ GPS bypass detected in Envoy logs${NC}"
+        echo "$GPS_BYPASS_LOG" | sed 's/^/    /'
+    else
+        echo -e "${YELLOW}  ⚠ No GPS bypass logs found (may not have GPS sensor requests yet)${NC}"
+    fi
+    
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}CAMARA Caching and GPS Bypass Tests Completed!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
 # Function to verify on-prem services
 verify_onprem() {
     echo ""
@@ -271,6 +368,19 @@ main() {
         exit 1
     fi
     
+    # Step 4: Test CAMARA Caching and GPS Bypass Features
+    echo ""
+    if [ "$NO_PAUSE" = "true" ]; then
+        echo "  (--no-pause: continuing automatically...)"
+    elif [ -t 0 ]; then
+        read -p "Press Enter to continue to CAMARA caching and GPS bypass tests..."
+    else
+        echo "  (Non-interactive mode - continuing automatically in 3 seconds...)"
+        sleep 3
+    fi
+    
+    test_camara_caching_and_gps_bypass
+    
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}All Tests Completed!${NC}"
@@ -280,6 +390,7 @@ main() {
     echo "  ✓ Control Plane Services: Running on ${CONTROL_PLANE_HOST}"
     echo "  ✓ On-Prem Services: Running on ${ONPREM_HOST}"
     echo "  ✓ Complete Integration Test: Completed"
+    echo "  ✓ CAMARA Caching and GPS Bypass Tests: Completed"
     echo ""
     echo -e "${CYAN}To check logs:${NC}"
     echo "  Control Plane: ssh ${SSH_USER}@${CONTROL_PLANE_HOST} 'tail -f /tmp/spire-server.log'"

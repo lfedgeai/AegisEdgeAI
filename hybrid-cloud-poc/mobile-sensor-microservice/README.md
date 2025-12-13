@@ -38,6 +38,7 @@ This installs both runtime dependencies (Flask, requests) and the `pytest` tooli
 | `CAMARA_BASIC_AUTH` | `Basic` header value used for `/bc-authorize` and `/token` | **required** |
 | `CAMARA_SCOPE` | Scope used in `/bc-authorize` | `dpv:FraudPreventionAndDetection#device-location-read` |
 | `CAMARA_BYPASS` | Set to `true` to skip CAMARA API calls (for testing only) | `false` |
+| `CAMARA_VERIFY_CACHE_TTL_SECONDS` | Cache TTL for `verify_location` API results. The actual CAMARA API is called at most once per TTL period; subsequent calls return the cached result. | `900` (15 minutes) |
 
 ### Obtaining CAMARA Credentials
 

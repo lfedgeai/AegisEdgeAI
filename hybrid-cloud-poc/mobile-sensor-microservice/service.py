@@ -77,6 +77,18 @@ def _camara_bypass_enabled() -> bool:
     return os.getenv("CAMARA_BYPASS", "").lower() in ("1", "true", "yes", "on")
 
 
+def _get_verify_location_cache_ttl() -> int:
+    """Get verify_location cache TTL in seconds (default: 15 minutes = 900 seconds)."""
+    try:
+        ttl = int(os.getenv("CAMARA_VERIFY_CACHE_TTL_SECONDS", "900"))
+        if ttl < 0:
+            LOG.warning("Invalid CAMARA_VERIFY_CACHE_TTL_SECONDS (%d), using default 900 seconds", ttl)
+            return 900
+        return ttl
+    except (ValueError, TypeError):
+        return 900
+
+
 def _get_auth_req_id_file_path() -> Path:
     """Get the file path for storing auth_req_id persistently."""
     # Use the same directory as the database for consistency
@@ -310,6 +322,12 @@ class CamaraClient:
         self._token_expires_at: Optional[float] = None  # Unix timestamp
         self._token_lock = threading.Lock()  # Lock for thread-safe token access
         
+        # Verify location result caching (thread-safe)
+        self._verify_cache_ttl = _get_verify_location_cache_ttl()
+        self._verify_cache_result: Optional[bool] = None
+        self._verify_cache_timestamp: Optional[float] = None  # Unix timestamp
+        self._verify_cache_lock = threading.Lock()  # Lock for thread-safe cache access
+        
         # Get auth_req_id from parameter, environment variable, or file (in that order)
         if auth_req_id:
             self.auth_req_id = auth_req_id
@@ -537,6 +555,64 @@ class CamaraClient:
         access_token: str,
         log_context: str = "",
     ) -> bool:
+        current_time = time.time()
+        cache_enabled = self._verify_cache_ttl > 0
+        
+        # Thread-safe cache check
+        with self._verify_cache_lock:
+            # Check if we have a valid cached result
+            if cache_enabled and self._verify_cache_result is not None and self._verify_cache_timestamp is not None:
+                cache_age = current_time - self._verify_cache_timestamp
+                if cache_age < self._verify_cache_ttl:
+                    # Cache is still valid, return cached result
+                    if log_context == "health-check":
+                        LOG.info(
+                            "Health-check: [CACHE HIT] Using cached CAMARA verify_location result (age: %d seconds, TTL: %d seconds) - NO API CALL",
+                            int(cache_age),
+                            self._verify_cache_ttl
+                        )
+                    else:
+                        LOG.info(
+                            "[CACHE HIT] Using cached CAMARA verify_location result: result=%s (age: %d seconds, TTL: %d seconds) - NO API CALL",
+                            self._verify_cache_result,
+                            int(cache_age),
+                            self._verify_cache_ttl
+                        )
+                    return self._verify_cache_result
+                else:
+                    # Cache expired
+                    if log_context == "health-check":
+                        LOG.info(
+                            "Health-check: [CACHE EXPIRED] CAMARA verify_location cache expired (age: %d seconds, TTL: %d seconds) - CALLING API",
+                            int(cache_age),
+                            self._verify_cache_ttl
+                        )
+                    else:
+                        LOG.info(
+                            "[CACHE EXPIRED] CAMARA verify_location cache expired (age: %d seconds, TTL: %d seconds) - CALLING API",
+                            int(cache_age),
+                            self._verify_cache_ttl
+                        )
+            elif cache_enabled:
+                # Cache miss (no cached result yet)
+                if log_context == "health-check":
+                    LOG.info(
+                        "Health-check: [CACHE MISS] No cached CAMARA verify_location result available (TTL: %d seconds) - CALLING API",
+                        self._verify_cache_ttl
+                    )
+                else:
+                    LOG.info(
+                        "[CACHE MISS] No cached CAMARA verify_location result available (TTL: %d seconds) - CALLING API",
+                        self._verify_cache_ttl
+                    )
+            else:
+                # Caching disabled
+                if log_context == "health-check":
+                    LOG.info("Health-check: [CACHING DISABLED] CAMARA verify_location caching disabled (TTL=0) - CALLING API")
+                else:
+                    LOG.info("[CACHING DISABLED] CAMARA verify_location caching disabled (TTL=0) - CALLING API")
+        
+        # Cache miss, expired, or disabled - make actual API call
         payload = {
             "ueId": {"msisdn": msisdn},
             "latitude": latitude,
@@ -544,10 +620,10 @@ class CamaraClient:
             "accuracy": accuracy,
         }
         if log_context == "health-check":
-            LOG.info("Health-check: CAMARA verify_location API call (payload redacted)")
+            LOG.info("Health-check: [API CALL] CAMARA verify_location API call (payload redacted)")
         else:
             LOG.info(
-                "CAMARA verify_location API call: payload=%s, url=%s%s",
+                "[API CALL] CAMARA verify_location API call: payload=%s, url=%s%s",
                 payload,
                 CAMARA_BASE,
                 VERIFY_PATH,
@@ -568,10 +644,35 @@ class CamaraClient:
         resp.raise_for_status()
         data = resp.json()
         result = bool(data.get("verificationResult"))
-        if log_context == "health-check":
-            LOG.info("Health-check: CAMARA verify_location API response (body redacted) result=%s", result)
+        
+        # Update cache with new result (thread-safe) if caching is enabled
+        if cache_enabled:
+            with self._verify_cache_lock:
+                self._verify_cache_result = result
+                self._verify_cache_timestamp = time.time()
+            if log_context == "health-check":
+                LOG.info(
+                    "Health-check: [API RESPONSE] CAMARA verify_location API response (body redacted) result=%s [CACHED for %d seconds]",
+                    result,
+                    self._verify_cache_ttl
+                )
+            else:
+                LOG.info(
+                    "[API RESPONSE] CAMARA verify_location API response: %s [CACHED for %d seconds]",
+                    data,
+                    self._verify_cache_ttl
+                )
         else:
-            LOG.info("CAMARA verify_location API response: %s", data)
+            if log_context == "health-check":
+                LOG.info(
+                    "Health-check: [API RESPONSE] CAMARA verify_location API response (body redacted) result=%s [NOT CACHED - caching disabled]",
+                    result
+                )
+            else:
+                LOG.info(
+                    "[API RESPONSE] CAMARA verify_location API response: %s [NOT CACHED - caching disabled]",
+                    data
+                )
         return result
 
 
@@ -743,9 +844,14 @@ def create_app(db_path: Path) -> Flask:
         if bypass_camara:
             if is_healthcheck:
                 LOG.info("Health-check: CAMARA_BYPASS enabled – automatically approving")
+                LOG.info("Health-check: [LOCATION VERIFY] Skipped (CAMARA_BYPASS enabled) - no API call, no caching")
             else:
                 LOG.info(
                     "CAMARA_BYPASS enabled: automatically approving sensor_id=%s for testing", sensor_id
+                )
+                LOG.info(
+                    "[LOCATION VERIFY] Skipped for sensor_id=%s (CAMARA_BYPASS enabled) - no API call, no caching",
+                    sensor_id
                 )
             verification_result = True
         else:
@@ -800,18 +906,51 @@ def create_app(db_path: Path) -> Flask:
                 
                 # Try verification - if it fails with 401, retry with a fresh token
                 try:
+                    if is_healthcheck:
+                        LOG.info("Health-check: [LOCATION VERIFY] Initiating location verification (cache-aware)")
+                    else:
+                        LOG.info(
+                            "[LOCATION VERIFY] Initiating location verification for sensor_id=%s, msisdn=%s, lat=%.6f, lon=%.6f (cache-aware)",
+                            sensor_id,
+                            msisdn,
+                            latitude,
+                            longitude
+                        )
                     verification_result = camara_client.verify_location(  # type: ignore[union-attr]
                         msisdn, latitude, longitude, accuracy, access_token, log_context=log_context
                     )
+                    if is_healthcheck:
+                        LOG.info("Health-check: [LOCATION VERIFY] Location verification completed: result=%s", verification_result)
+                    else:
+                        LOG.info(
+                            "[LOCATION VERIFY] Location verification completed for sensor_id=%s: result=%s",
+                            sensor_id,
+                            verification_result
+                        )
                 except requests.HTTPError as http_err:
                     # If we get 401, the token might have expired - get a fresh one and retry (max 1 retry)
                     if hasattr(http_err, 'response') and http_err.response is not None and http_err.response.status_code == 401:
                         LOG.warning("Verification failed with 401 - token may have expired, getting fresh token and retrying once...")
                         try:
                             access_token = camara_client.get_access_token()  # type: ignore[union-attr]
+                            if is_healthcheck:
+                                LOG.info("Health-check: [LOCATION VERIFY RETRY] Retrying location verification after token refresh (cache-aware)")
+                            else:
+                                LOG.info(
+                                    "[LOCATION VERIFY RETRY] Retrying location verification for sensor_id=%s after token refresh (cache-aware)",
+                                    sensor_id
+                                )
                             verification_result = camara_client.verify_location(  # type: ignore[union-attr]
                                 msisdn, latitude, longitude, accuracy, access_token, log_context=log_context
                             )
+                            if is_healthcheck:
+                                LOG.info("Health-check: [LOCATION VERIFY RETRY] Location verification retry completed: result=%s", verification_result)
+                            else:
+                                LOG.info(
+                                    "[LOCATION VERIFY RETRY] Location verification retry completed for sensor_id=%s: result=%s",
+                                    sensor_id,
+                                    verification_result
+                                )
                         except requests.HTTPError as retry_err:
                             # If retry also fails with 401, log error and re-raise
                             if hasattr(retry_err, 'response') and retry_err.response is not None and retry_err.response.status_code == 401:
@@ -926,6 +1065,11 @@ def run_server(socket_path: Optional[str], host: str, port: int) -> None:
     LOG.info("Default longitude: %.6f (from env: %s)", lon, "MOBILE_SENSOR_LONGITUDE" if os.getenv("MOBILE_SENSOR_LONGITUDE") else "default")
     LOG.info("Default accuracy: %.1f (from env: %s)", acc, "MOBILE_SENSOR_ACCURACY" if os.getenv("MOBILE_SENSOR_ACCURACY") else "default")
     LOG.info("CAMARA_BYPASS: %s", "enabled" if bypass else "disabled")
+    verify_cache_ttl = _get_verify_location_cache_ttl()
+    if verify_cache_ttl > 0:
+        LOG.info("CAMARA verify_location caching: ENABLED (TTL: %d seconds = %.1f minutes)", verify_cache_ttl, verify_cache_ttl / 60.0)
+    else:
+        LOG.info("CAMARA verify_location caching: DISABLED (TTL: 0 seconds)")
     LOG.info("Listening on: %s:%s", host, port)
     LOG.info("=" * 70)
     

@@ -2,8 +2,6 @@ use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
-use std::cell::RefCell;
 
 // Unified Identity extension OIDs (as ASN.1 OID bytes)
 // 1.3.6.1.4.1.99999.2 = 0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x63, 0x02
@@ -31,30 +29,11 @@ struct VerifyResponse {
 proxy_wasm::main! {{
     proxy_wasm::set_log_level(LogLevel::Info);
     proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
-        Box::new(SensorVerificationRoot::default())
+        Box::new(SensorVerificationRoot)
     });
 }}
 
-// Shared cache state (persists across requests)
-struct CacheState {
-    verification_cache: Option<(String, std::time::SystemTime)>, // (sensor_id, timestamp when cached)
-    verification_result: Option<bool>, // Cached verification result
-}
-
-struct SensorVerificationRoot {
-    cache: Arc<Mutex<CacheState>>,
-}
-
-impl Default for SensorVerificationRoot {
-    fn default() -> Self {
-        Self {
-            cache: Arc::new(Mutex::new(CacheState {
-                verification_cache: None,
-                verification_result: None,
-            })),
-        }
-    }
-}
+struct SensorVerificationRoot;
 
 impl Context for SensorVerificationRoot {}
 
@@ -65,7 +44,6 @@ impl RootContext for SensorVerificationRoot {
             sensor_type: None,
             sensor_imei: None,
             sensor_imsi: None,
-            cache: Arc::clone(&self.cache),
         }))
     }
 
@@ -79,7 +57,6 @@ struct SensorVerificationFilter {
     sensor_type: Option<String>, // "mobile" or "gnss"
     sensor_imei: Option<String>,
     sensor_imsi: Option<String>,
-    cache: Arc<Mutex<CacheState>>, // Shared cache from root context
 }
 
 impl Context for SensorVerificationFilter {
@@ -150,19 +127,6 @@ impl Context for SensorVerificationFilter {
                 let verified = response.verification_result.unwrap_or(false);
                 
                 proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Verification result for sensor_id: {}, sensor_imei: {}, sensor_imsi: {} - result: {}", sensor_id, sensor_imei, sensor_imsi, verified));
-                
-                // Update cache with verification result and current timestamp
-                let current_time = self.get_current_time();
-                match self.cache.lock() {
-                    Ok(mut cache) => {
-                        cache.verification_cache = Some((sensor_id.clone(), current_time));
-                        cache.verification_result = Some(verified);
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache updated for sensor_id: {} at time {:?}", sensor_id, current_time));
-                    }
-                    Err(e) => {
-                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Failed to lock cache for update: {:?}", e));
-                    }
-                }
                 
                 if verified {
                     // Verification successful - resume request
@@ -295,62 +259,11 @@ impl HttpContext for SensorVerificationFilter {
             ));
         }
         
-        // Check verification cache (15 second TTL to avoid expensive CAMARA API calls)
-        let cache_ttl = Duration::from_secs(15);
-        let current_time = self.get_current_time();
-        
-        // Access shared cache from root context
-        let (should_verify, cached_verified) = {
-            let cache_guard = match self.cache.lock() {
-                Ok(guard) => guard,
-                Err(e) => {
-                    proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Failed to lock cache for read: {:?}, will verify", e));
-                    return Action::Pause;
-                }
-            };
-            
-            // Debug: log cache state
-            match &cache_guard.verification_cache {
-                Some((cached_sensor_id, cached_timestamp)) => {
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache check: found cached sensor_id: {}, timestamp: {:?}", cached_sensor_id, cached_timestamp));
-                }
-                None => {
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache check: no cache entry found"));
-                }
-            }
-            
-            let should_verify = match &cache_guard.verification_cache {
-            Some((cached_sensor_id, cached_timestamp)) => {
-                if cached_sensor_id == &sensor_id {
-                    // Calculate cache age
-                    let cache_age = current_time.duration_since(*cached_timestamp)
-                        .unwrap_or(Duration::from_secs(0));
-                    let cache_age_seconds = cache_age.as_secs();
-                    
-                    if cache_age < cache_ttl {
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Using cached verification for sensor_id: {} (age: {}s, TTL: 15s)", sensor_id, cache_age_seconds));
-                        false // Use cached result
-                    } else {
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Cache expired for sensor_id: {} (age: {}s, TTL: 15s), re-verifying", sensor_id, cache_age_seconds));
-                        true // Cache expired, need to verify
-                    }
-                } else {
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Different sensor_id: {} (cached: {}), verifying", sensor_id, cached_sensor_id));
-                    true // Different sensor_id, need to verify
-                }
-            }
-            None => {
-                proxy_wasm::hostcalls::log(LogLevel::Info, &format!("No cache for sensor_id: {}, verifying", sensor_id));
-                true // No cache, need to verify
-            }
-            };
-            
-            let cached_verified = cache_guard.verification_result;
-            (should_verify, cached_verified)
-        };
-        
-        if should_verify {
-            // Unified-Identity: Call mobile location service to verify sensor with sensor_id, sensor_imei, and sensor_imsi
+        // Unified-Identity: Only mobile sensors require CAMARA API verification via mobile location service
+        // GPS/GNSS sensors are trusted hardware and don't need CAMARA verification
+        if sensor_type_str == "mobile" {
+            // Call mobile location service to verify mobile sensor with sensor_id, sensor_imei, and sensor_imsi
+            // Note: Caching is handled by the mobile location service (CAMARA API caching), not in the WASM filter
             let verify_body = serde_json::to_string(&VerifyRequest {
                 sensor_id: sensor_id.clone(),
                 sensor_imei: self.sensor_imei.clone(),
@@ -373,14 +286,9 @@ impl HttpContext for SensorVerificationFilter {
                 Duration::from_secs(5),
             ) {
                 Ok(_) => {
-                    let sensor_type_str = self.sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
-                    if sensor_type_str == "mobile" {
-                        let sensor_imei = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("none");
-                        let sensor_imsi = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("none");
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Dispatched blocking verification request for mobile sensor: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={} (request paused, waiting for response)", sensor_type_str, sensor_id, sensor_imei, sensor_imsi));
-                    } else {
-                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Dispatched blocking verification request for sensor: type={}, sensor_id={} (request paused, waiting for response)", sensor_type_str, sensor_id));
-                    }
+                    let sensor_imei = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("none");
+                    let sensor_imsi = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("none");
+                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Dispatched blocking verification request for mobile sensor: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={} (request paused, waiting for response)", sensor_type_str, sensor_id, sensor_imei, sensor_imsi));
                     // Pause request processing until verification response is received
                     Action::Pause
                 }
@@ -396,25 +304,12 @@ impl HttpContext for SensorVerificationFilter {
                 }
             }
         } else {
-            // Use cached verification result - allow request
-            if let Some(verified) = cached_verified {
-                if verified {
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Extracted sensor_id: {} (using cached verification result: verified)", sensor_id));
-                    Action::Continue
-                } else {
-                    proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Extracted sensor_id: {} (using cached verification result: rejected)", sensor_id));
-                    self.send_http_response(
-                        403,
-                        vec![("content-type", "text/plain")],
-                        Some(b"Geo Claim Missing"),
-                    );
-                    Action::Pause
-                }
-            } else {
-                // Cache exists but no result stored - should not happen, but allow request
-                proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Extracted sensor_id: {} (cache exists but no result - allowing request)", sensor_id));
-                Action::Continue
-            }
+            // GPS/GNSS sensors: Trusted hardware, no CAMARA verification needed - allow request directly
+            proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                "GPS/GNSS sensor (type={}, sensor_id={}): Trusted hardware, no mobile location service call needed - allowing request",
+                sensor_type_str, sensor_id
+            ));
+            Action::Continue
         }
     }
 }
