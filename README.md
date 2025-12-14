@@ -72,34 +72,6 @@ graph TD
     class SPIRE,SVID identity;
     class GovChain,OPA,Audit,LLM governance;
 ```
-```text
-+---------------------------------------------------------------+
-|             Layer 3: AI Governance & Compliance               |
-|                                                               |
-|   +-------------+      +-------+      +-------+     +-----+   |
-|   | Gov. Chain  |<---->|  OPA  |      | Audit |     | LLM |   |
-|   +-------------+      +-------+      +-------+     +-----+   |
-|          ^                 ^              ^            ^      |
-+----------|-----------------|--------------|------------|------+
-           |                 |              |            |
-+----------|-----------------|--------------|------------|------+
-|          |                 |              |            |      |
-|   +-------------+          +--------------+            |      |
-|   | SPIRE Agent |--------->| Unified SVID |            |      |
-|   +-------------+          +--------------+            |      |
-|                                                               |
-|             Layer 2: Workload Identity Bridge                 |
-+---------------------------------------------------------------+
-           ^
-           | (Validates & Revokes)
-+---------------------------------------------------------------+
-|             Layer 1: Infrastructure Security                  |
-|                                                               |
-|   +---------+        +---------+        +-----------------+   |
-|   | TPM 2.0 |------->| Kernel  |------->| Keylime Verifier|   |
-|   +---------+        +---------+        +-----------------+   |
-+---------------------------------------------------------------+
-```
 
 Figure 1: The Unified Trust Model. AegisEdgeAI binds Device Integrity (Layer 1) and Workload Identity (Layer 2) to create the unforgeable foundation required for Governance & Verifiable Audits (Layer 3).
 
