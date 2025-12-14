@@ -18,7 +18,7 @@ graph TD
     subgraph L3
         direction TB
         %% Fake Title Node
-        Title_L3(Layer 3: AI Governance & Compliance):::layerTitle
+        Title_L3( Layer 3: AI Governance & Compliance):::layerTitle
         
         %% Real Nodes
         GovChain(🛡️ Governance Middleware<br/>Policy Enforcement Point)
@@ -33,7 +33,7 @@ graph TD
     %% --- Layer 2 ---
     subgraph L2
         direction TB
-        Title_L2(Layer 2: Workload Identity Bridge):::layerTitle
+        Title_L2( Layer 2: Workload Identity Bridge):::layerTitle
         
         SPIRE(🆔 SPIRE Agent<br/>Attestation Service)
         SVID(📜 Unified SVID<br/>Device + Workload Cert)
