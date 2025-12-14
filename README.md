@@ -4,60 +4,80 @@
 
 Where typical security models verify the user, device, or workload in isolation, AegisEdgeAI cryptographically binds all three identities together. We provide the open-source reference architecture for the **End-to-End Trusted AI Stack** in **critical infrastructure and regulated industries** (Financial Services, Defense, Healthcare, Telco).
 
----
-
 ```mermaid
 graph TD
-    %% Styles for distinct layers
+    %% Styles
     classDef hardware fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000;
     classDef identity fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000;
     classDef governance fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000;
 
-    %% --- Layer 3 ---
-    %% Added <br/> to title to prevent truncation
-    subgraph L3 [Layer 3:<br/>AI Governance & Compliance]
+    subgraph L3 [Layer 3: AI Governance & Compliance]
         direction TB
-        GovChain(🛡️ Governance Middleware<br/>Policy Enforcement Point)
-        OPA(⚖️ OPA Engine<br/>Policy Decision)
-        Audit(📝 Immutable Ledger<br/>Audit Logs)
+        GovChain(🛡️ Governance Middleware & PEP)
+        OPA(⚖️ OPA Policy Engine)
+        Audit(📝 Immutable Audit Ledger)
         LLM(🤖 GenAI Model / RAG)
     end
 
-    %% --- Layer 2 ---
-    %% Added <br/> to title
-    subgraph L2 [Layer 2:<br/>Workload Identity Bridge]
+    subgraph L2 [Layer 2: Workload Identity Bridge]
         direction TB
-        SPIRE(🆔 SPIRE Agent<br/>Attestation Service)
-        SVID(📜 Unified SVID<br/>Device + Workload Cert)
+        SPIRE(🆔 SPIRE Agent & Attestation)
+        SVID(📜 Unified SVID -- Device + Workload)
     end
 
-    %% --- Layer 1 ---
-    %% Added <br/> to title
-    subgraph L1 [Layer 1:<br/>Infrastructure Security]
+    subgraph L1 [Layer 1: Infrastructure Security]
         direction TB
-        TPM(🔒 TPM 2.0<br/>Hardware Root of Trust)
-        Keylime(👁️ Keylime Verifier<br/>Runtime Integrity)
+        TPM(🔒 TPM 2.0 Hardware Root)
+        Keylime(👁️ Keylime Runtime Verifier)
         Kernel(🐧 Linux Kernel / IMA)
     end
 
-    %% --- Relationships ---
-    TPM -->|Cryptographic Proof| SPIRE
-    Kernel -->|Measurement Events| Keylime
-    Keylime -->|Validates Integrity| SPIRE
-    Keylime -.->|Revokes Identity| SPIRE
+    %% Relations
+    TPM --> SPIRE
+    Kernel --> Keylime
+    Keylime -->|Validates| SPIRE
+    Keylime -.->|Revokes| SPIRE
 
     SPIRE -->|Issues| SVID
-    SVID -->|mTLS + Signing Key| GovChain
+    SVID -->|mTLS| GovChain
 
-    GovChain -->|1. Validate Context| OPA
-    OPA -->|2. Allow/Deny| GovChain
-    GovChain -->|3. Filtered Prompt| LLM
-    GovChain -->|4. Sign & Log| Audit
+    GovChain -->|1. Validate| OPA
+    OPA -->|2. Decision| GovChain
+    GovChain -->|3. Filter| LLM
+    GovChain -->|4. Log| Audit
 
     %% Apply Styles
     class TPM,Keylime,Kernel hardware;
     class SPIRE,SVID identity;
     class GovChain,OPA,Audit,LLM governance;
+```
+```text
++---------------------------------------------------------------+
+|             Layer 3: AI Governance & Compliance               |
+|                                                               |
+|   +-------------+      +-------+      +-------+     +-----+   |
+|   | Gov. Chain  |<---->|  OPA  |      | Audit |     | LLM |   |
+|   +-------------+      +-------+      +-------+     +-----+   |
+|          ^                 ^              ^            ^      |
++----------|-----------------|--------------|------------|------+
+           |                 |              |            |
++----------|-----------------|--------------|------------|------+
+|          |                 |              |            |      |
+|   +-------------+          +--------------+            |      |
+|   | SPIRE Agent |--------->| Unified SVID |            |      |
+|   +-------------+          +--------------+            |      |
+|                                                               |
+|             Layer 2: Workload Identity Bridge                 |
++---------------------------------------------------------------+
+           ^
+           | (Validates & Revokes)
++---------------------------------------------------------------+
+|             Layer 1: Infrastructure Security                  |
+|                                                               |
+|   +---------+        +---------+        +-----------------+   |
+|   | TPM 2.0 |------->| Kernel  |------->| Keylime Verifier|   |
+|   +---------+        +---------+        +-----------------+   |
++---------------------------------------------------------------+
 ```
 
 Figure 1: The Unified Trust Model. AegisEdgeAI binds Device Integrity (Layer 1) and Workload Identity (Layer 2) to create the unforgeable foundation required for Governance & Verifiable Audits (Layer 3).
@@ -69,7 +89,6 @@ Figure 1: The Unified Trust Model. AegisEdgeAI binds Device Integrity (Layer 1) 
     🔹 <strong>Governance Outcome:</strong> The new <a href="proposals/rag-governance.md">Policy Middleware</a> uses these identities to generate immutable audit logs.
   </small>
 </p>
----
 
 ## Key Proposals & Standards
 We actively contribute to defining industry standards for secure AI architecture.
@@ -77,8 +96,6 @@ We actively contribute to defining industry standards for secure AI architecture
 * **[LEP-001: Zero-Trust Governance Middleware for RAG](proposals/rag-governance.md)**
     * **Status:** Draft / RFC (Submitted to LangChain Community)
     * **Scope:** Standardizing **Policy-as-Code** and **Verifiable Audit Logs** for Enterprise RAG systems. This proposal solves "Context Contamination" and the "GenAI Audit Paradox" by cryptographically binding the retrieved context to the model decision.
-
----
 
 ## The Trusted AI Stack
 AegisEdgeAI addresses the three critical layers required to unlock regulated markets:
@@ -97,14 +114,10 @@ AegisEdgeAI addresses the three critical layers required to unlock regulated mar
 * **Zero-Trust Data Filtering:** Middleware that enforces **OPA (Open Policy Agent)** rules on RAG retrieval contexts.
 * **Immutable Audit Logs:** Generation of compliance artifacts that capture the "Immutable Triad" (User Input + Context Hash + Model Config), turning "trust" into a mathematically verifiable feature.
 
----
-
 ## Why It Matters
 * **Unlock Regulated Markets:** Meet strict data sovereignty and integrity requirements with verifiable proof that spans user, device, and workload.
 * **Reduce Audit Friction:** Provide clear, end-to-end evidence that identity pillars are authentic.
 * **Turn Trust into a Feature:** Make holistic, hardware-rooted trust a customer-visible advantage.
-
----
 
 ## Stakeholders
 * **Ramki Krishnan (Vishanti)** (Lead)
@@ -116,8 +129,6 @@ AegisEdgeAI addresses the three critical layers required to unlock regulated mar
 * Bala Siva Sai Akhil Malepati (Independent)
 * Dhanush (Vishanti)
 * Pranav Kirtani (Independent)
-
----
 
 ## Problem Statement: The Security Gap in AI Infrastructure
 
@@ -134,8 +145,6 @@ In critical infrastructure sectors, inference often occurs at the Edge (e.g., br
 3.  **Model Placement Risks:**
     * *Local Placement:* Host compromise grants control over both the orchestration logic and the model weights (IP theft).
     * *Remote Placement:* Weak endpoint verification allows "Man-in-the-Middle" attacks on inference requests.
-
----
 
 ## Core Solution Architecture
 
@@ -162,16 +171,12 @@ This generates a PoR certificate that proves *what* is running and *where* it is
 * **Telco (AI RAN):** An MNO proves their AI power-saving algorithm prioritizes emergency calls during outages, without disclosing the proprietary source code of the optimizer.
 * **Technology:** We integrate with ZK-ML provers (e.g., EZKL) to generate cryptographic proofs of model execution paths.
 
----
-
 ## Additional Resources
 * **Zero‑Trust Sovereign AI Deck:** [View Deck](placeholder_link)
 * **Blog:** "Unlock the Future of Access" – Moving from IP-based security to hardware-rooted Zero Trust. [Read Blog](placeholder_link)
 * **IETF Presentations:**
     * IETF 123 WIMSE: [View Slides](placeholder_link)
     * IETF 123 RATS: [View Slides](placeholder_link)
-
----
 
 ## References
 1.  [Simply NUC: Banks Data Closer to Customers](https://simplynuc.com/blog/banks-data-closer-to-customers/)
