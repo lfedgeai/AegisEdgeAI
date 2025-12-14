@@ -1,54 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450">
   <style>
-    .title { font-family: sans-serif; font-size: 16px; font-weight: bold; fill: #333; }
-    .label { font-family: sans-serif; font-size: 14px; fill: #444; }
-    .box-title { font-family: sans-serif; font-size: 14px; font-weight: bold; fill: #222; }
-    .arrow { stroke: #666; stroke-width: 2; marker-end: url(#arrowhead); }
+    .layer-title { font-family: sans-serif; font-size: 18px; font-weight: bold; fill: #222; }
+    .mechanism { font-family: sans-serif; font-size: 16px; font-weight: 600; fill: #444; }
+    .value-prop { font-family: sans-serif; font-size: 14px; fill: #555; }
+    .arrow { stroke: #777; stroke-width: 3; marker-end: url(#arrowhead); }
   </style>
-  
   <defs>
     <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
+      <polygon points="0 0, 10 3.5, 0 7" fill="#777" />
     </marker>
   </defs>
 
-  <rect x="50" y="20" width="700" height="130" rx="10" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2"/>
-  <text x="70" y="50" class="title">Layer 3: AI Governance &amp; Compliance</text>
-  
-  <rect x="150" y="70" width="180" height="60" rx="5" fill="#fff" stroke="#4caf50" stroke-width="1"/>
-  <text x="240" y="95" text-anchor="middle" class="box-title">Governance Chain</text>
-  <text x="240" y="115" text-anchor="middle" class="label">(Policy Enforcement)</text>
+  <rect x="50" y="20" width="700" height="100" rx="12" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2"/>
+  <text x="70" y="55" class="layer-title">Layer 3: AI Governance &amp; Compliance</text>
+  <text x="400" y="55" text-anchor="middle" class="mechanism">Policy Middleware</text>
+  <text x="400" y="85" text-anchor="middle" class="value-prop">Uses verified identities to generate immutable, court-admissible audit logs.</text>
 
-  <rect x="360" y="70" width="120" height="60" rx="5" fill="#fff" stroke="#4caf50" stroke-width="1"/>
-  <text x="420" y="105" text-anchor="middle" class="box-title">OPA Engine</text>
+  <rect x="50" y="160" width="700" height="100" rx="12" fill="#fff9c4" stroke="#fbc02d" stroke-width="2"/>
+  <text x="70" y="195" class="layer-title">Layer 2: Workload Identity Bridge</text>
+  <text x="400" y="195" text-anchor="middle" class="mechanism">Unified Identity (SPIFFE/SPIRE)</text>
+  <text x="400" y="225" text-anchor="middle" class="value-prop">Propagates hardware root-of-trust directly to the application workload.</text>
 
-  <rect x="510" y="70" width="140" height="60" rx="5" fill="#fff" stroke="#4caf50" stroke-width="1"/>
-  <text x="580" y="95" text-anchor="middle" class="box-title">Audit Log</text>
-  <text x="580" y="115" text-anchor="middle" class="label">(Immutable)</text>
+  <rect x="50" y="300" width="700" height="100" rx="12" fill="#e1f5fe" stroke="#01579b" stroke-width="2"/>
+  <text x="70" y="335" class="layer-title">Layer 1: Infrastructure Security</text>
+  <text x="400" y="335" text-anchor="middle" class="mechanism">Host Integrity (TPM + Keylime)</text>
+  <text x="400" y="365" text-anchor="middle" class="value-prop">Ensures the attestation agent itself is untampered ("Watching the Watcher").</text>
 
-  <rect x="50" y="180" width="700" height="130" rx="10" fill="#fff9c4" stroke="#fbc02d" stroke-width="2"/>
-  <text x="70" y="210" class="title">Layer 2: Workload Identity Bridge</text>
-  
-  <rect x="200" y="230" width="160" height="60" rx="5" fill="#fff" stroke="#fdd835" stroke-width="1"/>
-  <text x="280" y="255" text-anchor="middle" class="box-title">SPIRE Agent</text>
-  <text x="280" y="275" text-anchor="middle" class="label">(Attestation)</text>
-
-  <rect x="440" y="230" width="160" height="60" rx="5" fill="#fff" stroke="#fdd835" stroke-width="1"/>
-  <text x="520" y="255" text-anchor="middle" class="box-title">Unified SVID</text>
-  <text x="520" y="275" text-anchor="middle" class="label">(Device + Workload)</text>
-
-  <rect x="50" y="340" width="700" height="130" rx="10" fill="#e1f5fe" stroke="#01579b" stroke-width="2"/>
-  <text x="70" y="370" class="title">Layer 1: Infrastructure Security</text>
-
-  <rect x="150" y="390" width="140" height="60" rx="5" fill="#fff" stroke="#039be5" stroke-width="1"/>
-  <text x="220" y="415" text-anchor="middle" class="box-title">TPM 2.0</text>
-  <text x="220" y="435" text-anchor="middle" class="label">(Hardware Root)</text>
-
-  <rect x="330" y="390" width="140" height="60" rx="5" fill="#fff" stroke="#039be5" stroke-width="1"/>
-  <text x="400" y="415" text-anchor="middle" class="box-title">Keylime</text>
-  <text x="400" y="435" text-anchor="middle" class="label">(Verifier)</text>
-  
-  <rect x="510" y="390" width="140" height="60" rx="5" fill="#fff" stroke="#039be5" stroke-width="1"/>
-  <text x="580" y="425" text-anchor="middle" class="box-title">Linux Kernel</text>
-
-  <line x1="220" y1="390" x2="280" y2="290" class="arrow" /> <line x1="400" y1="390" x2="280" y2="290" class="arrow" /> <line x1="360" y1="230" x2="240" y2="130" class="arrow" /> <line x1="520" y1="230" x2="240" y2="130" class="arrow" /> </svg>
+  <line x1="400" y1="300" x2="400" y2="270" class="arrow" /> <line x1="400" y1="160" x2="400" y2="130" class="arrow" /> </svg>
