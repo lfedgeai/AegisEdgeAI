@@ -25,7 +25,7 @@
   <rect x="50" y="300" width="700" height="110" rx="12" fill="#e1f5fe" stroke="#01579b" stroke-width="2"/>
   <text x="400" y="330" text-anchor="middle" class="layer-title">Layer 1: Infrastructure Security</text>
   <text x="400" y="360" text-anchor="middle" class="mechanism">Hardware Root of Trust (TPM + Keylime)</text>
-  <text x="400" y="385" text-anchor="middle" class="value-prop">Continuously validates the Host OS and Agent integrity ("Watching the Watcher").</text>
+  <text x="400" y="385" text-anchor="middle" class="value-prop">Continuously validates the Host OS and Workload Identity Agent integrity ("Watching the Watcher").</text>
 
   <line x1="400" y1="300" x2="400" y2="270" class="arrow" /> 
   <line x1="400" y1="160" x2="400" y2="130" class="arrow" /> 
