@@ -7,24 +7,27 @@
     .arrow { stroke: #777; stroke-width: 3; marker-end: url(#arrowhead); }
   </style>
   <defs>
-    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
       <polygon points="0 0, 10 3.5, 0 7" fill="#777" />
     </marker>
   </defs>
 
   <rect x="50" y="20" width="700" height="110" rx="12" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2"/>
   <text x="400" y="50" text-anchor="middle" class="layer-title">Layer 3: AI Governance &amp; Compliance</text>
-  <text x="400" y="80" text-anchor="middle" class="mechanism">Policy Middleware</text>
-  <text x="400" y="105" text-anchor="middle" class="value-prop">Uses verified identities to generate immutable audit logs.</text>
+  <text x="400" y="80" text-anchor="middle" class="mechanism">Zero-Trust Policy Engine (LangChain + OPA)</text>
+  <text x="400" y="105" text-anchor="middle" class="value-prop">Filters RAG context &amp; generates immutable, court-admissible audit logs.</text>
 
   <rect x="50" y="160" width="700" height="110" rx="12" fill="#fff9c4" stroke="#fbc02d" stroke-width="2"/>
   <text x="400" y="190" text-anchor="middle" class="layer-title">Layer 2: Workload Identity Bridge</text>
   <text x="400" y="220" text-anchor="middle" class="mechanism">Unified Identity (SPIFFE/SPIRE)</text>
-  <text x="400" y="245" text-anchor="middle" class="value-prop">Propagates hardware root-of-trust directly to the workload.</text>
+  <text x="400" y="245" text-anchor="middle" class="value-prop">Cryptographically binds the Workload Identity to the Device Hardware.</text>
 
   <rect x="50" y="300" width="700" height="110" rx="12" fill="#e1f5fe" stroke="#01579b" stroke-width="2"/>
   <text x="400" y="330" text-anchor="middle" class="layer-title">Layer 1: Infrastructure Security</text>
-  <text x="400" y="360" text-anchor="middle" class="mechanism">Host Integrity (TPM + Keylime)</text>
-  <text x="400" y="385" text-anchor="middle" class="value-prop">Ensures the attestation agent itself is untampered ("Watching the Watcher").</text>
+  <text x="400" y="360" text-anchor="middle" class="mechanism">Hardware Root of Trust (TPM + Keylime)</text>
+  <text x="400" y="385" text-anchor="middle" class="value-prop">Continuously validates the Host OS and Agent integrity ("Watching the Watcher").</text>
 
-  <line x1="400" y1="300" x2="400" y2="270" class="arrow" /> <line x1="400" y1="160" x2="400" y2="130" class="arrow" /> </svg>
+  <line x1="400" y1="300" x2="400" y2="270" class="arrow" /> 
+  <line x1="400" y1="160" x2="400" y2="130" class="arrow" /> 
+
+</svg>
