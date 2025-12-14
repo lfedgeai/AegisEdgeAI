@@ -60,13 +60,13 @@ graph TD
 
 Figure 1: The Unified Trust Model. AegisEdgeAI binds Device Integrity (Layer 1) and Workload Identity (Layer 2) to create the unforgeable foundation required for Governance & Verifiable Audits (Layer 3).
 
-<p align="center"> <small> 🔹 <strong>Hardware Root:</strong> TPM/Secure Boot ensures the "Runner" is untampered.
-
-
-🔹 <strong>Identity Bridge:</strong> SPIFFE/SPIRE propagates this trust to the Application.
-
-
-🔹 <strong>Governance Outcome:</strong> The new <strong><a href="proposals/rag-governance.md">Policy Middleware</a></strong> uses these identities to generate immutable, court-admissible audit logs. </small> </p>
+<p align="center">
+  <small>
+    🔹 <strong>Hardware Root:</strong> TPM/Secure Boot ensures the "Runner" is untampered.<br>
+    🔹 <strong>Identity Bridge:</strong> SPIFFE/SPIRE propagates this trust to the Application.<br>
+    🔹 <strong>Governance Outcome:</strong> The new <a href="proposals/rag-governance.md">Policy Middleware</a> uses these identities to generate immutable audit logs.
+  </small>
+</p>
 ---
 
 ## Key Proposals & Standards
