@@ -38,26 +38,6 @@ Therefore, **Output Reproduction** is a technically flawed standard for auditing
 ### 3. Architecture: The "Governance Fence"
 
 We introduce a new Chain primitive: `GovernanceChain`. This sits strictly between the Retriever and the Prompt Template.
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Retriever
-    participant GovernanceChain
-    participant OPA
-    participant LLM
-    User->>Retriever: Query: "How do I process a refund?"
-    Retriever-->>GovernanceChain: Returns 5 Chunks
-    Note over GovernanceChain,OPA: Zero-Trust Filter
-    GovernanceChain->>OPA: POST /v1/data/filter
-    OPA-->>GovernanceChain: ALLOW Chunks 1,2,4 DENY Chunks 3,5
-    alt All Chunks Denied
-        GovernanceChain-->>User: Error: Access Denied
-    else
-        GovernanceChain->>LLM: Prompt + Chunks 1,2,4
-        LLM-->>User: Answer based on allowed data
-    end
-```
     
 **Current Unsafe Flow:**
 `User Query` $\rightarrow$ `Retriever` $\rightarrow$ `[Raw Chunks]` $\rightarrow$ `PromptTemplate` $\rightarrow$ `LLM`
