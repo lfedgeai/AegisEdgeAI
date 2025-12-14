@@ -13,7 +13,9 @@ graph TD
     classDef identity fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000;
     classDef governance fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000;
 
-    subgraph L3 [Layer 3: AI Governance & Compliance]
+    %% --- Layer 3 ---
+    %% Added <br/> to title to prevent truncation
+    subgraph L3 [Layer 3:<br/>AI Governance & Compliance]
         direction TB
         GovChain(🛡️ Governance Middleware<br/>Policy Enforcement Point)
         OPA(⚖️ OPA Engine<br/>Policy Decision)
@@ -21,13 +23,17 @@ graph TD
         LLM(🤖 GenAI Model / RAG)
     end
 
-    subgraph L2 [Layer 2: Workload Identity Bridge]
+    %% --- Layer 2 ---
+    %% Added <br/> to title
+    subgraph L2 [Layer 2:<br/>Workload Identity Bridge]
         direction TB
         SPIRE(🆔 SPIRE Agent<br/>Attestation Service)
         SVID(📜 Unified SVID<br/>Device + Workload Cert)
     end
 
-    subgraph L1 [Layer 1: Infrastructure Security]
+    %% --- Layer 1 ---
+    %% Added <br/> to title
+    subgraph L1 [Layer 1:<br/>Infrastructure Security]
         direction TB
         TPM(🔒 TPM 2.0<br/>Hardware Root of Trust)
         Keylime(👁️ Keylime Verifier<br/>Runtime Integrity)
@@ -35,18 +41,14 @@ graph TD
     end
 
     %% --- Relationships ---
-
-    %% Layer 1: Hardware Rooting
     TPM -->|Cryptographic Proof| SPIRE
     Kernel -->|Measurement Events| Keylime
     Keylime -->|Validates Integrity| SPIRE
     Keylime -.->|Revokes Identity| SPIRE
 
-    %% Layer 2: Identity Issuance
     SPIRE -->|Issues| SVID
     SVID -->|mTLS + Signing Key| GovChain
 
-    %% Layer 3: Governance Flow
     GovChain -->|1. Validate Context| OPA
     OPA -->|2. Allow/Deny| GovChain
     GovChain -->|3. Filtered Prompt| LLM
