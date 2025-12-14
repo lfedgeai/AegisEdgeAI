@@ -39,7 +39,6 @@ Therefore, **Output Reproduction** is a technically flawed standard for auditing
 
 We introduce a new Chain primitive: `GovernanceChain`. This sits strictly between the Retriever and the Prompt Template.
 
-```mermaid
 sequenceDiagram
     participant User
     participant Retriever
@@ -49,7 +48,7 @@ sequenceDiagram
 
     User->>Retriever: Query: "How do I process a refund?"
     Retriever-->>GovernanceChain: Returns 5 Chunks
-
+    
     rect rgb(255, 240, 240)
         Note over GovernanceChain, OPA: 🔒 Zero-Trust Filter
         GovernanceChain->>OPA: POST /v1/data/filter (User Context + Chunks)
@@ -62,8 +61,7 @@ sequenceDiagram
         GovernanceChain->>LLM: Prompt + [Chunks 1,2,4]
         LLM-->>User: Answer based on allowed data
     end
-```
-
+    
 **Current Unsafe Flow:**
 `User Query` $\rightarrow$ `Retriever` $\rightarrow$ `[Raw Chunks]` $\rightarrow$ `PromptTemplate` $\rightarrow$ `LLM`
 
