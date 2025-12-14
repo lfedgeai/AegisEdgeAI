@@ -5,7 +5,7 @@
 Where typical security models verify the user, device, or workload in isolation, AegisEdgeAI cryptographically binds all three identities together. We provide the open-source reference architecture for the **End-to-End Trusted AI Stack** in **critical infrastructure and regulated industries** (Financial Services, Defense, Healthcare, Telco).
 
 <p align="center">
-  <img src="images/architecture.svg" alt="AegisEdgeAI 3-Layer Trust Model" width="800">
+  <img src="images/readme-arch.svg" alt="AegisEdgeAI 3-Layer Trust Model" width="800">
 </p>
 
 <p align="center">
