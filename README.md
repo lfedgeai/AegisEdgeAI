@@ -8,14 +8,6 @@ Where typical security models verify the user, device, or workload in isolation,
   <img src="images/readme-arch.svg" alt="AegisEdgeAI 3-Layer Trust Model" width="800">
 </p>
 
-<p align="center">
-  <small>
-    🔹 <strong>Layer 1 (Hardware):</strong> TPM/Secure Boot ensures the physical "Runner" is untampered.<br>
-    🔹 <strong>Layer 2 (Identity):</strong> SPIFFE/SPIRE propagates this hardware trust to the Application.<br>
-    🔹 <strong>Layer 3 (Governance):</strong> The <a href="proposals/rag-governance.md">Policy Middleware</a> uses these identities to generate immutable audit logs.
-  </small>
-</p>
-
 ## Key Proposals & Standards
 We actively contribute to defining industry standards for secure AI architecture.
 
