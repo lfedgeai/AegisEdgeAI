@@ -1,52 +1,73 @@
 # AegisEdgeAI: Trusted AI for the Distributed Enterprise
 
-**AegisEdgeAI** delivers verifiable trust for AI workloads across the **distributed enterprise**—from **secure on-premise data centers** and **private clouds** to the **far edge**.
+**AegisEdgeAI** delivers verifiable trust for AI workloads across the **distributed enterprise** -- from **secure on-premise data centers** and **private clouds** to the **far edge**.
 
 Where typical security models verify the user, device, or workload in isolation, AegisEdgeAI cryptographically binds all three identities together. We provide the open-source reference architecture for the **End-to-End Trusted AI Stack** in **critical infrastructure and regulated industries** (Financial Services, Defense, Healthcare, Telco).
 
 ```mermaid
 graph TD
-    %% Styles
+    %% --- Styles ---
     classDef hardware fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000;
     classDef identity fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000;
     classDef governance fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000;
+    
+    %% Style for the "Fake Titles" (Invisible background, Bold text)
+    classDef layerTitle fill:none,stroke:none,color:#333,font-weight:bold,font-size:16px;
 
-    subgraph L3 [Layer 3: AI Governance & Compliance]
+    %% --- Layer 3 ---
+    subgraph L3
         direction TB
-        GovChain(🛡️ Governance Middleware & PEP)
-        OPA(⚖️ OPA Policy Engine)
-        Audit(📝 Immutable Audit Ledger)
+        %% Fake Title Node
+        Title_L3(Layer 3: AI Governance & Compliance):::layerTitle
+        
+        %% Real Nodes
+        GovChain(🛡️ Governance Middleware<br/>Policy Enforcement Point)
+        OPA(⚖️ OPA Engine<br/>Policy Decision)
+        Audit(📝 Immutable Ledger<br/>Audit Logs)
         LLM(🤖 GenAI Model / RAG)
+        
+        %% Invisible link to stack title on top
+        Title_L3 ~~~ GovChain
     end
 
-    subgraph L2 [Layer 2: Workload Identity Bridge]
+    %% --- Layer 2 ---
+    subgraph L2
         direction TB
-        SPIRE(🆔 SPIRE Agent & Attestation)
-        SVID(📜 Unified SVID -- Device + Workload)
+        Title_L2(Layer 2: Workload Identity Bridge):::layerTitle
+        
+        SPIRE(🆔 SPIRE Agent<br/>Attestation Service)
+        SVID(📜 Unified SVID<br/>Device + Workload Cert)
+        
+        Title_L2 ~~~ SPIRE
     end
 
-    subgraph L1 [Layer 1: Infrastructure Security]
+    %% --- Layer 1 ---
+    subgraph L1
         direction TB
-        TPM(🔒 TPM 2.0 Hardware Root)
-        Keylime(👁️ Keylime Runtime Verifier)
+        Title_L1(Layer 1: Infrastructure Security):::layerTitle
+        
+        TPM(🔒 TPM 2.0<br/>Hardware Root of Trust)
+        Keylime(👁️ Keylime Verifier<br/>Runtime Integrity)
         Kernel(🐧 Linux Kernel / IMA)
+        
+        Title_L1 ~~~ TPM
     end
 
-    %% Relations
-    TPM --> SPIRE
-    Kernel --> Keylime
-    Keylime -->|Validates| SPIRE
-    Keylime -.->|Revokes| SPIRE
+    %% --- Relationships ---
+    TPM -->|Cryptographic Proof| SPIRE
+    Kernel -->|Measurement Events| Keylime
+    Keylime -->|Validates Integrity| SPIRE
+    Keylime -.->|Revokes Identity| SPIRE
 
     SPIRE -->|Issues| SVID
-    SVID -->|mTLS| GovChain
+    SVID -->|mTLS + Signing Key| GovChain
 
-    GovChain -->|1. Validate| OPA
-    OPA -->|2. Decision| GovChain
-    GovChain -->|3. Filter| LLM
-    GovChain -->|4. Log| Audit
+    GovChain -->|1. Validate Context| OPA
+    OPA -->|2. Allow/Deny| GovChain
+    GovChain -->|3. Filtered Prompt| LLM
+    GovChain -->|4. Sign & Log| Audit
 
-    %% Apply Styles
+    %% --- Apply Styles to Real Nodes ---
     class TPM,Keylime,Kernel hardware;
     class SPIRE,SVID identity;
     class GovChain,OPA,Audit,LLM governance;
