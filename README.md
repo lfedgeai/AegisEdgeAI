@@ -4,82 +4,15 @@
 
 Where typical security models verify the user, device, or workload in isolation, AegisEdgeAI cryptographically binds all three identities together. We provide the open-source reference architecture for the **End-to-End Trusted AI Stack** in **critical infrastructure and regulated industries** (Financial Services, Defense, Healthcare, Telco).
 
-```mermaid
-graph TD
-    %% --- Styles ---
-    classDef hardware fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000;
-    classDef identity fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000;
-    classDef governance fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000;
-    
-    %% Style for the "Fake Titles" (Invisible background, Bold text)
-    classDef layerTitle fill:none,stroke:none,color:#333,font-weight:bold,font-size:16px;
-
-    %% --- Layer 3 ---
-    subgraph L3
-        direction TB
-        %% Fake Title Node
-        Title_L3( Layer 3: AI Governance & Compliance):::layerTitle
-        
-        %% Real Nodes
-        GovChain(🛡️ Governance Middleware<br/>Policy Enforcement Point)
-        OPA(⚖️ OPA Engine<br/>Policy Decision)
-        Audit(📝 Immutable Ledger<br/>Audit Logs)
-        LLM(🤖 GenAI Model / RAG)
-        
-        %% Invisible link to stack title on top
-        Title_L3 ~~~ GovChain
-    end
-
-    %% --- Layer 2 ---
-    subgraph L2
-        direction TB
-        Title_L2( Layer 2: Workload Identity Bridge):::layerTitle
-        
-        SPIRE(🆔 SPIRE Agent<br/>Attestation Service)
-        SVID(📜 Unified SVID<br/>Device + Workload Cert)
-        
-        Title_L2 ~~~ SPIRE
-    end
-
-    %% --- Layer 1 ---
-    subgraph L1
-        direction TB
-        Title_L1(Layer 1: Infrastructure Security):::layerTitle
-        
-        TPM(🔒 TPM 2.0<br/>Hardware Root of Trust)
-        Keylime(👁️ Keylime Verifier<br/>Runtime Integrity)
-        Kernel(🐧 Linux Kernel / IMA)
-        
-        Title_L1 ~~~ TPM
-    end
-
-    %% --- Relationships ---
-    TPM -->|Cryptographic Proof| SPIRE
-    Kernel -->|Measurement Events| Keylime
-    Keylime -->|Validates Integrity| SPIRE
-    Keylime -.->|Revokes Identity| SPIRE
-
-    SPIRE -->|Issues| SVID
-    SVID -->|mTLS + Signing Key| GovChain
-
-    GovChain -->|1. Validate Context| OPA
-    OPA -->|2. Allow/Deny| GovChain
-    GovChain -->|3. Filtered Prompt| LLM
-    GovChain -->|4. Sign & Log| Audit
-
-    %% --- Apply Styles to Real Nodes ---
-    class TPM,Keylime,Kernel hardware;
-    class SPIRE,SVID identity;
-    class GovChain,OPA,Audit,LLM governance;
-```
-
-Figure 1: The Unified Trust Model. AegisEdgeAI binds Device Integrity (Layer 1) and Workload Identity (Layer 2) to create the unforgeable foundation required for Governance & Verifiable Audits (Layer 3).
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="AegisEdgeAI 3-Layer Trust Model" width="800">
+</p>
 
 <p align="center">
   <small>
-    🔹 <strong>Hardware Root:</strong> TPM/Secure Boot ensures the "Runner" is untampered.<br>
-    🔹 <strong>Identity Bridge:</strong> SPIFFE/SPIRE propagates this trust to the Application.<br>
-    🔹 <strong>Governance Outcome:</strong> The new <a href="proposals/rag-governance.md">Policy Middleware</a> uses these identities to generate immutable audit logs.
+    🔹 <strong>Layer 1 (Hardware):</strong> TPM/Secure Boot ensures the physical "Runner" is untampered.<br>
+    🔹 <strong>Layer 2 (Identity):</strong> SPIFFE/SPIRE propagates this hardware trust to the Application.<br>
+    🔹 <strong>Layer 3 (Governance):</strong> The <a href="proposals/rag-governance.md">Policy Middleware</a> uses these identities to generate immutable audit logs.
   </small>
 </p>
 
