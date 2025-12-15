@@ -2,18 +2,11 @@
 
 **AegisEdgeAI** delivers verifiable trust for AI workloads across the **distributed enterprise** -- from **secure on-premise data centers** and **private clouds** to the **far edge**.
 
-Where typical security models rely on fragmented layers, AegisEdgeAI establishes a contiguous Chain of Trust from the Silicon to the Prompt. We integrate Hardware Integrity (TPM), Workload Identity (SPIFFE/SPIRE), and AI Governance (OPA) into a single, verifiable stack—ensuring that AI agents in regulated industries (Finance, Defense, Healthcare) operate only on trusted hardware, within authorised locations, and compliant with sovereign data policies.
+Where typical security models rely on fragmented layers, AegisEdgeAI establishes a contiguous Chain of Trust from the Silicon to the Prompt. We integrate Hardware Integrity (Trusted Platform Module (TPM)), Workload Identity (SPIFFE/SPIRE), and AI Governance (Open Policy Agent (OPA)) into a single, verifiable stack—ensuring that AI agents in regulated industries (Finance, Defense, Healthcare) operate only on trusted hardware, within authorised locations, and compliant with sovereign data policies.
 
 <p align="center">
   <img src="images/readme-arch.svg" alt="AegisEdgeAI 3-Layer Trust Model" width="800">
 </p>
-
-## Key Proposals & Standards
-We actively contribute to defining industry standards for secure AI architecture.
-
-* **[LEP-001: Zero-Trust Governance Middleware for RAG](proposals/rag-governance.md)**
-    * **Status:** Draft / RFC (Submitted to LangChain Community)
-    * **Scope:** Standardizing **Policy-as-Code** and **Verifiable Audit Logs** for Enterprise RAG systems. This proposal solves "Context Contamination" and the "GenAI Audit Paradox" by cryptographically binding the retrieved context to the model decision.
 
 ## The Trusted AI Stack
 AegisEdgeAI addresses the three critical layers required to unlock regulated markets:
@@ -44,6 +37,18 @@ AegisEdgeAI does not reinvent the wheel. Instead, we act as the unifying control
 * **[Keylime](https://keylime.dev) (CNCF):** The standard for **Remote Attestation**. We use Keylime to validate TPM quotes and Linux Kernel integrity (IMA) in real-time.
 * **[Open Policy Agent (OPA)](https://www.openpolicyagent.org) (CNCF):** The standard for **Policy-as-Code**. We use OPA to make granular "Allow/Deny" decisions on RAG data retrieval.
 * **[LangChain](https://www.langchain.com):** The leading framework for **LLM Orchestration**. Our governance middleware is designed as a drop-in LangChain component.
+
+## Contributions
+We actively contribute to open standards and upstream projects to harden the global AI supply chain.
+
+* **[IETF Draft: Verifiable Geofencing & Unified Identity](https://datatracker.ietf.org/doc/draft-lkspa-wimse-verifiable-geo-fence/)**
+    * **Status:** Active Internet-Draft (IETF WIMSE/RATS Working Group)
+    * **Scope:** Defines the protocol for cryptographically binding a **Workload Identity** (SPIFFE) to its **Physical Location** and **Hardware Identity** (TPM).
+    * **Implementation:** The open-source reference implementation for this standard is available in our **[Hybrid Cloud PoC](hybrid-cloud-poc)**.
+
+* **[LangChain Proposal: Zero-Trust Governance Middleware](proposals/rag-governance.md)**
+    * **Status:** Draft / RFC (Submitted to LangChain Community)
+    * **Scope:** Standardizing **Policy-as-Code** and **Verifiable Audit Logs** for Enterprise RAG systems. This proposal solves "Context Contamination" by cryptographically binding the retrieved context to the model decision.
 
 ## Stakeholders
 * **Ramki Krishnan (Vishanti)** (Lead)
@@ -107,4 +112,4 @@ This generates a PoR certificate that proves *what* is running and *where* it is
 ## References
 1.  [Simply NUC: Banks Data Closer to Customers](https://simplynuc.com/blog/banks-data-closer-to-customers/)
 2.  [Keylime Documentation](https://keylime.readthedocs.io/en/latest/)
-3.  [IETF Verifiable Geofencing Draft](placeholder_link)
+3.  [SPIFFE/SPIRE Documentation](https://spiffe.io/docs/)
