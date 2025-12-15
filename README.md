@@ -79,28 +79,30 @@ In critical infrastructure sectors, inference often occurs at the Edge (e.g., br
 
 ## Core Solution Architecture
 
-### 1. Proof of Residency (PoR)
-**Challenge:** Weak bearer tokens in exposed environments.
-**Solution:** We cryptographically bind:
-> **Workload Identity** (Code Hash) + **Host Hardware Identity** (TPM PKI) + **Platform Policy** (Kernel Version)
-This generates a PoR certificate that proves *what* is running and *where* it is running.
+### 1. Unified Workload Identity
+We extend the standard software identity (SPIFFE) by cryptographically binding it to the physical reality of the device. This creates a "Unified ID" that serves as the root of trust for all three critical security assertions:
 
-### 2. Proof of Geofencing (PoG)
-**Challenge:** Unreliable IP-based location checks.
-**Solution:** We bind **PoR** + **Location Hardware Identity** (GNSS/Sensor). This enables verifiable enforcement of geographic policy at the workload level, not just the firewall level.
+* **A. Proof of Residency (PoR)**
+    * **Challenge:** Weak bearer tokens in exposed edge environments allow identity theft and replay attacks.
+    * **Solution:** We bind **Workload Identity** (Code Hash) + **Host Hardware Identity** (TPM PKI) + **Platform Policy** (Kernel Version). This generates a certificate that proves *what* is running and *where* it is running.
 
-### 3. Supply Chain Security
-**Challenge:** Counterfeit hardware and firmware drift.
-**Solution:** A layered trust model:
-* **Hardware Identity Gate:** Enrollment is restricted to manufacturer-issued TPM Endorsement Keys (EKs).
-* **BMC Inventory:** Out-of-band verification of components (NICs, GPUs) against purchase orders.
+* **B. Proof of Geofencing (PoG)**
+    * **Challenge:** Unreliable IP-based location checks are easily bypassed via VPNs.
+    * **Solution:** We extend PoR to include **Location Hardware Identity** (GNSS/Mobile Sensors). This enables verifiable enforcement of geographic policy at the workload level, ensuring data sovereignty even on the far edge.
 
-### 4. Verifiable Privacy: Zero Knowledge Proofs (ZKP)
-**Use Case:** Proving compliance without revealing trade secrets.
+* **C. Supply Chain Security**
+    * **Challenge:** Counterfeit hardware and firmware downgrades in physical deployments.
+    * **Solution:** We enforce a layered hardware gate:
+        * *Enrollment:* Restricted to manufacturer-issued **TPM Endorsement Keys (EK)**.
+        * *Inventory:* Out-of-band verification of components (NICs, GPUs) against purchase orders via BMC.
 
-* **Banking (Fair Lending):** A bank proves to a regulator that its Loan Approval AI meets non-discrimination statutes (e.g., disparate impact < 5%) without ever revealing the proprietary model weights or customer PII.
-* **Telco (AI RAN):** An MNO proves their AI power-saving algorithm prioritizes emergency calls during outages, without disclosing the proprietary source code of the optimizer.
-* **Technology:** We integrate with ZK-ML provers (e.g., EZKL) to generate cryptographic proofs of model execution paths.
+### 2. Zero-Trust RAG Governance
+Security does not stop at identity; it must extend to the data the AI consumes.
+
+* **Challenge:** "Context Contamination" and the "GenAI Audit Paradox." In RAG systems, malicious actors can inject poisoned data into the retrieval pipeline, and standard logs cannot prove *why* a model made a specific decision.
+* **Solution:** We introduce a **Policy Enforcement Point (PEP)** middleware that sits between the vector database and the LLM.
+    * *Pre-Computation:* It enforces **OPA (Open Policy Agent)** rules to filter retrieved context before the model sees it.
+    * *Post-Computation:* It generates an immutable audit log that cryptographically binds the **User Prompt** + **Retrieved Context Hash** + **Model Response**.
 
 ## Additional Resources
 * **Zero‑Trust Sovereign AI Deck:** [View Deck](placeholder_link)
