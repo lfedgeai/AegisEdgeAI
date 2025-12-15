@@ -105,11 +105,10 @@ Security does not stop at identity; it must extend to the data the AI consumes.
     * *Post-Computation:* It generates an immutable audit log that cryptographically binds the **User Prompt** + **Retrieved Context Hash** + **Model Response**.
 
 ## Additional Resources
-* **Zero‑Trust Sovereign AI Deck:** [View Deck](placeholder_link)
-* **Blog:** "Unlock the Future of Access" – Moving from IP-based security to hardware-rooted Zero Trust. [Read Blog](placeholder_link)
+* **Zero‑Trust Sovereign AI Deck:** [View Deck](https://1drv.ms/b/c/746ada9dc9ba7cb7/ETTLFqSUV3pCsIWiD4zMDt0BXzSwcCMGX8cA-qllKfmYvw?e=ONrjf1)
 * **IETF Presentations:**
-    * IETF 123 WIMSE: [View Slides](placeholder_link)
-    * IETF 123 RATS: [View Slides](placeholder_link)
+    * IETF 123 WIMSE: [View Slides](https://datatracker.ietf.org/meeting/123/materials/slides-123-wimse-zero-trust-sovereign-ai-wimse-impact-04)
+    * IETF 123 RATS: [View Slides](https://datatracker.ietf.org/meeting/123/materials/slides-123-rats-zero-trust-sovereign-ai-rats-impact-00)
 
 ## References
 1.  [Simply NUC: Banks Data Closer to Customers](https://simplynuc.com/blog/banks-data-closer-to-customers/)
