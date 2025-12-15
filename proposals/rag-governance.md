@@ -12,7 +12,7 @@
 
 **Authors:** Ramki Krishnan (Vishanti Systems), et al.
 
-**Related Standards:** NIST AI RMF (Governance), CNCF Cloud Native Security (Zero Trust)
+**Related Standards:** NIST AI RMF (Governance), CNCF Cloud Native Security (Zero Trust), SLSA (Provenance)
 
 ## 1\. Abstract
 
