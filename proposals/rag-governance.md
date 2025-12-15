@@ -71,32 +71,31 @@ This component acts as a **mandatory middleware layer** that separates the *retr
 The `GovernanceChain` intercepts the flow of data *after* retrieval but *before* prompt construction. It treats the `Retriever` as an untrusted source and the `LLM` as an untrusted consumer.
 
 ```text
-                                  [ TRUST BOUNDARY: THE GOVERNANCE FENCE ]
+                                   [ TRUST BOUNDARY: THE GOVERNANCE FENCE ]
                                                      ||
-+------------------------+        +-----------+      ||    +-----------------+        +-----+
-| Caller (User/Workload) |        | Retriever |      ||    | GovernanceChain |        | LLM |
-+------------------------+        +-----------+      ||    +-----------------+        +-----+
-            |                           |            ||             |                    |
-            |---- Query --------------->|            ||             |                    |
-            |                           |--- Raw --- || ----------> |                    |
-            |                           |  Chunks    ||             |                    |
-            |                           |            ||             |--- Validate ----> [ OPA ]
-            |                           |            ||             |<-- Allow/Deny --- [Engine]
-            |                           |            ||             |                    |
-            |                           |            ||             |                    |
-            |<-- Access Denied --------------------- || <---(Stop)--|                    |
-            |   (Default Deny)                       ||             |                    |
-            |                           |            ||             |--- Filtered ------>|
-            |                           |            ||             |    Context         |
-            |                           |            ||             |                    |
-            |<-------------------------------------- || <------------------- Answer -----|
-```
++------------------------+        +-----------+      ||    +-----------------+      +-----------------+      +-----+
+| Caller (User/Workload) |        | Retriever |      ||    | GovernanceChain |      | Prompt Template |      | LLM |
++------------------------+        +-----------+      ||    +-----------------+      +-----------------+      +-----+
+            |                           |            ||             |                        |                  |
+            |---- Query --------------->|            ||             |                        |                  |
+            |                           |--- Raw --- || ----------> |                        |                  |
+            |                           |  Chunks    ||             |                        |                  |
+            |                           |            ||             |--- Validate --> [ OPA ]|                  |
+            |                           |            ||             |<-- Allow/Deny -----|   |                  |
+            |                           |            ||             |                        |                  |
+            |<-- Access Denied --------------------- || <---(Stop)--|                        |                  |
+            |   (Default Deny)                       ||             |                        |                  |
+            |                           |            ||             |--- Filtered Context -->|                  |
+            |                           |            ||             |                        |-- Safe Prompt -->|
+            |                           |            ||             |                        |                  |
+            |<-------------------------------------- || <---------------------------------------------- Answer -|
 
 1.  **Interception:** The chain receives the `[Raw Chunks]` from the Retriever.
 2.  **Validation:** It queries the **Policy Engine** (e.g., OPA) with the `Caller Identity` (User + Workload) + `Chunk Metadata`.
 3.  **Enforcement:**
       * **Deny:** If the policy evaluates to `DENY`, the chunk is dropped. If *all* chunks are dropped, the chain raises an `AccessDeniedError` immediately (**Fail Closed**). The LLM is never contacted.
       * **Allow:** Only permitted chunks are passed to the `PromptTemplate`.
+4.  **Synthesis:** The `PromptTemplate` constructs the final prompt using only the sanitized context, ensuring no secrets are leaked to the LLM.
 
 ### 3.2 Component Design
 
