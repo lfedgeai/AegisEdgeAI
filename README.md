@@ -2,7 +2,7 @@
 
 **AegisEdgeAI** delivers verifiable trust for AI workloads across the **distributed enterprise** -- from **secure on-premise data centers** and **private clouds** to the **far edge**.
 
-Where typical security models verify the user, device, or workload in isolation, AegisEdgeAI cryptographically binds all three identities together. We provide the open-source reference architecture for the **End-to-End Trusted AI Stack** in **critical infrastructure and regulated industries** (Financial Services, Defense, Healthcare, Telco).
+Where typical security models rely on fragmented layers, AegisEdgeAI establishes a contiguous Chain of Trust from the Silicon to the Prompt. We integrate Hardware Integrity (TPM), Workload Identity (SPIFFE/SPIRE), and AI Governance (OPA) into a single, verifiable stack—ensuring that AI agents in regulated industries (Finance, Defense, Healthcare) operate only on trusted hardware, within authorised locations, and compliant with sovereign data policies.
 
 <p align="center">
   <img src="images/readme-arch.svg" alt="AegisEdgeAI 3-Layer Trust Model" width="800">
@@ -36,6 +36,14 @@ AegisEdgeAI addresses the three critical layers required to unlock regulated mar
 * **Unlock Regulated Markets:** Meet strict data sovereignty and integrity requirements with verifiable proof that spans user, device, and workload.
 * **Reduce Audit Friction:** Provide clear, end-to-end evidence that identity pillars are authentic.
 * **Turn Trust into a Feature:** Make holistic, hardware-rooted trust a customer-visible advantage.
+
+## Built on Open Standards
+AegisEdgeAI does not reinvent the wheel. Instead, we act as the unifying control plane that cryptographically binds best-in-class open-source projects into a cohesive trust fabric.
+
+* **[SPIFFE/SPIRE](https://spiffe.io) (CNCF):** The industry standard for **Workload Identity**. We use SPIRE to issue short-lived, verifiable X.509 certificates that replace static API keys.
+* **[Keylime](https://keylime.dev) (CNCF):** The standard for **Remote Attestation**. We use Keylime to validate TPM quotes and Linux Kernel integrity (IMA) in real-time.
+* **[Open Policy Agent (OPA)](https://www.openpolicyagent.org) (CNCF):** The standard for **Policy-as-Code**. We use OPA to make granular "Allow/Deny" decisions on RAG data retrieval.
+* **[LangChain](https://www.langchain.com):** The leading framework for **LLM Orchestration**. Our governance middleware is designed as a drop-in LangChain component.
 
 ## Stakeholders
 * **Ramki Krishnan (Vishanti)** (Lead)
