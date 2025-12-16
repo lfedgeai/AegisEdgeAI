@@ -2,7 +2,7 @@
 
 **AegisSovereignAI** is the **Trust Integration Layer** for the Linux Foundation AI ecosystem. It delivers verifiable trust for AI workloads across the **distributed enterprise** - from **Centralized Clouds** to the **Far Edge** - unifying open standards from the CNCF (SPIFFE/Keylime/OPA) and IETF (RATS/WIMSE) into a contiguous **Chain of Trust** from Silicon to Prompt.
 
-We don't just integrate with AI frameworks; we actively harden them. As the authors of the **Zero-Trust Governance Middleware** proposal for **LangChain**, we are driving security standards directly into the tools developers use daily.
+We don't just integrate with AI frameworks; we actively harden them. From defining **Zero-Trust Governance Middleware** for **LangChain** to proposing **Hardware-Verified Location APIs** for the **Linux Foundation CAMARA Project**, we are driving security standards directly into the tools developers and carriers use daily.
 
 ### The Missing Link in the LF AI Ecosystem
 Our architecture is designed to complement the emerging Linux Foundation AI stack:
@@ -55,8 +55,12 @@ We actively contribute to open standards and upstream projects to harden the glo
     * **Implementation:** The open-source reference implementation for this standard is available in our **[Hybrid Cloud PoC](hybrid-cloud-poc)**.
 
 * **[LangChain Proposal: Zero-Trust Governance Middleware](proposals/rag-governance.md)**
-    * **Status:** Draft / RFC (Submitted to LangChain Community)
+    * **Status:** Draft / RFC (To be submitted to LangChain Community)
     * **Scope:** Standardizing **Policy-as-Code** and **Verifiable Audit Logs** for Enterprise RAG systems. This proposal solves "Context Contamination" by cryptographically binding the retrieved context to the model decision.
+
+* **[CAMARA Project Proposal: Hardware-Verified Location API](proposals/camara-hardware-location.md)**
+    * **Status:** Draft / RFC (To be submitted to Linux Foundation CAMARA Project)
+    * **Scope:** Extending the CAMARA `Device Location Verification` API to support a **"Premium Tier"** backed by TPM Attestation. This replaces network-based assurance with hardware-rooted **"Proof of Residency,"** enabling Telcos to serve regulated markets (Banking/Defense) with unforgeable location proofs.
 
 ## Stakeholders
 * **Ramki Krishnan (Vishanti Systems)** (Project Lead / Maintainer)
