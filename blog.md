@@ -8,7 +8,7 @@ It's time for a paradigm shift. The answer lies in moving beyond static secrets 
 
 ## Phased Approach to Sovereign Zero Trust
 <figure>
-  <img src="https://github.com/lfedgeai/AegisEdgeAI/raw/main/zero-trust/images/AegisEdgeAI-concept-phases.png" alt="Phased Approach to Sovereign Zero Trust" width="800">
+  <img src="https://github.com/lfedgeai/AegisSovereignAI/raw/main/zero-trust/images/AegisSovereignAI-concept-phases.png" alt="Phased Approach to Sovereign Zero Trust" width="800">
 </figure>
 
 ## Phase 0: The IP Address Bottleneck
@@ -50,7 +50,7 @@ This is where we unlock true competitive advantage and regulatory compliance. By
 For our Smart Checkout rollout, Phase 2 is critical. The policy demands that administrator actions and deployment systems originate physically from within Noida.
 
 - **Human Authorization:** A DevSecOps administrator, using a unified Identity and Access Management (IAM) platform, must use a FIDO2 (Fast Identity Online 2) key for phish-resistant MFA. This is combined with a TPM-based device health attestation and a Verifiable Geo-Fence proving their physical location is in Noida.
-- **Secure Pull Request & Git Push:** The administrator's git push (following an approved Pull Request (PR)) is now protected by a mutually authenticated mTLS connection. Both their Git client and the Git server use a high-assurance, TPM-based SVID that includes a verifiable geolocation claim. This advanced capability, going beyond current SPIFFE/SPIRE standards, is being developed in collaborative efforts like the Internet Engineering Task Force (IETF) draft on Verifiable Geo-Fence and the Linux Foundation's AegisEdgeAI project.
+- **Secure Pull Request & Git Push:** The administrator's git push (following an approved Pull Request (PR)) is now protected by a mutually authenticated mTLS connection. Both their Git client and the Git server use a high-assurance, TPM-based SVID that includes a verifiable geolocation claim. This advanced capability, going beyond current SPIFFE/SPIRE standards, is being developed in collaborative efforts like the Internet Engineering Task Force (IETF) draft on Verifiable Geo-Fence and the Linux Foundation's AegisSovereignAI project.
 - **Context-Aware Policy Enforcement:** When the CI runner (attesting its own identity and host via SPIFFE/SPIRE and a TPM check) requests secrets from HashiCorp Vault, it's integrated with Istio Ingress Gateway. Istio ingress gateway then makes fine-grained authorization decisions based on the runner's SVID claims, including its integrity and geo-location. This means:
 
   - **ALLOW** production secrets IF the SVID belongs to smart-checkout-runner AND the host is from a trusted geo-location (e.g., within India).
@@ -72,17 +72,17 @@ This advanced security model provides more than just a reduction in risk; it's a
 
 This end-to-end lifecycle represents a unified blueprint for securing privileged access—whether it's for a human or an automated machine. It moves beyond managing static secrets and into a world where trust is continuously verified with a hardware root.
 
-By leveraging open-source technologies like SPIFFE/SPIRE, Istio and the collaborative work happening at the Linux Foundation, we can build secure, automated, and auditable systems for the next generation of critical infrastructure. We invite you to explore the open-source projects that make this a reality, including the IETF draft on Verifiable Geo-Fence and the Linux Foundation's AegisEdgeAI effort which is part of the LF Edge AI InfiniEdge AI project. The future of sovereign, Zero Trust access is open, automated, and hardware-rooted.
+By leveraging open-source technologies like SPIFFE/SPIRE, Istio and the collaborative work happening at the Linux Foundation, we can build secure, automated, and auditable systems for the next generation of critical infrastructure. We invite you to explore the open-source projects that make this a reality, including the IETF draft on Verifiable Geo-Fence and the Linux Foundation's AegisSovereignAI effort which is part of the LF Edge AI InfiniEdge AI project. The future of sovereign, Zero Trust access is open, automated, and hardware-rooted.
 
 ---
 
 ### Acknowledgements
 
-I would like to thank Andreas, Michael (Red Hat) and AegisEdgeAI project developers (Vijay et al.) for the open-source collaboration on this topic.
+I would like to thank Andreas, Michael (Red Hat) and AegisSovereignAI project developers (Vijay et al.) for the open-source collaboration on this topic.
 
 I would like to thank IETF Verifiable Geo-Fence draft co-authors Diego (Telefonica), Prasad (Oracle), Srini (Aryaka), Ned (Independent) for the IETF collaboration on this topic.
 
-I would like to thank Tina (LF Edge) for being a key enabler of the AegisEdgeAI effort as part of the LF Edge AI InfiniEdgeAI project.
+I would like to thank Tina (LF Edge) for being a key enabler of the AegisSovereignAI effort as part of the LF Edge AI InfiniEdgeAI project.
 
 ---
 

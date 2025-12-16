@@ -80,7 +80,7 @@ mTLS Server (10.1.0.10:9443)
 1. **Copy SPIRE CA bundle** from 10.1.0.11:
    ```bash
    # On 10.1.0.11 (where SPIRE Agent runs):
-   cd ~/AegisEdgeAI/hybrid-cloud-poc
+   cd ~/AegisSovereignAI/hybrid-cloud-poc
    python3 fetch-spire-bundle.py
    
    # Copy to 10.1.0.10:
@@ -101,7 +101,7 @@ mTLS Server (10.1.0.10:9443)
 Run the setup script on 10.1.0.10:
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./test_onprem.sh
 ```
 
@@ -111,7 +111,7 @@ cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
 # Get your CAMARA credentials from Telefonica Open Gateway
 # Format: Base64(client_id:client_secret)
 export CAMARA_BASIC_AUTH="Basic <your_base64_encoded_credentials>"
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./test_onprem.sh
 ```
 
@@ -163,7 +163,7 @@ If you prefer manual setup:
 
 3. **Start mobile location service**:
    ```bash
-   cd ~/AegisEdgeAI/hybrid-cloud-poc/mobile-sensor-microservice
+   cd ~/AegisSovereignAI/hybrid-cloud-poc/mobile-sensor-microservice
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
@@ -172,14 +172,14 @@ If you prefer manual setup:
 
 4. **Build WASM filter** (if not done during setup):
    ```bash
-   cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin
+   cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin
    bash build.sh
    ```
    This builds the WASM filter that extracts sensor ID directly from certificates.
 
 5. **Start mTLS server**:
    ```bash
-   cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+   cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
    export SERVER_USE_SPIRE="false"
    export SERVER_PORT="9443"
    export CA_CERT_PATH="/opt/envoy/certs/combined-ca-bundle.pem"  # Trusts both SPIRE and Envoy certs
@@ -199,7 +199,7 @@ If you prefer manual setup:
 ### From SPIRE Client (10.1.0.11)
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 export CLIENT_USE_SPIRE="true"
 export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
 export SERVER_HOST="10.1.0.10"  # Envoy on on-prem

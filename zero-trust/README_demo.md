@@ -783,7 +783,7 @@ Error Handling: Aligned with Standard Mode
 
 ## Test 4: GPU Metrics Integration (AI/ML Edge Workload)
 
-This test demonstrates integration of GPU telemetry from DCGM exporters into the AegisEdgeAI zero-trust framework. GPU metrics follow the same trust chain as system and application metrics: TPM signing → Gateway validation → Collector storage.
+This test demonstrates integration of GPU telemetry from DCGM exporters into the AegisSovereignAI zero-trust framework. GPU metrics follow the same trust chain as system and application metrics: TPM signing → Gateway validation → Collector storage.
 
 **Architecture**: External DCGM exporter → Agent scrapes Prometheus metrics → Signs with TPM → Sends through Gateway → Collector validates and stores
 

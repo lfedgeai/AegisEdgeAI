@@ -240,7 +240,7 @@ This architecture is designed to support hardware-rooted identity.
 
 **The Mechanism:** The `actor_context` is populated by extracting the SVID from the mTLS connection (Principal) and the JWT from the request header (Subject).
 
-**Enhanced Hardware Binding (AegisEdgeAI):** While standard SVIDs identify software, this middleware supports Unified SVIDs (as defined in the AegisEdgeAI project). These IDs cryptographically encode the Device Attestation (TPM) and Geolocational Proof alongside the workload identity.
+**Enhanced Hardware Binding (AegisSovereignAI):** While standard SVIDs identify software, this middleware supports Unified SVIDs (as defined in the AegisSovereignAI project). These IDs cryptographically encode the Device Attestation (TPM) and Geolocational Proof alongside the workload identity.
 
 ```text
 +-------------------+     +--------------------+     +---------------------+
@@ -250,7 +250,7 @@ This architecture is designed to support hardware-rooted identity.
 +-------------------+     +--------------------+     +---------------------+
                                    |
                                    V
-                [ SPIRE Server + AegisEdgeAI Attestor ]
+                [ SPIRE Server + AegisSovereignAI Attestor ]
                     (Cryptographic Binding Process)
                                    |
                                    V
@@ -259,7 +259,7 @@ This architecture is designed to support hardware-rooted identity.
 ||--------------------------------------------------------------------||
 ||  Subject: spiffe://bank.local/ns/loan-service/sa/chat-backend      || <-- "Who"
 ||--------------------------------------------------------------------||
-||  Extensions (AegisEdgeAI):                                         ||
+||  Extensions (AegisSovereignAI):                                         ||
 ||    - x-aegis-device-trust: sha256(tpm_quote_verified)              || <-- "On What"
 ||    - x-aegis-location: "us-east-dc-01" (geofence_proof_verified)   || <-- "Where"
 +======================================================================+

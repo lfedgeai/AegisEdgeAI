@@ -35,4 +35,4 @@ export DYLD_LIBRARY_PATH="${PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
 
 #### How to test Prototype?
 1. For python tests, create venv and install requirements.txt ( make sure TPM2TOOLS_TCTI and DYLD_LIBRARY_PATH are set)
-2. Refer [README_demo.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/zero-trust/README_demo.md)
+2. Refer [README_demo.md](https://github.com/lfedgeai/AegisSovereignAI/tree/main/zero-trust/README_demo.md)

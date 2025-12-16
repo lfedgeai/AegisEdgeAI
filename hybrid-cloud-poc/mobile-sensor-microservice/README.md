@@ -22,7 +22,7 @@ This standalone microservice implements the flow described in the Sovereign Unif
 Before starting the microservice make sure the Python dependencies are installed (Flask is required for the HTTP server and `requests` is used for the CAMARA APIs):
 
 ```bash
-cd /home/mw/AegisEdgeAI/hybrid-cloud-poc      # repo root
+cd /home/mw/AegisSovereignAI/hybrid-cloud-poc      # repo root
 python3 -m venv .venv                         # optional but recommended
 source .venv/bin/activate
 pip install -r mobile-sensor-microservice/requirements.txt

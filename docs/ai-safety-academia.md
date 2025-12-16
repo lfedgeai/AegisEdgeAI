@@ -32,7 +32,7 @@ To meet these obligations, **safety must be enforced by the substrate itself** -
 - [IETF WIMSE draft on Verifiable Geofencing](https://github.com/nedmsmith/draft-klspa-wimse-verifiable-geo-fence/blob/main/draft-lkspa-wimse-verifiable-geo-fence.md) → codifying how to cryptographically prove workload residency and geolocation.  
 
 **Active open‑source work**  
-- [LF Edge AegisEdgeAI](https://github.com/lfedgeai/AegisEdgeAI) → delivering verifiable trust for AI at the edge, producing regulator‑ready proofs of compliance.  
+- [LF Edge AegisSovereignAI](https://github.com/lfedgeai/AegisSovereignAI) → delivering verifiable trust for AI at the edge, producing regulator‑ready proofs of compliance.  
 
 ---
 

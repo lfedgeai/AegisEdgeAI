@@ -122,7 +122,7 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 
 **SOVEREIGN PUBLIC/EDGE CLOUD CONTROL PLANE WINDOW:** (e.g., 10.1.0.11)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 ./test_control_plane.sh --no-pause
 
 # Verify processes are running
@@ -148,7 +148,7 @@ tail -20 /tmp/keylime-registrar.log
 
 **ON PREM API GATEWAY WINDOW:** (e.g., 10.1.0.10)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./test_onprem.sh --no-pause
 
 # Verify processes are running
@@ -213,7 +213,7 @@ This act demonstrates the complete flow from workload attestation through succes
 
 **SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (e.g., 10.1.0.11)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 ./test_agents.sh --no-pause
 ```
 
@@ -255,7 +255,7 @@ spire-server bundle show
 
 **SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (e.g., 10.1.0.11)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 ./test_mtls_client.sh
 ```
 
@@ -303,7 +303,7 @@ tail -f /tmp/mtls-client-app.log
 
 **ON PREM API GATEWAY WINDOW:** (e.g., 10.1.0.10)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./watch-envoy-logs.sh
 ```
 
@@ -325,7 +325,7 @@ sudo tail -f /opt/envoy/logs/envoy.log | grep -E '(sensor|verification|cache|TTL
 
 **ON PREM MOBILE LOCATION SERVICE WINDOW:** (e.g., 10.1.0.10)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./watch-mobile-sensor-logs.sh
 ```
 
@@ -344,7 +344,7 @@ tail -f /tmp/mobile-sensor.log | grep -E '(CAMARA|authorize|token|verify_locatio
 
 **ON PREM SERVER APP WINDOW:** (e.g., 10.1.0.10)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./watch-mtls-server-logs.sh
 ```
 
@@ -392,17 +392,17 @@ This act demonstrates how the system detects and blocks insider threats when har
 
 **SOVEREIGN PUBLIC/EDGE CLOUD AGENT WINDOW:** (e.g., 10.1.0.11)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 ./watch-spire-agent-attestations.sh
 ```
 **SOVEREIGN PUBLIC/EDGE CLOUD CLIENT APP WINDOW:** (e.g., 10.1.0.11)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 ./test_mtls_client.sh
 ```
 **SOVEREIGN PUBLIC/EDGE CLOUD ROGUE ADMIN WINDOW:** (e.g., 10.1.0.11)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 ./test_rogue_admin.sh
 
 # Simulate rogue admin disconnecting the USB Mobile Sensor
@@ -425,17 +425,17 @@ sudo ./test_toggle_huawei_mobile_sensor.sh on
 
 **ON PREM API GATEWAY WINDOW:** (e.g., 10.1.0.10)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./watch-envoy-logs.sh
 ```
 **ON PREM MOBILE LOCATION SERVICE WINDOW:** (e.g., 10.1.0.10)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./watch-mobile-sensor-logs.sh
 ```
 **ON PREM SERVER APP WINDOW:** (e.g., 10.1.0.10)
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud
+cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 ./watch-mtls-server-logs.sh
 ```
 

@@ -1,9 +1,9 @@
-# "AegisEdgeAI" - Securing AI at the Edge
+# "AegisSovereignAI" - Securing AI at the Edge
 
-**AegisEdgeAI** delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, AegisEdgeAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: AegisEdgeAI makes it impossible for an AI workload to run on the wrong machine, in the wrong location, or in a compromised state — and cryptographically proves it.**
+**AegisSovereignAI** delivers verifiable trust for AI at the edge — from manufacturing to live operations — ensuring workloads run only on approved, uncompromised devices, in approved locations. Where typical models verify the user, the device, or the workload in isolation, AegisSovereignAI cryptographically binds all three identities together. This continuous chain of identity, integrity, and location assurance closes supply‑chain and provenance gaps, streamlines audits, and turns compliance proof into a market differentiator. **In short: AegisSovereignAI makes it impossible for an AI workload to run on the wrong machine, in the wrong location, or in a compromised state — and cryptographically proves it.**
 
 ## Binding user, device, and workload identities from manufacture through runtime with geofencing enforcement
-![Alt text](zero-trust/images/AegisEdgeAI-flow.png)
+![Alt text](zero-trust/images/AegisSovereignAI-flow.png)
 
 **See also:** [Additional Resources](#additional-resources) for related decks, blog posts, and IETF presentations.
 
@@ -186,7 +186,7 @@ This approach begins addressing the critical security gaps in current inference,
 This produces a PoG workload certificate/token, enabling verifiable enforcement of geographic policy at the workload level.
 
 ### Addressing Hardware and Software Supply Chain Threats (work in progress)
-To mitigate the hardware and software supply chain threats above, AegisEdgeAI adopts a layered trust model that binds device identity, hardware integrity, and runtime state into a continuous attestation chain from manufacturing through operation.
+To mitigate the hardware and software supply chain threats above, AegisSovereignAI adopts a layered trust model that binds device identity, hardware integrity, and runtime state into a continuous attestation chain from manufacturing through operation.
 
 **Hardware Inventory Attestation – BMC Path (Hardware Management Plane)**
 
@@ -243,7 +243,7 @@ Address Bearer/Proof of possession token and Source IP issue by **Proof of Geofe
 
 ### How to test Unified Identity?
 
-- Refer [README_demo.md](https://github.com/lfedgeai/AegisEdgeAI/tree/main/hybrid-cloud-poc/README_demo.md)
+- Refer [README_demo.md](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc/README_demo.md)
 
 ## Additional Resources
 
@@ -251,7 +251,7 @@ Address Bearer/Proof of possession token and Source IP issue by **Proof of Geofe
   [View Deck (OneDrive)](https://1drv.ms/b/c/746ada9dc9ba7cb7/ETTLFqSUV3pCsIWiD4zMDt0BXzSwcCMGX8cA-qllKfmYvw?e=ONrjf1) 
 
 - **Blog: Unlock the Future of Access** – In‑depth article on moving from IP‑based security to hardware‑rooted sovereign Zero Trust, with phased implementation examples.  
-  [Read Blog](https://github.com/lfedgeai/AegisEdgeAI/blob/main/blog.md)
+  [Read Blog](https://github.com/lfedgeai/AegisSovereignAI/blob/main/blog.md)
 
 - **IETF 123 WIMSE Presentation** – *Zero‑Trust Sovereign AI: WIMSE Impact*  
   [View Slides](https://datatracker.ietf.org/meeting/123/materials/slides-123-wimse-zero-trust-sovereign-ai-wimse-impact-04)

@@ -41,7 +41,7 @@ This installs:
 The recommended way to run this demo is as part of the complete integration test:
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 ./test_agents.sh
 ```
 
@@ -58,7 +58,7 @@ If you want to run just the Python app demo (assuming services are already runni
 #### Step 1: Create Registration Entry
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 ./create-registration-entry.sh
 ```
 
@@ -220,7 +220,7 @@ This mode allows a SPIRE-enabled client to connect to a server using standard ce
 If you want the server to strictly verify SPIRE-issued client certificates, first extract the SPIRE CA bundle:
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 
 # Extract SPIRE trust bundle
 # Default: connect to SPIRE Agent via Unix socket on the same machine
@@ -241,7 +241,7 @@ python3 fetch-spire-bundle.py
 Open Terminal 1:
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 
 # Set environment variables
 export SERVER_USE_SPIRE="false"
@@ -250,7 +250,7 @@ export SERVER_LOG="/tmp/mtls-server-app.log"
 
 # Optional: Provide SPIRE CA bundle for strict client verification
 # First, extract the SPIRE bundle (if you haven't already):
-# cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py
+# cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py
 #
 # Then provide it to the server:
 export CA_CERT_PATH="/tmp/spire-bundle.pem"
@@ -262,7 +262,7 @@ python3 mtls-server-app.py
 **Note:** 
 - **Without `CA_CERT_PATH`**: Server accepts any client certificate (permissive mode)
 - **With `CA_CERT_PATH` pointing to SPIRE bundle**: Server strictly verifies SPIRE-issued client certificates
-- To extract the SPIRE bundle, run: `cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py` (creates `/tmp/spire-bundle.pem` by default)
+- To extract the SPIRE bundle, run: `cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py` (creates `/tmp/spire-bundle.pem` by default)
 
 **Expected Server Output (without CA_CERT_PATH):**
 ```
@@ -318,7 +318,7 @@ Setting up TLS context with standard certificates...
 Open Terminal 2:
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 
 # Set environment variables
 export CLIENT_USE_SPIRE="true"
@@ -345,7 +345,7 @@ For the mixed mode scenario where the client and server run on different machine
 **On Server Machine (IP: 10.1.0.10):**
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 
 # Set environment variables
 export SERVER_USE_SPIRE="false"
@@ -365,7 +365,7 @@ python3 mtls-server-app.py
 **On Client Machine (IP: 10.1.0.11):**
 
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 
 # First, copy the server's certificate from the server machine:
 mkdir -p ~/.mtls-demo
@@ -438,7 +438,7 @@ You should see:
 2. **If server shows `TLSV1_ALERT_UNKNOWN_CA`:**
    - This is normal initially - the server accepts SPIRE client certs without strict verification
    - For strict verification:
-     1. Extract SPIRE bundle: `cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py`
+     1. Extract SPIRE bundle: `cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py`
      2. Set `CA_CERT_PATH="/tmp/spire-bundle.pem"` on the server
      3. Restart the server with the CA_CERT_PATH set
 
@@ -450,7 +450,7 @@ You should see:
 
 4. **To extract SPIRE CA bundle for server verification:**
    ```bash
-   cd ~/AegisEdgeAI/hybrid-cloud-poc
+   cd ~/AegisSovereignAI/hybrid-cloud-poc
    python3 fetch-spire-bundle.py
    # Creates /tmp/spire-bundle.pem by default
    # Then use it: export CA_CERT_PATH="/tmp/spire-bundle.pem"
@@ -461,7 +461,7 @@ You should see:
 - The client verifies the server's standard certificate using the CA provided via `CA_CERT_PATH` (server's cert)
 - The server accepts client certificates (including SPIRE-issued ones) without strict verification unless `CA_CERT_PATH` is provided with the SPIRE CA bundle
 - To enable strict server verification of SPIRE clients:
-  1. Extract SPIRE bundle: `cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py`
+  1. Extract SPIRE bundle: `cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py`
   2. Set `CA_CERT_PATH="/tmp/spire-bundle.pem"` on the server
 - Both sides automatically detect and log the mixed mode configuration
 
@@ -776,14 +776,14 @@ The test validates:
 
 **Step 0: Extract SPIRE CA Bundle (Optional - for strict server verification of SPIRE clients)**
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc
+cd ~/AegisSovereignAI/hybrid-cloud-poc
 python3 fetch-spire-bundle.py
 # Creates /tmp/spire-bundle.pem by default
 ```
 
 **Terminal 1 - Server:**
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 export SERVER_USE_SPIRE="false"
 export SERVER_PORT="9443"
 export SERVER_LOG="/tmp/mtls-server-app.log"
@@ -796,7 +796,7 @@ python3 mtls-server-app.py
 
 **Terminal 2 - Client:**
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 export CLIENT_USE_SPIRE="true"
 export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
 export SERVER_HOST="localhost"  # Use "10.1.0.10" if server is on different machine
@@ -810,8 +810,8 @@ python3 mtls-client-app.py
 
 **Server Machine (IP: 10.1.0.10):**
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
-# First copy spire bundle cert: scp mw@10.1.0.11:~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo/tmp/spire-bundle.pem ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo/tmp/spire-bundle.pem
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
+# First copy spire bundle cert: scp mw@10.1.0.11:~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo/tmp/spire-bundle.pem ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo/tmp/spire-bundle.pem
 export SERVER_USE_SPIRE="false"
 export SERVER_PORT="9443"
 export SERVER_LOG="/tmp/mtls-server-app.log"
@@ -821,7 +821,7 @@ python3 mtls-server-app.py
 
 **Client Machine (IP: 10.1.0.11):**
 ```bash
-cd ~/AegisEdgeAI/hybrid-cloud-poc/python-app-demo
+cd ~/AegisSovereignAI/hybrid-cloud-poc/python-app-demo
 # First copy server cert: scp mw@10.1.0.10:~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-cert.pem
 export CLIENT_USE_SPIRE="true"
 export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
@@ -837,7 +837,7 @@ python3 mtls-client-app.py
 - Client uses SPIRE SVIDs (requires SPIRE Agent running)
 - **Client `CA_CERT_PATH`**: Points to server's certificate file (for client to verify server)
 - **Server `CA_CERT_PATH`**: Points to SPIRE bundle file (for server to verify SPIRE clients)
-- Extract SPIRE bundle with: `cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py`
+- Extract SPIRE bundle with: `cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py`
 - Server automatically accepts SPIRE-issued client certificates (permissive mode) unless `CA_CERT_PATH` is provided
 - Both sides detect and log mixed mode automatically
 

@@ -15,7 +15,7 @@ This document provides a complete guide for demonstrating automatic SVID renewal
 
 ```bash
 # Navigate to project directory
-cd /home/mw/AegisEdgeAI/hybrid-cloud-poc
+cd /home/mw/AegisSovereignAI/hybrid-cloud-poc
 
 # Start SPIRE Server
 SPIRE_SERVER="./spire/bin/spire-server"
@@ -398,7 +398,7 @@ Client 2 connected from ('127.0.0.1', 54322)
 export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30
 
 # Run complete test (starts everything and monitors renewal)
-cd /home/mw/AegisEdgeAI/hybrid-cloud-poc
+cd /home/mw/AegisSovereignAI/hybrid-cloud-poc
 ./test_agents.sh --test-renewal --no-pause
 ```
 

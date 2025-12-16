@@ -73,7 +73,7 @@ flowchart TD
 
     subgraph TrustFabric["🔒 Trust Fabric"]
         F1[Hardware-Rooted Trust Chains]
-        F2["Standards/Open-source Aligned Attestation: IETF / ETSI / LF Edge AegisEdgeAI"]
+        F2["Standards/Open-source Aligned Attestation: IETF / ETSI / LF Edge AegisSovereignAI"]
         F3[Global Interoperability & Auditability]
     end
 

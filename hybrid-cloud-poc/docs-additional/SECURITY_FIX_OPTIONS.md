@@ -1,8 +1,8 @@
 # Security Fix Options for Issues #143 and #164
 
 This document outlines comprehensive options to address the security issues identified in:
-- [Issue #164](https://github.com/lfedgeai/AegisEdgeAI/issues/164): Hardcoded CAMARA Credentials in Test Scripts
-- [Issue #143](https://github.com/lfedgeai/AegisEdgeAI/issues/143): CAMARA Token Storage Security
+- [Issue #164](https://github.com/lfedgeai/AegisSovereignAI/issues/164): Hardcoded CAMARA Credentials in Test Scripts
+- [Issue #143](https://github.com/lfedgeai/AegisSovereignAI/issues/143): CAMARA Token Storage Security
 
 ---
 
