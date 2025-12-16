@@ -1,0 +1,358 @@
+# Option 5: Include Quote in SovereignAttestation - Code Changes
+
+## File: spire/pkg/agent/tpmplugin/tpm_plugin_gateway.go
+
+### Change 1: Add imports for HTTP client and TLS
+
+Add these imports at the top of the file (around line 16-27):
+
+```go
+import (
+	"bytes"
+	"context"
+	"crypto/tls"  // ADD THIS
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/sirupsen/logrus"
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
+)
+```
+
+### Change 2: Modify BuildSovereignAttestation function
+
+Replace the function starting at line 324 with this updated version:
+
+```go
+func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.SovereignAttestation, error) {
+	g.log.Info("Unified-Identity - Verification: Building real SovereignAttestation via TPM plugin")
+
+	// Get App Key public key via /get-app-key endpoint
+	var appKeyResult AppKeyResult
+
+	if err := g.httpRequest("POST", "/get-app-key", map[string]interface{}{}, &appKeyResult); err != nil {
+		return nil, fmt.Errorf("failed to get App Key: %w", err)
+	}
+
+	if appKeyResult.Status != "success" || appKeyResult.AppKeyPublic == "" {
+		return nil, fmt.Errorf("App Key not available: status=%s", appKeyResult.Status)
+	}
+
+	// Request App Key certificate (delegated certification)
+	var appKeyCertificate []byte
+	var agentUUID string
+	cert, uuid, err := g.RequestCertificate(appKeyResult.AppKeyPublic, "", nonce)
+	if err != nil {
+		g.log.WithError(err).Warn("Unified-Identity - Verification: Failed to get App Key certificate, continuing without certificate")
+	} else {
+		appKeyCertificate = cert
+		agentUUID = uuid
+		g.log.Info("Unified-Identity - Verification: App Key certificate obtained via delegated certification (App Key signed by AK)")
+	}
+
+	// *** NEW CODE: Request quote from rust-keylime agent ***
+	// This avoids the Verifier having to fetch it later (which triggers SSL bug)
+	g.log.Info("Unified-Identity - Verification: Requesting quote from rust-keylime agent")
+	quote, err := g.RequestQuoteFromAgent(nonce)
+	if err != nil {
+		g.log.WithError(err).Warn("Unified-Identity - Verification: Failed to get quote from agent, using empty quote (Verifier will try to fetch it)")
+		quote = "" // Fallback to empty quote (Verifier will try to fetch it)
+	} else {
+		g.log.Info("Unified-Identity - Verification: Successfully retrieved quote from agent")
+	}
+
+	// Build SovereignAttestation with quote included
+	sovereignAttestation := &types.SovereignAttestation{
+		TpmSignedAttestation: quote, // Include quote in attestation payload (was empty before)
+		AppKeyPublic:         appKeyResult.AppKeyPublic,
+		ChallengeNonce:       nonce,
+		AppKeyCertificate:    appKeyCertificate,
+		KeylimeAgentUuid:     agentUUID,
+	}
+
+	if quote != "" {
+		g.log.Info("Unified-Identity - Verification: SovereignAttestation built successfully with quote included")
+	} else {
+		g.log.Warn("Unified-Identity - Verification: SovereignAttestation built without quote (Verifier will fetch it)")
+	}
+
+	return sovereignAttestation, nil
+}
+```
+
+### Change 3: Add RequestQuoteFromAgent method
+
+Add this new method after BuildSovereignAttestation (around line 380):
+
+```go
+// RequestQuoteFromAgent requests a TPM quote from the rust-keylime agent
+// This is called during SovereignAttestation building to include the quote in the attestation payload
+// This avoids the Verifier having to fetch the quote later, which triggers an SSL bug in the agent
+func (g *TPMPluginGateway) RequestQuoteFromAgent(nonce string) (string, error) {
+	g.log.Info("Unified-Identity - Verification: Requesting quote from rust-keylime agent")
+
+	// Get agent URL from environment or use default
+	agentURL := os.Getenv("KEYLIME_AGENT_URL")
+	if agentURL == "" {
+		agentURL = "https://localhost:9002" // Default
+	}
+
+	// Build quote request URL
+	// Use identity quote endpoint (mask=0 for PCRs 0-7)
+	quoteURL := fmt.Sprintf("%s/v2.2/quotes/identity?nonce=%s", agentURL, nonce)
+	g.log.WithField("url", quoteURL).Debug("Unified-Identity - Verification: Quote request URL")
+
+	// Retry logic with exponential backoff
+	maxRetries := 3
+	backoff := 2 * time.Second
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			g.log.WithField("attempt", attempt+1).WithField("backoff", backoff).
+				Info("Unified-Identity - Verification: Retrying quote request after backoff")
+			time.Sleep(backoff)
+			backoff *= 2
+		}
+
+		quote, err := g.requestQuoteFromAgentOnce(quoteURL)
+		if err == nil {
+			return quote, nil
+		}
+
+		if attempt < maxRetries-1 {
+			g.log.WithError(err).WithField("attempt", attempt+1).
+				Warn("Unified-Identity - Verification: Failed to get quote, will retry")
+		} else {
+			return "", fmt.Errorf("failed to get quote after %d attempts: %w", maxRetries, err)
+		}
+	}
+
+	return "", fmt.Errorf("failed to get quote after %d retries", maxRetries)
+}
+
+// requestQuoteFromAgentOnce makes a single attempt to request a quote from the agent
+func (g *TPMPluginGateway) requestQuoteFromAgentOnce(quoteURL string) (string, error) {
+	// Create HTTP client with TLS config
+	// Skip cert verification for localhost (agent uses self-signed cert)
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   30 * time.Second,
+	}
+
+	// Make request
+	resp, err := client.Get(quoteURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to request quote from agent: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("agent returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response
+	var quoteResponse struct {
+		Code    int    `json:"code"`
+		Status  string `json:"status"`
+		Results struct {
+			Quote   string `json:"quote"`
+			HashAlg string `json:"hash_alg"`
+			EncAlg  string `json:"enc_alg"`
+			SignAlg string `json:"sign_alg"`
+		} `json:"results"`
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if err := json.Unmarshal(body, &quoteResponse); err != nil {
+		return "", fmt.Errorf("failed to parse quote response: %w", err)
+	}
+
+	if quoteResponse.Code != 200 {
+		return "", fmt.Errorf("agent returned error code %d: %s", quoteResponse.Code, quoteResponse.Status)
+	}
+
+	if quoteResponse.Results.Quote == "" {
+		return "", fmt.Errorf("agent returned empty quote")
+	}
+
+	return quoteResponse.Results.Quote, nil
+}
+```
+
+---
+
+## Summary of Changes
+
+1. **Added import:** `crypto/tls` for TLS configuration
+2. **Modified BuildSovereignAttestation:** Now calls `RequestQuoteFromAgent()` to get quote
+3. **Added RequestQuoteFromAgent:** New method that fetches quote from agent with retry logic
+4. **Added requestQuoteFromAgentOnce:** Helper method for single quote request attempt
+
+---
+
+## Testing After Changes
+
+### 1. Rebuild SPIRE Agent
+
+```bash
+cd spire
+make build
+```
+
+### 2. Test Quote Fetching
+
+```bash
+# Start control plane
+./test_complete_control_plane.sh --no-pause
+
+# Start agent services (including rust-keylime agent)
+./test_complete.sh --no-pause
+
+# Check SPIRE Agent logs for quote fetching
+tail -f /tmp/spire-agent.log | grep "quote"
+
+# Should see:
+# "Unified-Identity - Verification: Requesting quote from rust-keylime agent"
+# "Unified-Identity - Verification: Successfully retrieved quote from agent"
+# "Unified-Identity - Verification: SovereignAttestation built successfully with quote included"
+```
+
+### 3. Verify Verifier Doesn't Fetch Quote
+
+```bash
+# Check Verifier logs
+tail -f /tmp/keylime-verifier.log | grep -i "quote"
+
+# Should NOT see:
+# "Unified-Identity: Requesting quote from agent"
+
+# Should see:
+# "Unified-Identity: Quote found in SovereignAttestation"
+```
+
+### 4. Test Multiple Attestations
+
+```bash
+# Test multiple attestations without agent restart
+for i in {1..5}; do
+    echo "=== Attestation attempt $i ==="
+    pkill spire-agent
+    sleep 5
+    
+    # Wait for SPIRE Agent to restart and attest
+    sleep 15
+    
+    # Check if attestation succeeded
+    if curl -k https://localhost:8081/health 2>/dev/null | grep -q "ready"; then
+        echo "✅ Attestation $i succeeded"
+    else
+        echo "❌ Attestation $i failed"
+    fi
+done
+```
+
+---
+
+## Expected Behavior
+
+### Before Changes
+1. SPIRE Agent sends SovereignAttestation with empty quote
+2. Verifier receives SovereignAttestation
+3. Verifier makes HTTP request to rust-keylime agent to fetch quote
+4. Agent generates quote successfully
+5. **Agent SSL context corrupts after TPM errors**
+6. **Subsequent attestations fail**
+
+### After Changes
+1. SPIRE Agent requests quote from rust-keylime agent
+2. Agent generates quote successfully
+3. SPIRE Agent includes quote in SovereignAttestation
+4. Verifier receives SovereignAttestation with quote
+5. **Verifier uses quote from SovereignAttestation (no HTTP request to agent)**
+6. **Agent SSL bug never triggered**
+7. **Subsequent attestations work!**
+
+---
+
+## Troubleshooting
+
+### Issue: "Failed to get quote from agent"
+
+**Cause:** rust-keylime agent not running or not ready
+
+**Solution:** Check agent status:
+```bash
+ps aux | grep keylime_agent
+curl -k https://localhost:9002/v2.2/agent/version
+```
+
+### Issue: "Agent returned status 400"
+
+**Cause:** Invalid nonce or agent error
+
+**Solution:** Check agent logs:
+```bash
+tail -f /tmp/rust-keylime-agent.log
+```
+
+### Issue: "Failed to get quote after 3 attempts"
+
+**Cause:** Agent not responding or SSL already broken
+
+**Solution:** Restart agent:
+```bash
+pkill keylime_agent
+sleep 2
+./test_complete.sh --no-pause
+```
+
+---
+
+## Rollback Plan
+
+If changes cause issues, revert by:
+
+1. **Restore original BuildSovereignAttestation:**
+   ```go
+   sovereignAttestation := &types.SovereignAttestation{
+       TpmSignedAttestation: "", // Empty - Keylime Verifier will request quote
+       AppKeyPublic:         appKeyResult.AppKeyPublic,
+       ChallengeNonce:       nonce,
+       AppKeyCertificate:    appKeyCertificate,
+       KeylimeAgentUuid:     agentUUID,
+   }
+   ```
+
+2. **Remove RequestQuoteFromAgent methods**
+
+3. **Rebuild:**
+   ```bash
+   cd spire
+   make build
+   ```
+
+---
+
+## Next Steps After Implementation
+
+1. ✅ Test thoroughly (multiple attestations)
+2. ✅ Document findings
+3. ✅ Complete Step 1 (single machine setup)
+4. ✅ Move to Step 2 (CI/CD testing)
+5. ✅ Report agent SSL bug to rust-keylime project
+

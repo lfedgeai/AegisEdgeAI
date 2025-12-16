@@ -1,0 +1,101 @@
+Trust Level Management (TLM) Components - Resource Usage
+Generated: Mon Dec 15 07:03:01 PM IST 2025
+Host: vso
+═══════════════════════════════════════════════════════════════
+
+=== Keylime Verifier ===
+  PID: 3164090
+  CPU: 0.0%
+  Memory: 0.2%
+  RSS (Actual RAM): 89.71 MB
+  VSZ (Virtual): 107.57 MB
+
+  PID: 3164093
+  CPU: 0.0%
+  Memory: 0.2%
+  RSS (Actual RAM): 88.65 MB
+  VSZ (Virtual): 256.81 MB
+
+  Total Processes: 2
+  Total Memory (RSS): 178.37 MB
+  Average CPU: 0%
+
+=== Keylime Registrar ===
+  PID: 3164125
+  CPU: 0.0%
+  Memory: 0.2%
+  RSS (Actual RAM): 88.37 MB
+  VSZ (Virtual): 104.10 MB
+
+  Total Processes: 1
+  Total Memory (RSS): 88.37 MB
+  Average CPU: 0%
+
+=== rust-keylime Agent ===
+  PID: 3165271
+  CPU: 0.2%
+  Memory: 0.0%
+  RSS (Actual RAM): 24.94 MB
+  VSZ (Virtual): 877.71 MB
+
+  Total Processes: 1
+  Total Memory (RSS): 24.94 MB
+  Average CPU: 0.2%
+
+=== SPIRE Server ===
+  PID: 3164183
+  CPU: 0.3%
+  Memory: 0.3%
+  RSS (Actual RAM): 98.90 MB
+  VSZ (Virtual): 2514.75 MB
+
+  Total Processes: 1
+  Total Memory (RSS): 98.90 MB
+  Average CPU: 0.3%
+
+=== SPIRE Agent ===
+  PID: 3164774
+  CPU: 0.4%
+  Memory: 0.1%
+  RSS (Actual RAM): 48.99 MB
+  VSZ (Virtual): 2401.33 MB
+
+  Total Processes: 1
+  Total Memory (RSS): 48.99 MB
+  Average CPU: 0.4%
+
+=== TPM Plugin Server ===
+  PID: 3164632
+  CPU: 0.0%
+  Memory: 0.1%
+  RSS (Actual RAM): 32.69 MB
+  VSZ (Virtual): 46.76 MB
+
+  Total Processes: 1
+  Total Memory (RSS): 32.69 MB
+  Average CPU: 0%
+
+=== Mobile Sensor Service ===
+  Total Processes: 0
+  Total Memory (RSS):  MB
+  Average CPU: 0%
+
+═══════════════════════════════════════════════════════════════
+OVERALL SUMMARY
+═══════════════════════════════════════════════════════════════
+
+Total TLM Processes: 7
+Total Memory Usage: 472.28 MB
+Total CPU Usage: 0.9%
+
+═══════════════════════════════════════════════════════════════
+SYSTEM INFORMATION
+═══════════════════════════════════════════════════════════════
+
+Total System Memory: 31918 MB
+Used System Memory: 2061 MB
+Free System Memory: 12504 MB
+CPU Cores: 12
+
+TLM Memory Usage: 1.00% of total system memory
+

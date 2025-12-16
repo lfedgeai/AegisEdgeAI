@@ -1,0 +1,85 @@
+# Unified-Identity: Minimal Keylime Verifier Configuration for Testing
+# This is a minimal config for testing Unified-Identity integration
+
+[verifier]
+# Basic server configuration
+ip = 127.0.0.1
+port = 8881
+
+# UUID for this verifier instance
+uuid = test-verifier-uuid-12345
+
+# Registrar configuration (not needed for Unified-Identity testing, but required)
+registrar_ip = 127.0.0.1
+registrar_port = 8890
+
+# TLS configuration - use existing TLS directory (certificates already generated)
+# Using specific directory allows us to set trusted_client_ca = all to disable client cert requirement
+tls_dir = cv_ca
+server_key = default
+server_cert = default
+client_key = default
+client_cert = default
+# Set to "all" to disable client certificate requirement for testing (Unified-Identity integration)
+# This allows SPIRE Server to connect without providing a client certificate
+trusted_client_ca = all
+trusted_server_ca = default
+
+# Database configuration
+database_url = sqlite
+
+# Severity configuration (required) - Python list format
+severity_labels = ["INFO", "WARN", "ERROR", "CRITICAL"]
+# Severity policy: list of dicts with event_id and severity_label
+severity_policy = [{"event_id": ".*", "severity_label": "CRITICAL"}]
+
+# Enable Unified-Identity feature
+unified_identity_enabled = true
+
+# Default facts (used when facts not found in database/store)
+unified_identity_default_geolocation = Spain: N40.4168, W3.7038
+unified_identity_default_integrity = passed_all_checks
+unified_identity_default_gpu_status = healthy
+unified_identity_default_gpu_utilization = 15.0
+unified_identity_default_gpu_memory = 10240
+
+# Enable agent mTLS so the verifier can mutually authenticate with rust-keylime agent
+enable_agent_mtls = True
+agent_mtls_cert = /tmp/keylime-agent/cv_ca/client-cert.crt
+agent_mtls_priv_key = /tmp/keylime-agent/cv_ca/client-private.pem
+agent_mtls_cert_enabled = True
+
+# Auto-migrate database
+auto_migrate_db = True
+
+# Number of worker processes (0 = CPU count, use 1 for testing)
+num_workers = 1
+
+# Measured boot configuration (optional, but may be required)
+measured_boot_imports = []
+measured_boot_policy_name = 
+measured_boot_evaluate = False
+
+# Mobile location verification microservice configuration
+# Enable to require the Keylime Verifier to call the mobile sensor microservice
+mobile_sensor_enabled = true
+# Endpoint can be a UNIX socket (unix:///path/to/socket) or HTTP(S) URL
+mobile_sensor_endpoint = http://127.0.0.1:9050
+# Timeout in seconds for the microservice call
+mobile_sensor_timeout_seconds = 5
+
+[ca]
+# CA configuration for TLS certificate generation
+cert_bits = 2048
+cert_ca_name = keylime-ca
+cert_country = US
+cert_state = CA
+cert_locality = San Francisco
+cert_organization = Keylime
+cert_org_unit = Testing
+cert_ca_lifetime = 365
+
+[revocations]
+# Revocation notifications configuration
+enabled_revocation_notifications = []
+zmq_port = 5556

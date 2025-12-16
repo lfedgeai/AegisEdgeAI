@@ -1,0 +1,41 @@
+# Keylime registrar configuration - Minimal for Unified-Identity testing
+[registrar]
+
+# Version
+version = "2.5"
+
+# Binding address and ports
+ip = "127.0.0.1"
+port = 8891
+tls_port = 8890
+
+# Worker processes - set to 1 to save memory (default spawns CPU_COUNT workers)
+# This reduces memory usage from ~948 MB (13 processes) to ~75 MB (1 process)
+num_workers = 1
+
+# TLS configuration - use same cv_ca directory as verifier
+tls_dir = cv_ca
+server_key = default
+server_key_password = ""
+server_cert = default
+trusted_client_ca = all
+
+# Database
+database_url = sqlite:////tmp/keylime/reg_data.sqlite
+database_pool_sz_ovfl = "5,10"
+auto_migrate_db = True
+
+# Durable attestation (disabled)
+durable_attestation_import = ""
+persistent_store_url = ""
+transparency_log_url = ""
+time_stamp_authority_url = ""
+time_stamp_authority_certs_path = ""
+persistent_store_format = "json"
+persistent_store_encoding = ""
+transparency_log_sign_algo = "sha256"
+signed_attributes = ""
+
+# TPM identity
+tpm_identity = "default"
+malformed_cert_action = "warn"

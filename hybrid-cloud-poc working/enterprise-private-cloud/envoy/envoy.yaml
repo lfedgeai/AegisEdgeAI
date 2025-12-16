@@ -1,0 +1,143 @@
+# Envoy Proxy Configuration for Single Machine / Enterprise On-Prem
+#
+# This configuration:
+# 1. Listens on port 8080 for mTLS connections from SPIRE clients
+# 2. Verifies SPIRE client certificates using SPIRE CA bundle
+# 3. Uses WASM filter to extract sensor ID from client certificates
+# 4. Calls mobile location service to verify sensor
+# 5. Forwards verified requests to backend mTLS server (localhost:9443)
+#
+# Certificate paths (set up by test_onprem.sh):
+# - /opt/envoy/certs/envoy-cert.pem: Envoy's own certificate
+# - /opt/envoy/certs/envoy-key.pem: Envoy's private key
+# - /opt/envoy/certs/spire-bundle.pem: SPIRE CA bundle for verifying clients
+# - /opt/envoy/certs/server-cert.pem: Backend server cert for upstream verification
+#
+# WASM filter:
+# - /opt/envoy/plugins/sensor_verification_wasm.wasm: Sensor ID extraction and verification
+
+admin:
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901
+
+static_resources:
+  listeners:
+    - name: mtls_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                forward_client_cert_details: APPEND_FORWARD
+                set_current_client_cert_details:
+                  uri: true
+                  subject: true
+                  cert: true
+                  chain: true
+                common_http_protocol_options:
+                  idle_timeout: 300s # Keep connections alive for 5 minutes
+                  max_connection_duration: 3600s # Max connection lifetime: 1 hour
+                http_protocol_options:
+                  accept_http_10: true # Accept HTTP/1.0 for compatibility
+                delayed_close_timeout: 1s # Graceful connection closure
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                      log_format:
+                        text_format: |
+                          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
+                          %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
+                          %DURATION% %RESP(X-REQUEST-ID)% "%REQ(:AUTHORITY)%" "%REQ(USER-AGENT)%"
+                http_filters:
+                  - name: envoy.filters.http.wasm
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
+                      config:
+                        name: "sensor_verification"
+                        root_id: "sensor_verification_root"
+                        vm_config:
+                          vm_id: "sensor_verification_vm"
+                          runtime: "envoy.wasm.runtime.v8"
+                          code:
+                            local:
+                              filename: "/opt/envoy/plugins/sensor_verification_wasm.wasm"
+                          allow_precompiled: true
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: local_service
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: mtls_backend
+          transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              require_client_certificate: true
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: /opt/envoy/certs/envoy-cert.pem
+                    private_key:
+                      filename: /opt/envoy/certs/envoy-key.pem
+                validation_context:
+                  trusted_ca:
+                    filename: /opt/envoy/certs/spire-bundle.pem
+
+  clusters:
+    - name: mobile_location_service
+      connect_timeout: 5s
+      type: strict_dns
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: mobile_location_service
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 5000
+    - name: mtls_backend
+      connect_timeout: 5s
+      type: strict_dns
+      lb_policy: ROUND_ROBIN
+      common_http_protocol_options:
+        idle_timeout: 300s # Keep upstream connections alive for 5 minutes
+        max_connection_duration: 3600s # Max upstream connection lifetime: 1 hour
+      load_assignment:
+        cluster_name: mtls_backend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 9443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+              - certificate_chain:
+                  filename: /opt/envoy/certs/envoy-cert.pem
+                private_key:
+                  filename: /opt/envoy/certs/envoy-key.pem
+            validation_context:
+              trusted_ca:
+                filename: /opt/envoy/certs/server-cert.pem
