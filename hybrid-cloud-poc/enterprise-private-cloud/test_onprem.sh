@@ -542,6 +542,8 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     
     # Set CAMARA_BYPASS default to true (can be overridden via environment variable)
     export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
+    # DEMO_MODE defaults to true when CAMARA_BYPASS is enabled (suppresses bypass log messages)
+    export DEMO_MODE="${DEMO_MODE:-true}"
     
     # Set CAMARA_BASIC_AUTH for mobile location service (only if bypass is disabled)
     if [ "$CAMARA_BYPASS" != "true" ]; then
@@ -636,6 +638,8 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         
         # Default to bypass mode (can be overridden by setting CAMARA_BYPASS=false and providing CAMARA_BASIC_AUTH)
         export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
+        # DEMO_MODE defaults to true when CAMARA_BYPASS is enabled (suppresses bypass log messages)
+        export DEMO_MODE="${DEMO_MODE:-true}"
         if [ -n "$CAMARA_BASIC_AUTH" ] && [ "$CAMARA_BYPASS" != "true" ]; then
             export CAMARA_BASIC_AUTH
             python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
@@ -819,7 +823,7 @@ else
     printf '  sudo envoy -c /opt/envoy/envoy.yaml\n'
     printf '\n'
     printf 'Or start all in background:\n'
-    printf '  cd %s/mobile-sensor-microservice && source .venv/bin/activate && export CAMARA_BYPASS=true && python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &\n' "$REPO_ROOT"
+    printf '  cd %s/mobile-sensor-microservice && source .venv/bin/activate && export CAMARA_BYPASS=true DEMO_MODE=true && python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &\n' "$REPO_ROOT"
     printf '  cd %s/python-app-demo && export SERVER_USE_SPIRE="false" SERVER_PORT="9443" && python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &\n' "$REPO_ROOT"
     printf '  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &\n'
     printf '\n'

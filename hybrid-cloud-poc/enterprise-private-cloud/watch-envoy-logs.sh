@@ -31,8 +31,8 @@ echo "Log file: $LOG_FILE"
 echo "Key events highlighted:"
 echo "  ${GREEN}✓${NC} Sensor verification successful"
 echo "  ${RED}✗${NC} Sensor verification failed"
-echo "  ${CYAN}⚡${NC} Cache hit/expiry events"
-echo "  ${BLUE}🔍${NC} Sensor ID extraction"
+echo "  ${BLUE}🔍${NC} Verification requests and sensor ID extraction"
+echo "  ${CYAN}⚡${NC} Cache events (if any)"
 echo "Press Ctrl+C to stop"
 echo "=========================================="
 echo ""
@@ -93,9 +93,13 @@ stdbuf -oL -eL tail -f "$LOG_FILE" | while IFS= read -r line; do
         echo ""
         echo -e "${CYAN}${BOLD}>>> [Cache Hit #$CACHE_HIT_COUNT]${NC} ${CYAN}$line${NC}"
         echo ""
-    elif echo "$line" | grep -q 'Cache expired\|No cache for sensor_id\|Dispatched blocking verification'; then
+    elif echo "$line" | grep -q 'Cache expired\|No cache for sensor_id'; then
         echo ""
-        echo -e "${BLUE}${BOLD}>>> [Cache/Verification Event]${NC} ${BLUE}$line${NC}"
+        echo -e "${BLUE}${BOLD}>>> [Cache Event]${NC} ${BLUE}$line${NC}"
+        echo ""
+    elif echo "$line" | grep -q 'Dispatched blocking verification'; then
+        echo ""
+        echo -e "${BLUE}${BOLD}>>> [Verification Request]${NC} ${BLUE}$line${NC}"
         echo ""
     elif echo "$line" | grep -q 'Extracted sensor_id\|sensor_id:'; then
         echo -e "${YELLOW}$line${NC}"

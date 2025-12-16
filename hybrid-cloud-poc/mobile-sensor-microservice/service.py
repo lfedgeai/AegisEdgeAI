@@ -77,6 +77,20 @@ def _camara_bypass_enabled() -> bool:
     return os.getenv("CAMARA_BYPASS", "").lower() in ("1", "true", "yes", "on")
 
 
+def _demo_mode_enabled() -> bool:
+    """Check if demo mode is enabled (suppresses CAMARA_BYPASS log messages for demos).
+    
+    Defaults to True when CAMARA_BYPASS is enabled, unless explicitly set to False.
+    """
+    demo_mode = os.getenv("DEMO_MODE", "").strip()
+    if demo_mode:
+        # If explicitly set, use that value
+        return demo_mode.lower() in ("1", "true", "yes", "on")
+    else:
+        # If not explicitly set, default to True when CAMARA_BYPASS is enabled
+        return _camara_bypass_enabled()
+
+
 def _get_verify_location_cache_ttl() -> int:
     """Get verify_location cache TTL in seconds (default: 15 minutes = 900 seconds)."""
     try:
@@ -842,17 +856,19 @@ def create_app(db_path: Path) -> Flask:
             )
 
         if bypass_camara:
-            if is_healthcheck:
-                LOG.info("Health-check: CAMARA_BYPASS enabled – automatically approving")
-                LOG.info("Health-check: [LOCATION VERIFY] Skipped (CAMARA_BYPASS enabled) - no API call, no caching")
-            else:
-                LOG.info(
-                    "CAMARA_BYPASS enabled: automatically approving sensor_id=%s for testing", sensor_id
-                )
-                LOG.info(
-                    "[LOCATION VERIFY] Skipped for sensor_id=%s (CAMARA_BYPASS enabled) - no API call, no caching",
-                    sensor_id
-                )
+            # Suppress CAMARA_BYPASS log messages in demo mode
+            if not _demo_mode_enabled():
+                if is_healthcheck:
+                    LOG.info("Health-check: CAMARA_BYPASS enabled – automatically approving")
+                    LOG.info("Health-check: [LOCATION VERIFY] Skipped (CAMARA_BYPASS enabled) - no API call, no caching")
+                else:
+                    LOG.info(
+                        "CAMARA_BYPASS enabled: automatically approving sensor_id=%s for testing", sensor_id
+                    )
+                    LOG.info(
+                        "[LOCATION VERIFY] Skipped for sensor_id=%s (CAMARA_BYPASS enabled) - no API call, no caching",
+                        sensor_id
+                    )
             verification_result = True
         else:
             if is_healthcheck:

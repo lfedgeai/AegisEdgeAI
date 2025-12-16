@@ -38,6 +38,7 @@ This installs both runtime dependencies (Flask, requests) and the `pytest` tooli
 | `CAMARA_BASIC_AUTH` | `Basic` header value used for `/bc-authorize` and `/token` | **required** |
 | `CAMARA_SCOPE` | Scope used in `/bc-authorize` | `dpv:FraudPreventionAndDetection#device-location-read` |
 | `CAMARA_BYPASS` | Set to `true` to skip CAMARA API calls (for testing only) | `false` |
+| `DEMO_MODE` | Set to `true` to suppress CAMARA_BYPASS log messages (useful for demos). Defaults to `true` when `CAMARA_BYPASS` is enabled. | `false` (or `true` if `CAMARA_BYPASS=true`) |
 | `CAMARA_VERIFY_CACHE_TTL_SECONDS` | Cache TTL for `verify_location` API results. The actual CAMARA API is called at most once per TTL period; subsequent calls return the cached result. | `900` (15 minutes) |
 
 ### Obtaining CAMARA Credentials
@@ -77,7 +78,13 @@ export CAMARA_VERIFY_CACHE_TTL_SECONDS=900  # Optional: 15 minutes (default)
 python mobile-sensor-microservice/service.py --port 5000 --host 0.0.0.0
 
 # For testing without CAMARA (bypass mode):
+# DEMO_MODE defaults to true when CAMARA_BYPASS is enabled (bypass messages are suppressed)
 export CAMARA_BYPASS=true
+python mobile-sensor-microservice/service.py --port 5000 --host 0.0.0.0
+
+# To show bypass messages even when CAMARA_BYPASS is enabled:
+export CAMARA_BYPASS=true
+export DEMO_MODE=false
 python mobile-sensor-microservice/service.py --port 5000 --host 0.0.0.0
 ```
 
