@@ -1,10 +1,15 @@
 # AegisSovereignAI: Trusted AI for the Distributed Enterprise
 
-**AegisSovereignAI** is the **Trust Integration Layer** for the Linux Foundation AI ecosystem. It delivers verifiable trust for AI workloads across the **distributed enterprise**—unifying open standards from the CNCF (SPIFFE/Keylime/OPA) and IETF (RATS/WIMSE) into a contiguous **Chain of Trust** from Silicon to Prompt.
+**AegisSovereignAI** is the **Trust Integration Layer** for the Linux Foundation AI ecosystem. It delivers verifiable trust for AI workloads across the **distributed enterprise** - from **Centralized Clouds** to the **Far Edge** - unifying open standards from the CNCF (SPIFFE/Keylime/OPA) and IETF (RATS/WIMSE) into a contiguous **Chain of Trust** from Silicon to Prompt.
 
 We don't just integrate with AI frameworks; we actively harden them. As the authors of the **Zero-Trust Governance Middleware** proposal for **LangChain**, we are driving security standards directly into the tools developers use daily.
 
-While frameworks like **OPEA** define *how* to build Enterprise AI, and **AAIF** defines *how* agents communicate (MCP), **AegisSovereignAI** defines *how* to trust them. We bridge the gap between **Centralized Clouds** and the **Far Edge**, providing cryptographic proof that your AI agents are running on verified hardware, in authorized jurisdictions, and acting within sovereign policy limits—regardless of where they physically sit.
+### The Missing Link in the LF AI Ecosystem
+Our architecture is designed to complement the emerging Linux Foundation AI stack:
+* **Complements [OPEA](https://opea.dev) (Open Platform for Enterprise AI):** While OPEA defines the *reference architecture* for building RAG pipelines, AegisSovereignAI provides the **Hardened Runtime** - ensuring those microservices only boot on verified hardware.
+* **Complements [AAIF](https://lfaidata.foundation) (Agentic AI Foundation):** While AAIF standardizes *how* agents communicate (via the Model Context Protocol, MCP), AegisSovereignAI defines **Who** is communicating - securing agent-to-agent interactions with hardware-rooted Mutual TLS.
+
+We bridge the gap between these frameworks and the physical infrastructure, providing cryptographic proof that your AI agents are running on verified hardware, in authorized jurisdictions, and acting within sovereign policy limits.
 
 <p align="center">
   <img src="images/readme-arch.svg" alt="AegisSovereignAI 3-Layer Trust Model" width="800">
