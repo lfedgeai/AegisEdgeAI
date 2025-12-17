@@ -369,17 +369,17 @@ main() {
     fi
     
     # Step 4: Test CAMARA Caching and GPS Bypass Features
-    echo ""
-    if [ "$NO_PAUSE" = "true" ]; then
-        echo "  (--no-pause: continuing automatically...)"
-    elif [ -t 0 ]; then
-        read -p "Press Enter to continue to CAMARA caching and GPS bypass tests..."
-    else
-        echo "  (Non-interactive mode - continuing automatically in 3 seconds...)"
-        sleep 3
-    fi
+    #echo ""
+    #if [ "$NO_PAUSE" = "true" ]; then
+    #    echo "  (--no-pause: continuing automatically...)"
+    #elif [ -t 0 ]; then
+    #    read -p "Press Enter to continue to CAMARA caching and GPS bypass tests..."
+    #else
+    #    echo "  (Non-interactive mode - continuing automatically in 3 seconds...)"
+    #    sleep 3
+    #fi
     
-    test_camara_caching_and_gps_bypass
+    #test_camara_caching_and_gps_bypass
     
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
