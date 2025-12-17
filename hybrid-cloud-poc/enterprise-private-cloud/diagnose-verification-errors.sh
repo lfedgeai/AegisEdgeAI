@@ -23,7 +23,7 @@ if ss -tlnp 2>/dev/null | grep -q ':5000' || netstat -tlnp 2>/dev/null | grep -q
     fi
 else
     echo "   ✗ Mobile location service is NOT listening on port 5000"
-    echo "   → Restart it: cd ~/AegisEdgeAI/hybrid-cloud-poc/mobile-sensor-microservice"
+    echo "   → Restart it: cd ~/AegisSovereignAI/hybrid-cloud-poc/mobile-sensor-microservice"
     echo "                 source .venv/bin/activate"
     echo "                 export CAMARA_BYPASS=true"
     echo "                 python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &"

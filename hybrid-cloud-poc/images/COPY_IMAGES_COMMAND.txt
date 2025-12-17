@@ -2,23 +2,23 @@ SCP Command for Windows to Linux
 
 Option 1: PowerShell (OpenSSH)
 --------------------------------
-scp "C:\Users\ramkr\OneDrive\Desktop\aaa-geo-project\Zero-trust Sovereign AI-public\*.png" mw@<linux-host-ip>:/home/mw/AegisEdgeAI/hybrid-cloud-poc/images/
+scp "C:\Users\ramkr\OneDrive\Desktop\aaa-geo-project\Zero-trust Sovereign AI-public\*.png" mw@<linux-host-ip>:/home/mw/AegisSovereignAI/hybrid-cloud-poc/images/
 
 Replace <linux-host-ip> with your Linux machine's IP address or hostname.
 
 Option 2: PowerShell with specific files
 -----------------------------------------
 If wildcards don't work, copy files individually or use:
-Get-ChildItem "C:\Users\ramkr\OneDrive\Desktop\aaa-geo-project\Zero-trust Sovereign AI-public\*.png" | ForEach-Object { scp $_.FullName mw@<linux-host-ip>:/home/mw/AegisEdgeAI/hybrid-cloud-poc/images/ }
+Get-ChildItem "C:\Users\ramkr\OneDrive\Desktop\aaa-geo-project\Zero-trust Sovereign AI-public\*.png" | ForEach-Object { scp $_.FullName mw@<linux-host-ip>:/home/mw/AegisSovereignAI/hybrid-cloud-poc/images/ }
 
 Option 3: WSL (Windows Subsystem for Linux)
 --------------------------------------------
 If you have WSL installed, open WSL and run:
-scp "/mnt/c/Users/ramkr/OneDrive/Desktop/aaa-geo-project/Zero-trust Sovereign AI-public/"*.png mw@<linux-host-ip>:/home/mw/AegisEdgeAI/hybrid-cloud-poc/images/
+scp "/mnt/c/Users/ramkr/OneDrive/Desktop/aaa-geo-project/Zero-trust Sovereign AI-public/"*.png mw@<linux-host-ip>:/home/mw/AegisSovereignAI/hybrid-cloud-poc/images/
 
 Option 4: Git Bash
 ------------------
 Open Git Bash and run:
-scp "/c/Users/ramkr/OneDrive/Desktop/aaa-geo-project/Zero-trust Sovereign AI-public/"*.png mw@<linux-host-ip>:/home/mw/AegisEdgeAI/hybrid-cloud-poc/images/
+scp "/c/Users/ramkr/OneDrive/Desktop/aaa-geo-project/Zero-trust Sovereign AI-public/"*.png mw@<linux-host-ip>:/home/mw/AegisSovereignAI/hybrid-cloud-poc/images/
 
 Note: You'll be prompted for your password on the Linux machine (mw user password).

@@ -60,7 +60,7 @@ This proposal leverages existing standards to ensure interoperability:
 
 ## 6\. Proof of Concept
 
-A reference implementation of this architecture is currently available in the **[AegisEdgeAI Sovereign Hybrid Cloud PoC](https://github.com/lfedgeai/AegisEdgeAI/tree/main/hybrid-cloud-poc)**.
+A reference implementation of this architecture is currently available in the **[AegisSovereignAI Sovereign Hybrid Cloud PoC](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc)**.
 
   * It demonstrates a **Mobile Location Service** that acts as a mock CAMARA gateway.
   * It enforces access control based on real-time TPM attestation of a USB-tethered mobile sensor.

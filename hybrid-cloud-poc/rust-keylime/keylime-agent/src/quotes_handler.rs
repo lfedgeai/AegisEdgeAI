@@ -47,7 +47,7 @@ fn extract_usb_id(line: &str) -> String {
 fn get_imei_imsi() -> (Option<String>, Option<String>) {
     // Try multiple possible script paths
     let script_paths = [
-        "/home/mw/AegisEdgeAI/hybrid-cloud-poc/get_imei_imsi_huawei.sh",
+        "/home/mw/AegisSovereignAI/hybrid-cloud-poc/get_imei_imsi_huawei.sh",
         "./get_imei_imsi_huawei.sh",
         "get_imei_imsi_huawei.sh",
     ];

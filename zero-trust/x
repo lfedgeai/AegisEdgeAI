@@ -142,15 +142,15 @@ sym-mode:
   raw: 0x0
 sym-keybits: 0
 rsa: eda23febbe99c5be05db27c19f719e3ae3a5aeef473f5bf4f5bdb52c7bc739b558ec1d644f44e8fdf0353b808336206377f5c75be8a6295a960a930bc6c5d9840c72f139f8997dcf9c300078111b0342d6ca494fc0af835a0a57c5b57bc1b8326d458c39ebb713359d725d5ad0061ecd71108e60c00713e7c6ddc47b96098e5940b602564fc9b031e9d5acc13c892eaf2c01c32ca0653138c931591d883b3758445b50d589462c251004303f2c59faa2570aee382c2aa939b22f4fa733a6ecee25b31dc2d6c1250bbabb8f2f8c089cdab67624e29de95ac79a5996bb46b3d87cb42bc1e089cd9369e0a9aa9ea1dee7eaed08072084a940a559477faec3f4fe57
-[SUCCESS] AK Public Key exported to /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/ak_pub.pem
+[SUCCESS] AK Public Key exported to /mnt/c/Users/ramkr/AegisSovereignAI/zero-trust/tpm/ak_pub.pem
 [STEP] Persistent handles now present:
 - 0x81010001
 - 0x8101000A
 [INFO] AK handle: 0x8101000A
 [INFO] App handle: 0x8101000B
 [INFO] Using default TPM files:
-[INFO]   Context file: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/app.ctx
-[INFO]   Public key: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/appsk_pubkey.pem
+[INFO]   Context file: /mnt/c/Users/ramkr/AegisSovereignAI/zero-trust/tpm/app.ctx
+[INFO]   Public key: /mnt/c/Users/ramkr/AegisSovereignAI/zero-trust/tpm/appsk_pubkey.pem
 [STEP] Flushing ALL stale contexts...
 [STEP] Creating primary...
 name-alg:
@@ -247,7 +247,7 @@ sym-mode:
   raw: 0x0
 sym-keybits: 0
 rsa: 9f9d7d79cfef80f9c536a53dfaf6ba4b9a66f9989d46bbe710ff391564bea4e6b9deb8d7f49dd771d47643cf2702ef3d9d4c1dd19291085156e55168a119204d6b7246f7453ee41f6f44c6ef3cecd1d911150138676c3268830854d5a4a82bb62d0b3ef06f50f822992e6f9079f55579152b103dc23b83b2ac3de5f118188a23960af98cc773b9e86129444233924a968475d8bfdf8d5d0c02a8eb7bda68ac11d8bc3c4f44faa41d609e23cd0e1701ad95055809c775592cb05a8f0c29104de5633c3eacfb99b2e789b336ed95b706d81ccd1f04c2b8e06cc23ce79e9ebaf3080b2cfafe9edfa5ff918383128c71db52cc6e44874e88cd8932b2fcc29ac2569d
-[INFO] Exported TPM public key to /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/appsk_pubkey.pem
+[INFO] Exported TPM public key to /mnt/c/Users/ramkr/AegisSovereignAI/zero-trust/tpm/appsk_pubkey.pem
 [INFO] APP certification by AK complete
 [INFO] TPM Quote Generation Script
 [INFO] TPM2TOOLS_TCTI: swtpm:host=127.0.0.1,port=2321
@@ -289,12 +289,12 @@ sig: 67bfbb31fa8a8d234086386b4f27b1dabfea47404cde47de41a3a09a821453740a38c2894e5
 [INFO] TPM Quote: VERIFIED
 [INFO] AppSK Certification: VERIFIED
 [INFO] AppSK public key is now trusted through TPM AK and EK chain
-[INFO] Using TPM context file: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/app.ctx
-[INFO] Message file already in correct location: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/appsig_info.bin
+[INFO] Using TPM context file: /mnt/c/Users/ramkr/AegisSovereignAI/zero-trust/tpm/app.ctx
+[INFO] Message file already in correct location: /mnt/c/Users/ramkr/AegisSovereignAI/zero-trust/tpm/appsig_info.bin
 [INFO] TPM contexts flushed.
 [INFO] Generating SHA-256 hash of message to sign...
 [INFO] Signing precomputed hash with rsassa scheme...
-[INFO] Signature generated: /mnt/c/Users/ramkr/AegisEdgeAI/zero-trust/tpm/appsig.bin
+[INFO] Signature generated: /mnt/c/Users/ramkr/AegisSovereignAI/zero-trust/tpm/appsig.bin
 Signature: 1abb999e7834aa304a565d814d483b5e540937729e8beec6eac7af66c658ee6ff9385a8f7f5c1677203f2d56c96f2b2a05ff1f70047d8bea8f5b139e423921771bf078c235d573003413f0f62895c8ee4c48536a5d31ec37442ec2fb101578d10b11eeff8ed88ef9d4557cc1dead4874aee33adf9dd67f0ad0e252dd2b6e2d709b1eec55e2c2228545f5c0615035586333855c4ce411a3163dae09a8e4837d7b691aff57fcd5997784df40c962adef545c0266159f81dba3bbe3819bf90a42bd6f720ed6657142bd9be52c46656a653b1c7af6d3991e72d022a53e1c348ca37f90bcec403db53cb9693a98f4ad325ae5fdd23beb3397fa50d50184aa82e3ee45
 Digest: f0db643b8731d284901cb92e433f888a81db4c99ddc85ae3ad63e20ff626d22e
 [INFO] Hashing the message with SHA-256...

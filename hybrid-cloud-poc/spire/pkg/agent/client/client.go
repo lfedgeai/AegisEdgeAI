@@ -141,7 +141,7 @@ func newClient(c *Config) *client {
 			// Try common locations
 			possiblePaths := []string{
 				"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
-				filepath.Join(os.Getenv("HOME"), "AegisEdgeAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
+				filepath.Join(os.Getenv("HOME"), "AegisSovereignAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
 			}
 			for _, path := range possiblePaths {
 				if _, err := os.Stat(path); err == nil {
@@ -933,7 +933,7 @@ func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginG
 			// Try common locations
 			possiblePaths := []string{
 				"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
-				filepath.Join(os.Getenv("HOME"), "AegisEdgeAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
+				filepath.Join(os.Getenv("HOME"), "AegisSovereignAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
 			}
 			for _, path := range possiblePaths {
 				if _, err := os.Stat(path); err == nil {
@@ -993,7 +993,7 @@ func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginGateway, 
 			// Try common locations
 			possiblePaths := []string{
 				"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
-				filepath.Join(os.Getenv("HOME"), "AegisEdgeAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
+				filepath.Join(os.Getenv("HOME"), "AegisSovereignAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
 			}
 			for _, path := range possiblePaths {
 				if _, err := os.Stat(path); err == nil {

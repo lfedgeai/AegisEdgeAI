@@ -324,7 +324,7 @@ class DelegatedCertificationClient:
         
         # Try to find the verifier's client certificate
         # The verifier's client cert is in the Keylime cv_ca directory
-        keylime_dir = os.getenv("KEYLIME_DIR", "/home/mw/AegisEdgeAI/hybrid-cloud-poc/keylime")
+        keylime_dir = os.getenv("KEYLIME_DIR", "/home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime")
         client_cert_path = os.path.join(keylime_dir, "cv_ca", "client-cert.crt")
         client_key_path = os.path.join(keylime_dir, "cv_ca", "client-private.pem")
         ca_cert_path = os.path.join(keylime_dir, "cv_ca", "cacert.crt")

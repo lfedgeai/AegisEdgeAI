@@ -254,7 +254,7 @@ run_script() {
     echo ""
     
     # Run script (local or via SSH depending on run_func)
-    if $run_func "cd ~/AegisEdgeAI/hybrid-cloud-poc && bash ${script_path} ${script_args}" 2>&1 | tee "/tmp/remote_$(basename ${script_path}).log"; then
+    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && bash ${script_path} ${script_args}" 2>&1 | tee "/tmp/remote_$(basename ${script_path}).log"; then
         echo ""
         echo -e "${GREEN}✓ ${description} completed successfully${NC}"
         return 0
@@ -328,7 +328,7 @@ main() {
     # Step 2: Start On-Prem Services on 10.1.0.10
     # Temporarily disable exit on error for on-prem (it may have warnings)
     set +e
-    run_on_onprem "cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh" 2>&1 | tee "/tmp/remote_test_onprem.log"
+    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh" 2>&1 | tee "/tmp/remote_test_onprem.log"
     ONPREM_EXIT_CODE=$?
     set -e
     
@@ -441,7 +441,7 @@ cleanup_all() {
     
     # Cleanup on-prem services
     set +e
-    run_on_onprem "cd ~/AegisEdgeAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh --cleanup-only" 2>&1 | tee "/tmp/remote_test_onprem_cleanup.log"
+    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh --cleanup-only" 2>&1 | tee "/tmp/remote_test_onprem_cleanup.log"
     ONPREM_CLEANUP_EXIT_CODE=$?
     set -e
     

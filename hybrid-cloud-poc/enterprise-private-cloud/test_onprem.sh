@@ -350,13 +350,13 @@ if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
     echo "  Generating SPIRE bundle on ${SPIRE_CLIENT_HOST}..."
     if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
         "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-        "cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null" 2>/dev/null; then
+        "cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null" 2>/dev/null; then
         echo -e "${GREEN}  ✓ SPIRE bundle generated on ${SPIRE_CLIENT_HOST}${NC}"
     else
         # Try alternative method: use SPIRE server command directly
         if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
             "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-            "test -S /tmp/spire-server/private/api.sock && ~/AegisEdgeAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null" 2>/dev/null; then
+            "test -S /tmp/spire-server/private/api.sock && ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null" 2>/dev/null; then
             echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
         else
             echo -e "${YELLOW}  ⚠ Could not generate bundle on ${SPIRE_CLIENT_HOST} (SPIRE server may not be ready)${NC}"
@@ -383,7 +383,7 @@ else
     printf '     You can manually copy it later:\n'
     printf '       scp ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem\n'
     printf '     Or extract it on ${SPIRE_CLIENT_HOST} first:\n'
-    printf '       cd ~/AegisEdgeAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py\n'
+    printf '       cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py\n'
     printf '\n'
     read -p "Press Enter to continue (you can add the bundle later), or 'q' to quit: " answer
     if [ "$answer" = "q" ]; then
