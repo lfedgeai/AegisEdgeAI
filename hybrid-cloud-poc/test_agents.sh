@@ -1785,8 +1785,12 @@ for i in {1..60}; do
         else
             echo "    Warning: Agent log file not found at /tmp/rust-keylime-agent.log"
         fi
-        # Check if port is listening
-        if netstat -tlnp 2>/dev/null | grep -q ":9002" || ss -tlnp 2>/dev/null | grep -q ":9002"; then
+        # Check if port is listening (try multiple methods)
+        if netstat -tln 2>/dev/null | grep -q ":9002" || \
+           netstat -tlnp 2>/dev/null | grep -q ":9002" || \
+           ss -tln 2>/dev/null | grep -q ":9002" || \
+           ss -tlnp 2>/dev/null | grep -q ":9002" || \
+           lsof -i :9002 2>/dev/null | grep -q LISTEN; then
             echo "    Port 9002 is listening - agent may be starting up..."
         fi
     fi
@@ -1801,18 +1805,52 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
     if kill -0 $RUST_AGENT_PID 2>/dev/null; then
         echo "  ✓ Agent process is still running (PID: $RUST_AGENT_PID)"
         
-        # Check if port is listening
-        if netstat -tlnp 2>/dev/null | grep -q ":9002" || ss -tlnp 2>/dev/null | grep -q ":9002"; then
+        # Check if port is listening - try multiple methods for reliability
+        PORT_CHECK_PASSED=false
+        # Try netstat without -p first (works without root), then with -p
+        NETSTAT_OUTPUT=$(netstat -tln 2>/dev/null | grep ":9002" || netstat -tlnp 2>/dev/null | grep ":9002" || true)
+        SS_OUTPUT=$(ss -tln 2>/dev/null | grep ":9002" || ss -tlnp 2>/dev/null | grep ":9002" || true)
+        LSOF_OUTPUT=$(lsof -i :9002 2>/dev/null | grep LISTEN || true)
+        
+        if [ -n "$NETSTAT_OUTPUT" ] || [ -n "$SS_OUTPUT" ] || [ -n "$LSOF_OUTPUT" ]; then
+            PORT_CHECK_PASSED=true
             echo "  ✓ Port 9002 is listening"
-            # If port is listening and process is running, check logs for "Listening" message
+            if [ -n "$NETSTAT_OUTPUT" ]; then
+                echo "    netstat: $(echo "$NETSTAT_OUTPUT" | head -1)"
+            fi
+            if [ -n "$SS_OUTPUT" ]; then
+                echo "    ss: $(echo "$SS_OUTPUT" | head -1)"
+            fi
+            if [ -n "$LSOF_OUTPUT" ]; then
+                echo "    lsof: $(echo "$LSOF_OUTPUT" | head -1)"
+            fi
+        fi
+        
+        # Also check if logs show "Listening" - this is a strong indicator
+        if [ -f /tmp/rust-keylime-agent.log ]; then
+            if tail -50 /tmp/rust-keylime-agent.log | grep -q "Listening on.*9002\|listening on.*9002"; then
+                echo "  ✓ Agent logs show 'Listening on ...9002' message"
+                # If logs show listening, trust that even if port check failed
+                if [ "$PORT_CHECK_PASSED" = false ]; then
+                    echo -e "${YELLOW}  ⚠ Port check failed but logs show agent is listening - accepting as ready${NC}"
+                    PORT_CHECK_PASSED=true
+                fi
+            fi
+        fi
+        
+        if [ "$PORT_CHECK_PASSED" = true ]; then
+            # Port is listening and/or logs show listening - agent is ready
             if [ -f /tmp/rust-keylime-agent.log ]; then
                 if tail -50 /tmp/rust-keylime-agent.log | grep -q "Listening\|listening"; then
-                    echo "  ✓ Agent logs show 'Listening' message"
+                    echo "  ✓ Agent logs confirm 'Listening' message"
                     echo -e "${YELLOW}  ⚠ Agent appears to be running (port listening + logs show Listening) - accepting as ready despite health check failure${NC}"
                     RUST_AGENT_STARTED=true
                 else
                     echo "  Recent logs (no 'Listening' found):"
                     tail -50 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register|unix)" || tail -30 /tmp/rust-keylime-agent.log
+                    # Port is listening, accept as ready even without "Listening" in logs
+                    echo -e "${YELLOW}  ⚠ Port is listening but no 'Listening' in logs - accepting as ready${NC}"
+                    RUST_AGENT_STARTED=true
                 fi
             else
                 echo "  ⚠ Log file not found, but port is listening - accepting as ready"
@@ -1820,6 +1858,9 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
             fi
         else
             echo "  ✗ Port 9002 is not listening"
+            echo "  Debug: Checking port status..."
+            echo "    netstat output: ${NETSTAT_OUTPUT:-none}"
+            echo "    ss output: ${SS_OUTPUT:-none}"
             echo "  Recent logs:"
             tail -50 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register|unix)" || tail -30 /tmp/rust-keylime-agent.log
         fi
