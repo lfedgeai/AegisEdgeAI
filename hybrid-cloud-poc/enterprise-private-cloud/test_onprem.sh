@@ -8,6 +8,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONPREM_DIR="$SCRIPT_DIR"
 REPO_ROOT="$(cd "$ONPREM_DIR/.." && pwd)"
 
+# Read host IPs from environment variables (passed by test_integration.sh) BEFORE setting defaults
+# This ensures we use the correct IPs when all hosts are the same
+CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST:-10.1.0.11}"
+AGENTS_HOST="${AGENTS_HOST:-10.1.0.11}"
+ONPREM_HOST="${ONPREM_HOST:-10.1.0.11}"
+
 # Detect current host IP early
 CURRENT_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || echo 'unknown')
 CURRENT_HOSTNAME=$(hostname 2>/dev/null || echo 'unknown')
@@ -391,8 +397,12 @@ else
     echo -e "${GREEN}  ✓ Envoy certificates already exist${NC}"
 fi
 
-# Copy Envoy certificate to client machine (10.1.0.11) so client can verify Envoy
-SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
+# Copy Envoy certificate to client machine (control plane/agents host) so client can verify Envoy
+# Allow override via environment variables (from test_integration.sh)
+CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST:-10.1.0.11}"
+AGENTS_HOST="${AGENTS_HOST:-10.1.0.11}"
+# SPIRE_CLIENT_HOST is where SPIRE server/client runs (typically same as control plane/agents host)
+SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-${CONTROL_PLANE_HOST}}"
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
 
 # Detect if SPIRE_CLIENT_HOST is the same as current host
@@ -438,7 +448,8 @@ fi
 # These are separate from Envoy's certificates for clarity
 
 # Fetch SPIRE bundle from SPIRE_CLIENT_HOST
-SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
+# SPIRE_CLIENT_HOST should already be set above (CONTROL_PLANE_HOST is set at top of script)
+SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-${CONTROL_PLANE_HOST}}"
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
 printf '  Fetching SPIRE CA bundle from %s...\n' "${SPIRE_CLIENT_HOST}"
 
@@ -688,10 +699,16 @@ printf '==========================================\n'
 printf 'Setup complete!\n'
 printf '==========================================\n'
 
-# Final check before auto-start: if we're on 10.1.0.11 and IS_TEST_MACHINE is still false, enable it
+# Final check before auto-start: if we're on a test IP and IS_TEST_MACHINE is still false, enable it
 # This handles cases where detection might have failed earlier
 if [ "$IS_TEST_MACHINE" = "false" ] && [ -n "${CURRENT_IP}" ]; then
-    if [ "$CURRENT_IP" = "10.1.0.11" ] || [ "$CURRENT_IP" = "10.1.0.10" ] || [ "${CURRENT_HOSTNAME}" = "mwserver11" ] || [ "${CURRENT_HOSTNAME}" = "mwserver12" ]; then
+    # Check if current IP matches any of the configured hosts (single machine deployment)
+    if [ "$CURRENT_IP" = "${CONTROL_PLANE_HOST}" ] || \
+       [ "$CURRENT_IP" = "${AGENTS_HOST}" ] || \
+       [ "$CURRENT_IP" = "10.1.0.11" ] || \
+       [ "$CURRENT_IP" = "10.1.0.10" ] || \
+       [ "${CURRENT_HOSTNAME}" = "mwserver11" ] || \
+       [ "${CURRENT_HOSTNAME}" = "mwserver12" ]; then
         IS_TEST_MACHINE=true
         printf 'Enabling auto-start (detected test machine: IP=%s, hostname=%s)\n' "${CURRENT_IP}" "${CURRENT_HOSTNAME}"
     fi

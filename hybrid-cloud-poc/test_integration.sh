@@ -336,8 +336,12 @@ run_script() {
     echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
+    # Prepare environment variables to pass to sub-scripts
+    # Use env command to ensure variables are passed correctly
+    local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
+    
     # Run script (local or via SSH depending on run_func)
-    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && bash ${script_path} ${script_args}" 2>&1 | tee "/tmp/remote_$(basename ${script_path}).log"; then
+    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "/tmp/remote_$(basename ${script_path}).log"; then
         echo ""
         echo -e "${GREEN}✓ ${description} completed successfully${NC}"
         return 0
@@ -427,14 +431,17 @@ main() {
     # Step 2: Start On-Prem Services on on-prem host
     # Temporarily disable exit on error for on-prem (it may have warnings)
     set +e
-    # Pass --no-pause if NO_PAUSE is set
+    # Pass --no-pause if NO_PAUSE is set, and pass host environment variables
     ONPREM_ARGS=""
-    ONPREM_ENV=""
+    ONPREM_ENV_VARS=""
     if [ "$NO_PAUSE" = "true" ]; then
         ONPREM_ARGS="--no-pause"
-        ONPREM_ENV="PAUSE_ENABLED=false "
+        ONPREM_ENV_VARS="PAUSE_ENABLED=false "
     fi
-    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && ${ONPREM_ENV}./test_onprem.sh ${ONPREM_ARGS}" 2>&1 | tee "/tmp/remote_test_onprem.log"
+    # Pass host environment variables so test_onprem.sh knows where control plane/agents are
+    # Use env command to ensure variables are passed correctly
+    ONPREM_ENV_VARS="${ONPREM_ENV_VARS}CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
+    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && env ${ONPREM_ENV_VARS} ./test_onprem.sh ${ONPREM_ARGS}" 2>&1 | tee "/tmp/remote_test_onprem.log"
     ONPREM_EXIT_CODE=$?
     set -e
     
