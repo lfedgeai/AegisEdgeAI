@@ -244,6 +244,101 @@ Two helper scripts are provided to simplify setup:
 
 For detailed prerequisite information, see [PREREQUISITES.md](PREREQUISITES.md).
 
+### Installation Steps
+
+#### Step 1: Check Current Package Status
+
+Before installing, check what's already installed:
+
+```bash
+# Check local system
+./check_packages.sh
+
+# Check remote system (if needed)
+./check_packages.sh 10.1.0.10
+```
+
+#### Step 2: Install Prerequisites
+
+Install all required packages using the automated script:
+
+```bash
+# Install on local system
+./install_prerequisites.sh
+
+# Install on remote system via SSH
+./install_prerequisites.sh 10.1.0.10
+```
+
+**Note:** The installation script requires sudo access and will prompt for your password.
+
+#### Step 3: Post-Installation Configuration
+
+After installation, configure your environment:
+
+```bash
+# Add Rust to PATH (if Rust was just installed)
+echo 'source $HOME/.cargo/env' >> ~/.bashrc
+
+# Add Go to PATH (if Go was just installed/updated)
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+
+# Reload shell configuration
+source ~/.bashrc
+```
+
+**Important:** If you were added to the `tss` group during installation, **log out and back in** for the group changes to take effect. This is required for TPM access.
+
+#### Step 4: Verify Prerequisites
+
+Ensure all prerequisites are installed correctly:
+
+```bash
+# Verify system packages
+dpkg -l | grep -E "(tpm2|swtpm|libtss2|libssl-dev|python3-dev|build-essential|libclang)"
+
+# Verify toolchains
+python3 --version    # Should show 3.10+
+rustc --version      # Should show 1.91+ (if installed)
+go version           # Should show go1.22+ (if installed)
+
+# Verify Python packages
+python3 -m pip list | grep -E "(spiffe|cryptography|grpcio|protobuf)"
+
+# Verify TPM access
+groups | grep tss    # Should show tss group
+```
+
+#### Step 5: Build SPIRE and Keylime Components
+
+After prerequisites are installed, build the required components (if not already built):
+
+```bash
+# Build SPIRE server and agent
+cd spire
+make bin/spire-server bin/spire-agent
+cd ..
+
+# Build rust-keylime agent
+cd rust-keylime
+cargo build --release
+cd ..
+```
+
+**Note:** Building SPIRE and rust-keylime may take several minutes the first time. Subsequent builds will be faster due to caching.
+
+#### Troubleshooting Installation
+
+If you encounter issues during installation:
+
+1. **Check package versions:** Run `./check_packages.sh` to see what's installed
+2. **Verify PATH:** Ensure Rust and Go are in your PATH after installation
+3. **Check TSS group:** Verify you're in the `tss` group: `groups | grep tss`
+4. **Review logs:** Check installation script output for specific errors
+5. **Manual installation:** If automated script fails, install packages manually (see [PREREQUISITES.md](PREREQUISITES.md))
+
+For detailed prerequisite information and troubleshooting, see [PREREQUISITES.md](PREREQUISITES.md).
+
 ### Port Configuration
 
 This section documents all port numbers used by the test scripts. All ports are unique with no conflicts between hosts.
