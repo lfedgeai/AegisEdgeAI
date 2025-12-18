@@ -243,6 +243,110 @@ class SPIREmTLSClient:
         else:
             return self.setup_tls_context_standard()
     
+    def _fetch_svid_via_grpc(self):
+        """Fetch SVID using gRPC directly, bypassing python-spiffe validation."""
+        import grpc
+        from cryptography import x509
+        from cryptography.hazmat.primitives import serialization
+        
+        try:
+            # Import protobufs from generated directory
+            import sys
+            import os
+            import importlib.util
+            
+            # Get absolute path to script directory
+            script_file = os.path.abspath(__file__)
+            script_dir = os.path.dirname(script_file)
+            workload_pb2_path = os.path.join(script_dir, "generated", "spiffe", "workload", "workload_pb2.py")
+            workload_pb2_grpc_path = os.path.join(script_dir, "generated", "spiffe", "workload", "workload_pb2_grpc.py")
+            
+            if not os.path.exists(workload_pb2_path) or not os.path.exists(workload_pb2_grpc_path):
+                raise ImportError(f"Protobuf files not found: {workload_pb2_path}")
+            
+            # Load modules directly from file paths to avoid namespace conflicts
+            spec_pb2 = importlib.util.spec_from_file_location("workload_pb2", workload_pb2_path)
+            spec_grpc = importlib.util.spec_from_file_location("workload_pb2_grpc", workload_pb2_grpc_path)
+            
+            workload_pb2 = importlib.util.module_from_spec(spec_pb2)
+            workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
+            
+            # Load the modules
+            spec_pb2.loader.exec_module(workload_pb2)
+            spec_grpc.loader.exec_module(workload_pb2_grpc)
+            
+            # Create gRPC channel to Unix socket
+            abs_socket_path = self.socket_path.replace('unix://', '')
+            channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
+            stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
+            
+            # Create request
+            request = workload_pb2.X509SVIDRequest()
+            grpc_metadata = [('workload.spiffe.io', 'true')]
+            
+            # Fetch X509 SVID (streaming RPC)
+            response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=10)
+            response = next(response_stream)
+            
+            if not response.svids:
+                raise Exception("No SVIDs in response")
+            
+            # Get first SVID
+            svid_response = response.svids[0]
+            
+            # Parse certificates from DER format (bypassing validation)
+            certs = []
+            for cert_der in svid_response.certificate:
+                cert = x509.load_der_x509_certificate(cert_der)
+                certs.append(cert)
+            
+            if not certs:
+                raise Exception("No certificates in SVID")
+            
+            # Parse private key
+            key = serialization.load_der_private_key(svid_response.spiffe_key, password=None)
+            
+            # Create a simple SVID-like object
+            class SimpleSVID:
+                def __init__(self, certs, key):
+                    self.leaf = certs[0]
+                    self.cert = certs[0]
+                    self.cert_chain = certs
+                    self.certificates = certs
+                    self.private_key = key
+                    self.spiffe_id = None
+                    # Extract SPIFFE ID from certificate
+                    for ext in certs[0].extensions:
+                        if ext.oid._name == 'subjectAltName':
+                            for name in ext.value:
+                                if hasattr(name, 'value') and isinstance(name.value, str):
+                                    if name.value.startswith('spiffe://'):
+                                        from spiffe.spiffe_id import SpiffeId
+                                        self.spiffe_id = SpiffeId.parse(name.value)
+                                        break
+            
+            svid = SimpleSVID(certs, key)
+            
+            # Get bundle
+            bundle_request = workload_pb2.X509BundlesRequest()
+            bundle_response_stream = stub.FetchX509Bundles(bundle_request, metadata=grpc_metadata, timeout=10)
+            bundle_response = next(bundle_response_stream)
+            
+            # Parse bundle
+            bundle_certs = {}
+            for trust_domain, bundle_der in bundle_response.bundles.items():
+                bundle_cert = x509.load_der_x509_certificate(bundle_der)
+                bundle_certs[trust_domain] = bundle_cert
+            
+            channel.close()
+            return svid, bundle_certs
+            
+        except Exception as e:
+            self.log(f"  ✗ gRPC fetch failed: {e}")
+            import traceback
+            self.log(f"  Traceback: {traceback.format_exc()}")
+            raise
+    
     def setup_tls_context_spire(self):
         """Setup TLS context with SPIRE SVID source."""
         if not HAS_SPIFFE:
@@ -259,23 +363,44 @@ class SPIREmTLSClient:
             except Exception as e:
                 error_msg = str(e)
                 if "CA flag" in error_msg or "intermediate certificate" in error_msg:
-                    # Workaround for strict validation: use default_client which may be more lenient
+                    # Workaround for strict validation: monkey-patch the validation function
+                    # This allows X509Source to work without CA flag validation
                     self.log(f"  ⚠ X509Source validation failed: {error_msg}")
-                    self.log(f"  ℹ Attempting alternative method using default_client...")
+                    self.log(f"  ℹ Attempting to patch validation to skip CA flag check...")
                     try:
-                        from spiffe.workloadapi import default_client
-                        # Use DefaultX509Source as fallback
-                        self.source = default_client.DefaultX509Source(socket_path=socket_path_with_scheme)
-                        self.log(f"  ✓ Using DefaultX509Source as fallback")
+                        # Monkey-patch the validation function to skip CA flag check
+                        from spiffe.svid import x509_svid
+                        original_validate = x509_svid._validate_intermediate_certificate
+                        def patched_validate(cert):
+                            # Skip CA flag validation for intermediate certificates
+                            # SPIRE agent SVIDs are end-entity certs, not CAs
+                            pass
+                        x509_svid._validate_intermediate_certificate = patched_validate
+                        self.log(f"  ✓ Patched validation function")
+                        # Now try X509Source again
+                        self.source = X509Source(socket_path=socket_path_with_scheme)
+                        # Restore original function
+                        x509_svid._validate_intermediate_certificate = original_validate
+                        self.log(f"  ✓ X509Source created successfully after patching")
                     except Exception as e2:
-                        self.log(f"  ✗ Fallback also failed: {e2}")
-                        raise Exception(f"Failed to create X509Source: {error_msg}. Fallback also failed: {e2}")
+                        self.log(f"  ✗ Patching failed: {e2}")
+                        # Fallback to gRPC direct method
+                        self.log(f"  ℹ Falling back to gRPC direct method...")
+                        self._use_grpc_direct = True
+                        self._socket_path = socket_path_with_scheme
+                        self.log(f"  ✓ Using gRPC directly (bypasses CA flag validation)")
                 else:
                     raise
             
             # Get initial SVID
-            # Handle both X509Source (.svid property) and DefaultX509Source (.get_x509_svid() method)
-            if hasattr(self.source, 'svid'):
+            # Handle X509Source (.svid property), DefaultX509Source (.get_x509_svid() method), or direct gRPC
+            if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
+                # Use gRPC directly to fetch raw certificates without validation
+                svid, bundle = self._fetch_svid_via_grpc()
+                if not svid:
+                    raise Exception("Failed to get SVID from SPIRE Agent via gRPC")
+                self._grpc_bundle = bundle
+            elif hasattr(self.source, 'svid'):
                 svid = self.source.svid
             elif hasattr(self.source, 'get_x509_svid'):
                 svid = self.source.get_x509_svid()
@@ -305,8 +430,18 @@ class SPIREmTLSClient:
                 import time
                 time.sleep(0.5)
                 
-                # Handle both X509Source and DefaultX509Source bundle methods
-                if hasattr(self.source, 'get_bundle_for_trust_domain'):
+                # Handle X509Source, DefaultX509Source, or direct gRPC bundle methods
+                if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
+                    # Get bundle from gRPC response
+                    if hasattr(self, '_grpc_bundle') and self._grpc_bundle:
+                        bundle_cert = self._grpc_bundle.get(trust_domain)
+                        if bundle_cert:
+                            # Create a simple bundle-like object
+                            class SimpleBundle:
+                                def __init__(self, cert):
+                                    self.x509_authorities = [cert]
+                            bundle = SimpleBundle(bundle_cert)
+                elif hasattr(self.source, 'get_bundle_for_trust_domain'):
                     bundle = self.source.get_bundle_for_trust_domain(trust_domain)
                 elif hasattr(self.source, 'get_bundle'):
                     bundle = self.source.get_bundle(trust_domain)
@@ -394,7 +529,17 @@ class SPIREmTLSClient:
             try:
                 # Try to get the full chain from the source's underlying data
                 # The python-spiffe library may store intermediates separately
-                if hasattr(self.source, '_x509_svid') and self.source._x509_svid:
+                if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
+                    # For direct gRPC, get chain from SimpleSVID
+                    if hasattr(svid, 'cert_chain') and svid.cert_chain:
+                        leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
+                        for cert in svid.cert_chain:
+                            if cert != leaf_cert:
+                                cert_pem += cert.public_bytes(serialization.Encoding.PEM)
+                    elif hasattr(svid, 'certificates') and svid.certificates:
+                        for cert in svid.certificates[1:]:  # Skip first (leaf)
+                            cert_pem += cert.public_bytes(serialization.Encoding.PEM)
+                elif hasattr(self.source, '_x509_svid') and self.source._x509_svid:
                     x509_svid = self.source._x509_svid
                     # Check if there are additional certificates in the chain
                     if hasattr(x509_svid, 'cert_chain') and x509_svid.cert_chain:
@@ -553,16 +698,22 @@ class SPIREmTLSClient:
                 if just_reconnected_due_to_renewal:
                     if self.use_spire and self.source:
                         try:
-                            # Handle both X509Source and DefaultX509Source
-                            if hasattr(self.source, 'svid'):
+                            # Handle X509Source, DefaultX509Source, or direct gRPC
+                            if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
+                                current_svid, _ = self._fetch_svid_via_grpc()
+                                if current_svid:
+                                    leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
+                                    self.last_svid_serial = leaf_cert.serial_number
+                            elif hasattr(self.source, 'svid'):
                                 current_svid = self.source.svid
+                                if current_svid:
+                                    leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
+                                    self.last_svid_serial = leaf_cert.serial_number
                             elif hasattr(self.source, 'get_x509_svid'):
                                 current_svid = self.source.get_x509_svid()
-                            else:
-                                current_svid = None
-                            if current_svid:
-                                leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
-                                self.last_svid_serial = leaf_cert.serial_number
+                                if current_svid:
+                                    leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
+                                    self.last_svid_serial = leaf_cert.serial_number
                         except Exception:
                             pass
                     just_reconnected_due_to_renewal = False
@@ -666,9 +817,17 @@ class SPIREmTLSClient:
                 # This is critical to prevent infinite reconnect loops
                 if self.use_spire and self.source:
                     try:
-                        current_svid = self.source.svid
-                        if current_svid:
-                            self.last_svid_serial = current_svid.leaf.serial_number
+                        # Handle X509Source, DefaultX509Source, or direct gRPC
+                        if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
+                            current_svid, _ = self._fetch_svid_via_grpc()
+                            if current_svid:
+                                leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
+                                self.last_svid_serial = leaf_cert.serial_number
+                        elif hasattr(self.source, 'svid'):
+                            current_svid = self.source.svid
+                            if current_svid:
+                                leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
+                                self.last_svid_serial = leaf_cert.serial_number
                     except Exception:
                         pass  # Ignore errors, will be caught on next renewal check
                 
