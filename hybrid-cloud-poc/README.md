@@ -110,6 +110,8 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 
 ### Prerequisites
 
+#### System Requirements
+
 - Two machines:
   - **Physical with static IP address (e.g. 10.1.0.11)**: Sovereign Cloud/Edge Cloud (SPIRE Server, SPIRE Agent, Spire TPM Plugin, Keylime Verifier, Keylime Agent)
   - **Physical or Virtual with static IP address (e.g. 10.1.0.10)**: Customer On-Prem Private Cloud (Envoy Gateway, Mobile Location Service, mTLS Server)
@@ -117,11 +119,130 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 - Mobile location sensor (USB tethered smartphone) or GNSS module (optional, for geofencing demo)
 - Root/sudo access on both machines
 - CAMARA API credentials for mobile location service
-- Add user to TSS group for TPM access
 - Network connectivity between machines
-- Python 3.10+ installed on both machines
-- Rust toolchain installed on both machines
 - Git installed on both machines
+
+#### Operating System
+
+- **Ubuntu 22.04 LTS** (tested) or compatible Debian-based distribution
+- Other Linux distributions may work but are not tested
+
+#### Required Linux Packages
+
+**Essential System Packages:**
+```bash
+curl wget git vim net-tools iproute2 iputils-ping dnsutils ca-certificates
+```
+
+**TPM2 Tools and Libraries:**
+```bash
+tpm2-tools tpm2-abrmd libtss2-dev libtss2-esys-3.0.2-0 libtss2-sys1 \
+libtss2-tcti-device0 libtss2-tcti-swtpm0
+```
+
+**Software TPM (for testing without hardware TPM):**
+```bash
+swtpm swtpm-tools
+```
+
+**Build Tools:**
+```bash
+build-essential gcc g++ make cmake pkg-config libclang-dev libclang-14-dev
+```
+
+**OpenSSL Development Libraries:**
+```bash
+libssl-dev
+```
+
+**Python Development Packages:**
+```bash
+python3 python3-dev python3-pip python3-venv python3-distutils
+```
+
+#### Required Programming Language Toolchains
+
+**Python:**
+- Python 3.10+ (tested with Python 3.10.12)
+- Required Python packages (installed via pip):
+  - `spiffe>=0.2.0` - SPIFFE Workload API client library
+  - `cryptography>=41.0.0` - Cryptographic primitives
+  - `grpcio>=1.60.0` - gRPC library
+  - `grpcio-tools>=1.60.0` - gRPC tools
+  - `protobuf>=4.25.0` - Protocol buffers
+  - `requests>=2.31.0` - HTTP library
+
+**Rust:**
+- Rust toolchain (tested with rustc 1.91.1)
+- Install via [rustup](https://rustup.rs/):
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+
+**Go:**
+- Go 1.20+ (tested with Go 1.22.0)
+- Download from [golang.org](https://golang.org/dl/)
+- Extract to `/usr/local/go` and add `/usr/local/go/bin` to PATH
+
+#### System Configuration
+
+**TPM Access:**
+- User must be in the `tss` group for TPM access:
+  ```bash
+  sudo groupadd -r tss  # If group doesn't exist
+  sudo usermod -a -G tss $USER
+  ```
+- Log out and back in for group changes to take effect
+
+#### Installation Scripts
+
+Two helper scripts are provided to simplify setup:
+
+1. **`check_packages.sh`** - Check installed packages and versions:
+   ```bash
+   ./check_packages.sh              # Check local system
+   ./check_packages.sh 10.1.0.10    # Check remote system via SSH
+   ```
+
+2. **`install_prerequisites.sh`** - Install all required packages:
+   ```bash
+   ./install_prerequisites.sh              # Install on local system
+   ./install_prerequisites.sh 10.1.0.10     # Install on remote system via SSH
+   ```
+
+**Note:** The installation script will:
+- Update package lists
+- Install all required Linux packages
+- Install/update Rust toolchain (if not present)
+- Install/update Go toolchain (if not present or version < 1.20)
+- Install required Python packages
+- Set up TSS group and add user to it
+
+**Important:** After running the installation script, you may need to:
+
+1. **For Rust:** Run `source $HOME/.cargo/env` or add to `~/.bashrc`:
+   ```bash
+   echo 'source $HOME/.cargo/env' >> ~/.bashrc
+   ```
+
+2. **For Go:** Ensure `/usr/local/go/bin` is in your PATH. Add to `~/.bashrc`:
+   ```bash
+   echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+   ```
+
+3. **For TSS group:** Log out and back in if you were added to the `tss` group
+
+4. **Reload shell configuration:**
+   ```bash
+   source ~/.bashrc
+   ```
+
+5. **Verify installation:**
+   ```bash
+   ./check_packages.sh
+   ```
+
+For detailed prerequisite information, see [PREREQUISITES.md](PREREQUISITES.md).
 
 ### Port Configuration
 
