@@ -1671,11 +1671,21 @@ elif [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; th
     fi
     # Use env to ensure clean environment with only the variables we need
     # Include TCTI for hardware TPM if set
-    if [ -n "${TCTI:-}" ]; then
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
-    else
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+    # Include IP configuration environment variables
+    ENV_VARS="PATH=$PATH HOME=$HOME USER=$USER UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR=$KEYLIME_AGENT_DIR KEYLIME_AGENT_KEYLIME_DIR=$KEYLIME_AGENT_DIR KEYLIME_AGENT_CONFIG=$TEMP_CONFIG KEYLIME_AGENT_RUN_AS=$KEYLIME_AGENT_RUN_AS"
+    if [ -n "${KEYLIME_AGENT_IP:-}" ]; then
+        ENV_VARS="$ENV_VARS KEYLIME_AGENT_IP=$KEYLIME_AGENT_IP"
     fi
+    if [ -n "${KEYLIME_AGENT_CONTACT_IP:-}" ]; then
+        ENV_VARS="$ENV_VARS KEYLIME_AGENT_CONTACT_IP=$KEYLIME_AGENT_CONTACT_IP"
+    fi
+    if [ -n "${KEYLIME_AGENT_REGISTRAR_IP:-}" ]; then
+        ENV_VARS="$ENV_VARS KEYLIME_AGENT_REGISTRAR_IP=$KEYLIME_AGENT_REGISTRAR_IP"
+    fi
+    if [ -n "${TCTI:-}" ]; then
+        ENV_VARS="$ENV_VARS TCTI=$TCTI"
+    fi
+    sudo env -i $ENV_VARS "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     RUST_AGENT_PID=$!
 else
     echo "    Starting without sudo..."
