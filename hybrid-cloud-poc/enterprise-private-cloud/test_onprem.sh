@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test script for enterprise on-prem (10.1.0.10)
+# Test script for enterprise on-prem
 # Sets up: Envoy proxy, mTLS server, mobile location service, WASM filter
 
 set -e
@@ -7,6 +7,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONPREM_DIR="$SCRIPT_DIR"
 REPO_ROOT="$(cd "$ONPREM_DIR/.." && pwd)"
+
+# Detect current host IP early
+CURRENT_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || echo 'unknown')
+CURRENT_HOSTNAME=$(hostname 2>/dev/null || echo 'unknown')
 
 # Verify paths
 if [ ! -d "$REPO_ROOT/mobile-sensor-microservice" ]; then
@@ -18,7 +22,7 @@ if [ ! -d "$REPO_ROOT/mobile-sensor-microservice" ]; then
 fi
 
 printf '==========================================\n'
-printf 'Enterprise On-Prem Setup (10.1.0.10)\n'
+printf 'Enterprise On-Prem Setup (%s)\n' "${CURRENT_IP}"
 printf '==========================================\n'
 
 # Disable colors entirely to prevent terminal corruption
@@ -35,12 +39,44 @@ if [ "$EUID" -ne 0 ]; then
     echo -e "${YELLOW}Warning: Not running as root. Some operations may require sudo.${NC}"
 fi
 
-# Check if running on test machine (10.1.0.10)
-CURRENT_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1)
+# Check if running on test machine (auto-detect based on hostname or IP)
+# IS_TEST_MACHINE enables cleanup and auto-start
 IS_TEST_MACHINE=false
-if [ "$CURRENT_IP" = "10.1.0.10" ] || [ "$(hostname)" = "mwserver12" ]; then
+
+# Enable test machine mode if:
+# 1. Hostname matches known test machines
+# 2. IP matches known test IPs
+# 3. IP is in test network range (10.1.0.x)
+# 4. FORCE_TEST_MACHINE environment variable is set
+if [ -n "${FORCE_TEST_MACHINE:-}" ]; then
     IS_TEST_MACHINE=true
-    echo -e "${GREEN}Running on test machine (10.1.0.10) - cleanup and auto-start enabled${NC}"
+    echo -e "${GREEN}Running on test machine (forced via FORCE_TEST_MACHINE) - cleanup and auto-start enabled${NC}"
+elif [ "${CURRENT_HOSTNAME}" = "mwserver12" ] || [ "${CURRENT_HOSTNAME}" = "mwserver11" ]; then
+    IS_TEST_MACHINE=true
+    echo -e "${GREEN}Running on test machine (hostname: ${CURRENT_HOSTNAME}, IP: ${CURRENT_IP}) - cleanup and auto-start enabled${NC}"
+elif [ -n "${CURRENT_IP}" ] && [ "$CURRENT_IP" != "unknown" ]; then
+    # Check for specific test IPs
+    if [ "$CURRENT_IP" = "10.1.0.10" ] || [ "$CURRENT_IP" = "10.1.0.11" ]; then
+        IS_TEST_MACHINE=true
+        echo -e "${GREEN}Running on test machine (IP: ${CURRENT_IP}, hostname: ${CURRENT_HOSTNAME}) - cleanup and auto-start enabled${NC}"
+    # Check for test network range
+    elif echo "$CURRENT_IP" | grep -qE '^10\.1\.0\.'; then
+        IS_TEST_MACHINE=true
+        echo -e "${GREEN}Running on test network (IP: ${CURRENT_IP}, hostname: ${CURRENT_HOSTNAME}) - cleanup and auto-start enabled${NC}"
+    fi
+fi
+
+# Final check: if still false but we're clearly on a test setup, enable it
+# This catches edge cases where IP/hostname detection might have issues
+if [ "$IS_TEST_MACHINE" = "false" ]; then
+    # Check if we can determine we're on a test machine by checking common indicators
+    if [ -d "/home/mw/AegisSovereignAI" ] && [ -n "${CURRENT_IP}" ] && [ "$CURRENT_IP" != "unknown" ]; then
+        # If we're in the test directory structure and have a valid IP, likely a test machine
+        if echo "$CURRENT_IP" | grep -qE '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)'; then
+            IS_TEST_MACHINE=true
+            echo -e "${GREEN}Running on test machine (detected via environment, IP: ${CURRENT_IP}) - cleanup and auto-start enabled${NC}"
+        fi
+    fi
 fi
 
 # Cleanup function - stops all services and frees up ports (only for test machine)
@@ -59,14 +95,24 @@ cleanup_existing_services() {
     printf '  Stopping mTLS server...\n'
     pkill -f "mtls-server-app.py" >/dev/null 2>&1
     
-    # Stop mobile location service
+    # Stop mobile location service (only if we started it)
+    # Note: Control plane uses /tmp/mobile-sensor-microservice.log
+    # On-prem uses /tmp/mobile-sensor.log - we only kill processes using our log file
     printf '  Stopping mobile location service...\n'
-    pkill -f "service.py.*5000" >/dev/null 2>&1
-    pkill -f "python3.*service.py" >/dev/null 2>&1
+    # Only kill processes writing to our specific log file (on-prem log)
+    # This avoids killing the service if it was started by control plane (which uses a different log)
+    if [ -f /tmp/mobile-sensor.log ]; then
+        LOG_PIDS=$(lsof -t /tmp/mobile-sensor.log 2>/dev/null || echo "")
+        if [ -n "$LOG_PIDS" ]; then
+            echo "$LOG_PIDS" | xargs kill >/dev/null 2>&1 || true
+        fi
+    fi
+    # Also try to kill by pattern matching our specific command (on-prem style)
+    pkill -f "service.py.*--port.*9050.*--host.*0.0.0.0.*mobile-sensor.log" >/dev/null 2>&1 || true
     
     # Free up ports using fuser (if available)
     printf '  Freeing up ports...\n'
-    for port in 5000 9443 8080; do
+    for port in 9050 9443 8080; do
         if command -v fuser &> /dev/null; then
             sudo fuser -k ${port}/tcp >/dev/null 2>&1
         elif command -v lsof &> /dev/null; then
@@ -101,6 +147,8 @@ cleanup_existing_services() {
     sudo rm -f /opt/envoy/plugins/sensor_verification_wasm.wasm.old >/dev/null 2>&1
     # Remove old certificate backups if any
     sudo rm -f /opt/envoy/certs/*.pem.old /opt/envoy/certs/*.bak >/dev/null 2>&1
+    # Remove old mTLS server certificates to ensure fresh generation on next start
+    rm -f ~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-key.pem >/dev/null 2>&1
     # Remove old environment files
     sudo rm -f /etc/mobile-sensor-service.env.old >/dev/null 2>&1
     # Recreate log directory and file
@@ -119,21 +167,34 @@ pause_at_phase() {
     local phase_name="$1"
     local description="$2"
     
+    # Check if pauses are disabled - use explicit comparison
+    # PAUSE_ENABLED can be: "false", "0", "no", or unset/empty (which means enabled for interactive)
+    local pause_enabled_val="${PAUSE_ENABLED:-}"
+    
+    # If explicitly set to false/0/no, skip pause
+    if [ "$pause_enabled_val" = "false" ] || [ "$pause_enabled_val" = "0" ] || [ "$pause_enabled_val" = "no" ]; then
+        # Pauses disabled, skip silently
+        return 0
+    fi
+    
     # Only pause if:
     # 1. Running in interactive terminal (tty check)
-    # 2. PAUSE_ENABLED is true (default: true for interactive, false for non-interactive)
-    if [ -t 0 ] && [ "${PAUSE_ENABLED:-true}" = "true" ]; then
-        echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "⏸  PAUSE: ${phase_name}"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        if [ -n "$description" ]; then
-            echo "${description}"
+    # 2. PAUSE_ENABLED is not explicitly set to false
+    if [ -t 0 ]; then
+        # If PAUSE_ENABLED is unset or true, pause
+        if [ -z "$pause_enabled_val" ] || [ "$pause_enabled_val" = "true" ] || [ "$pause_enabled_val" = "1" ] || [ "$pause_enabled_val" = "yes" ]; then
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "⏸  PAUSE: ${phase_name}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            if [ -n "$description" ]; then
+                echo "${description}"
+                echo ""
+            fi
+            echo "Press Enter to continue..."
+            read -r
             echo ""
         fi
-        echo "Press Enter to continue..."
-        read -r
-        echo ""
     fi
 }
 
@@ -151,7 +212,7 @@ Options:
 This script sets up the enterprise on-prem environment:
   - Envoy proxy (port 8080)
   - mTLS server (port 9443)
-  - Mobile location service (port 5000)
+  - Mobile location service (port 9050)
   - WASM filter for sensor verification
 
 Examples:
@@ -161,6 +222,16 @@ Examples:
   $0 --help           # Show this help message
 EOF
 }
+
+# Initialize PAUSE_ENABLED from environment if set, otherwise default based on terminal
+if [ -z "${PAUSE_ENABLED:-}" ]; then
+    # Default: true for interactive terminals, false for non-interactive
+    if [ -t 0 ]; then
+        PAUSE_ENABLED=true
+    else
+        PAUSE_ENABLED=false
+    fi
+fi
 
 # Parse command line arguments
 RUN_CLEANUP_ONLY=false
@@ -172,10 +243,12 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-pause)
             export PAUSE_ENABLED=false
+            PAUSE_ENABLED=false
             shift
             ;;
         --pause)
             export PAUSE_ENABLED=true
+            PAUSE_ENABLED=true
             shift
             ;;
         -h|--help)
@@ -302,7 +375,7 @@ if [ ! -f /opt/envoy/certs/envoy-cert.pem ] || [ ! -f /opt/envoy/certs/envoy-key
         -keyout /opt/envoy/certs/envoy-key.pem \
         -out /opt/envoy/certs/envoy-cert.pem \
         -days 365 -nodes \
-        -subj "/CN=envoy-proxy.10.1.0.10/O=Enterprise On-Prem/C=US" 2>/dev/null
+        -subj "/CN=envoy-proxy.${CURRENT_IP}/O=Enterprise On-Prem/C=US" 2>/dev/null
     
     if [ -f /opt/envoy/certs/envoy-cert.pem ] && [ -f /opt/envoy/certs/envoy-key.pem ]; then
         sudo chmod 644 /opt/envoy/certs/envoy-cert.pem
@@ -321,8 +394,35 @@ fi
 # Copy Envoy certificate to client machine (10.1.0.11) so client can verify Envoy
 SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
-printf '  Copying Envoy certificate to client (${SPIRE_CLIENT_HOST}) for verification...\n'
-if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+
+# Detect if SPIRE_CLIENT_HOST is the same as current host
+CURRENT_HOST_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' || ip addr show | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' || echo '')
+IS_SAME_HOST=false
+if echo "$CURRENT_HOST_IPS" | grep -q "^${SPIRE_CLIENT_HOST}$"; then
+    IS_SAME_HOST=true
+else
+    # Try hostname comparison
+    CURRENT_HOSTNAME=$(hostname 2>/dev/null || echo '')
+    if [ -n "${CURRENT_HOSTNAME}" ]; then
+        TARGET_HOSTNAME=$(getent hosts ${SPIRE_CLIENT_HOST} 2>/dev/null | awk '{print $2}' | head -1 || echo '')
+        if [ "${CURRENT_HOSTNAME}" = "${TARGET_HOSTNAME}" ] && [ -n "${TARGET_HOSTNAME}" ]; then
+            IS_SAME_HOST=true
+        fi
+    fi
+fi
+
+printf '  Copying Envoy certificate to client (%s) for verification...\n' "${SPIRE_CLIENT_HOST}"
+if [ "$IS_SAME_HOST" = "true" ]; then
+    # Same host - copy locally
+    if cp /opt/envoy/certs/envoy-cert.pem ~/.mtls-demo/envoy-cert.pem 2>/dev/null; then
+        mkdir -p ~/.mtls-demo 2>/dev/null || true
+        cp /opt/envoy/certs/envoy-cert.pem ~/.mtls-demo/envoy-cert.pem 2>/dev/null || true
+        echo -e "${GREEN}  ✓ Envoy certificate copied locally to ~/.mtls-demo/envoy-cert.pem${NC}"
+        printf '     Client should use this cert via CA_CERT_PATH for Envoy verification\n'
+    else
+        echo -e "${YELLOW}  ⚠ Could not copy Envoy certificate locally${NC}"
+    fi
+elif scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
     /opt/envoy/certs/envoy-cert.pem \
     "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem" 2>/dev/null; then
     echo -e "${GREEN}  ✓ Envoy certificate copied to ${SPIRE_CLIENT_HOST}:~/.mtls-demo/envoy-cert.pem${NC}"
@@ -337,35 +437,85 @@ fi
 # Note: Backend mTLS server will use its own certificates from ~/.mtls-demo/
 # These are separate from Envoy's certificates for clarity
 
-# Fetch SPIRE bundle from 10.1.0.11
-printf '  Fetching SPIRE CA bundle from 10.1.0.11...\n'
+# Fetch SPIRE bundle from SPIRE_CLIENT_HOST
 SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-10.1.0.11}"
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
+printf '  Fetching SPIRE CA bundle from %s...\n' "${SPIRE_CLIENT_HOST}"
 
-# First, check if bundle exists on 10.1.0.11, if not, generate it
-if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
-    "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-    "test -f /tmp/spire-bundle.pem" 2>/dev/null; then
-    # Bundle doesn't exist, try to generate it
-    echo "  Generating SPIRE bundle on ${SPIRE_CLIENT_HOST}..."
-    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
-        "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-        "cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null" 2>/dev/null; then
-        echo -e "${GREEN}  ✓ SPIRE bundle generated on ${SPIRE_CLIENT_HOST}${NC}"
-    else
-        # Try alternative method: use SPIRE server command directly
-        if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
-            "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-            "test -S /tmp/spire-server/private/api.sock && ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null" 2>/dev/null; then
-            echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
-        else
-            echo -e "${YELLOW}  ⚠ Could not generate bundle on ${SPIRE_CLIENT_HOST} (SPIRE server may not be ready)${NC}"
+# Re-check if same host (in case SPIRE_CLIENT_HOST was changed)
+IS_SAME_HOST=false
+if echo "$CURRENT_HOST_IPS" | grep -q "^${SPIRE_CLIENT_HOST}$"; then
+    IS_SAME_HOST=true
+else
+    CURRENT_HOSTNAME=$(hostname 2>/dev/null || echo '')
+    if [ -n "${CURRENT_HOSTNAME}" ]; then
+        TARGET_HOSTNAME=$(getent hosts ${SPIRE_CLIENT_HOST} 2>/dev/null | awk '{print $2}' | head -1 || echo '')
+        if [ "${CURRENT_HOSTNAME}" = "${TARGET_HOSTNAME}" ] && [ -n "${TARGET_HOSTNAME}" ]; then
+            IS_SAME_HOST=true
         fi
     fi
 fi
 
-# Try to fetch from 10.1.0.11
-if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+# First, check if bundle exists, if not, generate it
+if [ "$IS_SAME_HOST" = "true" ]; then
+    # Same host - check and generate locally
+    if [ ! -f /tmp/spire-bundle.pem ]; then
+        echo "  Generating SPIRE bundle locally..."
+        if cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null; then
+            echo -e "${GREEN}  ✓ SPIRE bundle generated locally${NC}"
+        elif [ -S /tmp/spire-server/private/api.sock ]; then
+            # Try alternative method: use SPIRE server command directly
+            if ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null; then
+                echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
+            else
+                echo -e "${YELLOW}  ⚠ Could not generate bundle locally (SPIRE server may not be ready)${NC}"
+            fi
+        else
+            echo -e "${YELLOW}  ⚠ Could not generate bundle locally (SPIRE server may not be ready)${NC}"
+        fi
+    fi
+else
+    # Different host - use SSH
+    if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+        "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
+        "test -f /tmp/spire-bundle.pem" 2>/dev/null; then
+        # Bundle doesn't exist, try to generate it
+        echo "  Generating SPIRE bundle on ${SPIRE_CLIENT_HOST}..."
+        if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+            "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
+            "cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null" 2>/dev/null; then
+            echo -e "${GREEN}  ✓ SPIRE bundle generated on ${SPIRE_CLIENT_HOST}${NC}"
+        else
+            # Try alternative method: use SPIRE server command directly
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+                "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
+                "test -S /tmp/spire-server/private/api.sock && ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null" 2>/dev/null; then
+                echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
+            else
+                echo -e "${YELLOW}  ⚠ Could not generate bundle on ${SPIRE_CLIENT_HOST} (SPIRE server may not be ready)${NC}"
+            fi
+        fi
+    fi
+fi
+
+# Try to fetch the bundle
+if [ "$IS_SAME_HOST" = "true" ]; then
+    # Same host - copy locally
+    if [ -f /tmp/spire-bundle.pem ]; then
+        sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem
+        sudo chmod 644 /opt/envoy/certs/spire-bundle.pem
+        echo -e "${GREEN}  ✓ SPIRE bundle copied locally to /opt/envoy/certs/${NC}"
+    else
+        echo -e "${YELLOW}  ⚠ SPIRE bundle not found locally at /tmp/spire-bundle.pem${NC}"
+        printf '     You can generate it:\n'
+        printf '       cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py\n'
+        printf '\n'
+        read -p "Press Enter to continue (you can add the bundle later), or 'q' to quit: " answer
+        if [ "$answer" = "q" ]; then
+            exit 1
+        fi
+    fi
+elif scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
     "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem" \
     /tmp/spire-bundle.pem 2>/dev/null; then
     echo -e "${GREEN}  ✓ SPIRE bundle fetched from ${SPIRE_CLIENT_HOST}${NC}"
@@ -375,7 +525,7 @@ if scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
 elif [ -f /tmp/spire-bundle.pem ]; then
     # If scp failed but file exists locally, use it
     echo -e "${YELLOW}  ⚠ Could not fetch from ${SPIRE_CLIENT_HOST}, using local /tmp/spire-bundle.pem${NC}"
-    echo -e "${GREEN}  ✓ SPIRE bundle copied from local file -- spire server is up in ${SPIRE_CLIENT_HOST}${NC}"
+    echo -e "${GREEN}  ✓ SPIRE bundle copied from local file${NC}"
     sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem
     sudo chmod 644 /opt/envoy/certs/spire-bundle.pem
 else
@@ -406,12 +556,20 @@ fi
 
 # Create combined CA bundle for backend server (SPIRE + Envoy certs)
 # Backend server needs to trust both SPIRE clients and Envoy proxy
+# Note: mTLS server will overwrite this with its own cert, so we'll change ownership
 printf '  Creating combined CA bundle for backend server...\n'
 if [ -f /opt/envoy/certs/spire-bundle.pem ] && [ -f /opt/envoy/certs/envoy-cert.pem ]; then
+    CURRENT_USER="${SUDO_USER:-$USER}"
+    if [ -z "$CURRENT_USER" ]; then
+        CURRENT_USER=$(whoami)
+    fi
     sudo sh -c "cat /opt/envoy/certs/spire-bundle.pem /opt/envoy/certs/envoy-cert.pem > /opt/envoy/certs/combined-ca-bundle.pem"
+    # Change ownership to current user so mTLS server can write to it
+    sudo chown "${CURRENT_USER}:${CURRENT_USER}" /opt/envoy/certs/combined-ca-bundle.pem
     sudo chmod 644 /opt/envoy/certs/combined-ca-bundle.pem
     echo -e "${GREEN}  ✓ Combined CA bundle created: /opt/envoy/certs/combined-ca-bundle.pem${NC}"
     printf '     Contains: SPIRE CA bundle + Envoy certificate\n'
+    printf '     Note: mTLS server will overwrite this with its own certificate\n'
 else
     echo -e "${YELLOW}  ⚠ Could not create combined CA bundle (missing spire-bundle.pem or envoy-cert.pem)${NC}"
     printf '     Backend server will need to trust Envoy certificate separately\n'
@@ -465,7 +623,7 @@ echo -e "${GREEN}  ✓ Mobile location service dependencies installed${NC}"
 printf '  To start manually:\n'
 printf '    cd $REPO_ROOT/mobile-sensor-microservice\n'
 printf '    source .venv/bin/activate\n'
-printf '    python3 service.py --port 5000 --host 0.0.0.0\n'
+    printf '    python3 service.py --port 9050 --host 0.0.0.0\n'
 
 # 5. Setup mTLS server dependencies
 echo -e "\n${GREEN}[5/7] Setting up mTLS server dependencies...${NC}"
@@ -530,7 +688,16 @@ printf '==========================================\n'
 printf 'Setup complete!\n'
 printf '==========================================\n'
 
-# Only auto-start services on test machine (10.1.0.10)
+# Final check before auto-start: if we're on 10.1.0.11 and IS_TEST_MACHINE is still false, enable it
+# This handles cases where detection might have failed earlier
+if [ "$IS_TEST_MACHINE" = "false" ] && [ -n "${CURRENT_IP}" ]; then
+    if [ "$CURRENT_IP" = "10.1.0.11" ] || [ "$CURRENT_IP" = "10.1.0.10" ] || [ "${CURRENT_HOSTNAME}" = "mwserver11" ] || [ "${CURRENT_HOSTNAME}" = "mwserver12" ]; then
+        IS_TEST_MACHINE=true
+        printf 'Enabling auto-start (detected test machine: IP=%s, hostname=%s)\n' "${CURRENT_IP}" "${CURRENT_HOSTNAME}"
+    fi
+fi
+
+# Only auto-start services on test machine (auto-detected)
 if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Start all services in the background
     # Ensure clean output
@@ -602,10 +769,31 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     fi
 
     # Start Mobile Location Service
-    printf '  Starting Mobile Location Service (port 5000)...\n'
-    cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
-    if [ -d ".venv" ] && [ -f "service.py" ]; then
-        source .venv/bin/activate
+    printf '  Starting Mobile Location Service (port 9050)...\n'
+    
+    # Check if mobile sensor service is already running (e.g., started by test_control_plane.sh)
+    MOBILE_SERVICE_RUNNING=false
+    if command -v ss >/dev/null 2>&1; then
+        if ss -tln 2>/dev/null | grep -q ':9050 '; then
+            MOBILE_SERVICE_RUNNING=true
+        fi
+    elif command -v netstat >/dev/null 2>&1; then
+        if netstat -tln 2>/dev/null | grep -q ':9050 '; then
+            MOBILE_SERVICE_RUNNING=true
+        fi
+    elif command -v lsof >/dev/null 2>&1; then
+        if lsof -ti :9050 >/dev/null 2>&1; then
+            MOBILE_SERVICE_RUNNING=true
+        fi
+    fi
+    
+    if [ "$MOBILE_SERVICE_RUNNING" = "true" ]; then
+        printf '    [INFO] Mobile Location Service already running on port 9050 (likely started by control plane)\n'
+        printf '    [INFO] Skipping startup - using existing service\n'
+    else
+        cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
+        if [ -d ".venv" ] && [ -f "service.py" ]; then
+            source .venv/bin/activate
         
         # Clean up existing database - service will create fresh one on startup with IMEI/IMSI values
         MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB:-sensor_mapping.db}"
@@ -640,21 +828,26 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
         # DEMO_MODE defaults to true when CAMARA_BYPASS is enabled (suppresses bypass log messages)
         export DEMO_MODE="${DEMO_MODE:-true}"
+        # ALWAYS use port 9050 (required for Keylime Verifier and WASM plugin)
+        # Override any environment variables to ensure port 9050 is always used
+        unset MOBILE_SENSOR_PORT 2>/dev/null || true
+        MOBILE_SERVICE_PORT=9050  # Hardcode to ensure it's always 9050, no matter what
         if [ -n "$CAMARA_BASIC_AUTH" ] && [ "$CAMARA_BYPASS" != "true" ]; then
             export CAMARA_BASIC_AUTH
-            python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
+            python3 service.py --port 9050 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
         else
-            python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
+            python3 service.py --port 9050 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
         fi
-        MOBILE_PID=$!
-        sleep 2
-        if ps -p $MOBILE_PID > /dev/null 2>&1; then
-            printf '    [OK] Mobile Location Service started (PID: %s)\n' "$MOBILE_PID"
+            MOBILE_PID=$!
+            sleep 2
+            if ps -p $MOBILE_PID > /dev/null 2>&1; then
+                printf '    [OK] Mobile Location Service started (PID: %s)\n' "$MOBILE_PID"
+            else
+                printf '    [WARN] Mobile Location Service may have failed - check /tmp/mobile-sensor.log\n'
+            fi
         else
-            printf '    [WARN] Mobile Location Service may have failed - check /tmp/mobile-sensor.log\n'
+            printf '    [WARN] Virtual environment or service.py not found - skipping mobile service startup\n'
         fi
-    else
-        printf '    [WARN] Virtual environment or service.py not found - skipping mobile service startup\n'
     fi
 
     # Start mTLS Server
@@ -665,12 +858,26 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         export SERVER_PORT="9443"
         # Always use combined CA bundle if it exists (created earlier in the script)
         # This allows backend to trust both SPIRE clients and Envoy proxy
+        # Note: Server will overwrite this with its own cert, so we need user ownership
         if [ -f "/opt/envoy/certs/combined-ca-bundle.pem" ]; then
+            # Change ownership to current user so server can write to it
+            CURRENT_USER="${SUDO_USER:-$USER}"
+            if [ -z "$CURRENT_USER" ]; then
+                CURRENT_USER=$(whoami)
+            fi
+            sudo chown "${CURRENT_USER}:${CURRENT_USER}" /opt/envoy/certs/combined-ca-bundle.pem 2>/dev/null || true
+            sudo chmod 644 /opt/envoy/certs/combined-ca-bundle.pem 2>/dev/null || true
             export CA_CERT_PATH="/opt/envoy/certs/combined-ca-bundle.pem"
             printf '    Using combined CA bundle: /opt/envoy/certs/combined-ca-bundle.pem\n'
         elif [ -f "/opt/envoy/certs/spire-bundle.pem" ] && [ -f "/opt/envoy/certs/envoy-cert.pem" ]; then
             # Create combined bundle on-the-fly if it doesn't exist
+            CURRENT_USER="${SUDO_USER:-$USER}"
+            if [ -z "$CURRENT_USER" ]; then
+                CURRENT_USER=$(whoami)
+            fi
             sudo sh -c "cat /opt/envoy/certs/spire-bundle.pem /opt/envoy/certs/envoy-cert.pem > /opt/envoy/certs/combined-ca-bundle.pem"
+            # Change ownership to current user so server can write to it
+            sudo chown "${CURRENT_USER}:${CURRENT_USER}" /opt/envoy/certs/combined-ca-bundle.pem
             sudo chmod 644 /opt/envoy/certs/combined-ca-bundle.pem
             export CA_CERT_PATH="/opt/envoy/certs/combined-ca-bundle.pem"
             printf '    Created and using combined CA bundle: /opt/envoy/certs/combined-ca-bundle.pem\n'
@@ -679,28 +886,116 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
             printf '    [WARN] Using spire-bundle.pem only (Envoy cert not available)\n'
         fi
-        python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
-        MTLS_PID=$!
-        sleep 2
-        if ps -p $MTLS_PID > /dev/null 2>&1; then
-            printf '    [OK] mTLS Server started (PID: %s)\n' "$MTLS_PID"
-        else
-            printf '    [WARN] mTLS Server may have failed - check /tmp/mtls-server.log\n'
+        
+        # Ensure certificate directory exists
+        mkdir -p ~/.mtls-demo 2>/dev/null || true
+        
+        # Always clean up old certificates to ensure fresh generation on every start
+        # This prevents key mismatch errors from old/stale certificates
+        printf '    Cleaning up old certificates to ensure fresh generation...\n'
+        rm -f ~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-key.pem 2>/dev/null || true
+        
+        # Start the server (it will auto-generate fresh certificates)
+        MAX_RETRIES=2
+        RETRY_COUNT=0
+        MTLS_STARTED=false
+        
+        while [ $RETRY_COUNT -le $MAX_RETRIES ] && [ "$MTLS_STARTED" = "false" ]; do
+            if [ $RETRY_COUNT -gt 0 ]; then
+                printf '    Retrying mTLS Server startup (attempt %d/%d)...\n' "$((RETRY_COUNT + 1))" "$((MAX_RETRIES + 1))"
+                # Clean up certificates again before retry
+                printf '    Cleaning up certificates before retry...\n'
+                rm -f ~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-key.pem 2>/dev/null || true
+                sleep 1
+            fi
+            
+            python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
+            MTLS_PID=$!
+            
+            # Wait for server to start and verify it's listening
+            for i in {1..15}; do
+                sleep 1
+                # Check if process is still running
+                if ! ps -p $MTLS_PID > /dev/null 2>&1; then
+                    # Check if it's a certificate error
+                    if [ -f /tmp/mtls-server.log ] && grep -q "KEY_VALUES_MISMATCH\|key values mismatch" /tmp/mtls-server.log 2>/dev/null; then
+                        printf '    [ERROR] Certificate/key mismatch detected - will retry with fresh certificates\n'
+                        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                            # Clean up certificates and retry
+                            rm -f ~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-key.pem 2>/dev/null || true
+                            MTLS_STARTED=false
+                            break
+                        fi
+                    else
+                        printf '    [ERROR] mTLS Server process died - check /tmp/mtls-server.log\n'
+                        if [ -f /tmp/mtls-server.log ]; then
+                            printf '    Last 10 lines of log:\n'
+                            tail -10 /tmp/mtls-server.log | sed 's/^/      /'
+                        fi
+                    fi
+                    MTLS_STARTED=false
+                    break
+                fi
+                # Check if server is listening on port 9443
+                if command -v ss >/dev/null 2>&1; then
+                    if ss -tln 2>/dev/null | grep -q ':9443 '; then
+                        printf '    [OK] mTLS Server started and listening on port 9443 (PID: %s)\n' "$MTLS_PID"
+                        MTLS_STARTED=true
+                        break
+                    fi
+                elif command -v netstat >/dev/null 2>&1; then
+                    if netstat -tln 2>/dev/null | grep -q ':9443 '; then
+                        printf '    [OK] mTLS Server started and listening on port 9443 (PID: %s)\n' "$MTLS_PID"
+                        MTLS_STARTED=true
+                        break
+                    fi
+                else
+                    # Fallback: just check if process is running after a few seconds
+                    if [ $i -ge 5 ]; then
+                        printf '    [OK] mTLS Server process running (PID: %s) - port check unavailable\n' "$MTLS_PID"
+                        MTLS_STARTED=true
+                        break
+                    fi
+                fi
+            done
+            
+            if [ "$MTLS_STARTED" = "true" ]; then
+                break
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+        done
+        
+        if [ "$MTLS_STARTED" = "false" ]; then
+            printf '    [WARN] mTLS Server failed to start after %d attempts - check /tmp/mtls-server.log\n' "$((MAX_RETRIES + 1))"
+            if [ -f /tmp/mtls-server.log ]; then
+                printf '    Recent log entries:\n'
+                tail -30 /tmp/mtls-server.log | sed 's/^/      /'
+            fi
         fi
     else
         printf '    [WARN] mtls-server-app.py not found - skipping mTLS server startup\n'
     fi
 
-    # Ensure backend server cert is available for Envoy
-    if [ ! -f /opt/envoy/certs/server-cert.pem ] && [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
+    # Ensure backend server cert is available for Envoy (always copy after server starts)
+    # The server generates fresh certificates, so we need to copy the latest one
+    if [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
         sudo cp "$HOME/.mtls-demo/server-cert.pem" /opt/envoy/certs/server-cert.pem 2>/dev/null
         sudo chmod 644 /opt/envoy/certs/server-cert.pem 2>/dev/null
         printf '    [OK] Backend server certificate copied for Envoy\n'
+    else
+        printf '    [WARN] Backend server certificate not found - Envoy may fail to verify backend\n'
     fi
 
-    # Start Envoy
+    # Start Envoy (or restart if already running to pick up new certificate)
     printf '  Starting Envoy Proxy (port 8080)...\n'
     if command -v envoy &> /dev/null; then
+        # Stop existing Envoy if running (to pick up new certificate)
+        if pkill -f "envoy.*envoy.yaml" >/dev/null 2>&1; then
+            sleep 1
+            printf '    Restarted Envoy to pick up new backend certificate\n'
+        fi
+        
         sudo mkdir -p /opt/envoy/logs 2>/dev/null
         sudo touch /opt/envoy/logs/envoy.log 2>/dev/null
         sudo chmod 666 /opt/envoy/logs/envoy.log 2>/dev/null
@@ -731,11 +1026,11 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 
     SERVICES_OK=0
     if command -v ss &> /dev/null; then
-        if sudo ss -tlnp 2>/dev/null | grep -q ':5000'; then
-            printf '  [OK] Mobile Location Service listening on port 5000\n'
+        if sudo ss -tlnp 2>/dev/null | grep -q ':9050'; then
+            printf '  [OK] Mobile Location Service listening on port 9050\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
-            printf '  [WARN] Mobile Location Service not listening on port 5000\n'
+            printf '  [WARN] Mobile Location Service not listening on port 9050\n'
         fi
         if sudo ss -tlnp 2>/dev/null | grep -q ':9443'; then
             printf '  [OK] mTLS Server listening on port 9443\n'
@@ -750,11 +1045,11 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             printf '  [WARN] Envoy not listening on port 8080\n'
         fi
     elif command -v netstat &> /dev/null; then
-        if sudo netstat -tlnp 2>/dev/null | grep -q ':5000'; then
-            printf '  [OK] Mobile Location Service listening on port 5000\n'
+        if sudo netstat -tlnp 2>/dev/null | grep -q ':9050'; then
+            printf '  [OK] Mobile Location Service listening on port 9050\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
-            printf '  [WARN] Mobile Location Service not listening on port 5000\n'
+            printf '  [WARN] Mobile Location Service not listening on port 9050\n'
         fi
         if sudo netstat -tlnp 2>/dev/null | grep -q ':9443'; then
             printf '  [OK] mTLS Server listening on port 9443\n'
@@ -784,7 +1079,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 
     printf '\n'
     printf 'Service Management:\n'
-    printf '  To stop all services: sudo pkill -f '\''envoy.*envoy.yaml'\''; pkill -f '\''mtls-server-app.py'\''; pkill -f '\''service.py.*5000'\''\n'
+    printf '  To stop all services: sudo pkill -f '\''envoy.*envoy.yaml'\''; pkill -f '\''mtls-server-app.py'\''; pkill -f '\''service.py.*9050'\''\n'
     printf '  To view logs:\n'
     printf '    tail -f /tmp/mobile-sensor.log\n'
     printf '    tail -f /tmp/mtls-server.log\n'
@@ -810,7 +1105,7 @@ else
     printf '  cd %s/mobile-sensor-microservice\n' "$REPO_ROOT"
     printf '  source .venv/bin/activate\n'
     printf '  export CAMARA_BYPASS=true  # or set CAMARA_BASIC_AUTH\n'
-    printf '  python3 service.py --port 5000 --host 0.0.0.0\n'
+    printf '  python3 service.py --port 9050 --host 0.0.0.0\n'
     printf '\n'
     printf 'Terminal 2 - mTLS Server:\n'
     printf '  cd %s/python-app-demo\n' "$REPO_ROOT"
@@ -823,7 +1118,7 @@ else
     printf '  sudo envoy -c /opt/envoy/envoy.yaml\n'
     printf '\n'
     printf 'Or start all in background:\n'
-    printf '  cd %s/mobile-sensor-microservice && source .venv/bin/activate && export CAMARA_BYPASS=true DEMO_MODE=true && python3 service.py --port 5000 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &\n' "$REPO_ROOT"
+    printf '  cd %s/mobile-sensor-microservice && source .venv/bin/activate && export CAMARA_BYPASS=true DEMO_MODE=true && python3 service.py --port 9050 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &\n' "$REPO_ROOT"
     printf '  cd %s/python-app-demo && export SERVER_USE_SPIRE="false" SERVER_PORT="9443" && python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &\n' "$REPO_ROOT"
     printf '  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &\n'
     printf '\n'

@@ -6,8 +6,10 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Default all sub-scripts to run on 10.1.0.11
 CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST:-10.1.0.11}"
-ONPREM_HOST="${ONPREM_HOST:-10.1.0.10}"
+AGENTS_HOST="${AGENTS_HOST:-10.1.0.11}"
+ONPREM_HOST="${ONPREM_HOST:-10.1.0.11}"
 SSH_USER="${SSH_USER:-mw}"
 
 # SSH options to avoid password prompts
@@ -32,31 +34,51 @@ if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
     NC=""
 fi
 
-# Detect if we're running on the control plane host
+# Detect current host IPs
 CURRENT_HOST_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' || ip addr show | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' || echo '')
-ON_CONTROL_PLANE_HOST=false
 
-# Check if any of our IPs match the control plane host IP
-if echo "$CURRENT_HOST_IPS" | grep -q "^${CONTROL_PLANE_HOST}$"; then
-    ON_CONTROL_PLANE_HOST=true
-else
+# Function to check if we're running on a specific host
+is_on_host() {
+    local target_host="$1"
+    # Check if any of our IPs match the target host IP
+    if echo "$CURRENT_HOST_IPS" | grep -q "^${target_host}$"; then
+        return 0
+    fi
     # Try to check via hostname comparison
-    CURRENT_HOSTNAME=$(hostname 2>/dev/null || echo '')
-    if [ -n "${CURRENT_HOSTNAME}" ]; then
-        CONTROL_PLANE_HOSTNAME=$(getent hosts ${CONTROL_PLANE_HOST} 2>/dev/null | awk '{print $2}' | head -1 || echo '')
-        if [ -z "${CONTROL_PLANE_HOSTNAME}" ]; then
-            CONTROL_PLANE_HOSTNAME=$(ssh ${SSH_OPTS} -o ConnectTimeout=2 ${SSH_USER}@${CONTROL_PLANE_HOST} 'hostname' 2>/dev/null || echo '')
+    local current_hostname=$(hostname 2>/dev/null || echo '')
+    if [ -n "${current_hostname}" ]; then
+        local target_hostname=$(getent hosts ${target_host} 2>/dev/null | awk '{print $2}' | head -1 || echo '')
+        if [ -z "${target_hostname}" ]; then
+            target_hostname=$(ssh ${SSH_OPTS} -o ConnectTimeout=2 ${SSH_USER}@${target_host} 'hostname' 2>/dev/null || echo '')
         fi
-        if [ "${CURRENT_HOSTNAME}" = "${CONTROL_PLANE_HOSTNAME}" ] && [ -n "${CONTROL_PLANE_HOSTNAME}" ]; then
-            ON_CONTROL_PLANE_HOST=true
+        if [ "${current_hostname}" = "${target_hostname}" ] && [ -n "${target_hostname}" ]; then
+            return 0
         fi
     fi
+    return 1
+}
+
+# Check if we're running on each host
+ON_CONTROL_PLANE_HOST=false
+ON_AGENTS_HOST=false
+ON_ONPREM_HOST=false
+
+if is_on_host "${CONTROL_PLANE_HOST}"; then
+    ON_CONTROL_PLANE_HOST=true
+fi
+
+if is_on_host "${AGENTS_HOST}"; then
+    ON_AGENTS_HOST=true
+fi
+
+if is_on_host "${ONPREM_HOST}"; then
+    ON_ONPREM_HOST=true
 fi
 
 # Function to run command on control plane host (local or via SSH)
 run_on_control_plane() {
     if [ "${ON_CONTROL_PLANE_HOST}" = "true" ]; then
-        # Execute locally on 10.1.0.11 - no SSH needed
+        # Execute locally - no SSH needed
         bash -c "$@"
     else
         # Execute via SSH
@@ -64,9 +86,26 @@ run_on_control_plane() {
     fi
 }
 
-# Function to run command on on-prem host (always via SSH)
+# Function to run command on agents host (local or via SSH)
+run_on_agents() {
+    if [ "${ON_AGENTS_HOST}" = "true" ]; then
+        # Execute locally - no SSH needed
+        bash -c "$@"
+    else
+        # Execute via SSH
+        ssh ${SSH_OPTS} ${SSH_USER}@${AGENTS_HOST} "$@"
+    fi
+}
+
+# Function to run command on on-prem host (local or via SSH)
 run_on_onprem() {
-    ssh ${SSH_OPTS} ${SSH_USER}@${ONPREM_HOST} "$@"
+    if [ "${ON_ONPREM_HOST}" = "true" ]; then
+        # Execute locally - no SSH needed
+        bash -c "$@"
+    else
+        # Execute via SSH
+        ssh ${SSH_OPTS} ${SSH_USER}@${ONPREM_HOST} "$@"
+    fi
 }
 
 # Helper function to wait for services to be ready
@@ -135,7 +174,7 @@ test_camara_caching_and_gps_bypass() {
     
     echo -e "${CYAN}Test 1: CAMARA API Caching (First Call - Should Call API)${NC}"
     echo "  Making first verification request..."
-    FIRST_RESPONSE=$(run_on_onprem "curl -s -X POST http://localhost:5000/verify -H 'Content-Type: application/json' -d '{\"sensor_id\": \"12d1:1433\"}'" 2>/dev/null || echo "")
+    FIRST_RESPONSE=$(run_on_onprem "curl -s -X POST http://localhost:9050/verify -H 'Content-Type: application/json' -d '{\"sensor_id\": \"12d1:1433\"}'" 2>/dev/null || echo "")
     FIRST_STATUS=$(echo "$FIRST_RESPONSE" | grep -o '"verification_result":[^,}]*' | cut -d: -f2 | tr -d ' ' || echo "")
     
     if [ -n "$FIRST_RESPONSE" ]; then
@@ -159,7 +198,7 @@ test_camara_caching_and_gps_bypass() {
     echo -e "${CYAN}Test 2: CAMARA API Caching (Second Call - Should Use Cache)${NC}"
     echo "  Waiting 2 seconds, then making second verification request..."
     sleep 2
-    SECOND_RESPONSE=$(run_on_onprem "curl -s -X POST http://localhost:5000/verify -H 'Content-Type: application/json' -d '{\"sensor_id\": \"12d1:1433\"}'" 2>/dev/null || echo "")
+    SECOND_RESPONSE=$(run_on_onprem "curl -s -X POST http://localhost:9050/verify -H 'Content-Type: application/json' -d '{\"sensor_id\": \"12d1:1433\"}'" 2>/dev/null || echo "")
     SECOND_STATUS=$(echo "$SECOND_RESPONSE" | grep -o '"verification_result":[^,}]*' | cut -d: -f2 | tr -d ' ' || echo "")
     
     if [ -n "$SECOND_RESPONSE" ]; then
@@ -231,12 +270,56 @@ verify_onprem() {
     echo ""
     
     local checks=(
-        "Mobile Location Service|curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' http://localhost:5000/verify | grep -q '200\|404'"
-        "mTLS Server|curl -s -k https://localhost:9443/health >/dev/null 2>&1 || ss -tln 2>/dev/null | grep -q ':9443' || netstat -tln 2>/dev/null | grep -q ':9443'"
-        "Envoy Proxy|ss -tln 2>/dev/null | grep -q ':8080' || netstat -tln 2>/dev/null | grep -q ':8080'"
+        "Mobile Location Service|curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' http://localhost:9050/verify 2>/dev/null | grep -qE '^200|^404'"
+        "mTLS Server|(command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -q ':9443 ') || (command -v netstat >/dev/null 2>&1 && netstat -tln 2>/dev/null | grep -q ':9443 ') || (curl -s -k --connect-timeout 2 https://localhost:9443/health >/dev/null 2>&1)"
+        "Envoy Proxy|(command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -q ':8080 ') || (command -v netstat >/dev/null 2>&1 && netstat -tln 2>/dev/null | grep -q ':8080 ')"
     )
     
-    wait_for_services "run_on_onprem" "${checks[@]}"
+    if ! wait_for_services "run_on_onprem" "${checks[@]}"; then
+        echo ""
+        echo -e "${YELLOW}Service verification failed. Running diagnostics...${NC}"
+        echo ""
+        
+        # Check each service individually
+        echo "Checking Mobile Location Service (port 9050):"
+        if run_on_onprem "curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' http://localhost:9050/verify 2>/dev/null | grep -qE '^200|^404'"; then
+            echo -e "  ${GREEN}✓ Mobile Location Service is responding${NC}"
+        else
+            echo -e "  ${RED}✗ Mobile Location Service is not responding${NC}"
+            if run_on_onprem "command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep ':9050' || netstat -tln 2>/dev/null | grep ':9050'"; then
+                echo "    Port 9050 is listening but service may not be responding correctly"
+            else
+                echo "    Port 9050 is not listening"
+            fi
+            echo "    Check logs: tail -20 /tmp/mobile-sensor.log"
+        fi
+        
+        echo ""
+        echo "Checking mTLS Server (port 9443):"
+        if run_on_onprem "command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -q ':9443 ' || (command -v netstat >/dev/null 2>&1 && netstat -tln 2>/dev/null | grep -q ':9443 ')"; then
+            echo -e "  ${GREEN}✓ mTLS Server is listening on port 9443${NC}"
+        else
+            echo -e "  ${RED}✗ mTLS Server is not listening on port 9443${NC}"
+            echo "    Check if process is running: ps aux | grep mtls-server-app"
+            echo "    Check logs: tail -30 /tmp/mtls-server.log"
+            if run_on_onprem "[ -f /tmp/mtls-server.log ] && tail -20 /tmp/mtls-server.log"; then
+                echo ""
+            fi
+        fi
+        
+        echo ""
+        echo "Checking Envoy Proxy (port 8080):"
+        if run_on_onprem "command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -q ':8080 ' || (command -v netstat >/dev/null 2>&1 && netstat -tln 2>/dev/null | grep -q ':8080 ')"; then
+            echo -e "  ${GREEN}✓ Envoy Proxy is listening on port 8080${NC}"
+        else
+            echo -e "  ${RED}✗ Envoy Proxy is not listening on port 8080${NC}"
+            echo "    Check if process is running: ps aux | grep envoy"
+            echo "    Check logs: tail -20 /opt/envoy/logs/envoy.log"
+        fi
+        
+        echo ""
+        return 1
+    fi
 }
 
 # Function to run script and show output
@@ -274,13 +357,15 @@ main() {
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo ""
     echo -e "${CYAN}Configuration:${NC}"
-    echo "  Control Plane Host: ${CONTROL_PLANE_HOST}"
-    echo "  On-Prem Host: ${ONPREM_HOST}"
+    echo "  Control Plane Host: ${CONTROL_PLANE_HOST} (test_control_plane.sh)"
+    echo "  Agents Host: ${AGENTS_HOST} (test_agents.sh)"
+    echo "  On-Prem Host: ${ONPREM_HOST} (test_onprem.sh)"
     echo "  SSH User: ${SSH_USER}"
     echo ""
     
-    # Check if we can SSH to on-prem host (control plane may be local)
+    # Check SSH connectivity for each host (skip if running locally)
     echo -e "${CYAN}Checking SSH connectivity...${NC}"
+    
     if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then
         if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${CONTROL_PLANE_HOST}" "echo 'OK'" >/dev/null 2>&1; then
             echo -e "${RED}✗ Cannot SSH to control plane host: ${CONTROL_PLANE_HOST}${NC}"
@@ -291,11 +376,25 @@ main() {
         echo -e "${GREEN}  ✓ Running on control plane host (${CONTROL_PLANE_HOST}) - no SSH needed${NC}"
     fi
     
-    if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${ONPREM_HOST}" "echo 'OK'" >/dev/null 2>&1; then
-        echo -e "${RED}✗ Cannot SSH to on-prem host: ${ONPREM_HOST}${NC}"
-        exit 1
+    if [ "${ON_AGENTS_HOST}" != "true" ]; then
+        if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${AGENTS_HOST}" "echo 'OK'" >/dev/null 2>&1; then
+            echo -e "${RED}✗ Cannot SSH to agents host: ${AGENTS_HOST}${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}  ✓ Can SSH to ${AGENTS_HOST}${NC}"
+    else
+        echo -e "${GREEN}  ✓ Running on agents host (${AGENTS_HOST}) - no SSH needed${NC}"
     fi
-    echo -e "${GREEN}  ✓ Can SSH to ${ONPREM_HOST}${NC}"
+    
+    if [ "${ON_ONPREM_HOST}" != "true" ]; then
+        if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${ONPREM_HOST}" "echo 'OK'" >/dev/null 2>&1; then
+            echo -e "${RED}✗ Cannot SSH to on-prem host: ${ONPREM_HOST}${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}  ✓ Can SSH to ${ONPREM_HOST}${NC}"
+    else
+        echo -e "${GREEN}  ✓ Running on on-prem host (${ONPREM_HOST}) - no SSH needed${NC}"
+    fi
     echo ""
     
     # Step 1: Start Control Plane on 10.1.0.11
@@ -325,10 +424,17 @@ main() {
         sleep 3
     fi
     
-    # Step 2: Start On-Prem Services on 10.1.0.10
+    # Step 2: Start On-Prem Services on on-prem host
     # Temporarily disable exit on error for on-prem (it may have warnings)
     set +e
-    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh" 2>&1 | tee "/tmp/remote_test_onprem.log"
+    # Pass --no-pause if NO_PAUSE is set
+    ONPREM_ARGS=""
+    ONPREM_ENV=""
+    if [ "$NO_PAUSE" = "true" ]; then
+        ONPREM_ARGS="--no-pause"
+        ONPREM_ENV="PAUSE_ENABLED=false "
+    fi
+    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && ${ONPREM_ENV}./test_onprem.sh ${ONPREM_ARGS}" 2>&1 | tee "/tmp/remote_test_onprem.log"
     ONPREM_EXIT_CODE=$?
     set -e
     
@@ -361,8 +467,8 @@ main() {
         sleep 3
     fi
     
-    # Step 3: Run Complete Integration Test on 10.1.0.11
-    if ! run_script "run_on_control_plane" "test_agents.sh" "--no-pause" \
+    # Step 3: Run Complete Integration Test on agents host
+    if ! run_script "run_on_agents" "test_agents.sh" "--no-pause" \
         "Step 3: Running Complete Integration Test (Agent Attestation, Workload SVID)"; then
         echo -e "${RED}Complete integration test failed.${NC}"
         exit 1
@@ -388,13 +494,27 @@ main() {
     echo ""
     echo -e "${CYAN}Summary:${NC}"
     echo "  ✓ Control Plane Services: Running on ${CONTROL_PLANE_HOST}"
+    echo "  ✓ Agents Services: Running on ${AGENTS_HOST}"
     echo "  ✓ On-Prem Services: Running on ${ONPREM_HOST}"
     echo "  ✓ Complete Integration Test: Completed"
     echo "  ✓ CAMARA Caching and GPS Bypass Tests: Completed"
     echo ""
     echo -e "${CYAN}To check logs:${NC}"
-    echo "  Control Plane: ssh ${SSH_USER}@${CONTROL_PLANE_HOST} 'tail -f /tmp/spire-server.log'"
-    echo "  On-Prem: ssh ${SSH_USER}@${ONPREM_HOST} 'tail -f /opt/envoy/logs/envoy.log'"
+    if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then
+        echo "  Control Plane: ssh ${SSH_USER}@${CONTROL_PLANE_HOST} 'tail -f /tmp/spire-server.log'"
+    else
+        echo "  Control Plane: tail -f /tmp/spire-server.log"
+    fi
+    if [ "${ON_AGENTS_HOST}" != "true" ]; then
+        echo "  Agents: ssh ${SSH_USER}@${AGENTS_HOST} 'tail -f /tmp/spire-agent.log'"
+    else
+        echo "  Agents: tail -f /tmp/spire-agent.log"
+    fi
+    if [ "${ON_ONPREM_HOST}" != "true" ]; then
+        echo "  On-Prem: ssh ${SSH_USER}@${ONPREM_HOST} 'tail -f /opt/envoy/logs/envoy.log'"
+    else
+        echo "  On-Prem: tail -f /opt/envoy/logs/envoy.log"
+    fi
     echo ""
 }
 
@@ -421,11 +541,11 @@ cleanup_all() {
         echo -e "${YELLOW}⚠ Control plane cleanup had issues (may be expected if services weren't running)${NC}"
     fi
     
-    # Cleanup agent services on control plane (if any)
+    # Cleanup agent services on agents host (if any)
     echo ""
-    echo -e "${CYAN}Cleaning up Agent Services on ${CONTROL_PLANE_HOST}${NC}"
+    echo -e "${CYAN}Cleaning up Agent Services on ${AGENTS_HOST}${NC}"
     echo ""
-    if run_script "run_on_control_plane" "test_agents.sh" "--cleanup-only" \
+    if run_script "run_on_agents" "test_agents.sh" "--cleanup-only" \
         "Cleaning up Agent Services (SPIRE Agent, rust-keylime Agent, TPM Plugin)"; then
         echo -e "${GREEN}✓ Agent services cleanup completed${NC}"
     else
@@ -460,15 +580,42 @@ cleanup_all() {
     echo ""
     echo -e "${CYAN}All services have been stopped and data cleaned up on:${NC}"
     echo "  • Control Plane Host: ${CONTROL_PLANE_HOST}"
+    echo "  • Agents Host: ${AGENTS_HOST}"
     echo "  • On-Prem Host: ${ONPREM_HOST}"
     echo ""
 }
 
 # Parse command-line arguments
 NO_PAUSE=false
-for arg in "$@"; do
-    case $arg in
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --control-plane-host)
+            CONTROL_PLANE_HOST="$2"
+            shift 2
+            ;;
+        --agents-host)
+            AGENTS_HOST="$2"
+            shift 2
+            ;;
+        --onprem-host)
+            ONPREM_HOST="$2"
+            shift 2
+            ;;
         --cleanup-only)
+            # Re-check host detection after parsing arguments
+            ON_CONTROL_PLANE_HOST=false
+            ON_AGENTS_HOST=false
+            ON_ONPREM_HOST=false
+            if is_on_host "${CONTROL_PLANE_HOST}"; then
+                ON_CONTROL_PLANE_HOST=true
+            fi
+            if is_on_host "${AGENTS_HOST}"; then
+                ON_AGENTS_HOST=true
+            fi
+            if is_on_host "${ONPREM_HOST}"; then
+                ON_ONPREM_HOST=true
+            fi
+            
             # Check SSH connectivity before cleanup
             echo -e "${CYAN}Checking SSH connectivity...${NC}"
             if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then
@@ -476,8 +623,15 @@ for arg in "$@"; do
                     echo -e "${YELLOW}⚠ Cannot SSH to control plane host: ${CONTROL_PLANE_HOST} (continuing anyway)${NC}"
                 fi
             fi
-            if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${ONPREM_HOST}" "echo 'OK'" >/dev/null 2>&1; then
-                echo -e "${YELLOW}⚠ Cannot SSH to on-prem host: ${ONPREM_HOST} (continuing anyway)${NC}"
+            if [ "${ON_AGENTS_HOST}" != "true" ]; then
+                if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${AGENTS_HOST}" "echo 'OK'" >/dev/null 2>&1; then
+                    echo -e "${YELLOW}⚠ Cannot SSH to agents host: ${AGENTS_HOST} (continuing anyway)${NC}"
+                fi
+            fi
+            if [ "${ON_ONPREM_HOST}" != "true" ]; then
+                if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${ONPREM_HOST}" "echo 'OK'" >/dev/null 2>&1; then
+                    echo -e "${YELLOW}⚠ Cannot SSH to on-prem host: ${ONPREM_HOST} (continuing anyway)${NC}"
+                fi
             fi
             cleanup_all
             exit 0
@@ -487,19 +641,57 @@ for arg in "$@"; do
             shift
             ;;
         --help|-h)
-            echo "Usage: $0 [--cleanup-only] [--no-pause]"
+            echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --cleanup-only Stop services, remove data, and exit"
-            echo "  --no-pause     Skip all pause prompts and continue automatically"
-            echo "  --help, -h     Show this help message"
+            echo "  --control-plane-host IP    Host IP for test_control_plane.sh (default: 10.1.0.11)"
+            echo "  --agents-host IP           Host IP for test_agents.sh (default: 10.1.0.11)"
+            echo "  --onprem-host IP           Host IP for test_onprem.sh (default: 10.1.0.11)"
+            echo "  --cleanup-only             Stop services, remove data, and exit"
+            echo "  --no-pause                 Skip all pause prompts and continue automatically"
+            echo "  --help, -h                 Show this help message"
+            echo ""
+            echo "Environment Variables:"
+            echo "  CONTROL_PLANE_HOST         Host IP for test_control_plane.sh (default: 10.1.0.11)"
+            echo "  AGENTS_HOST                Host IP for test_agents.sh (default: 10.1.0.11)"
+            echo "  ONPREM_HOST                Host IP for test_onprem.sh (default: 10.1.0.11)"
+            echo "  SSH_USER                   SSH username (default: mw)"
+            echo ""
+            echo "Examples:"
+            echo "  # Run all scripts on default host (10.1.0.11)"
+            echo "  $0"
+            echo ""
+            echo "  # Run control plane on 10.1.0.11, agents on 10.1.0.12, onprem on 10.1.0.10"
+            echo "  $0 --control-plane-host 10.1.0.11 --agents-host 10.1.0.12 --onprem-host 10.1.0.10"
+            echo ""
+            echo "  # If running on the same host as a script, SSH is automatically skipped"
+            echo "  # (e.g., if running on 10.1.0.11 and --control-plane-host 10.1.0.11, no SSH used)"
             exit 0
             ;;
         *)
-            # Unknown option, pass through
+            echo -e "${RED}Unknown option: $1${NC}"
+            echo "Use --help for usage information"
+            exit 1
             ;;
     esac
 done
+
+# Re-check host detection after parsing arguments (in case hosts were changed)
+ON_CONTROL_PLANE_HOST=false
+ON_AGENTS_HOST=false
+ON_ONPREM_HOST=false
+
+if is_on_host "${CONTROL_PLANE_HOST}"; then
+    ON_CONTROL_PLANE_HOST=true
+fi
+
+if is_on_host "${AGENTS_HOST}"; then
+    ON_AGENTS_HOST=true
+fi
+
+if is_on_host "${ONPREM_HOST}"; then
+    ON_ONPREM_HOST=true
+fi
 
 # Run main function
 main "$@"

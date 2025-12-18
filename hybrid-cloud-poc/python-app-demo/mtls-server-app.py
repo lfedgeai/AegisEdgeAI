@@ -126,11 +126,15 @@ class SPIREmTLSServer:
                 encryption_algorithm=serialization.NoEncryption()
             ))
         
-        # If CA cert path provided, use the same cert as CA (self-signed)
+        # If CA cert path provided, only copy server cert if CA file doesn't exist
+        # This prevents overwriting existing CA bundles (e.g., combined-ca-bundle.pem with SPIRE + Envoy certs)
         if ca_cert_path:
             import shutil
-            shutil.copy(cert_path, ca_cert_path)
-            self.log(f"  ✓ CA certificate saved to {ca_cert_path}")
+            if not os.path.exists(ca_cert_path):
+                shutil.copy(cert_path, ca_cert_path)
+                self.log(f"  ✓ CA certificate saved to {ca_cert_path}")
+            else:
+                self.log(f"  ℹ CA certificate file already exists: {ca_cert_path} (preserving existing CA bundle)")
         
         self.log(f"  ✓ Server certificate saved to {cert_path}")
         self.log(f"  ✓ Server key saved to {key_path}")

@@ -273,7 +273,7 @@ impl HttpContext for SensorVerificationFilter {
             let headers = vec![
                 (":method", "POST"),
                 (":path", "/verify"),
-                (":authority", "localhost:5000"),
+                (":authority", "localhost:9050"),
                 ("content-type", "application/json"),
             ];
             

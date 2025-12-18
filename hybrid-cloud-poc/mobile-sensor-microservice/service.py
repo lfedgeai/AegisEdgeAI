@@ -1124,7 +1124,7 @@ if __name__ == "__main__":
         help="UNIX domain socket path to bind (preferred). If omitted, uses TCP host/port.",
     )
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=5005)
+    parser.add_argument("--port", type=int, default=9050)  # Default to 9050 to match Keylime Verifier and WASM plugin
     args = parser.parse_args()
 
     run_server(args.socket, args.host, args.port)

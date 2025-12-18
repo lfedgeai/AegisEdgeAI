@@ -111,7 +111,7 @@ static_resources:
             address:
               socket_address:
                 address: 127.0.0.1
-                port_value: 5000
+                port_value: 9050
   - name: mtls_backend
     connect_timeout: 5s
     type: strict_dns

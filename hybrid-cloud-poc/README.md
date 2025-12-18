@@ -123,6 +123,47 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 - Rust toolchain installed on both machines
 - Git installed on both machines
 
+### Port Configuration
+
+This section documents all port numbers used by the test scripts. All ports are unique with no conflicts between hosts.
+
+#### On 10.1.0.11 (Sovereign Cloud/Edge Cloud)
+
+**Started by `test_control_plane.sh`:**
+- **8881** - Keylime Verifier (HTTPS)
+- **8890** - Keylime Registrar (HTTP)
+- **8891** - Keylime Registrar (HTTPS/TLS)
+- **9050** - Mobile Sensor Microservice (used by control plane for location verification)
+
+**Started by `test_agents.sh`:**
+- **9002** - rust-keylime Agent (HTTP/HTTPS)
+- **8081** - SPIRE Server (mentioned in health checks, uses Unix socket for API)
+
+**Note:** SPIRE Server and SPIRE Agent primarily use Unix domain sockets (`/tmp/spire-server/private/api.sock` and `/tmp/spire-agent/public/api.sock`) rather than TCP ports for their primary API.
+
+#### On 10.1.0.10 (Customer On-Prem Private Cloud)
+
+**Started by `test_onprem.sh`:**
+- **5000** - Mobile Location Service (HTTP)
+- **9443** - mTLS Server (HTTPS)
+- **8080** - Envoy Proxy (HTTP/HTTPS)
+
+#### Port Summary Table
+
+| Port | Service | Host | Script | Protocol |
+|------|---------|------|--------|----------|
+| 5000 | Mobile Location Service | 10.1.0.10 | test_onprem.sh | HTTP |
+| 8080 | Envoy Proxy | 10.1.0.10 | test_onprem.sh | HTTP/HTTPS |
+| 8081 | SPIRE Server | 10.1.0.11 | test_agents.sh | Unix Socket (health checks) |
+| 8881 | Keylime Verifier | 10.1.0.11 | test_control_plane.sh | HTTPS |
+| 8890 | Keylime Registrar | 10.1.0.11 | test_control_plane.sh | HTTP |
+| 8891 | Keylime Registrar | 10.1.0.11 | test_control_plane.sh | HTTPS |
+| 9002 | rust-keylime Agent | 10.1.0.11 | test_agents.sh | HTTP/HTTPS |
+| 9050 | Mobile Sensor Microservice | 10.1.0.11 | test_control_plane.sh | HTTP |
+| 9443 | mTLS Server | 10.1.0.10 | test_onprem.sh | HTTPS |
+
+**Port Conflict Analysis:** ✅ No conflicts detected. All ports are unique and assigned to different services on different hosts.
+
 ### Demo Act 1: Trusted Infrastructure Setup
 
 *See Slide 19 for the architecture diagram*

@@ -38,7 +38,7 @@ This will:
 3. **JSON Parsing**: Extracts the JSON from the extension and parses `grc.geolocation` (sensor_id, sensor_type, sensor_imei, sensor_imsi)
 4. **Sensor Type Handling**:
    - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely (allow request directly)
-   - **Mobile sensors**: Calls the mobile location service at `localhost:5000/verify` with sensor_id, sensor_imei, and sensor_imsi
+   - **Mobile sensors**: Calls the mobile location service at `localhost:9050/verify` with sensor_id, sensor_imei, and sensor_imsi
      - Note: CAMARA API caching is handled by the mobile location service (15-minute TTL, configurable), not in the WASM filter
 5. **Header Injection**: If verification succeeds, adds `X-Sensor-ID` header and forwards to backend
 

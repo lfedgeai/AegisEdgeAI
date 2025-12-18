@@ -43,7 +43,16 @@ export CLIENT_USE_SPIRE="${CLIENT_USE_SPIRE:-true}"
 export SPIRE_AGENT_SOCKET="${SPIRE_AGENT_SOCKET:-/tmp/spire-agent/public/api.sock}"
 
 # Server configuration (Envoy on on-prem)
-export SERVER_HOST="${SERVER_HOST:-10.1.0.10}"
+# Default to current host IP if SERVER_HOST is not set
+if [ -z "${SERVER_HOST:-}" ]; then
+    # Detect current host IP address
+    CURRENT_HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || \
+                      ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || \
+                      echo '10.1.0.11')
+    export SERVER_HOST="$CURRENT_HOST_IP"
+else
+    export SERVER_HOST="$SERVER_HOST"
+fi
 export SERVER_PORT="${SERVER_PORT:-8080}"
 
 # CA certificate for Envoy verification

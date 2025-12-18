@@ -59,7 +59,7 @@ mTLS Server (10.1.0.10:9443)
   - Returns 403 Forbidden if verification fails
 
 ### 3. Mobile Location Service
-- **Port**: 5000
+- **Port**: 9050
 - **Location**: `../mobile-sensor-microservice/`
 - **Function**: Verifies sensor ID via CAMARA API
 - **API**: `POST /verify` with `{"sensor_id": "12d1:1433"}`
@@ -128,7 +128,7 @@ The script will:
 4. Builds WASM filter with time-based caching
 5. Configures mobile location service with CAMARA credentials
 6. **Auto-starts all services** in background:
-   - Mobile Location Service (port 5000)
+   - Mobile Location Service (port 9050)
    - mTLS Server (port 9443)
    - Envoy Proxy (port 8080)
 7. Verifies all services are running
@@ -167,7 +167,7 @@ If you prefer manual setup:
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
-   python3 service.py --port 5000 --host 0.0.0.0 &
+   python3 service.py --port 9050 --host 0.0.0.0 &
    ```
 
 4. **Build WASM filter** (if not done during setup):
@@ -310,7 +310,7 @@ tail -f /tmp/mobile-sensor.log
 - Rebuild WASM filter if needed: `cd enterprise-private-cloud/wasm-plugin && bash build.sh`
 
 ### Mobile location service fails
-- Check service is running: `curl http://localhost:5000/verify -X POST -H "Content-Type: application/json" -d '{}'`
+- Check service is running: `curl http://localhost:9050/verify -X POST -H "Content-Type: application/json" -d '{}'`
 - Verify sensor ID exists in database: Check `mobile-sensor-microservice/sensor_mapping.db`
 
 ### Certificate verification fails
