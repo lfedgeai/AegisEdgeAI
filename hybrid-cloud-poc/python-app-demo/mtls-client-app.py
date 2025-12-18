@@ -96,8 +96,10 @@ class SPIREmTLSClient:
             
             # Get certificate chain in PEM format (leaf + intermediates)
             from cryptography.hazmat.primitives import serialization
-            cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
-            
+            # Handle both X509Source (.leaf) and DefaultX509Source (.cert) structures
+            leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
+            cert_pem = leaf_cert.public_bytes(serialization.Encoding.PEM)
+
             # Try to get the full chain including agent SVID (intermediate)
             # SPIRE X509Source provides the full chain via the underlying workload API
             # The chain includes: workload SVID (leaf) + agent SVID (intermediate)
@@ -107,7 +109,7 @@ class SPIREmTLSClient:
                     # Check if there are additional certificates in the chain
                     if hasattr(x509_svid, 'cert_chain') and x509_svid.cert_chain:
                         for cert in x509_svid.cert_chain:
-                            if cert != svid.leaf:
+                            if cert != leaf_cert:
                                 cert_pem += cert.public_bytes(serialization.Encoding.PEM)
                     # Alternative: check for intermediates in the raw response
                     elif hasattr(x509_svid, 'certificates') and x509_svid.certificates:
@@ -250,19 +252,47 @@ class SPIREmTLSClient:
         
         try:
             # Create X509Source which handles automatic renewal
-            self.source = X509Source(socket_path=socket_path_with_scheme)
+            # Note: Some versions of python-spiffe may validate intermediate certificates strictly
+            # If this fails with CA flag error, we'll use an alternative approach
+            try:
+                self.source = X509Source(socket_path=socket_path_with_scheme)
+            except Exception as e:
+                error_msg = str(e)
+                if "CA flag" in error_msg or "intermediate certificate" in error_msg:
+                    # Workaround for strict validation: use default_client which may be more lenient
+                    self.log(f"  ⚠ X509Source validation failed: {error_msg}")
+                    self.log(f"  ℹ Attempting alternative method using default_client...")
+                    try:
+                        from spiffe.workloadapi import default_client
+                        # Use DefaultX509Source as fallback
+                        self.source = default_client.DefaultX509Source(socket_path=socket_path_with_scheme)
+                        self.log(f"  ✓ Using DefaultX509Source as fallback")
+                    except Exception as e2:
+                        self.log(f"  ✗ Fallback also failed: {e2}")
+                        raise Exception(f"Failed to create X509Source: {error_msg}. Fallback also failed: {e2}")
+                else:
+                    raise
             
             # Get initial SVID
-            svid = self.source.svid
+            # Handle both X509Source (.svid property) and DefaultX509Source (.get_x509_svid() method)
+            if hasattr(self.source, 'svid'):
+                svid = self.source.svid
+            elif hasattr(self.source, 'get_x509_svid'):
+                svid = self.source.get_x509_svid()
+            else:
+                raise Exception("X509Source does not provide expected SVID interface")
+            
             if not svid:
                 raise Exception("Failed to get SVID from SPIRE Agent")
             
             self.log(f"Got initial SVID: {svid.spiffe_id}")
-            self.log(f"  Initial Certificate Serial: {svid.leaf.serial_number}")
-            expiry = svid.leaf.not_valid_after_utc if hasattr(svid.leaf, 'not_valid_after_utc') else svid.leaf.not_valid_after
+            # Handle both X509Source (.leaf) and DefaultX509Source (.cert) structures
+            leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
+            self.log(f"  Initial Certificate Serial: {leaf_cert.serial_number}")
+            expiry = leaf_cert.not_valid_after_utc if hasattr(leaf_cert, 'not_valid_after_utc') else leaf_cert.not_valid_after
             self.log(f"  Certificate Expires: {expiry}")
             self.log("  Monitoring for automatic SVID renewal...")
-            self.last_svid_serial = svid.leaf.serial_number
+            self.last_svid_serial = leaf_cert.serial_number
             
             # Save initial SVID
             self._save_svid(svid)
@@ -275,7 +305,13 @@ class SPIREmTLSClient:
                 import time
                 time.sleep(0.5)
                 
-                bundle = self.source.get_bundle_for_trust_domain(trust_domain)
+                # Handle both X509Source and DefaultX509Source bundle methods
+                if hasattr(self.source, 'get_bundle_for_trust_domain'):
+                    bundle = self.source.get_bundle_for_trust_domain(trust_domain)
+                elif hasattr(self.source, 'get_bundle'):
+                    bundle = self.source.get_bundle(trust_domain)
+                else:
+                    self.log(f"  ⚠ Warning: Source does not provide bundle method")
                 if bundle:
                     # Load CA certificates from bundle into SSL context
                     from cryptography.hazmat.primitives import serialization
@@ -339,7 +375,18 @@ class SPIREmTLSClient:
             # Load certificate chain (leaf + intermediates)
             # The Unified Identity extension is in the intermediate certificate (agent SVID)
             from cryptography.hazmat.primitives import serialization
-            cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
+            
+            # Handle different svid object structures (X509Source vs DefaultX509Source)
+            if hasattr(svid, 'leaf'):
+                # X509Source returns svid with .leaf property
+                cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
+                private_key = svid.private_key
+            elif hasattr(svid, 'cert'):
+                # DefaultX509Source returns svid with .cert property
+                cert_pem = svid.cert.public_bytes(serialization.Encoding.PEM)
+                private_key = svid.private_key
+            else:
+                raise Exception("SVID object does not have expected certificate structure")
             
             # SPIRE X509Source provides the full chain via the underlying workload API
             # The chain includes: workload SVID (leaf) + agent SVID (intermediate)
@@ -351,8 +398,9 @@ class SPIREmTLSClient:
                     x509_svid = self.source._x509_svid
                     # Check if there are additional certificates in the chain
                     if hasattr(x509_svid, 'cert_chain') and x509_svid.cert_chain:
+                        leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
                         for cert in x509_svid.cert_chain:
-                            if cert != svid.leaf:
+                            if cert != leaf_cert:
                                 cert_pem += cert.public_bytes(serialization.Encoding.PEM)
                     # Alternative: check for intermediates in the raw response
                     elif hasattr(x509_svid, 'certificates') and x509_svid.certificates:
@@ -364,7 +412,7 @@ class SPIREmTLSClient:
                 self.log(f"  ⚠ Could not extract intermediate certificates: {e}")
                 self.log(f"  ℹ Note: Unified Identity extension should be in intermediate cert")
             
-            key_pem = svid.private_key.private_bytes(
+            key_pem = private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
@@ -444,7 +492,8 @@ class SPIREmTLSClient:
                     # Signal that the current connection should be rebuilt
                     return True
             elif new_svid:
-                    self.last_svid_serial = new_svid.leaf.serial_number
+                    leaf_cert = new_svid.leaf if hasattr(new_svid, 'leaf') else new_svid.cert
+                    self.last_svid_serial = leaf_cert.serial_number
         except Exception as e:
             if self.running:
                 self.log(f"Error checking renewal: {e}")
@@ -461,7 +510,8 @@ class SPIREmTLSClient:
                 return False
             
             # Get expiration time (handle both naive and timezone-aware datetimes)
-            expiry = svid.leaf.not_valid_after_utc if hasattr(svid.leaf, 'not_valid_after_utc') else svid.leaf.not_valid_after
+            leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
+            expiry = leaf_cert.not_valid_after_utc if hasattr(leaf_cert, 'not_valid_after_utc') else leaf_cert.not_valid_after
             if expiry.tzinfo is None:
                 # Naive datetime - assume UTC
                 expiry = expiry.replace(tzinfo=timezone.utc)
@@ -503,9 +553,16 @@ class SPIREmTLSClient:
                 if just_reconnected_due_to_renewal:
                     if self.use_spire and self.source:
                         try:
-                            current_svid = self.source.svid
+                            # Handle both X509Source and DefaultX509Source
+                            if hasattr(self.source, 'svid'):
+                                current_svid = self.source.svid
+                            elif hasattr(self.source, 'get_x509_svid'):
+                                current_svid = self.source.get_x509_svid()
+                            else:
+                                current_svid = None
                             if current_svid:
-                                self.last_svid_serial = current_svid.leaf.serial_number
+                                leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
+                                self.last_svid_serial = leaf_cert.serial_number
                         except Exception:
                             pass
                     just_reconnected_due_to_renewal = False
