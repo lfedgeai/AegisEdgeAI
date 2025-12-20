@@ -280,11 +280,10 @@ start_mobile_sensor_microservice() {
     
     # Ensure port is free before starting
     if command -v lsof > /dev/null 2>&1; then
-        if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
-    #        echo "    Port ${MOBILE_SENSOR_PORT} is in use, stopping existing service..."
-            stop_mobile_sensor_microservice
-            sleep 2
-        fi
+        # Port check removed - mobile sensor microservice not started by control plane
+        # if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
+        #     echo "    Port ${MOBILE_SENSOR_PORT} is in use..."
+        # fi
     fi
     
     #echo "  Starting mobile sensor microservice..."
@@ -359,39 +358,6 @@ start_mobile_sensor_microservice() {
     fi
 
     #pause_at_phase "Step 1.5 Complete" "Mobile Location Verification microservice is running on ${MOBILE_SENSOR_BASE_URL}."
-}
-
-stop_mobile_sensor_microservice() {
-    # Kill by PID file if it exists
-    if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
-        local pid
-        pid=$(cat "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || echo "")
-        if [ -n "$pid" ]; then
-            kill "$pid" >/dev/null 2>&1 || true
-        fi
-        rm -f "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || true
-    fi
-    
-    # Also kill any service.py process listening on the mobile sensor port
-    # This handles cases where the PID file is missing or the service was started outside the script
-    if command -v lsof > /dev/null 2>&1; then
-        local port_pid
-        port_pid=$(lsof -ti :${MOBILE_SENSOR_PORT} 2>/dev/null || echo "")
-        if [ -n "$port_pid" ]; then
-            kill "$port_pid" >/dev/null 2>&1 || true
-        fi
-    elif command -v fuser > /dev/null 2>&1; then
-        fuser -k ${MOBILE_SENSOR_PORT}/tcp >/dev/null 2>&1 || true
-    fi
-    
-    # Kill by process pattern matching (multiple patterns to catch all variations)
-    pkill -f "service.py.*--port.*${MOBILE_SENSOR_PORT}" >/dev/null 2>&1 || true
-    pkill -f "python3.*service.py.*--port" >/dev/null 2>&1 || true
-    pkill -f "service.py.*--host.*127.0.0.1" >/dev/null 2>&1 || true
-    pkill -f "python3.*service.py.*--host.*127.0.0.1.*--port.*9050" >/dev/null 2>&1 || true
-    pkill -f "mobile-sensor-microservice.*service.py" >/dev/null 2>&1 || true
-    
-    sleep 1
 }
 
 # Function to extract timestamp from log line
@@ -912,7 +878,6 @@ cleanup() {
     fi
     echo ""
     echo -e "${YELLOW}Cleaning up on exit...${NC}"
-    stop_mobile_sensor_microservice
     # Only stop processes on exit, don't delete data (user may want to inspect)
     pkill -f "keylime_verifier" >/dev/null 2>&1 || true
     pkill -f "python.*keylime" >/dev/null 2>&1 || true
