@@ -108,16 +108,162 @@ if [ ! -f "${PYTHON_APP_DIR}/mtls-client-app.py" ]; then
     exit 1
 fi
 echo -e "${GREEN}✓ Client script found${NC}"
+
+# We'll use mtls-client-app.py which already works
+
+# Check if get_imei_imsi_huawei.sh exists
+if [ ! -f "${SCRIPT_DIR}/get_imei_imsi_huawei.sh" ]; then
+    echo "Error: get_imei_imsi_huawei.sh not found in $SCRIPT_DIR"
+    exit 1
+fi
+echo -e "${GREEN}✓ IMEI/IMSI script found${NC}"
 echo ""
 
-# Step 4: Start client in foreground
+# Step 4: Execute get_imei_imsi_huawei.sh ONCE at the start and check for specific values
+# Note: This is executed only once, not for each HTTP request
 echo "=========================================="
-echo -e "${GREEN}Starting mTLS client...${NC}"
+echo -e "${YELLOW}Checking IMEI/IMSI (executed once at start)...${NC}"
 echo "=========================================="
-echo "Press Ctrl+C to stop"
+
+# Execute get_imei_imsi_huawei.sh once and capture output
+# Temporarily disable set -e to handle script failures gracefully
+set +e
+IMEI_OUTPUT=$(cd "${SCRIPT_DIR}" && timeout 10 ./get_imei_imsi_huawei.sh 2>&1)
+IMEI_EXIT_CODE=$?
+set -e
+
+# Check if script failed or timed out
+if [ $IMEI_EXIT_CODE -ne 0 ]; then
+    if [ $IMEI_EXIT_CODE -eq 124 ]; then
+        echo -e "${YELLOW}⚠ IMEI/IMSI script timed out (may be waiting for sudo password)${NC}"
+    else
+        echo -e "${YELLOW}⚠ IMEI/IMSI script failed (exit code: $IMEI_EXIT_CODE)${NC}"
+    fi
+fi
+
+echo "$IMEI_OUTPUT"
 echo ""
 
-# Run the client from python-app-demo directory
+# Check if output contains the expected IMEI and IMSI
+EXPECTED_IMEI="356345043865103"
+EXPECTED_IMSI="214070610960475"
+IMEI_FOUND=false
+IMSI_FOUND=false
+
+# Temporarily disable set -e for grep checks (grep returns non-zero if not found)
+set +e
+echo "$IMEI_OUTPUT" | grep -q "$EXPECTED_IMEI"
+if [ $? -eq 0 ]; then
+    IMEI_FOUND=true
+    echo -e "${GREEN}✓ Expected IMEI found: $EXPECTED_IMEI${NC}"
+else
+    echo -e "${YELLOW}⚠ Expected IMEI not found: $EXPECTED_IMEI${NC}"
+fi
+
+echo "$IMEI_OUTPUT" | grep -q "$EXPECTED_IMSI"
+if [ $? -eq 0 ]; then
+    IMSI_FOUND=true
+    echo -e "${GREEN}✓ Expected IMSI found: $EXPECTED_IMSI${NC}"
+else
+    echo -e "${YELLOW}⚠ Expected IMSI not found: $EXPECTED_IMSI${NC}"
+fi
+set -e
+
+if [ "$IMEI_FOUND" = true ] && [ "$IMSI_FOUND" = true ]; then
+    EXPECT_SUCCESS=true
+    echo -e "${GREEN}✓ Both IMEI and IMSI match - expecting HTTP request to succeed${NC}"
+else
+    EXPECT_SUCCESS=false
+    echo -e "${YELLOW}⚠ IMEI/IMSI mismatch - expecting 'Geo Claim Missing' response${NC}"
+fi
+echo ""
+
+# Step 5: Send HTTP request and validate response
+echo "=========================================="
+echo -e "${GREEN}Sending HTTP request...${NC}"
+echo "=========================================="
+
+# Run mtls-client-app.py with timeout to capture first response
+# Temporarily disable set -e to capture output even if request fails
+set +e
 cd "${PYTHON_APP_DIR}"
-python3 mtls-client-app.py
+
+# Run mtls-client-app.py in background, capture output, and kill after first response
+# Use timeout to ensure it doesn't run forever
+HTTP_RESPONSE=$(timeout 10 python3 mtls-client-app.py 2>&1 | head -100)
+HTTP_EXIT_CODE=$?
+
+# If timeout killed it, that's fine - we got the response
+if [ $HTTP_EXIT_CODE -eq 124 ]; then
+    HTTP_EXIT_CODE=0  # Timeout is expected, treat as success for our purposes
+fi
+set -e
+
+echo "$HTTP_RESPONSE"
+echo ""
+
+# Check the response based on expectations
+# Temporarily disable set -e for grep checks
+set +e
+if [ "$EXPECT_SUCCESS" = true ]; then
+    # Expect success - look for "SERVER ACK: HELLO" (partial match, e.g., "SERVER ACK: HELLO #1")
+    echo "$HTTP_RESPONSE" | grep -qiE "SERVER ACK: HELLO"
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ TEST PASSED: HTTP request succeeded as expected (got SERVER ACK: HELLO)${NC}"
+        exit 0
+    fi
+    
+    # Also check for 200 OK status as fallback
+    echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ TEST PASSED: HTTP request succeeded as expected (200 OK)${NC}"
+        exit 0
+    fi
+    
+    echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"
+    if [ $? -eq 0 ]; then
+        echo -e "${YELLOW}⚠ TEST FAILED: Expected success (SERVER ACK: HELLO) but got 'Geo Claim Missing'${NC}"
+        exit 1
+    fi
+    
+    echo -e "${YELLOW}⚠ TEST FAILED: Expected success (SERVER ACK: HELLO) but got different response${NC}"
+    exit 1
+else
+    # Expect "Geo Claim Missing" (typically 403 Forbidden)
+    echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ TEST PASSED: Got 'Geo Claim Missing' as expected${NC}"
+        exit 0
+    fi
+    
+    # Also check for 403 status code
+    echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 403\|HTTP/1.0 403\|403 Forbidden"
+    if [ $? -eq 0 ]; then
+        # Check if response body contains Geo Claim Missing (might be in body)
+        if echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"; then
+            echo -e "${GREEN}✓ TEST PASSED: Got 403 with 'Geo Claim Missing' as expected${NC}"
+            exit 0
+        else
+            echo -e "${YELLOW}⚠ TEST PARTIAL: Got 403 but 'Geo Claim Missing' text not found in response${NC}"
+            exit 1
+        fi
+    fi
+    
+    # Check if we got SERVER ACK: HELLO (success) when we expected failure
+    echo "$HTTP_RESPONSE" | grep -qiE "SERVER ACK: HELLO"
+    if [ $? -eq 0 ]; then
+        echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but request succeeded (got SERVER ACK: HELLO)${NC}"
+        exit 1
+    fi
+    
+    echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
+    if [ $? -eq 0 ]; then
+        echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but request succeeded (200 OK)${NC}"
+        exit 1
+    fi
+    
+    echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but got different response${NC}"
+    exit 1
+fi
+set -e
 
