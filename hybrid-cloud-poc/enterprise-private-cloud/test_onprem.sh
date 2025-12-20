@@ -269,6 +269,7 @@ fi
 
 # Parse command line arguments
 RUN_CLEANUP_ONLY=false
+NO_BUILD="${NO_BUILD:-false}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --cleanup-only)
@@ -283,6 +284,10 @@ while [[ $# -gt 0 ]]; do
         --pause)
             export PAUSE_ENABLED=true
             PAUSE_ENABLED=true
+            shift
+            ;;
+        --no-build)
+            NO_BUILD=true
             shift
             ;;
         -h|--help)
