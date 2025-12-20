@@ -928,11 +928,13 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
         # DEMO_MODE defaults to true when CAMARA_BYPASS is enabled (suppresses bypass log messages)
         export DEMO_MODE="${DEMO_MODE:-true}"
+        # Initialize CAMARA_BASIC_AUTH to avoid unbound variable error
+        CAMARA_BASIC_AUTH="${CAMARA_BASIC_AUTH:-}"
         # ALWAYS use port 9050 (required for Keylime Verifier and WASM plugin)
         # Override any environment variables to ensure port 9050 is always used
         unset MOBILE_SENSOR_PORT 2>/dev/null || true
         MOBILE_SERVICE_PORT=9050  # Hardcode to ensure it's always 9050, no matter what
-        if [ -n "$CAMARA_BASIC_AUTH" ] && [ "$CAMARA_BYPASS" != "true" ]; then
+        if [ -n "${CAMARA_BASIC_AUTH:-}" ] && [ "$CAMARA_BYPASS" != "true" ]; then
             export CAMARA_BASIC_AUTH
             python3 service.py --port 9050 --host 0.0.0.0 > /tmp/mobile-sensor.log 2>&1 &
         else
