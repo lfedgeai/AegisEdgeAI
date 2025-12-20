@@ -505,6 +505,45 @@ main() {
     
     #test_camara_caching_and_gps_bypass
     
+    # Step 5: Test mTLS Client with IMEI/IMSI validation
+    echo ""
+    if [ "$NO_PAUSE" = "true" ]; then
+        echo "  (--no-pause: continuing automatically...)"
+    elif [ -t 0 ]; then
+        read -p "Press Enter to continue to mTLS client test..."
+    else
+        echo "  (Non-interactive mode - continuing automatically in 3 seconds...)"
+        sleep 3
+    fi
+    
+    echo ""
+    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}Step 5: Testing mTLS Client with IMEI/IMSI Validation${NC}"
+    echo -e "${BOLD}Script: test_mtls_client.sh${NC}"
+    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Prepare environment variables - SERVER_HOST should be ONPREM_HOST where Envoy is running
+    mTLS_ENV_VARS="SERVER_HOST=${ONPREM_HOST} SERVER_PORT=8080 CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
+    
+    # Run test_mtls_client.sh on agents host (where client runs)
+    MTLS_TEST_PASSED=false
+    if run_on_agents "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${mTLS_ENV_VARS} ./test_mtls_client.sh" 2>&1 | tee "/tmp/remote_test_mtls_client.log"; then
+        echo ""
+        echo -e "${GREEN}✓ mTLS client test completed successfully${NC}"
+        MTLS_TEST_PASSED=true
+    else
+        echo ""
+        echo -e "${RED}✗ mTLS client test failed${NC}"
+        echo -e "${YELLOW}Check logs: /tmp/remote_test_mtls_client.log${NC}"
+        MTLS_TEST_PASSED=false
+    fi
+    
+    if [ "$MTLS_TEST_PASSED" != "true" ]; then
+        echo -e "${RED}mTLS client test failed. Aborting.${NC}"
+        exit 1
+    fi
+    
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}All Tests Completed!${NC}"
@@ -516,6 +555,7 @@ main() {
     echo "  ✓ On-Prem Services: Running on ${ONPREM_HOST}"
     echo "  ✓ Complete Integration Test: Completed"
     echo "  ✓ CAMARA Caching and GPS Bypass Tests: Completed"
+    echo "  ✓ mTLS Client Test with IMEI/IMSI Validation: Completed"
     echo ""
     echo -e "${CYAN}To check logs:${NC}"
     if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then
