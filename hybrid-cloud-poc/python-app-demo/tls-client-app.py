@@ -82,15 +82,21 @@ class SPIRETLSClient:
             
             # Load into context
             import tempfile
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
-                cert_file.write(cert_pem)
-                cert_file.write(key_pem)
-                cert_path = cert_file.name
-            
-            context.load_cert_chain(cert_path)
-            
-            # Clean up temp file
-            os.unlink(cert_path)
+            cert_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
+                    cert_file.write(cert_pem)
+                    cert_file.write(key_pem)
+                    cert_path = cert_file.name
+                
+                context.load_cert_chain(cert_path)
+            finally:
+                # Always clean up temporary cert file, even if load_cert_chain fails
+                if cert_path and os.path.exists(cert_path):
+                    try:
+                        os.unlink(cert_path)
+                    except Exception:
+                        pass  # Ignore errors during cleanup
             
             return context, source, bundle_source
             
