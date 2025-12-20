@@ -443,6 +443,14 @@ class SPIREmTLSClient:
             trust_domain = svid.spiffe_id.trust_domain
             bundle = None
             try:
+                # Clean up old bundle file if it exists (from previous renewal)
+                if self.bundle_path and os.path.exists(self.bundle_path):
+                    try:
+                        os.unlink(self.bundle_path)
+                    except Exception:
+                        pass  # Ignore errors during cleanup
+                    self.bundle_path = None
+                
                 # Wait a moment for bundle to be available
                 import time
                 time.sleep(0.5)
@@ -581,13 +589,21 @@ class SPIREmTLSClient:
             )
             
             import tempfile
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
-                cert_file.write(cert_pem)
-                cert_file.write(key_pem)
-                cert_path = cert_file.name
-            
-            context.load_cert_chain(cert_path)
-            os.unlink(cert_path)
+            cert_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
+                    cert_file.write(cert_pem)
+                    cert_file.write(key_pem)
+                    cert_path = cert_file.name
+                
+                context.load_cert_chain(cert_path)
+            finally:
+                # Always clean up temporary cert file, even if load_cert_chain fails
+                if cert_path and os.path.exists(cert_path):
+                    try:
+                        os.unlink(cert_path)
+                    except Exception:
+                        pass  # Ignore errors during cleanup
             
             return context
             

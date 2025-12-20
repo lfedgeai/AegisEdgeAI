@@ -93,12 +93,21 @@ def get_tls_context():
                 for cert in x509_authorities:
                     bundle_pem += cert.public_bytes(serialization.Encoding.PEM)
                 
-                with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as bundle_file:
-                    bundle_file.write(bundle_pem)
-                    bundle_path = bundle_file.name
-                
-                context.load_verify_locations(bundle_path)
-                context.verify_mode = ssl.CERT_REQUIRED
+                bundle_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as bundle_file:
+                        bundle_file.write(bundle_pem)
+                        bundle_path = bundle_file.name
+                    
+                    context.load_verify_locations(bundle_path)
+                    context.verify_mode = ssl.CERT_REQUIRED
+                finally:
+                    # Always clean up temporary bundle file, even if load_verify_locations fails
+                    if bundle_path and os.path.exists(bundle_path):
+                        try:
+                            os.unlink(bundle_path)
+                        except Exception:
+                            pass  # Ignore errors during cleanup
         except Exception as e:
             context.verify_mode = ssl.CERT_NONE
     
@@ -153,18 +162,21 @@ def get_tls_context():
     )
     
     # Create temporary file with certificate and key
-    with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
-        cert_file.write(cert_pem)
-        cert_file.write(key_pem)
-        cert_path = cert_file.name
-    
-    context.load_cert_chain(cert_path)
-    
-    # Clean up temp file after loading (context keeps a copy)
+    cert_path = None
     try:
-        os.unlink(cert_path)
-    except Exception:
-        pass
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as cert_file:
+            cert_file.write(cert_pem)
+            cert_file.write(key_pem)
+            cert_path = cert_file.name
+        
+        context.load_cert_chain(cert_path)
+    finally:
+        # Always clean up temporary cert file, even if load_cert_chain fails
+        if cert_path and os.path.exists(cert_path):
+            try:
+                os.unlink(cert_path)
+            except Exception:
+                pass  # Ignore errors during cleanup
     
     return context, source
 
