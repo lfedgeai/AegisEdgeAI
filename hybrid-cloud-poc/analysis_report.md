@@ -14,8 +14,14 @@ The Hybrid Cloud POC demonstrates a sophisticated integration of SPIRE, Keylime,
         *   **Server Logic**: `server.go` explicitly gates `newKeylimeClient` and `newPolicyEngine` creation (lines 419-459).
         *   **API Logic**: `service.go` protects the `SovereignAttestation` flow.
     *   **Database**: No schema changes were made (verified `spire/pkg/server/datastore/sqlstore/models.go`), avoiding migration flag complexity.
+*   **Coverage Verification**:
+    *   **Scan Scope**: Full codebase scan for "Unified-Identity" and "Sovereign" keywords performed.
+    *   **Core Checks**: Verified that critical entry points are strictly gated:
+        *   **Agent**: `agent.go` node attestor selection (lines 113-125).
+        *   **Server**: `server.go` Keylime/Policy client creation (lines 419-459).
+        *   **API**: `service.go` SovereignAttestation flow.
 *   **Gap Analysis (Minor)**:
-    *   **TLS Configuration (`endpoints.go`)**: Connection logic contains specific comments and decisions about TLS 1.2 vs 1.3 based on Unified Identity requirements (lines 425-479). While this code *reacts* to certificates (which are only issued if the feature is enabled), the configuration logic itself isn't explicitly wrapped in a generic `if fflag.IsSet`. This is a passive dependency and acceptable, but worth noting as a "soft" gap.
+    *   **TLS Configuration (`endpoints.go`)**: Connection logic contains specific comments/decisions about TLS 1.2 vs 1.3 based on Unified Identity requirements (lines 425-479). **Finding**: This code block is *not* explicitly wrapped in `if fflag.IsSet`. However, it relies on connection state (certs) that can only exist if the feature is enabled. Status: **Safe (Passive Dependency)**, but technically an unflagged configuration path.
 *   **Correctness vs Upstream Patterns**:
     *   **The "Fork" Reality**: Standard SPIRE extensions typically use **Plugins** (NodeAttestor/WorkloadAttestor) to isolate custom logic. This implementation modifies the **Core API** (`AttestAgent` in `service.go`) to inject the `SovereignAttestation` flow.
     *   **Maintenance Assessment**: While the feature flag is implemented "correctly" in terms of code logic (it effectively switches the feature on/off), the *architectural choice* to patch core files instead of creating a plugin creates a "Patch" maintenance burden. Rebasing against newer SPIRE versions (e.g., v1.10+) will likely cause merge conflicts in `service.go`.
