@@ -279,12 +279,12 @@ start_mobile_sensor_microservice() {
     cd "${MOBILE_SENSOR_DIR}" || exit 1
     
     # Ensure port is free before starting
-    if command -v lsof > /dev/null 2>&1; then
-        # Port check removed - mobile sensor microservice not started by control plane
-        # if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
-        #     echo "    Port ${MOBILE_SENSOR_PORT} is in use..."
-        # fi
-    fi
+    # Port check removed - mobile sensor microservice not started by control plane
+    # if command -v lsof > /dev/null 2>&1; then
+    #     if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
+    #         echo "    Port ${MOBILE_SENSOR_PORT} is in use..."
+    #     fi
+    # fi
     
     #echo "  Starting mobile sensor microservice..."
     #echo "    Endpoint: ${MOBILE_SENSOR_BASE_URL}"
