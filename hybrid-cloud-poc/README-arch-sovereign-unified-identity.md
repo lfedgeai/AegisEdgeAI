@@ -574,7 +574,7 @@ SPIRE Server (Port 8081)
     │
     ├─> Extract: App Key public key, certificate, nonce, agent UUID
     │
-    └─> POST /v2.2/unified_identity/verify
+    └─> POST /v2.4/verify/evidence
         │
         └─> Keylime Verifier (Port 8881)
             │
@@ -664,7 +664,7 @@ Keylime Verifier (Port 8881)
     │   ├─> Quote structure validated
     │   └─> Geolocation extracted from TPM quote
     │
-    └─> POST /v2.2/unified_identity/verify (response)
+    └─> POST /v2.4/verify/evidence (response)
         │
         └─> SPIRE Server (Port 8081)
             │
