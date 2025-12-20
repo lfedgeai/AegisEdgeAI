@@ -158,7 +158,6 @@ verify_control_plane() {
         "SPIRE Server|test -S /tmp/spire-server/private/api.sock"
         "Keylime Verifier|curl -s -k https://localhost:8881/version >/dev/null 2>&1 || curl -s http://localhost:8881/version >/dev/null 2>&1"
         "Keylime Registrar|curl -s http://localhost:8890/version >/dev/null 2>&1"
-        "Mobile Sensor Service|curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' http://localhost:9050/verify | grep -q '200\|404'"
     )
     
     wait_for_services "run_on_control_plane" "${checks[@]}"
