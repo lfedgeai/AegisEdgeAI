@@ -325,6 +325,13 @@ stop_all_instances_and_cleanup() {
     find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
     find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
     find /tmp -name "*.tmp" -type f 2>/dev/null | grep -E "(keylime|spire|tpm|mobile)" | xargs rm -f 2>/dev/null || true
+    # Clean up temporary SVID certificate files (from Python apps during renewal)
+    echo "     Removing temporary SVID certificate files..."
+    find /tmp -maxdepth 1 -name "tmp*.pem" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
+    # Clean up other temporary test files
+    rm -f /tmp/remote_test_*.log 2>/dev/null || true
+    rm -f /tmp/integration_test.log 2>/dev/null || true
+    rm -f /tmp/mtls-client-app.log 2>/dev/null || true
     
     # Step 5: Clean up sockets
     echo "  5. Removing socket files..."

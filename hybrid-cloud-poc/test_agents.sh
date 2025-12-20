@@ -183,8 +183,20 @@ stop_agent_services_only() {
     rm -f /tmp/keylime-agent.sock 2>/dev/null || true
     rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
     
-    # Step 6: Create clean data directories
-    echo "  6. Creating clean data directories..."
+    # Step 6: Clean up temporary files in /tmp
+    echo "  6. Cleaning up temporary files in /tmp..."
+    # Clean up temporary SVID certificate files (from Python apps during renewal)
+    find /tmp -maxdepth 1 -name "tmp*.pem" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
+    # Clean up other temporary test files
+    rm -f /tmp/remote_test_*.log 2>/dev/null || true
+    rm -f /tmp/integration_test.log 2>/dev/null || true
+    rm -f /tmp/mtls-client-app.log 2>/dev/null || true
+    # Clean up Python cache files
+    find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
+    find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
+    
+    # Step 7: Create clean data directories
+    echo "  7. Creating clean data directories..."
     mkdir -p /tmp/spire-agent/public 2>/dev/null || true
     mkdir -p /tmp/keylime-agent 2>/dev/null || true
     mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true

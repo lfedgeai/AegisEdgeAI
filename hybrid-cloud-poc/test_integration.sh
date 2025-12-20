@@ -630,6 +630,27 @@ cleanup_all() {
         echo -e "${YELLOW}⚠ On-prem cleanup had issues (may be expected if services weren't running)${NC}"
     fi
     
+    # Final cleanup: Remove any remaining temporary files in /tmp
+    echo ""
+    echo -e "${CYAN}Performing final /tmp cleanup...${NC}"
+    echo ""
+    
+    # Clean up temporary SVID certificate files (from Python apps during renewal)
+    echo "  Cleaning up temporary SVID certificate files..."
+    find /tmp -maxdepth 1 -name "tmp*.pem" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
+    
+    # Clean up other temporary test files
+    echo "  Cleaning up temporary test log files..."
+    rm -f /tmp/remote_test_*.log 2>/dev/null || true
+    rm -f /tmp/integration_test.log 2>/dev/null || true
+    rm -f /tmp/mtls-client-app.log 2>/dev/null || true
+    rm -f /tmp/mtls-server-app.log 2>/dev/null || true
+    
+    # Clean up Python cache files
+    echo "  Cleaning up Python cache files..."
+    find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
+    find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
+    
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}Cleanup Complete!${NC}"
