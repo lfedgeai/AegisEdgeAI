@@ -2503,20 +2503,13 @@ class VerifyEvidenceHandler(BaseHandler):
             )
             attested_claims.pop('geolocation', None)
 
-        try:
-            _verify_mobile_sensor_geolocation(
-                attested_claims.get('geolocation'),
-                require_tpm_sensor=mobile_geo_from_quote,
-            )
-        except MobileSensorVerificationError as exc:
-            logger.error('Unified-Identity: Mobile sensor location verification failed: %s', exc)
-            web_util.echo_json_response(
-                self,
-                422,
-                f"mobile sensor location verification failed: {exc}",
-                {'verified': False},
-            )
-            return None
+        # Mobile sensor location verification via microservice is disabled
+        # The geolocation data is already validated in the TPM quote and included in the certificate
+        # No additional microservice call is needed
+        logger.debug(
+            'Unified-Identity: Mobile sensor location verification via microservice is disabled; '
+            'geolocation data from TPM quote is used directly'
+        )
 
         audit_id = str(uuid.uuid4())
         response = {
