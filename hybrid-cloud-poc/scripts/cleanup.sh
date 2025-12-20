@@ -46,6 +46,21 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     echo ""
 fi
 
+# Function to clean up temporary files in /tmp (shared across all test scripts)
+# This can be called independently or as part of full cleanup
+cleanup_tmp_files() {
+    # Clean up temporary SVID certificate files (from Python apps during renewal)
+    find /tmp -maxdepth 1 -name "tmp*.pem" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
+    # Clean up other temporary test files
+    rm -f /tmp/remote_test_*.log 2>/dev/null || true
+    rm -f /tmp/integration_test.log 2>/dev/null || true
+    rm -f /tmp/mtls-client-app.log 2>/dev/null || true
+    rm -f /tmp/mtls-server-app.log 2>/dev/null || true
+    # Clean up Python cache files
+    find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
+    find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
+}
+
 # Function to stop all existing instances and clean up all data
 # If SKIP_HEADER is set, don't print the header message (for use in test scripts)
 stop_all_instances_and_cleanup() {
@@ -325,13 +340,9 @@ stop_all_instances_and_cleanup() {
     find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
     find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
     find /tmp -name "*.tmp" -type f 2>/dev/null | grep -E "(keylime|spire|tpm|mobile)" | xargs rm -f 2>/dev/null || true
-    # Clean up temporary SVID certificate files (from Python apps during renewal)
-    echo "     Removing temporary SVID certificate files..."
-    find /tmp -maxdepth 1 -name "tmp*.pem" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
-    # Clean up other temporary test files
-    rm -f /tmp/remote_test_*.log 2>/dev/null || true
-    rm -f /tmp/integration_test.log 2>/dev/null || true
-    rm -f /tmp/mtls-client-app.log 2>/dev/null || true
+    
+    # Call shared /tmp cleanup function
+    cleanup_tmp_files
     
     # Step 5: Clean up sockets
     echo "  5. Removing socket files..."

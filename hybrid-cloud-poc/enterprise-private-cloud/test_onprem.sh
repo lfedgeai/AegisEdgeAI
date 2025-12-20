@@ -8,6 +8,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONPREM_DIR="$SCRIPT_DIR"
 REPO_ROOT="$(cd "$ONPREM_DIR/.." && pwd)"
 
+# Source cleanup.sh to reuse cleanup_tmp_files function
+# This ensures consistent /tmp cleanup across all test scripts
+PROJECT_ROOT="${REPO_ROOT}"
+source "${REPO_ROOT}/scripts/cleanup.sh"
+
 # Read host IPs from environment variables (passed by test_integration.sh) BEFORE setting defaults
 # This ensures we use the correct IPs when all hosts are the same
 # If not set, detect current host IP (for standalone execution)
@@ -177,16 +182,8 @@ cleanup_existing_services() {
     rm -f ~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-key.pem >/dev/null 2>&1
     # Remove old environment files
     sudo rm -f /etc/mobile-sensor-service.env.old >/dev/null 2>&1
-    # Clean up temporary SVID certificate files (from Python apps during renewal)
-    find /tmp -maxdepth 1 -name "tmp*.pem" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
-    # Clean up other temporary test files
-    rm -f /tmp/remote_test_*.log 2>/dev/null || true
-    rm -f /tmp/integration_test.log 2>/dev/null || true
-    rm -f /tmp/mtls-client-app.log 2>/dev/null || true
-    rm -f /tmp/mtls-server-app.log 2>/dev/null || true
-    # Clean up Python cache files
-    find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
-    find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
+    # Clean up temporary files in /tmp (using cleanup.sh function)
+    cleanup_tmp_files
     # Recreate log directory and file
     sudo mkdir -p /opt/envoy/logs >/dev/null 2>&1
     sudo touch /opt/envoy/logs/envoy.log >/dev/null 2>&1
