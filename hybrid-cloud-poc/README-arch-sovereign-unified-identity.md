@@ -193,9 +193,9 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 
 17. **SPIRE Server Validates Verification Result**
     - The SPIRE Server receives the verification result from Keylime Verifier
-    - If verification succeeded (including certificate signature verification and mobile location verification if applicable), the server proceeds to issue the agent SVID
+    - If verification succeeded (including certificate signature verification and TPM quote verification), the server proceeds to issue the agent SVID
     - If certificate signature verification failed, the server rejects the attestation and does not issue an SVID
-    - If mobile location verification failed, the server rejects the attestation and does not issue an SVID
+    - If TPM quote verification failed, the server rejects the attestation and does not issue an SVID
 
 18. **SPIRE Server Issues Sovereign SVID**
     - The SPIRE Server creates an X.509 certificate (SVID) for the SPIRE Agent
@@ -222,10 +222,9 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **SPIRE Agent Attestation Transport**: SPIRE Agent uses standard TLS (not mTLS) for gRPC communication with SPIRE Server
 - **TPM App Key Usage**: TPM App Key is used for attestation proof (in SovereignAttestation message), not for TLS client certificate authentication
 - **SPIRE Agent Attestation Transport**: SPIRE Agent uses standard TLS (not mTLS) for gRPC communication with SPIRE Server
-- **TPM App Key Usage**: TPM App Key is used for attestation proof (in SovereignAttestation message), not for TLS client certificate authentication
-- **Token Caching**: Mobile location verification microservice caches CAMARA auth_req_id (persisted to file) and access_token (with expiration) to reduce API calls and improve performance
-- **Location Verification Caching**: The `verify_location` API result is cached with configurable TTL (default: 15 minutes). The actual CAMARA API is called at most once per TTL period; subsequent calls within the TTL return the cached result. This significantly reduces CAMARA API calls and improves performance.
-- **GPS/GNSS Sensor Bypass**: GPS/GNSS sensors (trusted hardware) bypass mobile location verification entirely, allowing attestation to proceed without CAMARA API calls
+- **Token Caching** (Runtime Verification): Mobile location verification microservice (used by Envoy WASM Filter) caches CAMARA auth_req_id (persisted to file) and access_token (with expiration) to reduce API calls and improve performance
+- **Location Verification Caching** (Runtime Verification): The `verify_location` API result is cached with configurable TTL (default: 15 minutes). The actual CAMARA API is called at most once per TTL period; subsequent calls within the TTL return the cached result. This significantly reduces CAMARA API calls and improves performance. Note: This caching is for runtime verification at the enterprise gateway, not during attestation.
+- **GPS/GNSS Sensor Bypass** (Runtime Verification): GPS/GNSS sensors (trusted hardware) bypass mobile location service entirely at the enterprise gateway, allowing requests directly without CAMARA API calls
 
 This flow provides hardware-backed identity attestation where the SPIRE Agent proves its identity using the TPM, and the SPIRE Server verifies this proof through the Keylime Verifier before issuing credentials.
 
@@ -364,7 +363,7 @@ After workloads receive their SPIRE SVIDs, they can use these certificates to ac
    - Uses WASM filter to extract sensor information from certificate chain
 
 2. **Mobile Location Service Setup**
-   - Mobile location service runs on enterprise on-prem gateway (localhost:5000)
+   - Mobile location service runs on enterprise on-prem gateway (localhost:9050)
    - Handles CAMARA API calls with caching (15-minute TTL, configurable)
    - No caching in WASM filter - all caching centralized in mobile location service
 
@@ -392,7 +391,7 @@ After workloads receive their SPIRE SVIDs, they can use these certificates to ac
      - Logs bypass message and allows request directly
      - Adds `X-Sensor-ID` header and forwards to backend
    - **Mobile sensors** (`sensor_type == "mobile"`):
-     - Calls mobile location service at `localhost:5000/verify` (blocking call)
+     - Calls mobile location service at `localhost:9050/verify` (blocking call)
      - Request: `POST /verify` with `{"sensor_id": "...", "sensor_imei": "...", "sensor_imsi": "..."}`
      - Mobile location service:
        - Looks up sensor in database
@@ -433,7 +432,7 @@ Envoy Proxy (10.1.0.10:8080)
     │   ├─> If "gnss": Bypass mobile location service, allow directly
     │   └─> If "mobile":
     │       │
-    │       └─> POST /verify → Mobile Location Service (localhost:5000)
+    │       └─> POST /verify → Mobile Location Service (localhost:9050)
     │           │
     │           ├─> Check verify_location cache (TTL: 15 min)
     │           │   ├─> Cache hit: Return cached result
@@ -663,7 +662,7 @@ Keylime Verifier (Port 8881)
     │   ├─> Quote signature verified (AK)
     │   ├─> Nonce matches
     │   ├─> Quote structure validated
-    │   └─> Mobile location verified (if mobile)
+    │   └─> Geolocation extracted from TPM quote
     │
     └─> POST /v2.2/unified_identity/verify (response)
         │
@@ -679,8 +678,8 @@ SPIRE Server (Port 8081)
     │
     ├─> Check verification status
     ├─> Verify certificate signature valid
-    ├─> Verify mobile location (if mobile)
-    └─> Extract attested claims
+    ├─> Verify TPM quote valid
+    └─> Extract attested claims (including geolocation from TPM quote)
 ```
 
 **Step 15: SPIRE Server Issues Sovereign SVID**
