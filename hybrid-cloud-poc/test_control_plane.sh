@@ -1491,8 +1491,11 @@ fi
 
 pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
 
-# Step 1.5: Start Mobile Location Verification microservice
-start_mobile_sensor_microservice
+# Step 1.5: Mobile Location Verification microservice is NOT started by control plane
+# The mobile location microservice is only used by Envoy WASM Filter for runtime verification
+# Keylime Verifier no longer calls the mobile location microservice during attestation
+# (Mobile sensor microservice is started by test_onprem.sh for enterprise gateway)
+# start_mobile_sensor_microservice  # DISABLED - not needed for control plane
 
 # Helper function to stop control plane services
 stop_control_plane_services() {
@@ -1764,7 +1767,6 @@ if [ ! -f "${SPIRE_SERVER}" ]; then
         echo -e "${GREEN}Control Plane Services Summary:${NC}"
         echo -e "${GREEN}  ✓ Keylime Verifier started${NC}"
         echo -e "${GREEN}  ✓ Keylime Registrar started${NC}"
-        echo -e "${GREEN}  ✓ Mobile Sensor Microservice started${NC}"
         echo -e "${YELLOW}  ⚠ SPIRE Server skipped (binary not found, --no-build specified)${NC}"
         echo -e "${GREEN}============================================================${NC}"
         echo ""
