@@ -14,7 +14,10 @@ zero-trust/agents/*
 zero-trust/logs/*
 
 # Compiled binaries
-zero-trust/spire-tpm-plugin/tpm-app-persist
+# TPM binaries (exclude .c source files)
+zero-trust/spire-tpm-plugin/tpm-app-*
+zero-trust/spire-tpm-plugin/ma-app-*
+!zero-trust/spire-tpm-plugin/*.c
 zero-trust/spire-tpm-plugin/*.o
 zero-trust/spire-tpm-plugin/*.ctx
 zero-trust/spire-tpm-plugin/*.pem
@@ -26,6 +29,45 @@ zero-trust/spire-tpm-plugin/*.out
 zero-trust/spire-tpm-plugin/*.msg
 zero-trust/spire-tpm-plugin/*.pcrs
 zero-trust/spire-tpm-plugin/*.hash
+
+# SPIRE binaries
+**/bin/spire-server
+**/bin/spire-agent
+**/bin/oidc-discovery-provider
+
+# Rust Keylime binaries
+**/target/release/keylime_agent
+**/target/release/keylime_ima_emulator
+**/target/release/keylime_push_model_agent
+# Rust build artifacts (target directory)
+**/target/
+
+# WASM binaries (compiled, not source)
+**/target/**/*.wasm
+**/wasm-plugin/target/**/*.wasm
+# But allow WASM source files
+!**/*.wat
+!**/src/**/*.rs
+
+# Go binaries (hostproximity, etc.)
+**/hostproximity
+**/*.exe
+
+# SPIRE binaries in various locations
+**/spire-server
+**/spire-agent
+**/cmd/spire-server/spire-server
+**/cmd/spire-agent/spire-agent
+**/support/oidc-discovery-provider/oidc-discovery-provider
+
+# Shared libraries and dynamic libraries
+**/*.so
+**/*.dll
+**/*.dylib
+
+# Rust build artifacts (dependency files, etc.)
+**/*.d
+**/.cargo-lock
 
 # hybrid-cloud-poc/code-rollout-phase-1/spire/spire-agent
 # hybrid-cloud-poc/code-rollout-phase-1/spire/spire-server

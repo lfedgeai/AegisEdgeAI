@@ -703,6 +703,7 @@ Options:
   --no-exit-cleanup    Do not run best-effort cleanup on exit (default behavior)
   --pause              Enable pause points at critical phases (default: auto-detect)
   --no-pause           Disable pause points (run non-interactively)
+  --no-build           Skip building binaries (use existing binaries)
   -h, --help           Show this help message.
 
 Environment Variables:
@@ -1174,6 +1175,10 @@ while [[ $# -gt 0 ]]; do
             PAUSE_ENABLED=false
             shift
             ;;
+        --no-build)
+            NO_BUILD=true
+            shift
+            ;;
         -h|--help)
             show_usage
             exit 0
@@ -1185,6 +1190,9 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Initialize NO_BUILD if not set
+NO_BUILD="${NO_BUILD:-false}"
 
 if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
     trap cleanup EXIT
@@ -1448,15 +1456,22 @@ echo ""
 
 cd "${RUST_KEYLIME_DIR}"
 
-# Check if binary exists
+# Check if binary exists, build if needed
 if [ ! -f "target/release/keylime_agent" ]; then
-    echo -e "${YELLOW}  ⚠ rust-keylime agent binary not found, building...${NC}"
-    source "$HOME/.cargo/env" 2>/dev/null || true
-    cargo build --release > /tmp/rust-keylime-build.log 2>&1 || {
-        echo -e "${RED}  ✗ Failed to build rust-keylime agent${NC}"
-        tail -20 /tmp/rust-keylime-build.log
+    if [ "$NO_BUILD" = "true" ]; then
+        echo -e "${RED}  ✗ rust-keylime agent binary not found and --no-build specified${NC}"
+        echo "  Build it manually: cd ${RUST_KEYLIME_DIR} && cargo build --release"
         exit 1
-    }
+    else
+        echo -e "${YELLOW}  ⚠ rust-keylime agent binary not found, building...${NC}"
+        source "$HOME/.cargo/env" 2>/dev/null || true
+        cargo build --release > /tmp/rust-keylime-build.log 2>&1 || {
+            echo -e "${RED}  ✗ Failed to build rust-keylime agent${NC}"
+            tail -20 /tmp/rust-keylime-build.log
+            exit 1
+        }
+        echo -e "${GREEN}  ✓ rust-keylime agent built successfully${NC}"
+    fi
 fi
 
 # Cleanup existing rust-keylime agent before starting
@@ -2336,22 +2351,61 @@ export KEYLIME_AGENT_IP="${KEYLIME_AGENT_IP:-${AGENTS_HOST_IP}}"
 export KEYLIME_AGENT_PORT="${KEYLIME_AGENT_PORT:-9002}"
 echo "  Using rust-keylime agent endpoint: ${KEYLIME_AGENT_IP}:${KEYLIME_AGENT_PORT}"
 
-# Check if SPIRE binaries exist
+# Check if SPIRE binaries exist, build if needed
 SPIRE_SERVER="${PROJECT_DIR}/spire/bin/spire-server"
 SPIRE_AGENT="${PROJECT_DIR}/spire/bin/spire-agent"
 
 if [ ! -f "${SPIRE_AGENT}" ]; then
-    echo -e "${YELLOW}  ⚠ SPIRE Agent binary not found, skipping SPIRE Agent${NC}"
-    echo -e "${GREEN}============================================================${NC}"
-    echo -e "${GREEN}Integration Test Summary:${NC}"
-    echo -e "${GREEN}  ✓ rust-keylime Agent started${NC}"
-    echo -e "${YELLOW}  ⚠ SPIRE Agent skipped (binary not found)${NC}"
-    echo -e "${GREEN}============================================================${NC}"
-    echo ""
-    echo "To complete full integration test:"
-    echo "  1. Build SPIRE Agent: cd ${PROJECT_DIR}/spire && make bin/spire-agent"
-    echo "  2. Run this script again"
-    exit 0
+    if [ "$NO_BUILD" = "true" ]; then
+        echo -e "${YELLOW}  ⚠ SPIRE Agent binary not found and --no-build specified, skipping SPIRE Agent${NC}"
+        echo -e "${GREEN}============================================================${NC}"
+        echo -e "${GREEN}Integration Test Summary:${NC}"
+        echo -e "${GREEN}  ✓ rust-keylime Agent started${NC}"
+        echo -e "${YELLOW}  ⚠ SPIRE Agent skipped (binary not found, --no-build specified)${NC}"
+        echo -e "${GREEN}============================================================${NC}"
+        echo ""
+        echo "To complete full integration test:"
+        echo "  1. Build SPIRE Agent: cd ${PROJECT_DIR}/spire && make bin/spire-agent"
+        echo "  2. Run this script again"
+        exit 0
+    else
+        echo -e "${YELLOW}  ⚠ SPIRE Agent binary not found, building...${NC}"
+        cd "${PROJECT_DIR}/spire"
+        
+        # Ensure required files exist for Makefile
+        if [ ! -f ".go-version" ]; then
+            echo "1.25.3" > .go-version
+        fi
+        if [ ! -f ".spire-tool-versions" ]; then
+            cat > .spire-tool-versions << 'EOF'
+golangci-lint v1.60.0
+markdown_lint v0.40.0
+protoc 30.2
+EOF
+        fi
+        
+        # Try building with Makefile first
+        if make bin/spire-agent > /tmp/spire-agent-build.log 2>&1; then
+            echo -e "${GREEN}  ✓ SPIRE Agent built successfully${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ Makefile build failed, trying direct go build...${NC}"
+            # Fallback to direct go build if Makefile fails
+            mkdir -p bin
+            if go build -o bin/spire-agent ./cmd/spire-agent > /tmp/spire-agent-build.log 2>&1; then
+                echo -e "${GREEN}  ✓ SPIRE Agent built successfully (using go build)${NC}"
+            else
+                echo -e "${RED}  ✗ Failed to build SPIRE Agent${NC}"
+                echo "  Build log:"
+                tail -30 /tmp/spire-agent-build.log
+                echo ""
+                echo "  Troubleshooting:"
+                echo "    1. Ensure Go 1.25.3 is installed: go version"
+                echo "    2. Try building manually: cd ${PROJECT_DIR}/spire && make bin/spire-agent"
+                exit 1
+            fi
+        fi
+        cd "${PROJECT_DIR}"
+    fi
 fi
 
 # SPIRE Server is managed by test_control_plane.sh - skipping startup

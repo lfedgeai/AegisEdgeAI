@@ -891,6 +891,7 @@ Options:
                        Skip SPIRE Agent, TPM Plugin, and rust-keylime Agent
   --pause              Enable pause points at critical phases (default: auto-detect)
   --no-pause           Disable pause points (run non-interactively)
+  --no-build           Skip building binaries (use existing binaries)
   -h, --help           Show this help message.
 
 Environment Variables:
@@ -1336,6 +1337,10 @@ while [[ $# -gt 0 ]]; do
             PAUSE_ENABLED=false
             shift
             ;;
+        --no-build)
+            NO_BUILD=true
+            shift
+            ;;
         --control-plane-only)
             CONTROL_PLANE_ONLY=true
             shift
@@ -1351,6 +1356,9 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Initialize NO_BUILD if not set
+NO_BUILD="${NO_BUILD:-false}"
 
 if [ "${EXIT_CLEANUP_ON_EXIT}" = true ]; then
     trap cleanup EXIT
@@ -1731,9 +1739,9 @@ echo -e "${YELLOW}  TPM Plugin Server is managed by test_agents.sh${NC}"
 
 # Removed: All TPM Plugin Server startup code (not needed for control plane only)
 
-# Step 4: Start SPIRE Server (control plane only - no agent)
+# Step 4: Build SPIRE Server binary (if needed) and start it
 echo ""
-echo -e "${CYAN}Step 4: Starting SPIRE Server...${NC}"
+echo -e "${CYAN}Step 4: Building SPIRE Server (if needed) and starting it...${NC}"
 
 if [ ! -d "${PROJECT_DIR}" ]; then
     echo -e "${RED}Error: Project directory not found at ${PROJECT_DIR}${NC}"
@@ -1747,22 +1755,61 @@ export KEYLIME_AGENT_IP="${KEYLIME_AGENT_IP:-127.0.0.1}"
 export KEYLIME_AGENT_PORT="${KEYLIME_AGENT_PORT:-9002}"
 echo "  Using rust-keylime agent endpoint: ${KEYLIME_AGENT_IP}:${KEYLIME_AGENT_PORT}"
 
-# Check if SPIRE binaries exist
+# Check if SPIRE binaries exist, build if needed
 SPIRE_SERVER="${PROJECT_DIR}/spire/bin/spire-server"
 if [ ! -f "${SPIRE_SERVER}" ]; then
-    echo -e "${YELLOW}  ⚠ SPIRE Server binary not found, skipping SPIRE Server startup${NC}"
-    echo -e "${GREEN}============================================================${NC}"
-    echo -e "${GREEN}Control Plane Services Summary:${NC}"
-    echo -e "${GREEN}  ✓ Keylime Verifier started${NC}"
-    echo -e "${GREEN}  ✓ Keylime Registrar started${NC}"
-    echo -e "${GREEN}  ✓ Mobile Sensor Microservice started${NC}"
-    echo -e "${YELLOW}  ⚠ SPIRE Server skipped (binary not found)${NC}"
-    echo -e "${GREEN}============================================================${NC}"
-    echo ""
-    echo "To complete control plane setup:"
-    echo "  1. Build SPIRE Server: cd ${PROJECT_DIR}/spire && make bin/spire-server"
-    echo "  2. Run this script again"
-    exit 0
+    if [ "$NO_BUILD" = "true" ]; then
+        echo -e "${YELLOW}  ⚠ SPIRE Server binary not found and --no-build specified, skipping SPIRE Server startup${NC}"
+        echo -e "${GREEN}============================================================${NC}"
+        echo -e "${GREEN}Control Plane Services Summary:${NC}"
+        echo -e "${GREEN}  ✓ Keylime Verifier started${NC}"
+        echo -e "${GREEN}  ✓ Keylime Registrar started${NC}"
+        echo -e "${GREEN}  ✓ Mobile Sensor Microservice started${NC}"
+        echo -e "${YELLOW}  ⚠ SPIRE Server skipped (binary not found, --no-build specified)${NC}"
+        echo -e "${GREEN}============================================================${NC}"
+        echo ""
+        echo "To complete control plane setup:"
+        echo "  1. Build SPIRE Server: cd ${PROJECT_DIR}/spire && make bin/spire-server"
+        echo "  2. Run this script again"
+        exit 0
+    else
+        echo -e "${YELLOW}  ⚠ SPIRE Server binary not found, building...${NC}"
+        cd "${PROJECT_DIR}/spire"
+        
+        # Ensure required files exist for Makefile
+        if [ ! -f ".go-version" ]; then
+            echo "1.25.3" > .go-version
+        fi
+        if [ ! -f ".spire-tool-versions" ]; then
+            cat > .spire-tool-versions << 'EOF'
+golangci-lint v1.60.0
+markdown_lint v0.40.0
+protoc 30.2
+EOF
+        fi
+        
+        # Try building with Makefile first
+        if make bin/spire-server > /tmp/spire-server-build.log 2>&1; then
+            echo -e "${GREEN}  ✓ SPIRE Server built successfully${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ Makefile build failed, trying direct go build...${NC}"
+            # Fallback to direct go build if Makefile fails
+            mkdir -p bin
+            if go build -o bin/spire-server ./cmd/spire-server > /tmp/spire-server-build.log 2>&1; then
+                echo -e "${GREEN}  ✓ SPIRE Server built successfully (using go build)${NC}"
+            else
+                echo -e "${RED}  ✗ Failed to build SPIRE Server${NC}"
+                echo "  Build log:"
+                tail -30 /tmp/spire-server-build.log
+                echo ""
+                echo "  Troubleshooting:"
+                echo "    1. Ensure Go 1.25.3 is installed: go version"
+                echo "    2. Try building manually: cd ${PROJECT_DIR}/spire && make bin/spire-server"
+                exit 1
+            fi
+        fi
+        cd "${PROJECT_DIR}"
+    fi
 fi
 
 # Start SPIRE Server manually

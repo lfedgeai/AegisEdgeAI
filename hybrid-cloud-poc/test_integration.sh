@@ -402,7 +402,11 @@ main() {
     echo ""
     
     # Step 1: Start Control Plane on 10.1.0.11
-    if ! run_script "run_on_control_plane" "test_control_plane.sh" "--no-pause" \
+    CONTROL_PLANE_ARGS="--no-pause"
+    if [ "$NO_BUILD" = "true" ]; then
+        CONTROL_PLANE_ARGS="$CONTROL_PLANE_ARGS --no-build"
+    fi
+    if ! run_script "run_on_control_plane" "test_control_plane.sh" "$CONTROL_PLANE_ARGS" \
         "Step 1: Starting Control Plane Services (SPIRE Server, Keylime Verifier/Registrar)"; then
         echo -e "${RED}Control plane setup failed. Aborting.${NC}"
         exit 1
@@ -437,6 +441,9 @@ main() {
     if [ "$NO_PAUSE" = "true" ]; then
         ONPREM_ARGS="--no-pause"
         ONPREM_ENV_VARS="PAUSE_ENABLED=false "
+    fi
+    if [ "$NO_BUILD" = "true" ]; then
+        ONPREM_ARGS="$ONPREM_ARGS --no-build"
     fi
     # Pass host environment variables so test_onprem.sh knows where control plane/agents are
     # Use env command to ensure variables are passed correctly
@@ -475,7 +482,11 @@ main() {
     fi
     
     # Step 3: Run Complete Integration Test on agents host
-    if ! run_script "run_on_agents" "test_agents.sh" "--no-pause" \
+    AGENTS_ARGS="--no-pause"
+    if [ "$NO_BUILD" = "true" ]; then
+        AGENTS_ARGS="$AGENTS_ARGS --no-build"
+    fi
+    if ! run_script "run_on_agents" "test_agents.sh" "$AGENTS_ARGS" \
         "Step 3: Running Complete Integration Test (Agent Attestation, Workload SVID)"; then
         echo -e "${RED}Complete integration test failed.${NC}"
         exit 1
@@ -594,6 +605,7 @@ cleanup_all() {
 
 # Parse command-line arguments
 NO_PAUSE=false
+NO_BUILD=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --control-plane-host)
@@ -607,6 +619,10 @@ while [[ $# -gt 0 ]]; do
         --onprem-host)
             ONPREM_HOST="$2"
             shift 2
+            ;;
+        --no-build)
+            NO_BUILD=true
+            shift
             ;;
         --cleanup-only)
             # Re-check host detection after parsing arguments
@@ -656,6 +672,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --onprem-host IP           Host IP for test_onprem.sh (default: 10.1.0.11)"
             echo "  --cleanup-only             Stop services, remove data, and exit"
             echo "  --no-pause                 Skip all pause prompts and continue automatically"
+            echo "  --no-build                 Skip building binaries (use existing binaries)"
             echo "  --help, -h                 Show this help message"
             echo ""
             echo "Environment Variables:"

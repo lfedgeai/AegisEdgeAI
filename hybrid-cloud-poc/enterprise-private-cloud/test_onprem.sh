@@ -213,6 +213,7 @@ Options:
   --cleanup-only       Stop services, remove logs, and exit.
   --pause              Enable pause points at critical phases (default: auto-detect)
   --no-pause           Disable pause points (run non-interactively)
+  --no-build           Skip building binaries (use existing binaries)
   -h, --help          Show this help message.
 
 This script sets up the enterprise on-prem environment:
@@ -351,18 +352,26 @@ sudo mkdir -p /opt/envoy/{certs,plugins,logs}
 sudo mkdir -p /opt/mobile-sensor-service
 sudo mkdir -p /opt/mtls-server
 
-# Build and install WASM filter for sensor verification
-echo -e "${GREEN}  Building WASM filter...${NC}"
-cd "$ONPREM_DIR/wasm-plugin"
-if [ -f "build.sh" ]; then
-    if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
-        echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
+# Build and install WASM filter for sensor verification (if needed)
+if [ "$NO_BUILD" != "true" ]; then
+    echo -e "${GREEN}  Building WASM filter...${NC}"
+    cd "$ONPREM_DIR/wasm-plugin"
+    if [ -f "build.sh" ]; then
+        if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
+            echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
+        else
+            echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
+            echo -e "${YELLOW}  You may need to install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+        fi
     else
-        echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
-        echo -e "${YELLOW}  You may need to install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+        echo -e "${YELLOW}  ⚠ WASM plugin directory not found${NC}"
     fi
 else
-    echo -e "${YELLOW}  ⚠ WASM plugin directory not found${NC}"
+    echo -e "${GREEN}  Skipping WASM filter build (--no-build specified)${NC}"
+    if [ ! -f "/opt/envoy/plugins/sensor_verification_wasm.wasm" ]; then
+        echo -e "${YELLOW}  ⚠ WASM filter not found at /opt/envoy/plugins/sensor_verification_wasm.wasm${NC}"
+        echo -e "${YELLOW}  Build it manually: cd $ONPREM_DIR/wasm-plugin && bash build.sh${NC}"
+    fi
 fi
 
 # 3. Setup certificates
@@ -647,19 +656,29 @@ pip3 install -q cryptography spiffe grpcio grpcio-tools protobuf 2>/dev/null || 
 echo -e "${GREEN}  ✓ mTLS server dependencies installed${NC}"
 
 # 6. Build WASM filter (sensor ID extraction is done in WASM, no separate service needed)
-echo -e "\n${GREEN}[6/7] Building WASM filter for sensor verification...${NC}"
-cd "$ONPREM_DIR/wasm-plugin"
-if [ -f "build.sh" ]; then
-    if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
-        echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
-        printf '  Sensor ID extraction is done directly in WASM filter - no separate service needed\n'
+if [ "$NO_BUILD" != "true" ]; then
+    echo -e "\n${GREEN}[6/7] Building WASM filter for sensor verification...${NC}"
+    cd "$ONPREM_DIR/wasm-plugin"
+    if [ -f "build.sh" ]; then
+        if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
+            echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
+            printf '  Sensor ID extraction is done directly in WASM filter - no separate service needed\n'
+        else
+            echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
+            echo -e "${YELLOW}  Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+            echo -e "${YELLOW}  Then run: cd $ONPREM_DIR/wasm-plugin && bash build.sh${NC}"
+        fi
     else
-        echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
-        echo -e "${YELLOW}  Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
-        echo -e "${YELLOW}  Then run: cd $ONPREM_DIR/wasm-plugin && bash build.sh${NC}"
+        echo -e "${YELLOW}  ⚠ WASM plugin directory not found${NC}"
     fi
 else
-    echo -e "${YELLOW}  ⚠ WASM plugin directory not found${NC}"
+    echo -e "\n${GREEN}[6/7] Skipping WASM filter build (--no-build specified)${NC}"
+    if [ ! -f "/opt/envoy/plugins/sensor_verification_wasm.wasm" ]; then
+        echo -e "${YELLOW}  ⚠ WASM filter not found at /opt/envoy/plugins/sensor_verification_wasm.wasm${NC}"
+        echo -e "${YELLOW}  Build it manually: cd $ONPREM_DIR/wasm-plugin && bash build.sh${NC}"
+    else
+        echo -e "${GREEN}  ✓ WASM filter found (using existing binary)${NC}"
+    fi
 fi
 
 # 7. Setup Envoy
