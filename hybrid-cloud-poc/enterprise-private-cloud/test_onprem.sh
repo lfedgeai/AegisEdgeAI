@@ -10,9 +10,25 @@ REPO_ROOT="$(cd "$ONPREM_DIR/.." && pwd)"
 
 # Read host IPs from environment variables (passed by test_integration.sh) BEFORE setting defaults
 # This ensures we use the correct IPs when all hosts are the same
-CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST:-10.1.0.11}"
-AGENTS_HOST="${AGENTS_HOST:-10.1.0.11}"
-ONPREM_HOST="${ONPREM_HOST:-10.1.0.11}"
+# If not set, detect current host IP (for standalone execution)
+if [ -z "${CONTROL_PLANE_HOST:-}" ]; then
+    CONTROL_PLANE_HOST=$(hostname -I 2>/dev/null | awk '{print $1}' || \
+                         ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || \
+                         echo '127.0.0.1')
+fi
+if [ -z "${AGENTS_HOST:-}" ]; then
+    AGENTS_HOST=$(hostname -I 2>/dev/null | awk '{print $1}' || \
+                  ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || \
+                  echo '127.0.0.1')
+fi
+if [ -z "${ONPREM_HOST:-}" ]; then
+    ONPREM_HOST=$(hostname -I 2>/dev/null | awk '{print $1}' || \
+                  ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || \
+                  echo '127.0.0.1')
+fi
+CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST}"
+AGENTS_HOST="${AGENTS_HOST}"
+ONPREM_HOST="${ONPREM_HOST}"
 
 # Detect current host IP early
 CURRENT_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || echo 'unknown')
@@ -62,7 +78,11 @@ elif [ "${CURRENT_HOSTNAME}" = "mwserver12" ] || [ "${CURRENT_HOSTNAME}" = "mwse
     echo -e "${GREEN}Running on test machine (hostname: ${CURRENT_HOSTNAME}, IP: ${CURRENT_IP}) - cleanup and auto-start enabled${NC}"
 elif [ -n "${CURRENT_IP}" ] && [ "$CURRENT_IP" != "unknown" ]; then
     # Check for specific test IPs
-    if [ "$CURRENT_IP" = "10.1.0.10" ] || [ "$CURRENT_IP" = "10.1.0.11" ]; then
+    # Check if we're on a test machine (IP in common test ranges or matches any of our configured hosts)
+    if [ "$CURRENT_IP" = "${CONTROL_PLANE_HOST}" ] || \
+       [ "$CURRENT_IP" = "${AGENTS_HOST}" ] || \
+       [ "$CURRENT_IP" = "${ONPREM_HOST}" ] || \
+       echo "$CURRENT_IP" | grep -qE '^10\.1\.0\.'; then
         IS_TEST_MACHINE=true
         echo -e "${GREEN}Running on test machine (IP: ${CURRENT_IP}, hostname: ${CURRENT_HOSTNAME}) - cleanup and auto-start enabled${NC}"
     # Check for test network range
@@ -408,10 +428,25 @@ fi
 
 # Copy Envoy certificate to client machine (control plane/agents host) so client can verify Envoy
 # Allow override via environment variables (from test_integration.sh)
-CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST:-10.1.0.11}"
-AGENTS_HOST="${AGENTS_HOST:-10.1.0.11}"
+# These should already be set above, but ensure they're set (use current IP if not)
+if [ -z "${CONTROL_PLANE_HOST:-}" ]; then
+    CONTROL_PLANE_HOST="${CURRENT_IP}"
+fi
+if [ -z "${AGENTS_HOST:-}" ]; then
+    AGENTS_HOST="${CURRENT_IP}"
+fi
+CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST}"
+AGENTS_HOST="${AGENTS_HOST}"
 # SPIRE_CLIENT_HOST is where SPIRE server/client runs (typically same as control plane/agents host)
-SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-${CONTROL_PLANE_HOST}}"
+# If all hosts are the same, use the current host (where SPIRE agent is running)
+# Otherwise use control plane host (where SPIRE server typically runs)
+if [ "${CONTROL_PLANE_HOST}" = "${AGENTS_HOST}" ] && [ "${AGENTS_HOST}" = "${ONPREM_HOST}" ]; then
+    # All services on same machine - use current host for SPIRE bundle
+    SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-${CURRENT_IP}}"
+else
+    # Different hosts - use control plane host (where SPIRE server typically runs)
+    SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-${CONTROL_PLANE_HOST}}"
+fi
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
 
 # Detect if SPIRE_CLIENT_HOST is the same as current host
@@ -457,8 +492,8 @@ fi
 # These are separate from Envoy's certificates for clarity
 
 # Fetch SPIRE bundle from SPIRE_CLIENT_HOST
-# SPIRE_CLIENT_HOST should already be set above (CONTROL_PLANE_HOST is set at top of script)
-SPIRE_CLIENT_HOST="${SPIRE_CLIENT_HOST:-${CONTROL_PLANE_HOST}}"
+# SPIRE_CLIENT_HOST should already be set above (set based on whether all hosts are same)
+# Don't override it here - it was already set correctly above
 SPIRE_CLIENT_USER="${SPIRE_CLIENT_USER:-mw}"
 printf '  Fetching SPIRE CA bundle from %s...\n' "${SPIRE_CLIENT_HOST}"
 
@@ -522,9 +557,17 @@ fi
 if [ "$IS_SAME_HOST" = "true" ]; then
     # Same host - copy locally
     if [ -f /tmp/spire-bundle.pem ]; then
+        # Check if bundle changed (to determine if Envoy needs restart)
+        BUNDLE_CHANGED=false
+        if [ ! -f /opt/envoy/certs/spire-bundle.pem ] || ! cmp -s /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem; then
+            BUNDLE_CHANGED=true
+        fi
         sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem
         sudo chmod 644 /opt/envoy/certs/spire-bundle.pem
         echo -e "${GREEN}  ✓ SPIRE bundle copied locally to /opt/envoy/certs/${NC}"
+        if [ "$BUNDLE_CHANGED" = "true" ]; then
+            echo -e "${YELLOW}  ℹ SPIRE bundle was updated - Envoy will need to reload to pick up changes${NC}"
+        fi
     else
         echo -e "${YELLOW}  ⚠ SPIRE bundle not found locally at /tmp/spire-bundle.pem${NC}"
         printf '     You can generate it:\n'
@@ -539,9 +582,17 @@ elif scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
     "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem" \
     /tmp/spire-bundle.pem 2>/dev/null; then
     echo -e "${GREEN}  ✓ SPIRE bundle fetched from ${SPIRE_CLIENT_HOST}${NC}"
+    # Check if bundle changed (to determine if Envoy needs restart)
+    BUNDLE_CHANGED=false
+    if [ ! -f /opt/envoy/certs/spire-bundle.pem ] || ! cmp -s /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem; then
+        BUNDLE_CHANGED=true
+    fi
     sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem
     sudo chmod 644 /opt/envoy/certs/spire-bundle.pem
     echo -e "${GREEN}  ✓ SPIRE bundle copied to /opt/envoy/certs/${NC}"
+    if [ "$BUNDLE_CHANGED" = "true" ]; then
+        echo -e "${YELLOW}  ℹ SPIRE bundle was updated - Envoy will need to reload to pick up changes${NC}"
+    fi
 elif [ -f /tmp/spire-bundle.pem ]; then
     # If scp failed but file exists locally, use it
     echo -e "${YELLOW}  ⚠ Could not fetch from ${SPIRE_CLIENT_HOST}, using local /tmp/spire-bundle.pem${NC}"
@@ -724,8 +775,9 @@ if [ "$IS_TEST_MACHINE" = "false" ] && [ -n "${CURRENT_IP}" ]; then
     # Check if current IP matches any of the configured hosts (single machine deployment)
     if [ "$CURRENT_IP" = "${CONTROL_PLANE_HOST}" ] || \
        [ "$CURRENT_IP" = "${AGENTS_HOST}" ] || \
-       [ "$CURRENT_IP" = "10.1.0.11" ] || \
-       [ "$CURRENT_IP" = "10.1.0.10" ] || \
+       [ "$CURRENT_IP" = "${CONTROL_PLANE_HOST}" ] || \
+       [ "$CURRENT_IP" = "${AGENTS_HOST}" ] || \
+       [ "$CURRENT_IP" = "${ONPREM_HOST}" ] || \
        [ "${CURRENT_HOSTNAME}" = "mwserver11" ] || \
        [ "${CURRENT_HOSTNAME}" = "mwserver12" ]; then
         IS_TEST_MACHINE=true

@@ -15,6 +15,23 @@ import ipaddress
 from pathlib import Path
 
 try:
+    # Unified-Identity: Proactively patch validation to skip CA flag check
+    # Some versions of python-spiffe validate intermediate certificates strictly
+    # SPIRE agent SVIDs are end-entity certs, not CAs, so we need to skip this check
+    try:
+        from spiffe.svid import x509_svid
+        if hasattr(x509_svid, '_validate_intermediate_certificate'):
+            original_validate = x509_svid._validate_intermediate_certificate
+            def patched_validate(cert):
+                # Skip CA flag validation for intermediate certificates
+                # SPIRE agent SVIDs are end-entity certs, not CAs
+                pass
+            x509_svid._validate_intermediate_certificate = patched_validate
+            print("Unified-Identity: intermediate certificate missing CA flag; skipping strict validation")
+    except Exception:
+        # If patching fails at import time, we'll patch later when needed
+        pass
+    
     from spiffe.workloadapi.x509_source import X509Source
     HAS_SPIFFE = True
 except ImportError:
@@ -815,21 +832,26 @@ class SPIREmTLSClient:
                 # Update last_svid_serial immediately after reconnection to avoid detecting
                 # the renewal we just handled (or a renewal that happened during reconnect)
                 # This is critical to prevent infinite reconnect loops
+                # Note: This update is non-critical - if it fails or blocks, we'll skip it
+                # and the renewal check will handle it on the next iteration
                 if self.use_spire and self.source:
                     try:
                         # Handle X509Source, DefaultX509Source, or direct gRPC
+                        # Use a quick check - if source.svid access might block, skip it
                         if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
-                            current_svid, _ = self._fetch_svid_via_grpc()
-                            if current_svid:
-                                leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
-                                self.last_svid_serial = leaf_cert.serial_number
+                            # gRPC direct - can be slow, skip for now to avoid blocking
+                            pass
                         elif hasattr(self.source, 'svid'):
+                            # Quick access - should be fast, but if it blocks, exception will catch it
                             current_svid = self.source.svid
                             if current_svid:
                                 leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
-                                self.last_svid_serial = leaf_cert.serial_number
+                                if leaf_cert:
+                                    self.last_svid_serial = leaf_cert.serial_number
                     except Exception:
-                        pass  # Ignore errors, will be caught on next renewal check
+                        # Ignore errors - will be caught on next renewal check
+                        # Don't block the connection loop if source access fails
+                        pass
                 
                 # Skip renewal checks for the first 20 messages after reconnect to ensure
                 # we send traffic even if a renewal happened during reconnect

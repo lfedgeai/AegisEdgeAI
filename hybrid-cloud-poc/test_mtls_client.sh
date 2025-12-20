@@ -45,10 +45,19 @@ export SPIRE_AGENT_SOCKET="${SPIRE_AGENT_SOCKET:-/tmp/spire-agent/public/api.soc
 # Server configuration (Envoy on on-prem)
 # Default to current host IP if SERVER_HOST is not set
 if [ -z "${SERVER_HOST:-}" ]; then
-    # Detect current host IP address
-    CURRENT_HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || \
-                      ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || \
-                      echo '10.1.0.11')
+    # Detect current host IP address (excluding localhost/127.0.0.1)
+    # Try hostname -I first (usually fastest and most reliable)
+    CURRENT_HOST_IP=$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i!~/^127\./) {print $i; exit}}')
+    
+    # Fallback to ip addr show if hostname -I didn't work or only returned 127.x.x.x
+    if [ -z "$CURRENT_HOST_IP" ] || [[ "$CURRENT_HOST_IP" =~ ^127\. ]]; then
+        CURRENT_HOST_IP=$(ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -vE '^127\.' | head -1)
+    fi
+    
+    if [ -z "$CURRENT_HOST_IP" ] || [[ "$CURRENT_HOST_IP" =~ ^127\. ]]; then
+        echo "Error: Could not detect non-localhost IP address. Please set SERVER_HOST environment variable."
+        exit 1
+    fi
     export SERVER_HOST="$CURRENT_HOST_IP"
 else
     export SERVER_HOST="$SERVER_HOST"

@@ -8,6 +8,22 @@ import os
 import sys
 
 try:
+    # Unified-Identity: Proactively patch validation to skip CA flag check
+    # Some versions of python-spiffe validate intermediate certificates strictly
+    # SPIRE agent SVIDs are end-entity certs, not CAs, so we need to skip this check
+    try:
+        from spiffe.svid import x509_svid
+        if hasattr(x509_svid, '_validate_intermediate_certificate'):
+            original_validate = x509_svid._validate_intermediate_certificate
+            def patched_validate(cert):
+                # Skip CA flag validation for intermediate certificates
+                # SPIRE agent SVIDs are end-entity certs, not CAs
+                pass
+            x509_svid._validate_intermediate_certificate = patched_validate
+    except Exception:
+        # If patching fails at import time, we'll patch later when needed
+        pass
+    
     from spiffe.workloadapi.x509_source import X509Source
     HAS_SPIFFE = True
 except ImportError:

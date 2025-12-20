@@ -20,9 +20,20 @@ RUST_KEYLIME_DIR="${SCRIPT_DIR}/rust-keylime"
 SPIRE_DIR="${SCRIPT_DIR}/spire"
 
 # Detect host IPs for flexible deployment
-# Allow override via environment variables (from test_integration.sh)
-CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST:-10.1.0.11}"
-AGENTS_HOST="${AGENTS_HOST:-10.1.0.11}"
+# These should be set by test_integration.sh via environment variables
+# If not set, detect current host IP (for standalone execution)
+if [ -z "${CONTROL_PLANE_HOST:-}" ]; then
+    CONTROL_PLANE_HOST=$(hostname -I 2>/dev/null | awk '{print $1}' || \
+                         ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || \
+                         echo '127.0.0.1')
+fi
+if [ -z "${AGENTS_HOST:-}" ]; then
+    AGENTS_HOST=$(hostname -I 2>/dev/null | awk '{print $1}' || \
+                  ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || \
+                  echo '127.0.0.1')
+fi
+CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST}"
+AGENTS_HOST="${AGENTS_HOST}"
 
 # Detect current host IP (for agents host)
 CURRENT_HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || \
@@ -1486,6 +1497,15 @@ rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
 echo "  Starting rust-keylime agent on port 9002..."
 if [ "${AGENTS_HOST_IP}" = "${CONTROL_PLANE_HOST_IP}" ]; then
     echo "    Note: Single machine deployment detected - agent will bind to 0.0.0.0"
+    # For single machine, use localhost for IPs since services bind to 127.0.0.1
+    export KEYLIME_AGENT_IP="${KEYLIME_AGENT_IP:-0.0.0.0}"
+    export KEYLIME_AGENT_CONTACT_IP="${KEYLIME_AGENT_CONTACT_IP:-127.0.0.1}"
+    export KEYLIME_AGENT_REGISTRAR_IP="${KEYLIME_AGENT_REGISTRAR_IP:-127.0.0.1}"
+else
+    # For multi-machine, use actual IPs
+    export KEYLIME_AGENT_IP="${KEYLIME_AGENT_IP:-${AGENT_BIND_IP}}"
+    export KEYLIME_AGENT_CONTACT_IP="${KEYLIME_AGENT_CONTACT_IP:-${AGENTS_HOST_IP}}"
+    export KEYLIME_AGENT_REGISTRAR_IP="${KEYLIME_AGENT_REGISTRAR_IP:-${CONTROL_PLANE_HOST_IP}}"
 fi
 source "$HOME/.cargo/env" 2>/dev/null || true
 export UNIFIED_IDENTITY_ENABLED=true
@@ -1672,10 +1692,18 @@ if [ "$SECURE_MOUNTED" = false ] && sudo -n true 2>/dev/null; then
     # Use env to ensure clean environment with only the variables we need
     # Explicitly unset the old KEYLIME_DIR and set the correct one
     # Include TCTI for hardware TPM if set
+    # Enable mock mobile sensor for testing (can be overridden by environment variable)
+    MOCK_SENSOR_VAR=""
+    if [ "${MOCK_MOBILE_SENSOR:-false}" = "true" ]; then
+        MOCK_SENSOR_VAR="MOCK_MOBILE_SENSOR=1"
+        if [ -n "${MOCK_SENSOR_ID:-}" ]; then
+            MOCK_SENSOR_VAR="$MOCK_SENSOR_VAR MOCK_SENSOR_ID=$MOCK_SENSOR_ID"
+        fi
+    fi
     if [ -n "${TCTI:-}" ]; then
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 TCTI="$TCTI" KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 TCTI="$TCTI" $MOCK_SENSOR_VAR KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     else
-        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
+        sudo env -i PATH="$PATH" HOME="$HOME" USER="$USER" UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 $MOCK_SENSOR_VAR KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" "$(pwd)/target/release/keylime_agent" > /tmp/rust-keylime-agent.log 2>&1 &
     fi
     RUST_AGENT_PID=$!
 elif [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; then
@@ -1687,7 +1715,15 @@ elif [ "${RUST_KEYLIME_REQUIRE_SUDO:-0}" = "1" ] && sudo -n true 2>/dev/null; th
     # Use env to ensure clean environment with only the variables we need
     # Include TCTI for hardware TPM if set
     # Include IP configuration environment variables
+    # Enable mock mobile sensor for testing (can be overridden by environment variable)
     ENV_VARS="PATH=$PATH HOME=$HOME USER=$USER UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR=$KEYLIME_AGENT_DIR KEYLIME_AGENT_KEYLIME_DIR=$KEYLIME_AGENT_DIR KEYLIME_AGENT_CONFIG=$TEMP_CONFIG KEYLIME_AGENT_RUN_AS=$KEYLIME_AGENT_RUN_AS"
+    # Mock sensor disabled by default - set MOCK_MOBILE_SENSOR=true to enable for testing
+    if [ "${MOCK_MOBILE_SENSOR:-false}" = "true" ]; then
+        ENV_VARS="$ENV_VARS MOCK_MOBILE_SENSOR=1"
+        if [ -n "${MOCK_SENSOR_ID:-}" ]; then
+            ENV_VARS="$ENV_VARS MOCK_SENSOR_ID=$MOCK_SENSOR_ID"
+        fi
+    fi
     if [ -n "${KEYLIME_AGENT_IP:-}" ]; then
         ENV_VARS="$ENV_VARS KEYLIME_AGENT_IP=$KEYLIME_AGENT_IP"
     fi
@@ -1713,7 +1749,26 @@ else
     fi
     # Use setsid + nohup to ensure agent continues running after script exits
     # setsid creates a new session, preventing SIGHUP when parent shell exits
-    setsid nohup env RUST_LOG=keylime=debug,keylime_agent=debug UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_KEYLIME_DIR="$KEYLIME_AGENT_DIR" KEYLIME_AGENT_CONFIG="$TEMP_CONFIG" KEYLIME_AGENT_RUN_AS="$KEYLIME_AGENT_RUN_AS" ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
+    # Include IP configuration environment variables
+    # Enable mock mobile sensor for testing (can be overridden by environment variable)
+    ENV_VARS="RUST_LOG=keylime=debug,keylime_agent=debug UNIFIED_IDENTITY_ENABLED=true USE_TPM2_QUOTE_DIRECT=1 KEYLIME_DIR=$KEYLIME_AGENT_DIR KEYLIME_AGENT_KEYLIME_DIR=$KEYLIME_AGENT_DIR KEYLIME_AGENT_CONFIG=$TEMP_CONFIG KEYLIME_AGENT_RUN_AS=$KEYLIME_AGENT_RUN_AS"
+    # Mock sensor disabled by default - set MOCK_MOBILE_SENSOR=true to enable for testing
+    if [ "${MOCK_MOBILE_SENSOR:-false}" = "true" ]; then
+        ENV_VARS="$ENV_VARS MOCK_MOBILE_SENSOR=1"
+        if [ -n "${MOCK_SENSOR_ID:-}" ]; then
+            ENV_VARS="$ENV_VARS MOCK_SENSOR_ID=$MOCK_SENSOR_ID"
+        fi
+    fi
+    if [ -n "${KEYLIME_AGENT_IP:-}" ]; then
+        ENV_VARS="$ENV_VARS KEYLIME_AGENT_IP=$KEYLIME_AGENT_IP"
+    fi
+    if [ -n "${KEYLIME_AGENT_CONTACT_IP:-}" ]; then
+        ENV_VARS="$ENV_VARS KEYLIME_AGENT_CONTACT_IP=$KEYLIME_AGENT_CONTACT_IP"
+    fi
+    if [ -n "${KEYLIME_AGENT_REGISTRAR_IP:-}" ]; then
+        ENV_VARS="$ENV_VARS KEYLIME_AGENT_REGISTRAR_IP=$KEYLIME_AGENT_REGISTRAR_IP"
+    fi
+    setsid nohup env $ENV_VARS ./target/release/keylime_agent > /tmp/rust-keylime-agent.log 2>&1 &
     RUST_AGENT_PID=$!
     disown $RUST_AGENT_PID 2>/dev/null || true
     RUST_AGENT_PID=$!
@@ -2345,9 +2400,20 @@ if [ ! -d "${PROJECT_DIR}" ]; then
 fi
 
 # Set Keylime Verifier URL for SPIRE Server (use HTTPS - Keylime Verifier uses TLS)
-export KEYLIME_VERIFIER_URL="https://${CONTROL_PLANE_HOST_IP}:8881"
+# If all services are on the same machine, use localhost (verifier binds to 127.0.0.1)
+# Otherwise use the control plane host IP
+if [ "${AGENTS_HOST_IP}" = "${CONTROL_PLANE_HOST_IP}" ]; then
+    export KEYLIME_VERIFIER_URL="https://localhost:8881"
+else
+    export KEYLIME_VERIFIER_URL="https://${CONTROL_PLANE_HOST_IP}:8881"
+fi
 echo "  Setting KEYLIME_VERIFIER_URL=${KEYLIME_VERIFIER_URL} (HTTPS)"
-export KEYLIME_AGENT_IP="${KEYLIME_AGENT_IP:-${AGENTS_HOST_IP}}"
+# For agent IP, if on same machine use localhost, otherwise use agents host IP
+if [ "${AGENTS_HOST_IP}" = "${CONTROL_PLANE_HOST_IP}" ]; then
+    export KEYLIME_AGENT_IP="${KEYLIME_AGENT_IP:-127.0.0.1}"
+else
+    export KEYLIME_AGENT_IP="${KEYLIME_AGENT_IP:-${AGENTS_HOST_IP}}"
+fi
 export KEYLIME_AGENT_PORT="${KEYLIME_AGENT_PORT:-9002}"
 echo "  Using rust-keylime agent endpoint: ${KEYLIME_AGENT_IP}:${KEYLIME_AGENT_PORT}"
 
@@ -3426,7 +3492,7 @@ if [ -f "${SCRIPT_DIR}/workflow-ui/generate_workflow_ui.py" ]; then
         echo -e "${CYAN}    Local access: file:///tmp/workflow_visualization.html${NC}"
         if [ -f "${SCRIPT_DIR}/workflow-ui/serve_workflow_ui.py" ]; then
             echo -e "${CYAN}    HTTP access:  Run 'python3 ${SCRIPT_DIR}/workflow-ui/serve_workflow_ui.py' then visit:${NC}"
-            echo -e "${CYAN}                  http://10.1.0.11:8080/workflow_visualization.html${NC}"
+            echo -e "${CYAN}                  http://${AGENTS_HOST_IP:-${AGENTS_HOST}}:8080/workflow_visualization.html${NC}"
         fi
     else
         echo -e "${YELLOW}  ⚠ Warning: Failed to generate HTML visualization${NC}"
