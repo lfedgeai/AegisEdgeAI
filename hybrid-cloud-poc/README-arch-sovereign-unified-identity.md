@@ -878,3 +878,133 @@ SPIRE Server (Port 8081)
 **Location:**
 - `enterprise-private-cloud/wasm-plugin/src/lib.rs` - WASM filter implementation
 - `enterprise-private-cloud/envoy/envoy.yaml` - Envoy configuration
+
+---
+
+## Production Readiness & Implementation Status
+
+### Current Implementation State
+
+**Status**: ✅ Functional PoC on Real Hardware (TPM 2.0)
+
+The "Unified Identity" feature is **fully functional** and has been verified on real TPM hardware (10.1.0.11). The system successfully:
+- Generates TPM App Keys for SPIRE workloads
+- Performs delegated certification (AK signs App Key)
+- Verifies TPM quotes with geolocation data
+- Issues Sovereign SVIDs with attested claims
+- Enforces runtime geolocation verification at enterprise gateways
+
+### Recent Enhancements
+
+#### Task 1: Delegated Certification Security (✅ Complete)
+
+**Implemented**: December 2025
+
+The delegated certification endpoint (`/certify_app_key`) now includes production-grade security controls:
+
+**Features:**
+- **IP Allowlist**: Configurable list of allowed IPs (default: localhost only)
+- **Rate Limiting**: Per-IP request limiting (default: 10 requests/minute, 60s sliding windows)
+- **Secure Defaults**: Disabled by default, requires explicit configuration
+
+**Configuration** (`rust-keylime/keylime-agent.conf`):
+```toml
+[delegated_certification]
+enabled = false # Gated by unified_identity_enabled
+allowed_ips = ["127.0.0.1"] # Localhost only
+rate_limit_per_minute = 10 # Conservative limit
+```
+
+**Implementation Files:**
+- `rust-keylime/keylime/src/config/base.rs` - Configuration parsing
+- `rust-keylime/keylime-agent/src/delegated_certification_handler.rs` - Security enforcement
+- `rust-keylime/keylime-agent/src/main.rs` - QuoteData integration
+
+**Verification**: Tested on real TPM hardware with full integration test suite (`ci_test_runner.py`).
+
+### Upstreaming Roadmap
+
+**Comprehensive Status**: See [`PILLAR2_STATUS.md`](PILLAR2_STATUS.md)
+
+The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks required for submission to Keylime and SPIRE upstream projects:
+
+| Task | Component | Status | Est. Effort |
+|------|-----------|--------|-------------|
+| **Task 1** | Keylime Agent - Delegated Certifier | ✅ Production-ready | 3 days |
+| **Task 2** | Keylime Agent - Geolocation API | ⚠️ Needs refactoring | 5 days |
+| **Task 3** | Keylime Verifier - Cleanup | ⚠️ Has dead code | 2 days |
+| **Task 4** | SPIRE Server - Validator Plugin | ❌ Major refactoring | 9 days |
+| **Task 5** | SPIRE Agent - Collector Plugin | ❌ Major refactoring | 12 days |
+| **Task 6** | SPIRE - CredentialComposer | ✅ Config change | 2 days |
+
+**Total Upstream Effort**: ~6 weeks
+
+**Phased Approach**:
+1. **Quick Wins** (5 days): Tasks 1, 3, 6 - immediate upstream value
+2. **Moderate Refactoring** (10 days): Task 2 - separate geolocation endpoint
+3. **Major Refactoring** (20 days): Tasks 4 & 5 - SPIRE plugin extraction
+
+### Test Infrastructure
+
+**CI/CD Ready**: ✅ Complete
+
+- **Test Runner**: `ci_test_runner.py` - Automated integration testing
+  - Real-time output streaming
+  - Structured logging with timestamps
+  - Error detection and reporting
+  - Automatic `--no-pause` for CI environments
+- **Test Scripts**: Hardened with fail-fast (`set -euo pipefail`)
+- **Cleanup**: Comprehensive state reset between test runs
+- **Hardware**: Verified on TPM 2.0 (10.1.0.11)
+
+**Test Coverage:**
+- TPM operations (EK, AK, App Key generation)
+- Delegated certification flow
+- SPIRE Agent attestation
+- Geolocation data extraction
+- SVID issuance and renewal
+- Enterprise gateway verification
+
+### Security Considerations
+
+**Current Security Posture:**
+
+**Strengths:**
+- ✅ Feature flag gating (`unified_identity_enabled`)
+- ✅ Hardware-rooted trust (TPM 2.0)
+- ✅ IP allowlist and rate limiting (Task 1)
+- ✅ mTLS between components
+- ✅ Geolocation attestation with TPM binding
+
+**Production Gaps** (See [`PILLAR2_STATUS.md`](PILLAR2_STATUS.md) for details):
+- ⚠️ Keylime Client uses `InsecureSkipVerify` (test mode only)
+- ⚠️ CAMARA API keys in environment variables (needs secret management)
+- ⚠️ Some code paths modify core SPIRE/Keylime files (needs plugin extraction)
+
+**Recommended for Production**:
+1. Complete Task 1 enhancements (✅ Done)
+2. Implement proper secret management for CAMARA keys
+3. Enable full TLS verification in Keylime Client
+4. Extract SPIRE modifications to standalone plugins (Tasks 4 & 5)
+
+### Next Steps
+
+**For Upstream Contribution:**
+1. Submit Task 1 (Delegated Certifier) as RFC to rust-keylime
+2. Create separate geolocation endpoint (Task 2)  
+3. Remove dead code from Verifier (Task 3)
+4. Extract SPIRE Server/Agent modifications to plugins (Tasks 4 & 5)
+
+**For Production Deployment:**
+1. ✅ Test infrastructure ready
+2. ✅ Delegated certification hardened
+3. 🔄 Address security gaps (TLS, secrets)
+4. 🔄 Monitor performance at scale
+
+**For Continued Development:**
+- Implement additional sensor types (GNSS, industrial IoT)
+- Add policy enforcement for geolocation claims
+- Enhance mobile sensor verification with additional CAMARA APIs
+
+---
+
