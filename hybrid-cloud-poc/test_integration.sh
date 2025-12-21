@@ -129,7 +129,6 @@ for arg in "$@"; do
     case $arg in
         --nuke)
             NUKE_MODE=true
-            shift
             ;;
     esac
 done

@@ -344,6 +344,10 @@ stop_all_instances_and_cleanup() {
     # Call shared /tmp cleanup function
     cleanup_tmp_files
     
+    # Clean up unified_identity test log directories
+    echo "     Removing old unified_identity test logs..."
+    rm -rf /tmp/unified_identity_test_* 2>/dev/null || true
+    
     # Step 5: Clean up sockets
     echo "  5. Removing socket files..."
     rm -f /tmp/spire-server/private/api.sock 2>/dev/null || true
