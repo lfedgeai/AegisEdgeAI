@@ -127,6 +127,10 @@ pub struct QuoteData<'a> {
     work_dir: PathBuf,
     // Unified-Identity: Feature flag for unified identity support
     unified_identity_enabled: bool,
+    // Unified-Identity: Delegated certification config
+    pub(crate) delegated_cert_enabled: bool,
+    pub(crate) delegated_cert_allowed_ips: Vec<String>,
+    pub(crate) delegated_cert_rate_limit: u32,
 }
 
 #[actix_web::main]
@@ -1126,6 +1130,9 @@ async fn main() -> Result<()> {
         tpmcontext: Mutex::new(ctx),
         work_dir,
         unified_identity_enabled: config.unified_identity_enabled,
+        delegated_cert_enabled: config.delegated_cert_enabled,
+        delegated_cert_allowed_ips: config.delegated_cert_allowed_ips.clone(),
+        delegated_cert_rate_limit: config.delegated_cert_rate_limit,
     });
 
     let actix_server = HttpServer::new(move || {

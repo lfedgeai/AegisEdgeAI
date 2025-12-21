@@ -8,13 +8,42 @@ use base64::{engine::general_purpose, Engine as _};
 use keylime::json_wrapper::JsonWrapper;
 use log::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tss_esapi::{
     handles::KeyHandle,
     structures::{Attest, Data, Signature},
     traits::Marshall,
 };
+
+// Rate limiter state: (request_count, window_start_time)
+lazy_static::lazy_static! {
+    static ref RATE_LIMITER: Mutex<HashMap<String, (u32, Instant)>> = Mutex::new(HashMap::new());
+}
+
+/// Check if the IP has exceeded the rate limit
+fn check_rate_limit(ip: &str, limit: u32) -> bool {
+    if limit == 0 {
+        return true; // No rate limiting
+    }
+    
+    let mut limiter = RATE_LIMITER.lock().unwrap();
+    let now = Instant::now();
+    
+    let entry = limiter.entry(ip.to_string()).or_insert((0, now));
+    
+    // Reset counter if more than 1 minute has passed
+    if now.duration_since(entry.1) > Duration::from_secs(60) {
+        entry.0 = 0;
+        entry.1 = now;
+    }
+    
+    entry.0 += 1;
+    entry.0 <= limit
+}
 
 #[derive(Deserialize, Debug)]
 pub struct CertifyAppKeyRequest {
@@ -66,10 +95,35 @@ async fn certify_app_key(
         ));
     }
 
+    // Extract peer IP address
+    let conn_info = req.connection_info();
+    let peer_addr = conn_info.peer_addr().unwrap_or("unknown");
+    let peer_ip = peer_addr.split(':').next().unwrap_or("unknown");
+
     info!(
-        "Unified-Identity: Delegated certification request from {:?}",
-        req.connection_info().peer_addr()
+        "Unified-Identity: Delegated certification request from {}",
+        peer_ip
     );
+
+    // Check IP allowlist (if configured)
+    if !data.delegated_cert_allowed_ips.is_empty() {
+        if !data.delegated_cert_allowed_ips.contains(&peer_ip.to_string()) {
+            warn!("Delegated certification request from unauthorized IP: {}", peer_ip);
+            return HttpResponse::Forbidden().json(JsonWrapper::error(
+                403,
+                format!("IP {} not in allowed list", peer_ip),
+            ));
+        }
+    }
+
+    // Check rate limit
+    if !check_rate_limit(peer_ip, data.delegated_cert_rate_limit) {
+        warn!("Rate limit exceeded for IP: {}", peer_ip);
+        return HttpResponse::build(http::StatusCode::TOO_MANY_REQUESTS).json(JsonWrapper::error(
+            429,
+            "Rate limit exceeded. Please try again later.".to_string(),
+        ));
+    }
 
     let request = body.into_inner();
 
