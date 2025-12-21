@@ -1463,6 +1463,7 @@ dependencies = [
  "glob",
  "hex",
  "keylime",
+ "lazy_static",
  "libc",
  "log",
  "openssl",
