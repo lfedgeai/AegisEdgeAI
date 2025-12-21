@@ -331,13 +331,27 @@ cd ..
 
 If you encounter issues during installation:
 
-1. **Check package versions:** Run `./check_packages.sh` to see what's installed
-2. **Verify PATH:** Ensure Rust and Go are in your PATH after installation
-3. **Check TSS group:** Verify you're in the `tss` group: `groups | grep tss`
-4. **Review logs:** Check installation script output for specific errors
-5. **Manual installation:** If automated script fails, install packages manually (see [PREREQUISITES.md](PREREQUISITES.md))
+**Rust not found after installation:**
+```bash
+source $HOME/.cargo/env
+```
 
-For detailed prerequisite information and troubleshooting, see [PREREQUISITES.md](PREREQUISITES.md).
+**Go not found after installation:**
+```bash
+export PATH=$PATH:/usr/local/go/bin
+```
+
+**TPM access denied:**
+1. Verify user is in `tss` group: `groups | grep tss`
+2. If not, add user: `sudo usermod -a -G tss $USER`
+3. **Log out and back in** (required)
+4. Verify TPM device: `ls -l /dev/tpm*`
+
+**Python packages not found:**
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install spiffe cryptography grpcio protobuf requests
+```
 
 ### Port Configuration
 
