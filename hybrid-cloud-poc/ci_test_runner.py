@@ -217,8 +217,8 @@ Examples:
   # Run cleanup only
   ./ci_test_runner.py -- --cleanup-only
   
-  # Run with custom hosts
-  ./ci_test_runner.py -- --control-plane-host 10.1.0.11 --agents-host 10.1.0.12
+  # Run with custom hosts (all three components on separate machines)
+  ./ci_test_runner.py -- --control-plane-host 10.1.0.11 --agents-host 10.1.0.12 --onprem-host 10.1.0.10
   
   # Disable colors (for CI)
   ./ci_test_runner.py --no-color
