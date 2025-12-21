@@ -91,47 +91,6 @@ if is_on_host "${ONPREM_HOST}"; then
     ON_ONPREM_HOST=true
 fi
 
-# Function to perform aggressive state sanitization (Nuke Mode)
-cleanup_state() {
-    echo -e "${YELLOW}WARNING: NUKE_MODE enabled. Performing aggressive state sanitization...${NC}"
-    
-    # 1. Aggressive Process Killing
-    echo "  Killing all related processes..."
-    pkill -9 -f "spire-server" || true
-    pkill -9 -f "spire-agent" || true
-    pkill -9 -f "keylime" || true
-    pkill -9 -f "envoy" || true
-    pkill -9 -f "mobile-sensor" || true
-    pkill -9 -f "mtls-server" || true
-    pkill -9 -f "tpm-plugin" || true
-    
-    # 2. Filesystem wipe
-    echo "  Wiping temporary data directories..."
-    rm -rf /tmp/spire-* 2>/dev/null || true
-    rm -rf /tmp/keylime* 2>/dev/null || true
-    rm -rf /tmp/unified_identity_* 2>/dev/null || true
-    rm -rf /tmp/mobile-sensor-* 2>/dev/null || true
-    
-    # 3. TPM Attempt (Best Effort)
-    if command -v tpm2_clear >/dev/null 2>&1; then
-        echo "  Attempting to clear TPM (best effort)..."
-        # Try both platform and owner hierarchy auth (empty by default)
-        tpm2_clear -c p 2>/dev/null || tpm2_clear -c o 2>/dev/null || echo "  (TPM clear failed - checking permissions or busy state, continuing...)"
-    fi
-    
-    echo -e "${GREEN}  ✓ State sanitized.${NC}"
-    echo ""
-}
-
-# Parse command line arguments
-NUKE_MODE=false
-for arg in "$@"; do
-    case $arg in
-        --nuke)
-            NUKE_MODE=true
-            ;;
-    esac
-done
 
 # Function to runscript and show output
 run_script() {
@@ -468,11 +427,6 @@ main() {
     
     # Check SSH connectivity for each host (skip if running locally)
     echo -e "${CYAN}Checking SSH connectivity...${NC}"
-
-    # Unified-Identity - Testing: Risk Mitigation (State Sanitization)
-    if [ "${NUKE_MODE}" = "true" ]; then
-        cleanup_state
-    fi
     
     if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then
         if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${CONTROL_PLANE_HOST}" "echo 'OK'" >/dev/null 2>&1; then
