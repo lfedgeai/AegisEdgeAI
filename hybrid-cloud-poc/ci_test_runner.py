@@ -111,6 +111,60 @@ class TestRunner:
         print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
         print()
     
+    def parse_log_files(self):
+        """Parse log files after completion to find failure details"""
+        if not self.log_dir or not Path(self.log_dir).exists():
+            return
+        
+        log_files = list(Path(self.log_dir).glob('*.log'))
+        if not log_files:
+            return
+        
+        # Parse master.log first for overall failure
+        master_log = Path(self.log_dir) / 'master.log'
+        if master_log.exists():
+            self._parse_master_log(master_log)
+        
+        # Parse individual script logs for specific failures
+        for log_file in sorted(log_files):
+            if log_file.name != 'master.log':
+                self._parse_script_log(log_file)
+    
+    def _parse_master_log(self, log_path):
+        """Parse master.log to find failure point"""
+        try:
+            with open(log_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Find the last error before exit
+            for i in range(len(lines) - 1, max(0, len(lines) - 50), -1):
+                line = lines[i]
+                if any(pattern in line for pattern in ['✗', 'FAILED', 'CRITICAL', 'Error']):
+                    # Extract context (5 lines before and after)
+                    context_start = max(0, i - 5)
+                    context_end = min(len(lines), i + 6)
+                    context = ''.join(lines[context_start:context_end])
+                    
+                    if line.strip() not in [e.strip() for e in self.errors]:
+                        self.errors.append(f"[master.log:{i+1}] {line.strip()}")
+                    break
+        except Exception as e:
+            pass  # Ignore parsing errors
+    
+    def _parse_script_log(self, log_path):
+        """Parse individual script log to find failure"""
+        try:
+            with open(log_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Look for explicit error markers
+            for i, line in enumerate(lines):
+                if any(pattern in line for pattern in ['✗', 'failed', 'CRITICAL ERROR']):
+                    if line.strip() not in [e.strip() for e in self.errors]:
+                        self.errors.append(f"[{log_path.name}:{i+1}] {line.strip()}")
+        except Exception as e:
+            pass  # Ignore parsing errors
+    
     def print_summary(self):
         """Print test run summary"""
         duration = (self.end_time - self.start_time).total_seconds()
@@ -198,6 +252,11 @@ class TestRunner:
             self.exit_code = 1
         
         self.end_time = datetime.now()
+        
+        # Parse log files to extract failure details
+        if self.exit_code != 0:
+            self.parse_log_files()
+        
         self.print_summary()
         
         return self.exit_code
