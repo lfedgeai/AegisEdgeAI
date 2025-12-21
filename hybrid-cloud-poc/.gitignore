@@ -48,3 +48,8 @@
 # OS files
 **/Thumbs.db
 
+
+# Rust build artifacts
+rust-keylime/target/
+*.rustc_info.json
+.future-incompat-report.json
