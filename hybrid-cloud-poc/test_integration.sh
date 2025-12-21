@@ -3,7 +3,23 @@
 # Runs all test scripts in sequence across both machines (10.1.0.11 and 10.1.0.10)
 # Verifies components are up before proceeding to next step
 
-set -e
+set -euo pipefail
+
+# Unified-Identity - Testing: Test Infrastructure Hardening (Fail-Fast)
+# Ensure clean cleanup on exit
+trap 'pkill -P $$; exit' SIGINT SIGTERM EXIT
+
+# Unified-Identity - Testing: Structured Logging
+# Create a unique log directory for this run
+LOG_DIR="/tmp/unified_identity_test_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "${LOG_DIR}"
+echo "Unified-Identity: Logs will be aggregated in ${LOG_DIR}"
+
+# Redirect stdout/stderr to a master log file while still showing on console
+if [ -z "${LOGGING_SETUP:-}" ]; then
+    export LOGGING_SETUP=true
+    exec > >(tee -a "${LOG_DIR}/master.log") 2>&1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Default all sub-scripts to run on 10.1.0.11
@@ -75,6 +91,85 @@ if is_on_host "${ONPREM_HOST}"; then
     ON_ONPREM_HOST=true
 fi
 
+# Function to perform aggressive state sanitization (Nuke Mode)
+cleanup_state() {
+    echo -e "${YELLOW}WARNING: NUKE_MODE enabled. Performing aggressive state sanitization...${NC}"
+    
+    # 1. Aggressive Process Killing
+    echo "  Killing all related processes..."
+    pkill -9 -f "spire-server" || true
+    pkill -9 -f "spire-agent" || true
+    pkill -9 -f "keylime" || true
+    pkill -9 -f "envoy" || true
+    pkill -9 -f "mobile-sensor" || true
+    pkill -9 -f "mtls-server" || true
+    pkill -9 -f "tpm-plugin" || true
+    
+    # 2. Filesystem wipe
+    echo "  Wiping temporary data directories..."
+    rm -rf /tmp/spire-* 2>/dev/null || true
+    rm -rf /tmp/keylime* 2>/dev/null || true
+    rm -rf /tmp/unified_identity_* 2>/dev/null || true
+    rm -rf /tmp/mobile-sensor-* 2>/dev/null || true
+    
+    # 3. TPM Attempt (Best Effort)
+    if command -v tpm2_clear >/dev/null 2>&1; then
+        echo "  Attempting to clear TPM (best effort)..."
+        # Try both platform and owner hierarchy auth (empty by default)
+        tpm2_clear -c p 2>/dev/null || tpm2_clear -c o 2>/dev/null || echo "  (TPM clear failed - checking permissions or busy state, continuing...)"
+    fi
+    
+    echo -e "${GREEN}  ✓ State sanitized.${NC}"
+    echo ""
+}
+
+# Parse command line arguments
+NUKE_MODE=false
+for arg in "$@"; do
+    case $arg in
+        --nuke)
+            NUKE_MODE=true
+            shift
+            ;;
+    esac
+done
+
+# Function to runscript and show output
+run_script() {
+    local run_func="$1"
+    local script_path="$2"
+    local script_args="${3:-}"
+    local description="$4"
+    local log_file="${LOG_DIR}/$(basename ${script_path} .sh).log"
+    
+    echo ""
+    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${description}${NC}"
+    echo -e "${BOLD}Script: ${script_path}${NC}"
+    echo -e "${BOLD}Log:    ${log_file}${NC}"
+    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Prepare environment variables to pass to sub-scripts
+    local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
+    
+    # Unified-Identity - Testing: Fail-Fast & Logging
+    # Run script and capture output to specific log file, while also streaming to master log (via stdout)
+    # We use pipefail (set at top) to catch errors in the pipeline
+    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
+        echo ""
+        echo -e "${GREEN}✓ ${description} completed successfully${NC}"
+        return 0
+    else
+        # Unified-Identity - Testing: Fail-Fast
+        # Immediate error reporting
+        echo ""
+        echo -e "${RED}✗ ${description} failed${NC}"
+        echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
+        tail -n 20 "${log_file}" | sed 's/^/    /'
+        return 1
+    fi
+}
 # Function to run command on control plane host (local or via SSH)
 run_on_control_plane() {
     if [ "${ON_CONTROL_PLANE_HOST}" = "true" ]; then
@@ -327,27 +422,33 @@ run_script() {
     local script_path="$2"
     local script_args="${3:-}"
     local description="$4"
+    local log_file="${LOG_DIR}/$(basename ${script_path} .sh).log"
     
     echo ""
     echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BOLD}${description}${NC}"
     echo -e "${BOLD}Script: ${script_path}${NC}"
+    echo -e "${BOLD}Log:    ${log_file}${NC}"
     echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
     # Prepare environment variables to pass to sub-scripts
-    # Use env command to ensure variables are passed correctly
     local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
     
-    # Run script (local or via SSH depending on run_func)
-    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "/tmp/remote_$(basename ${script_path}).log"; then
+    # Unified-Identity - Testing: Fail-Fast & Logging
+    # Run script and capture output to specific log file, while also streaming to master log (via stdout)
+    # We use pipefail (set at top) to catch errors in the pipeline
+    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
         echo ""
         echo -e "${GREEN}✓ ${description} completed successfully${NC}"
         return 0
     else
+        # Unified-Identity - Testing: Fail-Fast
+        # Immediate error reporting
         echo ""
         echo -e "${RED}✗ ${description} failed${NC}"
-        echo -e "${YELLOW}Check logs: /tmp/remote_$(basename ${script_path}).log${NC}"
+        echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
+        tail -n 20 "${log_file}" | sed 's/^/    /'
         return 1
     fi
 }
@@ -368,6 +469,11 @@ main() {
     
     # Check SSH connectivity for each host (skip if running locally)
     echo -e "${CYAN}Checking SSH connectivity...${NC}"
+
+    # Unified-Identity - Testing: Risk Mitigation (State Sanitization)
+    if [ "${NUKE_MODE}" = "true" ]; then
+        cleanup_state
+    fi
     
     if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then
         if ! ssh ${SSH_OPTS} -o ConnectTimeout=5 "${SSH_USER}@${CONTROL_PLANE_HOST}" "echo 'OK'" >/dev/null 2>&1; then

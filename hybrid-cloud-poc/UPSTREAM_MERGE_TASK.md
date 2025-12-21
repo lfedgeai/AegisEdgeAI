@@ -18,7 +18,7 @@
 # Execution Phase
 
 ## Pillar 1: Test Infrastructure (Safety Net)
-- [ ] Create/Harden `test_integration.sh` (Fail-fast, structured logging) <!-- id: 20 -->
+- [x] Create/Harden `test_integration.sh` (Fail-fast, structured logging) <!-- id: 20 -->
 - [ ] Set up clean error reporting for CI/Watcher <!-- id: 21 -->
 
 ## Pillar 2: Upstreaming Implementation (Refactoring)
