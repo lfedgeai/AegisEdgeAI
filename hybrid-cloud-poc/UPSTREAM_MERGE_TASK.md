@@ -19,9 +19,10 @@
 
 ## Pillar 1: Test Infrastructure (Safety Net)
 - [x] Create/Harden `test_integration.sh` (Fail-fast, structured logging) <!-- id: 20 -->
-- [ ] Set up clean error reporting for CI/Watcher <!-- id: 21 -->
+- [x] Set up clean error reporting for CI/Watcher <!-- id: 21 -->
 
 ## Pillar 2: Upstreaming Implementation (Refactoring)
+**Status**: Documented in `PILLAR2_STATUS.md` - Current implementation functional, needs ~6 weeks for upstream readiness
 - [ ] **Task 1**: Keylime Agent - Delegated Certifier Endpoint <!-- id: 14 -->
 - [ ] **Task 2**: Keylime Agent - Attested Geolocation API <!-- id: 15 -->
 - [ ] **Task 3**: Keylime Verifier - Add Verification API & Cleanup <!-- id: 16 -->
