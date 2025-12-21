@@ -298,6 +298,10 @@ Examples:
     # Combine test_args and unknown args
     all_test_args = args.test_args + unknown
     
+    # Add --no-pause by default for CI usage (unless already present)
+    if '--no-pause' not in all_test_args and '--pause' not in ' '.join(all_test_args):
+        all_test_args.append('--no-pause')
+    
     runner = TestRunner(args=all_test_args, no_color=args.no_color)
     exit_code = runner.run()
     sys.exit(exit_code)
