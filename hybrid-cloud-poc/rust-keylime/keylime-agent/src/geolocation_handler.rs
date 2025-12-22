@@ -97,8 +97,14 @@ pub(crate) async fn attested_geolocation(
     // Build nested structure
     let response = build_nested_geolocation(raw_sensor);
 
-    // Extend PCR 17 with geolocation hash (currently stubbed - see extend_pcr_17_with_geolocation)
-    extend_pcr_17_with_geolocation(&data, &response);
+    // Extend PCR 17 with geolocation hash
+    if let Err(e) = extend_pcr_17_with_geolocation(&data, &response) {
+        warn!("Unified-Identity: Failed to extend PCR 17: {}", e);
+        return HttpResponse::InternalServerError().json(JsonWrapper::error(
+            500,
+            format!("Failed to extend PCR 17: {}", e),
+        ));
+    }
 
     info!(
         "Unified-Identity: Returning {} geolocation data",
@@ -373,20 +379,17 @@ fn extend_pcr_17_with_geolocation(
         .map_err(|e| format!("Failed to create TPM digest: {}", e))?;
     digest_values.set(HashingAlgorithm::Sha256, digest);
 
-     // 4. Access TPM context and extend PCR 17
-    // TODO: PCR 17 extension blocked by TPM API limitation
-    // The keylime::tpm::Context wrapper doesn't expose a public pcr_extend() method.
-    // The inner field is private, so we can't access Self.inner.lock().execute_with_nullauth_session().
-    // 
-    // Solution: Add public method to keylime::tpm::Context:
-    //   pub fn extend_pcr(&mut self, pcr: PcrHandle, digest: DigestValues) -> Result<()>
-    //
-    // For now, logging would-be PCR extension:
+    // 4. Access TPM context and extend PCR 17
+    let mut tpm_ctx = quote_data.tpmcontext.lock()
+        .map_err(|e| format!("Failed to lock TPM context: {}", e))?;
+    
+    tpm_ctx.extend_pcr(tss_esapi::handles::PcrHandle::Pcr17, digest_values)
+        .map_err(|e| format!("Failed to extend PCR 17: {:?}", e))?;
+
     info!(
-        "Unified-Identity: [STUB] Would extend PCR 17 with geolocation hash: {}",
+        "Unified-Identity: PCR 17 extended with geolocation hash: {}",
         hex::encode(&hash_bytes)
     );
-    warn!("Unified-Identity: PCR 17 extension not yet implemented - TPM API enhancement required");
 
     Ok(())
 }

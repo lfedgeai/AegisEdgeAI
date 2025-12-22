@@ -286,6 +286,10 @@ pub enum TpmError {
     #[error("Error getting PCR data from TPM")]
     TSSPCRListError { source: tss_esapi::Error },
 
+    /// Error extending PCR
+    #[error("Error extending PCR")]
+    TSSPCRExtendError { source: tss_esapi::Error },
+
     /// Error generating quote
     #[error("Error generating quote")]
     TSSQuoteError { source: tss_esapi::Error },
@@ -1781,6 +1785,42 @@ impl Context<'_> {
         let pcrlist = pcrlist.build()?;
 
         Ok(pcrlist)
+    }
+
+    /// Extend a PCR with a digest value
+    ///
+    /// This is a public wrapper for PCR extension, used for geolocation attestation (PCR 17).
+    /// Allows extending arbitrary PCRs without coupling to the quote generation logic.
+    ///
+    /// # Arguments
+    ///
+    /// * `pcr` - The PCR slot to extend (e.g., PcrHandle::Pcr17)
+    /// * `digest` - The digest values to extend the PCR with
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use keylime::tpm::Context;
+    /// use tss_esapi::structures::DigestValues;
+    /// use tss_esapi::handles::PcrHandle;
+    ///
+    /// let mut ctx = Context::new()?;
+    /// let mut digest_values = DigestValues::new();
+    /// // ... populate digest_values ...
+    /// ctx.extend_pcr(PcrHandle::Pcr17, digest_values)?;
+    /// ```
+    pub fn extend_pcr(
+        &mut self,
+        pcr: PcrHandle,
+        digest: DigestValues,
+    ) -> Result<()> {
+        self.inner
+            .lock()
+            .unwrap() //#[allow_ci]
+            .execute_with_nullauth_session(|ctx| {
+                ctx.pcr_extend(pcr, digest)
+            })
+            .map_err(|source| TpmError::TSSPCRExtendError { source })
     }
 
     /// Calculates a TPM quote of `nonce` over PCRs indicated with `mask`.
