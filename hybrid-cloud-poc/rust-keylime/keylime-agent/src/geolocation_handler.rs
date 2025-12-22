@@ -21,6 +21,12 @@ use std::process::Command;
 
 use crate::QuoteData;
 
+/// Request parameters for geolocation endpoint
+#[derive(Deserialize, Debug)]
+pub struct GeolocationRequest {
+    pub nonce: String, // Required for TOCTOU protection
+}
+
 /// Nested geolocation response structure
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GeolocationResponse {
@@ -31,7 +37,7 @@ pub struct GeolocationResponse {
     pub gnss: Option<GNSSSensor>,
     pub tpm_attested: bool, // Always true for this endpoint
     pub tpm_pcr_index: u32,  // PCR 17 for geolocation
-    // TODO: Add tpm_signature field once PCR extension is implemented
+    pub nonce: String, // Nonce used in attestation (for verification)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -67,7 +73,9 @@ struct RawSensorData {
 }
 
 /// Main endpoint handler for attested geolocation
+/// Requires nonce parameter for TOCTOU protection
 pub(crate) async fn attested_geolocation(
+    query: web::Query<GeolocationRequest>,
     data: web::Data<QuoteData<'_>>,
 ) -> impl Responder {
     // Feature flag check
@@ -79,7 +87,10 @@ pub(crate) async fn attested_geolocation(
         ));
     }
 
-    info!("Unified-Identity: Attested geolocation request received");
+    info!(
+        "Unified-Identity: Geolocation request with nonce: {}",
+        &query.nonce[..8.min(query.nonce.len())]
+    );
 
     // Detect sensor
     let sensor_data = detect_geolocation_sensor();
@@ -94,11 +105,14 @@ pub(crate) async fn attested_geolocation(
 
     let raw_sensor = sensor_data.unwrap(); //#[allow_ci]
 
-    // Build nested structure
-    let response = build_nested_geolocation(raw_sensor);
+    // Build nested structure (without nonce first)
+    let mut response = build_nested_geolocation(raw_sensor);
+    
+    // Add nonce to response
+    response.nonce = query.nonce.clone();
 
-    // Extend PCR 17 with geolocation hash
-    if let Err(e) = extend_pcr_17_with_geolocation(&data, &response) {
+    // CRITICAL: Extend PCR 17 with geolocation + nonce for TOCTOU protection
+    if let Err(e) = extend_pcr_17_with_geolocation_and_nonce(&data, &response, &query.nonce) {
         warn!("Unified-Identity: Failed to extend PCR 17: {}", e);
         return HttpResponse::InternalServerError().json(JsonWrapper::error(
             500,
@@ -126,6 +140,7 @@ fn build_nested_geolocation(raw: RawSensorData) -> GeolocationResponse {
             gnss: None,
             tpm_attested: true,
             tpm_pcr_index: 17, // PCR 17 dedicated to geolocation
+            nonce: String::new(), // Filled in by handler
         },
         "gnss" => GeolocationResponse {
             sensor_type: "gnss".to_string(),
@@ -140,6 +155,7 @@ fn build_nested_geolocation(raw: RawSensorData) -> GeolocationResponse {
             }),
             tpm_attested: true,
             tpm_pcr_index: 17,
+            nonce: String::new(), // Filled in by handler
         },
         _ => {
             // Fallback to mobile with unknown values
@@ -153,6 +169,7 @@ fn build_nested_geolocation(raw: RawSensorData) -> GeolocationResponse {
                 gnss: None,
                 tpm_attested: true,
                 tpm_pcr_index: 17,
+                nonce: String::new(), // Filled in by handler
             }
         }
     }
@@ -333,53 +350,70 @@ fn get_imei_imsi() -> (Option<String>, Option<String>) {
 }
 
 
-/// Extend PCR 17 with geolocation data hash
+/// Extend PCR 17 with geolocation data hash INCLUDING nonce
 ///
-/// This function:
-/// 1. Serializes the geolocation nested structure to JSON
-/// 2. Computes SHA-256 hash of the JSON
-/// 3. Creates DigestValues for TPM
-/// 4. Extends PCR 17 (dedicated to geolocation)
-fn extend_pcr_17_with_geolocation(
+/// This function provides TOCTOU protection by binding geolocation to a fresh nonce:
+/// 1. Serializes the geolocation nested structure to JSON (without nonce field)
+/// 2. Concatenates geolocation JSON with nonce
+/// 3. Computes SHA-256 hash of (geolocation + nonce)
+/// 4. Creates DigestValues for TPM
+/// 5. Extends PCR 17 (dedicated to geolocation)
+///
+/// Security: The nonce ensures geolocation freshness. An attacker cannot reuse
+/// old geolocation data with a new nonce because the PCR 17 hash won't match.
+fn extend_pcr_17_with_geolocation_and_nonce(
     quote_data: &QuoteData,
     geolocation: &GeolocationResponse,
+    nonce: &str,
 ) -> Result<(), String> {
     use keylime::tpm;
     use openssl::hash::{Hasher, MessageDigest};
     use tss_esapi::structures::{DigestValues, PcrSlot};
     use tss_esapi::interface_types::algorithm::HashingAlgorithm;
 
-    // 1. Serialize geolocation data to JSON
-    let json_data = serde_json::to_string(geolocation)
+    // 1. Serialize geolocation data to JSON (create temp struct without nonce to avoid circularity)
+    let geo_for_hash = serde_json::json!({
+        "sensor_type": geolocation.sensor_type,
+        "mobile": geolocation.mobile,
+        "gnss": geolocation.gnss,
+        "tpm_attested": geolocation.tpm_attested,
+        "tpm_pcr_index": geolocation.tpm_pcr_index,
+    });
+    
+    let geo_json = serde_json::to_string(&geo_for_hash)
         .map_err(|e| format!("Failed to serialize geolocation: {}", e))?;
 
+    // 2. Concatenate geolocation JSON with nonce for TOCTOU protection
+    let data_to_hash = format!("{}{}", geo_json, nonce);
+
     debug!(
-        "Unified-Identity: Geolocation JSON for PCR 17: {}",
-        json_data
+        "Unified-Identity: Hashing for PCR 17: geo({} bytes) + nonce({} bytes)",
+        geo_json.len(),
+        nonce.len()
     );
 
-    // 2. Compute SHA-256 hash
+    // 3. Compute SHA-256 hash
     let mut hasher = Hasher::new(MessageDigest::sha256())
         .map_err(|e| format!("Failed to create hasher: {}", e))?;
     hasher
-        .update(json_data.as_bytes())
+        .update(data_to_hash.as_bytes())
         .map_err(|e| format!("Failed to update hasher: {}", e))?;
     let hash_bytes = hasher
         .finish()
         .map_err(|e| format!("Failed to finish hash: {}", e))?;
 
-    debug!(
-        "Unified-Identity: Geolocation hash (SHA-256): {}",
+    info!(
+        "Unified-Identity: PCR 17 hash (geo + nonce): {}",
         hex::encode(&hash_bytes)
     );
 
-    // 3. Create DigestValues for TPM
+    // 4. Create DigestValues for TPM
     let mut digest_values = DigestValues::new();
     let digest = tss_esapi::structures::Digest::try_from(hash_bytes.as_ref())
         .map_err(|e| format!("Failed to create TPM digest: {}", e))?;
     digest_values.set(HashingAlgorithm::Sha256, digest);
 
-    // 4. Access TPM context and extend PCR 17
+    // 5. Access TPM context and extend PCR 17
     let mut tpm_ctx = quote_data.tpmcontext.lock()
         .map_err(|e| format!("Failed to lock TPM context: {}", e))?;
     
@@ -387,8 +421,8 @@ fn extend_pcr_17_with_geolocation(
         .map_err(|e| format!("Failed to extend PCR 17: {:?}", e))?;
 
     info!(
-        "Unified-Identity: PCR 17 extended with geolocation hash: {}",
-        hex::encode(&hash_bytes)
+        "Unified-Identity: PCR 17 extended with geolocation + nonce (nonce: {}...)",
+        &nonce[..8.min(nonce.len())]
     );
 
     Ok(())
