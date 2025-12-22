@@ -6,6 +6,25 @@ This document tracks the status of refactoring the "Unified Identity" PoC into u
 
 **Hardware Environment**: 10.1.0.11 (Real TPM 2.0)
 
+## Feature Flag Strategy
+
+**All Unified Identity features are gated by**: `unified_identity_enabled = true`
+
+**Rationale**:
+- ✅ **Atomic enablement**: Single flag for entire feature set
+- ✅ **Easier upstream review**: One cohesive PoC, not scattered features
+- ✅ **Simple rollback**: Disable everything with one config change
+- ✅ **Clear scope**: "This PR adds Sovereign Identity support"
+
+**Config** (`keylime-agent.conf`):
+```toml
+# Unified-Identity: Sovereign SVID support (grc.* claims)
+# Enables: delegated certification, geolocation attestation, TPM App Keys
+unified_identity_enabled = true
+```
+
+**All new endpoints/features MUST check this flag first.**
+
 ---
 
 ## Task 1: Delegated Certifier Endpoint (Keylime Agent)
@@ -133,11 +152,18 @@ Create **separate endpoint**: `GET /v2/agent/attested_geolocation`
    - Return geolocation separate from quote
    - **PCR Binding**: Extend PCR 17 with geolocation hash before generating response
 
-2. **Remove geolocation from KeylimeQuote** (1 day)
+2. **Add feature flag check** (1 hour)
+   ```rust
+   if !data.unified_identity_enabled {
+       return HttpResponse::Forbidden()...
+   }
+   ```
+
+3. **Remove geolocation from KeylimeQuote** (1 day)
    - Restore original struct
    - Update SPIRE plugin to call both endpoints
 
-3. **Update SPIRE Agent plugin** (2 days)
+4. **Update SPIRE Agent plugin** (2 days)
    - Call `/integrity/quote` (standard)
    - Call `/attested_geolocation` (new)
    - Combine results
@@ -401,4 +427,20 @@ Each task will have specific test commands documented above.
 2. **Document findings** in README-arch-sovereign-unified-identity.md
 3. **Prioritize tasks** based on business needs
 4. **Begin Phase 1** (quick wins) if approved
+
+
+---
+
+## Implementation Note: Feature Flag Consistency
+
+**All Tasks (1-6) require unified_identity_enabled check**:
+
+- **Task 1 (Keylime Agent)**: ✅ Already implemented
+- **Task 2 (Keylime Agent)**: Added to roadmap  
+- **Task 3 (Keylime Verifier)**: Verifier-level config check
+- **Task 4 (SPIRE Server Plugin)**: Plugin should check before loading
+- **Task 5 (SPIRE Agent Plugin)**: Plugin should check before loading
+- **Task 6 (SPIRE CredentialComposer)**: Config-driven feature
+
+This ensures atomic enablement/disablement of the entire Unified Identity feature set.
 
