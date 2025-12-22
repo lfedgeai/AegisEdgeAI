@@ -36,7 +36,7 @@ pub struct GeolocationResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gnss: Option<GNSSSensor>,
     pub tpm_attested: bool, // Always true for this endpoint
-    pub tpm_pcr_index: u32,  // PCR 17 for geolocation
+    pub tpm_pcr_index: u32,  // PCR 15 for geolocation
     pub nonce: String, // Nonce used in attestation (for verification)
 }
 
@@ -111,12 +111,12 @@ pub(crate) async fn attested_geolocation(
     // Add nonce to response
     response.nonce = query.nonce.clone();
 
-    // CRITICAL: Extend PCR 17 with geolocation + nonce for TOCTOU protection
-    if let Err(e) = extend_pcr_17_with_geolocation_and_nonce(&data, &response, &query.nonce) {
-        warn!("Unified-Identity: Failed to extend PCR 17: {}", e);
+    // CRITICAL: Extend PCR 15 with geolocation + nonce for TOCTOU protection
+    if let Err(e) = extend_pcr_15_with_geolocation_and_nonce(&data, &response, &query.nonce) {
+        warn!("Unified-Identity: Failed to extend PCR 15: {}", e);
         return HttpResponse::InternalServerError().json(JsonWrapper::error(
             500,
-            format!("Failed to extend PCR 17: {}", e),
+            format!("Failed to extend PCR 15: {}", e),
         ));
     }
 
@@ -139,7 +139,7 @@ fn build_nested_geolocation(raw: RawSensorData) -> GeolocationResponse {
             }),
             gnss: None,
             tpm_attested: true,
-            tpm_pcr_index: 17, // PCR 17 dedicated to geolocation
+            tpm_pcr_index: 15, // PCR 15 dedicated to geolocation
             nonce: String::new(), // Filled in by handler
         },
         "gnss" => GeolocationResponse {
@@ -154,7 +154,7 @@ fn build_nested_geolocation(raw: RawSensorData) -> GeolocationResponse {
                 sensor_signature: None, // Optional field
             }),
             tpm_attested: true,
-            tpm_pcr_index: 17,
+            tpm_pcr_index: 15,
             nonce: String::new(), // Filled in by handler
         },
         _ => {
@@ -168,7 +168,7 @@ fn build_nested_geolocation(raw: RawSensorData) -> GeolocationResponse {
                 }),
                 gnss: None,
                 tpm_attested: true,
-                tpm_pcr_index: 17,
+                tpm_pcr_index: 15,
                 nonce: String::new(), // Filled in by handler
             }
         }
@@ -350,18 +350,18 @@ fn get_imei_imsi() -> (Option<String>, Option<String>) {
 }
 
 
-/// Extend PCR 17 with geolocation data hash INCLUDING nonce
+/// Extend PCR 15 with geolocation data hash INCLUDING nonce
 ///
 /// This function provides TOCTOU protection by binding geolocation to a fresh nonce:
 /// 1. Serializes the geolocation nested structure to JSON (without nonce field)
 /// 2. Concatenates geolocation JSON with nonce
 /// 3. Computes SHA-256 hash of (geolocation + nonce)
 /// 4. Creates DigestValues for TPM
-/// 5. Extends PCR 17 (dedicated to geolocation)
+/// 5. Extends PCR 15 (dedicated to geolocation)
 ///
 /// Security: The nonce ensures geolocation freshness. An attacker cannot reuse
-/// old geolocation data with a new nonce because the PCR 17 hash won't match.
-fn extend_pcr_17_with_geolocation_and_nonce(
+/// old geolocation data with a new nonce because the PCR 15 hash won't match.
+fn extend_pcr_15_with_geolocation_and_nonce(
     quote_data: &QuoteData,
     geolocation: &GeolocationResponse,
     nonce: &str,
@@ -403,7 +403,7 @@ fn extend_pcr_17_with_geolocation_and_nonce(
         .map_err(|e| format!("Failed to finish hash: {}", e))?;
 
     info!(
-        "Unified-Identity: PCR 17 hash (geo + nonce): {}",
+        "Unified-Identity: PCR 15 hash (geo + nonce): {}",
         hex::encode(&hash_bytes)
     );
 
@@ -413,15 +413,15 @@ fn extend_pcr_17_with_geolocation_and_nonce(
         .map_err(|e| format!("Failed to create TPM digest: {}", e))?;
     digest_values.set(HashingAlgorithm::Sha256, digest);
 
-    // 5. Access TPM context and extend PCR 17
+    // 5. Access TPM context and extend PCR 15
     let mut tpm_ctx = quote_data.tpmcontext.lock()
         .map_err(|e| format!("Failed to lock TPM context: {}", e))?;
     
-    tpm_ctx.extend_pcr(tss_esapi::handles::PcrHandle::Pcr17, digest_values)
-        .map_err(|e| format!("Failed to extend PCR 17: {:?}", e))?;
+    tpm_ctx.extend_pcr(tss_esapi::handles::PcrHandle::Pcr15, digest_values)
+        .map_err(|e| format!("Failed to extend PCR 15: {:?}", e))?;
 
     info!(
-        "Unified-Identity: PCR 17 extended with geolocation + nonce (nonce: {}...)",
+        "Unified-Identity: PCR 15 extended with geolocation + nonce (nonce: {}...)",
         &nonce[..8.min(nonce.len())]
     );
 

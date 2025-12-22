@@ -97,18 +97,16 @@ fn configure_api_v2_2(cfg: &mut web::ServiceConfig, unified_identity_enabled: bo
     configure_api_v2_1(cfg);
 
     // Configure added endpoints
-    _ = cfg.service(web::scope("/agent").configure(agent_handler::configure_agent_endpoints));
-    
-    // Unified-Identity: Delegated certification endpoint (Task 1) and geolocation endpoint (Task 2)
+    _ = cfg.service(
+        web::scope("/agent")
+            .configure(|cfg| agent_handler::configure_agent_endpoints(cfg, unified_identity_enabled)),
+    );
+
+    // Unified-Identity: Delegated certification endpoint (Task 1)
     if unified_identity_enabled {
         _ = cfg.service(web::scope("/delegated_certification").configure(
             delegated_certification_handler::configure_delegated_certification_endpoints,
         ));
-        // Unified-Identity: Geolocation endpoint (Task 2)
-        _ = cfg.service(
-            web::resource("/agent/attested_geolocation")
-                .route(web::get().to(geolocation_handler::attested_geolocation)),
-        );
     }
 }
 

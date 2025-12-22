@@ -3004,7 +3004,7 @@ cd "${PROJECT_DIR}"
 # Unit tests
 echo "  Running unit tests..."
 cd "${PROJECT_DIR}/tpm-plugin"
-export PYTHONPATH="${PROJECT_DIR}/tpm-plugin:${PYTHONPATH:-}"
+export PYTHONPATH="${PROJECT_DIR}/keylime:${PROJECT_DIR}/tpm-plugin:${PYTHONPATH:-}"
 python3 -m pytest test/ -v --tb=short 2>&1 | tail -15
 cd "${PROJECT_DIR}"
 

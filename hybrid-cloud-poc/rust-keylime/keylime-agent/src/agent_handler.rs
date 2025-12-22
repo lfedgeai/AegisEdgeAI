@@ -67,10 +67,18 @@ async fn agent_default(req: HttpRequest) -> impl Responder {
 }
 
 /// Configure the endpoints for the /agents scope
-pub(crate) fn configure_agent_endpoints(cfg: &mut web::ServiceConfig) {
-    _ = cfg
-        .service(web::resource("/info").route(web::get().to(info)))
-        .default_service(web::to(agent_default));
+pub(crate) fn configure_agent_endpoints(cfg: &mut web::ServiceConfig, unified_identity_enabled: bool) {
+    _ = cfg.service(web::resource("/info").route(web::get().to(info)));
+
+    // Unified-Identity: Geolocation endpoint (Task 2)
+    if unified_identity_enabled {
+        _ = cfg.service(
+            web::resource("/attested_geolocation")
+                .route(web::get().to(crate::geolocation_handler::attested_geolocation)),
+        );
+    }
+
+    _ = cfg.default_service(web::to(agent_default));
 }
 
 #[cfg(test)]

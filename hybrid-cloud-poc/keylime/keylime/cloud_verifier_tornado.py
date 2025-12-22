@@ -2233,6 +2233,7 @@ class VerifyEvidenceHandler(BaseHandler):
             return None, None, None
 
         quote_geolocation = None
+        geo_fetched_with_nonce = False
         if not quote:
             agent_quote, quote_hash_alg, quote_payload = _fetch_quote_from_agent()
             if not agent_quote:
@@ -2247,7 +2248,7 @@ class VerifyEvidenceHandler(BaseHandler):
             if quote_hash_alg:
                 hash_alg = quote_hash_alg
             if quote_payload:
-                # Unified-Identity: Extract geolocation from quote payload
+                # Unified-Identity: Extract geolocation from quote payload (fallback/legacy)
                 # Structure: { "geolocation": { "type": "mobile"|"gnss", "sensor_id": "...", "value": "..." } }
                 # value is optional for mobile, mandatory for gnss
                 quote_geolocation_obj = quote_payload.get('geolocation')
@@ -2259,6 +2260,53 @@ class VerifyEvidenceHandler(BaseHandler):
                 tpm_ak = tpm_ak or quote_payload.get('tpm_ak')
                 if quote_payload.get('pubkey') and not app_key_public:
                     app_key_public = quote_payload.get('pubkey')
+        
+        # Task 2c: Fetch geolocation with nonce for TOCTOU protection
+        # DEBUG: Force logging to trace execution path
+        logger.error('DEBUG-GEO: Reached geolocation fetch section - agent_ip=%s, agent_port_int=%s, nonce=%s',
+                     agent_ip, agent_port_int, nonce[:16] if nonce else None)
+        
+        # This ensures geolocation is cryptographically fresh and bound to the same nonce
+        # used for TPM quote verification
+        # IMPORTANT: This runs ALWAYS, regardless of whether quote was provided or fetched
+        if agent_ip and agent_port_int:
+            logger.error('DEBUG-GEO: Entering geolocation fetch block')
+            try:
+                logger.error(
+                    'DEBUG-GEO: Calling get_agent_geolocation_with_nonce for %s:%s',
+                    agent_ip,
+                    agent_port_int
+                )
+                geo_response = cloud_verifier_common.get_agent_geolocation_with_nonce(
+                    agent_ip=agent_ip,
+                    agent_port=agent_port_int,
+                    nonce=nonce,
+                    tls_dir=web_util.get_tls_dir('verifier')
+                )
+                # Override quote_geolocation with nonce-validated geolocation
+                if geo_response:
+                    quote_geolocation = geo_response
+                    logger.error(
+                        'DEBUG-GEO: Geolocation fetch SUCCESS - sensor_type=%s',
+                        geo_response.get('sensor_type', 'unknown')
+                    )
+                    # Use a dedicated variable to avoid shadowing later
+                    geo_fetched_with_nonce = True
+                else:
+                    logger.error('DEBUG-GEO: Geolocation fetch returned None/empty')
+            except Exception as e:
+                logger.error(
+                    'DEBUG-GEO: Geolocation fetch EXCEPTION: %s',
+                    str(e)
+                )
+                # Continue without geolocation (non-fatal error)
+                # quote_geolocation remains as extracted from quote payload or None
+        else:
+            logger.error(
+                'DEBUG-GEO: SKIPPING geolocation fetch - agent_ip=%s, agent_port_int=%s',
+                agent_ip, agent_port_int
+            )
+
 
         if not app_key_public:
             logger.error("Unified-Identity: Missing required field 'app_key_public'")
@@ -2465,42 +2513,71 @@ class VerifyEvidenceHandler(BaseHandler):
                 logger.debug('Unified-Identity: Could not map TPM keys to agent ID: %s', e)
 
         attested_claims = fact_provider.get_attested_claims(tpm_ek=tpm_ek, tpm_ak=tpm_ak, agent_id=agent_id)
-        mobile_geo_from_quote = False
+        
+        # Preserve value if set by nonce-based fetch
+        try:
+            mobile_geo_from_quote = geo_fetched_with_nonce
+        except NameError:
+            mobile_geo_from_quote = False
         
         # Unified-Identity: Add geolocation from quote payload
         # Structure: { "type": "mobile"|"gnss", "sensor_id": "...", "value": "..." }
         # value is optional for mobile, mandatory for gnss
-        # SPIRE Server expects geolocation as an object (dict), not a JSON string
+        # SPIRE Server expects geolocation as an object (dict) under 'grc.geolocation'
         if quote_geolocation and isinstance(quote_geolocation, dict):
-            # Use geolocation from quote payload (detected by rust-keylime agent) as object
-            attested_claims['geolocation'] = quote_geolocation
-            geo_type = str(quote_geolocation.get('type', '')).lower()
-            sensor_id = quote_geolocation.get('sensor_id')
-            mobile_geo_from_quote = bool(sensor_id and geo_type == 'mobile')
-        elif quote_geolocation and not attested_claims.get('geolocation'):
-            # Fallback: if quote_geolocation is a string, try to parse it or use as-is
-            if isinstance(quote_geolocation, str):
-                # Try to parse as JSON first
-                try:
-                    parsed_geo = json.loads(quote_geolocation)
-                    if isinstance(parsed_geo, dict):
-                        attested_claims['geolocation'] = parsed_geo
-                        geo_type = str(parsed_geo.get('type', '')).lower()
-                        sensor_id = parsed_geo.get('sensor_id')
-                        mobile_geo_from_quote = bool(sensor_id and geo_type == 'mobile')
-                    else:
-                        # If not a dict, skip (invalid format)
-                        logger.warning('Unified-Identity: Geolocation string is not a valid JSON object')
-                except (json.JSONDecodeError, TypeError):
-                    # Not valid JSON, skip (SPIRE expects object format)
-                    logger.warning('Unified-Identity: Geolocation string is not valid JSON, skipping')
+            # Map from rust-keylime's GeolocationResponse to SPIRE's Geolocation struct
+            # GeolocationResponse has 'sensor_type' and 'mobile'/'gnss' objects
+            # SPIRE expects a flat object with 'type', 'sensor_id', 'sensor_imei', 'sensor_imsi'
+            geo_type = str(quote_geolocation.get('sensor_type') or quote_geolocation.get('type') or '').lower()
+            
+            mapped_geo = {
+                'type': geo_type
+            }
+            
+            # Extract fields from nested objects if present
+            if geo_type == 'mobile' and quote_geolocation.get('mobile'):
+                mobile = quote_geolocation['mobile']
+                if isinstance(mobile, dict):
+                    mapped_geo['sensor_id'] = mobile.get('sensor_id', '')
+                    mapped_geo['sensor_imei'] = mobile.get('sensor_imei', '')
+                    mapped_geo['sensor_imsi'] = mobile.get('sensor_imsi', '')
+            elif geo_type == 'gnss' and quote_geolocation.get('gnss'):
+                gnss = quote_geolocation['gnss']
+                if isinstance(gnss, dict):
+                    mapped_geo['sensor_id'] = gnss.get('sensor_id', '')
+                    # Map GNSS data to 'value' as a string for compatibility
+                    mapped_geo['value'] = f"lat:{gnss.get('latitude',0)},lon:{gnss.get('longitude',0)},acc:{gnss.get('accuracy',0)}"
             else:
-                attested_claims['geolocation'] = quote_geolocation
+                # Fallback for already flattened or legacy objects
+                mapped_geo['sensor_id'] = quote_geolocation.get('sensor_id', '')
+                mapped_geo['sensor_imei'] = quote_geolocation.get('sensor_imei', '')
+                mapped_geo['sensor_imsi'] = quote_geolocation.get('sensor_imsi', '')
+                if quote_geolocation.get('value'):
+                    mapped_geo['value'] = quote_geolocation['value']
 
-        if not mobile_geo_from_quote and attested_claims.get('geolocation'):
+            # Set the claim with the correct SPIRE prefix
+            attested_claims['grc.geolocation'] = mapped_geo
+            
+            # For backward compatibility within this file's logic
+            attested_claims['geolocation'] = mapped_geo
+            
+            sensor_id = mapped_geo.get('sensor_id')
+            
+            # If we fetched it with nonce, it's definitely from quote (TPM attested)
+            try:
+                if geo_fetched_with_nonce:
+                    mobile_geo_from_quote = True
+            except NameError:
+                pass
+            
+            if not mobile_geo_from_quote:
+                mobile_geo_from_quote = bool(sensor_id and geo_type in ['mobile', 'gnss'])
+
+        if not mobile_geo_from_quote and attested_claims.get('grc.geolocation'):
             logger.debug(
                 'Unified-Identity: Removing non-TPM geolocation claims (requirement: physical sensor only)'
             )
+            attested_claims.pop('grc.geolocation', None)
             attested_claims.pop('geolocation', None)
 
         # Mobile sensor location verification via microservice is disabled

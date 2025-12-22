@@ -80,7 +80,7 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 			// Add TPM attestation markers
 			if sovereignAttestation != nil {
 				geoObj["tpm-attested-location"] = true
-				geoObj["tpm-attested-pcr-index"] = 17 // PCR 17 is used for geolocation per rust-keylime agent
+				geoObj["tpm-attested-pcr-index"] = 15 // PCR 15 is used for geolocation per rust-keylime agent
 			}
 			claims["grc.geolocation"] = geoObj
 		}
@@ -197,7 +197,7 @@ func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[stri
 	// If TPM attestation is present, mark geolocation as TPM-attested
 	if hasSovereignAttestation {
 		geo["tpm-attested-location"] = true
-		geo["tpm-attested-pcr-index"] = 17 // PCR 17 is used for geolocation per rust-keylime agent
+		geo["tpm-attested-pcr-index"] = 15 // PCR 15 is used for geolocation per rust-keylime agent
 	}
 	
 	return geo

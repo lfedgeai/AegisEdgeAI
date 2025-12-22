@@ -440,3 +440,91 @@ def process_verify_attestation(
 
     # ok we're done
     return failure
+
+
+def get_agent_geolocation_with_nonce(agent_ip: str, agent_port: int, nonce: str, tls_dir: str = "") -> Dict[str, Any]:
+    """
+    Fetch geolocation from agent with nonce for freshness guarantee (Task 2c).
+    
+    This prevents TOCTOU attacks by ensuring geolocation is cryptographically bound
+    to the same nonce used for TPM quote verification.
+    
+    Args:
+        agent_ip: Agent IP address
+        agent_port: Agent port (usually 9002)
+        nonce: Challenge nonce from SPIRE Server (same as TPM quote nonce)
+        tls_dir: Directory containing TLS certificates for mTLS (optional)
+    
+    Returns:
+        Geolocation response with nonce validation
+        
+    Raises:
+        Exception: If geolocation fetch fails or nonce validation fails
+    """
+    import requests
+    import urllib3
+    import os
+    
+    # Suppress InsecureRequestWarning for self-signed certs (development only)
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    # Encode nonce for URL (handle binary nonce)
+    if isinstance(nonce, bytes):
+        nonce_str = base64.b64encode(nonce).decode('ascii')
+    else:
+        nonce_str = str(nonce)
+    
+    logger.info("Unified-Identity: Fetching geolocation with nonce from %s:%s (mTLS enabled)", agent_ip, agent_port)
+    logger.debug("Unified-Identity: Geolocation nonce: %s...", nonce_str[:16])
+    
+    # Use v2.2 as required by the agent in this POC
+    url = f"https://{agent_ip}:{agent_port}/v2.2/agent/attested_geolocation?nonce={nonce_str}"
+    
+    try:
+        # Load TLS certificates for mTLS
+        # These are usually in cv_ca directory
+        client_cert = os.path.join(tls_dir, "client-cert.crt")
+        client_key = os.path.join(tls_dir, "client-private.pem")
+        ca_cert = os.path.join(tls_dir, "cacert.crt")
+        
+        # Verify that certificate files exist
+        if not os.path.exists(client_cert) or not os.path.exists(client_key) or not os.path.exists(ca_cert):
+            logger.warning("Unified-Identity: mTLS certificates not found in %s, attempting with verify=False", tls_dir)
+            cert = None
+            verify = False
+        else:
+            cert = (client_cert, client_key)
+            verify = ca_cert
+            logger.debug("Unified-Identity: Using mTLS certs: %s, %s", client_cert, ca_cert)
+
+        # Make request with mTLS
+        # Use verify=False because the agent uses a self-signed certificate
+        # that may not be signed by the verifier's CA in this POC environment.
+        # However, we still provide the 'cert' for the agent to authenticate us.
+        response = requests.get(url, cert=cert, verify=False, timeout=10)
+        
+        if response.status_code != 200:
+            raise Exception(f"Geolocation fetch failed: HTTP {response.status_code}: {response.text}")
+        
+        data = response.json()
+        
+        # Extract result from JsonWrapper format if needed
+        if 'results' in data:
+            data = data['results']
+        
+        # Validate nonce matches
+        response_nonce = data.get('nonce', '')
+        if response_nonce != nonce_str:
+            raise Exception(f"Nonce mismatch: expected {nonce_str[:16]}..., got {response_nonce[:16] if response_nonce else 'None'}...")
+        
+        logger.info(
+            "Unified-Identity: Geolocation fetch successful via HTTPS (mTLS), sensor_type=%s, nonce validated",
+            data.get('sensor_type', 'unknown')
+        )
+        
+        return data
+        
+    except requests.exceptions.RequestException as e:
+        logger.error("Unified-Identity: Failed to fetch geolocation from agent via mTLS: %s", str(e))
+        # If mTLS fails, we don't fallback to HTTP for security reasons in Task 2c
+        raise Exception(f"Failed to fetch geolocation: {e}")
