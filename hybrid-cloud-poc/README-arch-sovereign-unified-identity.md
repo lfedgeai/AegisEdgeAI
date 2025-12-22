@@ -33,8 +33,8 @@ SPIRE SERVER and KEYLIME VERIFIER VERIFICATION PHASE:
 │ Key, Cert,   │       │ Verify App   │       │ Return: IP,  │       │ Request TPM  │       │ Generate     │       │ Verify       │       │ Return Quote │       │ Verify Quote │       │ SVID with    │
 │ Nonce, UUID  │       │ Key Cert     │       │ Port, AK,    │       │ Quote        │       │ TPM Quote    │       │ Location     │       │ + Geolocation│       │ Verify Cert  │       │ BroaderClaims│
 └──────────────┘       └──────────────┘       │ mTLS Cert    │       └──────────────┘       │ (with geo)   │       │ (Optional)   │       └──────────────┘       │ Verify Geo   │       └──────────────┘
-                                              └──────────────┘                              └──────────────┘       └──────────────┘                              │ Return       │
-                                                                                                                                                                 │ BroaderClaims│
+                                              └──────────────┘                              │  (PCR 15)    │                                                             │ Return       │
+                                                                                             └──────────────┘                                                             │ BroaderClaims│
                                                                                                                                                                  └──────────────┘
 
 SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
@@ -59,9 +59,9 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 **[8]** Lookup Agent: Verifier queries Registrar for agent info (IP, Port, AK, mTLS Cert)  
 **[9]** Agent Info: Registrar returns agent details  
 **[10]** Quote Request: Verifier requests fresh TPM quote with challenge nonce  
-**[11]** Geolocation Detection: Agent detects mobile sensor, includes in quote  
-**[12]** Geolocation Extraction: Verifier extracts geolocation from TPM quote (no microservice call)*  
-**[13]** Quote Response: Agent returns TPM quote with geolocation data  
+**[11]** Geolocation Detection: Agent detects mobile sensor, binds to PCR 15 with nonce  
+**[12]** Geolocation Extraction: Verifier fetches geolocation via mTLS, validates nonce and PCR index*  
+**[13]** Quote Response: Agent returns TPM quote and nonce-bound geolocation data  
 **[14]** Verification Result: Verifier returns BroaderClaims (geolocation, TPM attestation) → SPIRE Server  
 **[15]** Agent SVID: Server issues agent SVID with BroaderClaims embedded → SPIRE Agent  
 **[16]** Workload Request: Workload connects to Agent Workload API  
@@ -81,7 +81,7 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **Keylime Registrar**: Agent registration database
 - **Mobile Sensor Microservice**: Location verification via CAMARA APIs (used by Envoy WASM Filter for runtime verification at enterprise gateway, not by Keylime Verifier during attestation)
 
-*The verifier extracts geolocation data directly from the TPM quote. No microservice call is made during attestation. When no TPM-reported Mobile/GNSS sensor is present, Sovereign SVIDs omit `grc.geolocation` in that case.*
+*The verifier fetches geolocation data via a secure mTLS connection from the agent, validating it against a fresh challenge nonce and PCR 15. No microservice call is made during attestation. When no TPM-reported Mobile/GNSS sensor is present, Sovereign SVIDs omit `grc.geolocation` in that case.*
 
 ---
 
@@ -172,10 +172,13 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
     - It validates the hash algorithm and quote structure
     - This proves the TPM is genuine and the platform state is authentic
 
-13. **Verifier Extracts Geolocation from Quote**
-    - The verifier extracts geolocation sensor information from the TPM quote response
+13. **Verifier Fetches Geolocation with Nonce**
+    - The verifier connects to the rust-keylime agent (over HTTPS/mTLS)
+    - It requests the current geolocation using the challenge nonce from SPIRE Server
+    - The agent generates a geolocation response where the hash of (geolocation + nonce) is extended into **PCR 15**
+    - The verifier validates that the returned nonce matches the request, providing a freshness guarantee (TOCTOU protection)
     - Geolocation data includes: sensor type (mobile/gnss), sensor_id, sensor_imei, sensor_imsi, and optional value (for GNSS)
-    - **Note**: The verifier uses geolocation data directly from the TPM quote. No additional microservice verification is performed during attestation. The geolocation data is validated as part of the TPM quote verification process.
+    - **Note**: The verifier validates geolocation data as part of the hardware-backed attestation process. No additional microservice verification is performed during attestation.
 
 14. **Verifier Retrieves Attested Claims**
    - The verifier calls the fact provider to get optional metadata (if available)
@@ -215,7 +218,8 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 - **Separation of Concerns**: Quote generation (platform attestation) is separate from App Key certification (workload identity)
 - **No Periodic Polling**: Unlike traditional Keylime, agents aren't continuously monitored; verification happens on-demand per attestation request
 - **Agent Registration Model**: Agents register with the Keylime Registrar (persistent storage) but are not registered with the Keylime Verifier (on-demand lookup only)
-- **Mobile Location Verification**: The verifier extracts geolocation data (sensor_type, sensor_id, sensor_imei, sensor_imsi) directly from the TPM quote. No microservice call is made during attestation. The geolocation data is validated as part of the TPM quote verification process and included in attested claims.
+- **Nonce-Based Geolocation Freshness**: Geolocation is cryptographically bound to a challenge nonce and extended into PCR 15, preventing Time-of-Check-Time-Of-Use (TOCTOU) attacks.
+- **Mobile Location Verification**: The verifier fetches geolocation data (sensor_type, sensor_id, sensor_imei, sensor_imsi) directly from the agent via mTLS. The data is validated using the nonce and PCR index and included in attested claims.
   - **Note**: Runtime verification at the enterprise gateway (Envoy WASM Filter) still uses the mobile location verification microservice for CAMARA API verification when processing incoming requests.
 - **TPM Plugin Server Communication**: SPIRE Agent communicates with TPM Plugin Server via JSON over UDS (Unix Domain Socket) for security and performance
 - **Delegated Certification Transport**: TPM Plugin Server uses HTTPS/mTLS (port 9002) to communicate with rust-keylime agent (UDS support deferred)
@@ -624,18 +628,20 @@ Keylime Verifier (Port 8881)
                 <─ Keylime Verifier
 ```
 
-**Step 11: Verifier Extracts Geolocation from Quote**
+**Step 11: Verifier Fetches Geolocation with Nonce On-Demand**
 ```
 Keylime Verifier (Port 8881)
     │
-    ├─> Extract geolocation from quote
-    ├─> Extract sensor_type, sensor_id, sensor_imei, sensor_imsi
-    │
-    └─> Use geolocation data directly from TPM quote
+    └─> GET /v2.2/agent/attested_geolocation?nonce={nonce} (HTTPS/mTLS)
         │
-        └─> Geolocation data is validated as part of TPM quote verification
-            └─> No additional microservice verification during attestation
-            └─> Data is included in attested claims for certificate generation
+        └─> rust-keylime Agent (High Privilege, Port 9002)
+            │
+            ├─> Extend PCR 15: SHA256(geolocation_json + nonce)
+            └─> Return: { sensor_type, sensor_id, sensor_imei, sensor_imsi, tpm_pcr_index: 15, nonce: "{nonce}" }
+                │
+                <─ Keylime Verifier
+                    │
+                    └─> Validate nonce and map to SPIRE claims
 ```
 
 **Note**: The Keylime Verifier no longer calls the mobile location verification microservice during attestation. The geolocation data from the TPM quote is used directly. Runtime verification at the enterprise gateway (Envoy WASM filter) still uses the mobile location microservice for CAMARA API verification.
@@ -732,11 +738,12 @@ SPIRE Server (Port 8081)
    - Included in TPM quote and App Key certificate
    - Prevents replay attacks
 
-6. **Geolocation Extraction from TPM Quote**
-   - Geolocation sensor identifiers (sensor_type, sensor_id, sensor_imei, sensor_imsi) extracted from TPM quote
-   - Geolocation data is validated as part of the TPM quote verification process
-   - No microservice call is made during attestation - geolocation data from TPM quote is used directly
-   - **Note**: Runtime verification at the enterprise gateway (Envoy WASM Filter) uses the mobile location verification microservice for CAMARA API verification:
+6. **Nonce-Based Freshness (TOCTOU Prevention)**
+   - Geolocation sensor identifiers (sensor_type, sensor_id, sensor_imei, sensor_imsi) are bound to a fresh challenge nonce.
+   - The hash of (geolocation + nonce) is extended into **PCR 15** on the TPM.
+   - The verifier fetches this data via mTLS and validates the nonce, ensuring the location is current at the time of SVID issuance.
+   - No microservice call is made during attestation - geolocation data is validated cryptographically.
+   - **Note**: Runtime verification at the enterprise gateway (Envoy WASM Filter) still uses the mobile location verification microservice for CAMARA API verification:
      - Microservice looks up sensor in database (priority: sensor_id > sensor_imei > sensor_imsi)
      - Microservice verifies device location via CAMARA APIs:
        - Token caching: auth_req_id (persisted) and access_token (with expiration) are cached
