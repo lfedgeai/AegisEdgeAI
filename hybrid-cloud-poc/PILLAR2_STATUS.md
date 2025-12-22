@@ -87,26 +87,51 @@ pub struct KeylimeQuote {
 }
 ```
 
+
 ### Upstream Solution
 Create **separate endpoint**: `GET /v2/agent/attested_geolocation`
 
-**New Response**:
+**New Response (Mobile Sensor)**:
 ```json
 {
   "sensor_type": "mobile",
-  "sensor_id": "12d1:1433",
-  "latitude": 51.5074,
-  "longitude": -0.1278,
-  "accuracy": 10,
-  "timestamp": "2025-12-21T16:00:00Z",
-  "tpm_signature": "base64..."  // Optional: Sign with AK
+  "mobile": {
+    "sensor_id": "12d1:1433",
+    "sensor_imei": "356345043865103",
+    "sensor_imsi": "214070610960475"
+  },
+  "tpm_signature": "base64..."  // Mandatory - AK signature
 }
 ```
+
+**New Response (GNSS Sensor)**:
+```json
+{
+  "sensor_type": "gnss",
+  "gnss": {
+    "sensor_id": "u-blox:NEO-M9N",
+    "sensor_serial_number": "SN123456",
+    "latitude": 51.5074,
+    "longitude": -0.1278,
+    "accuracy": 10,
+    "sensor_signature": "base64..."  // Optional - GNSS sensor's own sig
+  },
+  "tpm_signature": "base64..."  // Mandatory - AK signature
+}
+```
+
+**Design Principles**:
+- **Nested by type**: `mobile{}` or `gnss{}` objects based on `sensor_type`
+- **Type-specific fields**: Mobile has IMEI/IMSI, GNSS has coordinates
+- **TPM binding**: `tpm_signature` mandatory for both (proves attestation)
+- **Extensible**: Easy to add new sensor types without conflicts
+
 
 ### Production Roadmap
 1. **Create new endpoint** (2 days)
    - Add `GET /v2/agent/attested_geolocation`
    - Return geolocation separate from quote
+   - **PCR Binding**: Extend PCR 17 with geolocation hash before generating response
 
 2. **Remove geolocation from KeylimeQuote** (1 day)
    - Restore original struct
