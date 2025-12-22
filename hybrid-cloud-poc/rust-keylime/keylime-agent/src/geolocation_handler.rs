@@ -97,8 +97,8 @@ pub(crate) async fn attested_geolocation(
     // Build nested structure
     let response = build_nested_geolocation(raw_sensor);
 
-    // TODO: Extend PCR 17 with geolocation hash
-    // extend_pcr_17_with_geolocation(&response)?;
+    // Extend PCR 17 with geolocation hash (currently stubbed - see extend_pcr_17_with_geolocation)
+    extend_pcr_17_with_geolocation(&data, &response);
 
     info!(
         "Unified-Identity: Returning {} geolocation data",
@@ -326,17 +326,67 @@ fn get_imei_imsi() -> (Option<String>, Option<String>) {
     (None, None)
 }
 
-// TODO: PCR 17 extension function
-// fn extend_pcr_17_with_geolocation(data: &GeolocationResponse) -> Result<(), String> {
-//     // 1. Serialize geolocation data
-//     let json = serde_json::to_string(data)?;
-//     
-//     // 2. Hash with SHA-256
-//     let hash = sha256(&json);
-//     
-//     // 3. Extend PCR 17
-//     // Need access to TPM context from QuoteData
-//     // tpm_ctx.pcr_extend(PcrHandle::Pcr17, hash)?;
-//     
-//     Ok(())
-// }
+
+/// Extend PCR 17 with geolocation data hash
+///
+/// This function:
+/// 1. Serializes the geolocation nested structure to JSON
+/// 2. Computes SHA-256 hash of the JSON
+/// 3. Creates DigestValues for TPM
+/// 4. Extends PCR 17 (dedicated to geolocation)
+fn extend_pcr_17_with_geolocation(
+    quote_data: &QuoteData,
+    geolocation: &GeolocationResponse,
+) -> Result<(), String> {
+    use keylime::tpm;
+    use openssl::hash::{Hasher, MessageDigest};
+    use tss_esapi::structures::{DigestValues, PcrSlot};
+    use tss_esapi::interface_types::algorithm::HashingAlgorithm;
+
+    // 1. Serialize geolocation data to JSON
+    let json_data = serde_json::to_string(geolocation)
+        .map_err(|e| format!("Failed to serialize geolocation: {}", e))?;
+
+    debug!(
+        "Unified-Identity: Geolocation JSON for PCR 17: {}",
+        json_data
+    );
+
+    // 2. Compute SHA-256 hash
+    let mut hasher = Hasher::new(MessageDigest::sha256())
+        .map_err(|e| format!("Failed to create hasher: {}", e))?;
+    hasher
+        .update(json_data.as_bytes())
+        .map_err(|e| format!("Failed to update hasher: {}", e))?;
+    let hash_bytes = hasher
+        .finish()
+        .map_err(|e| format!("Failed to finish hash: {}", e))?;
+
+    debug!(
+        "Unified-Identity: Geolocation hash (SHA-256): {}",
+        hex::encode(&hash_bytes)
+    );
+
+    // 3. Create DigestValues for TPM
+    let mut digest_values = DigestValues::new();
+    let digest = tss_esapi::structures::Digest::try_from(hash_bytes.as_ref())
+        .map_err(|e| format!("Failed to create TPM digest: {}", e))?;
+    digest_values.set(HashingAlgorithm::Sha256, digest);
+
+     // 4. Access TPM context and extend PCR 17
+    // TODO: PCR 17 extension blocked by TPM API limitation
+    // The keylime::tpm::Context wrapper doesn't expose a public pcr_extend() method.
+    // The inner field is private, so we can't access Self.inner.lock().execute_with_nullauth_session().
+    // 
+    // Solution: Add public method to keylime::tpm::Context:
+    //   pub fn extend_pcr(&mut self, pcr: PcrHandle, digest: DigestValues) -> Result<()>
+    //
+    // For now, logging would-be PCR extension:
+    info!(
+        "Unified-Identity: [STUB] Would extend PCR 17 with geolocation hash: {}",
+        hex::encode(&hash_bytes)
+    );
+    warn!("Unified-Identity: PCR 17 extension not yet implemented - TPM API enhancement required");
+
+    Ok(())
+}
