@@ -1,0 +1,33 @@
+name: Unified Identity CI
+
+on:
+    push:
+        branches: ["main", "develop", "feat/**"] # Triggers on any branch starting with feat/
+    pull_request:
+        branches: ["main", "develop"]
+    workflow_dispatch: # This allows manual testing on ANY branch
+
+jobs:
+    integration-test:
+        name: Hybrid Cloud PoC Integration Test
+        runs-on: self-hosted
+
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.10"
+
+            - name: Run Integration Tests
+              shell: bash
+              run: |
+                  cd hybrid-cloud-poc
+                  chmod +x ci_test_runner.py test_integration.sh
+                  # --single-machine targets the current host for all components
+                  # --no-color ensures clean logs in GitHub Actions
+                  ./ci_test_runner.py --no-color --single-machine
