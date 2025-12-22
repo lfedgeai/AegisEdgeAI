@@ -8,26 +8,6 @@ pub struct Integ {
     pub ima_ml_entry: Option<String>,
 }
 
-/// Unified-Identity: Geolocation structure
-/// type: "mobile" or "gnss"
-/// sensor_id: Sensor identifier (e.g., USB device ID for mobile, device path for GNSS)
-/// value: Optional for mobile, mandatory for gnss (GNSS coordinates, accuracy, etc.)
-/// sensor_imei: Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
-/// sensor_imsi: Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct Geolocation {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub r#type: Option<String>, // "mobile" or "gnss"
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sensor_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>, // Optional for mobile, mandatory for gnss
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sensor_imei: Option<String>, // Unified-Identity: IMEI for mobile devices
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sensor_imsi: Option<String>, // Unified-Identity: IMSI for mobile devices
-}
-
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct KeylimeQuote {
     pub quote: String, // 'r' + quote + sig + pcrblob
@@ -42,9 +22,6 @@ pub struct KeylimeQuote {
     pub mb_measurement_list: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ima_measurement_list_entry: Option<u64>,
-    // Unified-Identity: Geolocation sensor metadata
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub geolocation: Option<Geolocation>,
 }
 
 #[cfg(test)]
@@ -62,7 +39,6 @@ mod tests {
             ima_measurement_list: Some("example_ima_ml".to_string()),
             mb_measurement_list: None,
             ima_measurement_list_entry: Some(12345),
-            geolocation: None,
         };
 
         let serialized = serde_json::to_string(&quote).unwrap(); //#[allow_ci]

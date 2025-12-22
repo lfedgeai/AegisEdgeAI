@@ -9,7 +9,7 @@ use base64::{engine::general_purpose, Engine as _};
 use hex;
 use keylime::{
     json_wrapper::JsonWrapper,
-    quote::{Geolocation, Integ, KeylimeQuote},
+    quote::{Integ, KeylimeQuote},
 };
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -108,74 +108,6 @@ fn get_imei_imsi() -> (Option<String>, Option<String>) {
     }
 
     (None, None)
-}
-
-fn detect_geolocation_sensor() -> Option<Geolocation> {
-    match Command::new("lsusb").output() {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let line_lower = line.to_lowercase();
-
-                if line_lower.contains("mobile") {
-                    let sensor_id = extract_usb_id(line);
-                    info!("Unified-Identity: Mobile geolocation sensor detected via lsusb: {}", sensor_id);
-                    
-                    // Unified-Identity: Get IMEI and IMSI from get_imei_imsi_huawei.sh
-                    let (imei, imsi) = get_imei_imsi();
-                    
-                    return Some(Geolocation {
-                        r#type: Some("mobile".to_string()),
-                        sensor_id: Some(sensor_id),
-                        value: None,
-                        sensor_imei: imei,
-                        sensor_imsi: imsi,
-                    });
-                }
-
-                if line_lower.contains("gnss")
-                    || line_lower.contains("gps")
-                    || line_lower.contains("nmea")
-                {
-                    let sensor_id = extract_usb_id(line);
-                    info!(
-                        "Unified-Identity: GNSS/GPS sensor detected via lsusb: {}",
-                        sensor_id
-                    );
-                    return Some(Geolocation {
-                        r#type: Some("gnss".to_string()),
-                        sensor_id: Some(sensor_id),
-                        value: Some("".to_string()),
-                        sensor_imei: None,
-                        sensor_imsi: None,
-                    });
-                }
-            }
-        }
-        Err(e) => {
-            debug!("Unified-Identity: Failed to run lsusb: {}", e);
-        }
-    }
-
-    let gnss_paths = ["/dev/ttyUSB0", "/dev/ttyACM0", "/dev/gps", "/dev/gps0"];
-
-    for path in &gnss_paths {
-        if std::path::Path::new(path).exists() {
-            info!(
-                "Unified-Identity: GNSS device detected at {}",
-                path
-            );
-            return Some(Geolocation {
-                r#type: Some("gnss".to_string()),
-                sensor_id: Some(path.to_string()),
-                value: Some("".to_string()),
-                sensor_imei: None,
-                sensor_imsi: None,
-            });
-        }
-    }
-
-    None
 }
 
 // This is a Quote request from the tenant, which does not check
@@ -277,19 +209,11 @@ async fn identity(
         }
     };
 
-    // Unified-Identity: Detect geolocation sensor (only if feature flag is enabled)
-    let geolocation = if data.unified_identity_enabled {
-        detect_geolocation_sensor()
-    } else {
-        None
-    };
-
     let mut quote = KeylimeQuote {
         quote: tpm_quote,
         hash_alg: data.hash_alg.to_string(),
         enc_alg: data.enc_alg.to_string(),
         sign_alg: data.sign_alg.to_string(),
-        geolocation,
         ..Default::default()
     };
 
