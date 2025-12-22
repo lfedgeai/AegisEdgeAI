@@ -35,6 +35,7 @@ mod agent_handler;
 mod api;
 mod delegated_certification_handler;
 mod errors_handler;
+mod geolocation_handler; // Unified-Identity: Task 2 - Geolocation API endpoint
 mod keys_handler;
 mod notifications_handler;
 mod payloads;

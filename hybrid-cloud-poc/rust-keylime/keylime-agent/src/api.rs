@@ -1,6 +1,6 @@
 use crate::{
-    agent_handler, config, delegated_certification_handler, errors_handler, keys_handler,
-    notifications_handler, quotes_handler, QuoteData,
+    agent_handler, config, delegated_certification_handler, errors_handler, geolocation_handler,
+    keys_handler, notifications_handler, quotes_handler, QuoteData,
 };
 use actix_web::{http, web, HttpRequest, HttpResponse, Responder, Scope};
 use keylime::{
@@ -99,11 +99,16 @@ fn configure_api_v2_2(cfg: &mut web::ServiceConfig, unified_identity_enabled: bo
     // Configure added endpoints
     _ = cfg.service(web::scope("/agent").configure(agent_handler::configure_agent_endpoints));
     
-    // Unified-Identity: Only register delegated certification endpoint if feature flag is enabled
+    // Unified-Identity: Delegated certification endpoint (Task 1) and geolocation endpoint (Task 2)
     if unified_identity_enabled {
         _ = cfg.service(web::scope("/delegated_certification").configure(
             delegated_certification_handler::configure_delegated_certification_endpoints,
         ));
+        // Unified-Identity: Geolocation endpoint (Task 2)
+        _ = cfg.service(
+            web::resource("/agent/attested_geolocation")
+                .route(web::get().to(geolocation_handler::attested_geolocation)),
+        );
     }
 }
 
