@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simple test script for mTLS client
+# Simple test script for mTLS clients
 # Cleans up log files, sets up environment, and starts client in foreground
 
 set -e
