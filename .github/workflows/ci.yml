@@ -29,5 +29,5 @@ jobs:
                   cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
                   # --no-color ensures clean logs in GitHub Actions
-                  # test_integration.sh auto-detects single-machine mode
-                  ./ci_test_runner.py --no-color
+                  # Explicitly targeting 10.1.0.10 (mwserver12)
+                  ./ci_test_runner.py --no-color -- --control-plane-host 10.1.0.10 --agents-host 10.1.0.10 --onprem-host 10.1.0.10
