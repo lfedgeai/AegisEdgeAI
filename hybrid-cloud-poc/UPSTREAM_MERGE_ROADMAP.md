@@ -26,7 +26,7 @@ unified_identity_enabled = true
 ### Pillar 2: Upstreaming Implementation (Refactoring)
 - [x] **Task 1**: Keylime Agent - Delegated Certifier Endpoint
 - [x] **Task 2**: Keylime Agent - Attested Geolocation API
-- [ ] **Task 2d**: Keylime Verifier - Geolocation Database & Integration
+- [x] **Task 2d**: Keylime Verifier - Geolocation Database & Integration
 - [ ] **Task 3**: Keylime Verifier - Add Verification API & Cleanup
 - [ ] **Task 4**: SPIRE Server - Validator Plugin with Geolocation Claims
 - [ ] **Task 5**: SPIRE Agent - Collector Plugin (`spire-plugin-unified-identity`)
@@ -61,8 +61,12 @@ unified_identity_enabled = true
 *   **Security (Task 2c)**: Implemented Nonce-based freshness and PCR 15 binding to prevent TOCTOU attacks.
 
 ### Task 2d: Verifier Database Integration
-**Status**: 📋 PLANNED
-*   **Scope**: Update Keylime Verifier database schema to store and audit geolocation data. Implement PCR 15 validation in verification policies.
+**Status**: ✅ COMPLETE
+**Implementation**: [verifier_db.py](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime/keylime/db/verifier_db.py), [app_key_verification.py](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime/keylime/app_key_verification.py), [cloud_verifier_common.py](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime/keylime/cloud_verifier_common.py)
+
+*   **Problem**: Geolocation data was being fetched but not persisted to the database for audit and validation.
+*   **Solution**: Added `geolocation` column to verifier database schema, implemented PCR 15 extraction from quotes, and integrated geolocation persistence into the verification workflow.
+*   **Integration Test**: Verified PCR 15 is correctly included in TPM quotes, extracted by the verifier, and persisted to the database.
 
 ### Task 3: Add Verification API & Cleanup (Keylime Verifier)
 **Status**: ⚠️ FUNCTIONAL with DEAD CODE
