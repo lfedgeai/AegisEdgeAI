@@ -1,103 +1,79 @@
 # Master Roadmap: Aegis Sovereign Unified Identity Upstreaming
 
-This document serves as the **single source of truth** for refactoring the "Unified Identity" PoC into upstream-ready components for SPIRE and Keylime.
+This document serves as the **single source of truth** for both the technical roadmap and the execution strategy for refactoring the "Unified Identity" PoC into upstream-ready components.
 
 ## Executive Summary
-The "Unified Identity" feature introduces a hardware-rooted relationship between SPIRE and Keylime. Currently implemented as a **Fork & Patch** pattern, this roadmap tracks the transition to Feature Requests (Keylime) and Plugin-based extensions (SPIRE).
-
-### Feature Flag Strategy
-All Unified Identity features are gated by a single atomic flag in the agent configuration:
-**Config** (`keylime-agent.conf`):
-```toml
-# Unified-Identity: Sovereign SVID support
-# Enables: delegated certification, geolocation attestation, TPM App Keys
-unified_identity_enabled = true
-```
-**All new endpoints and features MUST check this flag first.**
+The "Unified Identity" feature introduces a hardware-rooted relationship between SPIRE and Keylime. We follow a **3-Pillar Strategy** to transition from a "Fork & Patch" pattern to official Feature Requests (Keylime) and Plugin-based extensions (SPIRE).
 
 ---
 
-## Master Checklist
+## 1. Master Checklist & Status
 
 ### Pillar 1: Test Infrastructure (Safety Net)
-- [x] Create/Harden `test_integration.sh` (Fail-fast, structured logging)
-- [x] Set up clean error reporting for CI/Watcher
+*Goal: Establish a reliable, fail-fast environment to catch regressions.*
+- [x] **Task 0**: Harden `test_integration.sh` (Fail-fast, structured logging)
+- [x] **Task 0b**: CI Runner (`ci_test_runner.py`) for real-time monitoring
 
 ### Pillar 2: Upstreaming Implementation (Refactoring)
-- [x] **Task 1**: Keylime Agent - Delegated Certifier Endpoint
-- [x] **Task 2**: Keylime Agent - Attested Geolocation API
-- [x] **Task 2d**: Keylime Verifier - Geolocation Database & Integration
-- [ ] **Task 3**: Keylime Verifier - Add Verification API & Cleanup
-- [ ] **Task 4**: SPIRE Server - Validator Plugin with Geolocation Claims
-- [ ] **Task 5**: SPIRE Agent - Collector Plugin (`spire-plugin-unified-identity`)
-- [x] **Task 6**: SPIRE Creds - Credential Composer
+*Goal: Execute architectural changes through modular plugins and protocol extensions.*
+- [x] **Task 1**: Keylime Agent - Delegated Certifier Endpoint (Rust)
+- [x] **Task 2**: Keylime Agent - Attested Geolocation API (Rust)
+- [x] **Task 2d**: Keylime Verifier - Geolocation Database & Integration (Python)
+- [x] **Task 3: Keylime Verifier - Verification API & Cleanup** ([Status: Complete])
+- [ ] **Task 4**: SPIRE Server - Validator Plugin with Geolocation (Go)
+- [ ] **Task 5**: SPIRE Agent - Collector Plugin (Go)
+- [x] **Task 6**: SPIRE Creds - Credential Composer (Go)
 
 ### Pillar 3: Production Readiness (Hardening)
-- [ ] Address Keylime Client TLS (`InsecureSkipVerify`)
-- [ ] Secure Secrets Management (CAMARA API Keys)
-- [ ] Resolve AegisSovereignAI GitHub Issues
+*Goal: Transform the PoC into a secure, production-grade solution.*
+- [ ] **Task 7**: TLS Verification - Remove `InsecureSkipVerify` across all components
+- [ ] **Task 8**: Secrets Management - Move CAMARA API keys to secure providers
+- [ ] **Task 9**: Quality Assurance - Linting, pre-commit hooks, and issue resolution
 
 ---
 
-## Technical Task Deep-Dive
+## 2. Technical Strategy & Deep-Dive
 
-### Task 1: Delegated Certifier Endpoint (Keylime Agent)
-**Status**: ✅ FUNCTIONAL 
-**Implementation**: [delegated_certification_handler.rs](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/rust-keylime/keylime-agent/src/delegated_certification_handler.rs)
+### Pillar 1 Strategy: Fail-Fast Infrastructure
+*   **Structured Logging**: All logs (SPIRE, Keylime, Envoy) are aggregated into `/tmp/unified_identity_test_*` for centralized analysis.
+*   **State Sanitization**: `test_integration.sh --cleanup-only` performs "Nuke Mode" cleanup (clears TPM state, wipes DBs) to prevent flaky test results.
 
-*   **Problem**: SPIRE Agent generates a "TPM App Key" and needs it signed by the TPM's Attestation Key (AK).
-*   **Upstream Solution**: Formal `POST /delegated_certification/certify_app_key` endpoint.
-*   **Hardening Roadmap**: 
-    - [x] IP Allowlist enforcement.
-    - [x] Rate limiting.
-    - [ ] Configuration options in `keylime.conf`.
+### Pillar 2 Deep-Dive: Modular Implementation
 
-### Task 2: Attested Geolocation API (Keylime Agent)
-**Status**: ✅ COMPLETE
-**Implementation**: [geolocation_handler.rs](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/rust-keylime/keylime-agent/src/geolocation_handler.rs)
+#### Task 1: Delegated Certifier Endpoint (Keylime Agent)
+**Status**: ✅ FUNCTIONAL | **Implementation**: [delegated_certification_handler.rs](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/rust-keylime/keylime-agent/src/delegated_certification_handler.rs)
+*   **Solution**: Formal `POST /delegated_certification/certify_app_key` endpoint to sign SPIRE "TPM App Keys".
 
-*   **Problem**: Injecting geolocation into core Keylime quotes breaks schema compatibility.
-*   **Upstream Solution**: Separate `GET /v2/agent/attested_geolocation` endpoint.
-*   **Security (Task 2c)**: Implemented Nonce-based freshness and PCR 15 binding to prevent TOCTOU attacks.
+#### Task 2: Attested Geolocation API (Keylime Agent)
+**Status**: ✅ COMPLETE | **Implementation**: [geolocation_handler.rs](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/rust-keylime/keylime-agent/src/geolocation_handler.rs)
+*   **Solution**: Separate `GET /v2/agent/attested_geolocation` endpoint with Nonce-based freshness and PCR 15 binding.
 
-### Task 2d: Verifier Database Integration
-**Status**: ✅ COMPLETE
-**Implementation**: [verifier_db.py](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime/keylime/db/verifier_db.py), [app_key_verification.py](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime/keylime/app_key_verification.py), [cloud_verifier_common.py](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime/keylime/cloud_verifier_common.py)
+#### Task 2d: Verifier Database Integration
+**Status**: ✅ COMPLETE | **Implementation**: [verifier_db.py](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime/keylime/db/verifier_db.py)
+*   **Solution**: Added `geolocation` persistence to verifier DB.
 
-*   **Problem**: Geolocation data was being fetched but not persisted to the database for audit and validation.
-*   **Solution**: Added `geolocation` column to verifier database schema, implemented PCR 15 extraction from quotes, and integrated geolocation persistence into the verification workflow.
-*   **Integration Test**: Verified PCR 15 is correctly included in TPM quotes, extracted by the verifier, and persisted to the database.
+#### Task 3: Verification API & Cleanup (Keylime Verifier)
+**Status**: ⚠️ FUNCTIONAL (In Progress)
+*   **Goal**: Propose generic `/verify/evidence` endpoint to Keylime upstream and strip legacy mobile sensor code.
 
-### Task 3: Add Verification API & Cleanup (Keylime Verifier)
-**Status**: ⚠️ FUNCTIONAL with DEAD CODE
-**Implementation**: `keylime/cloud_verifier_tornado.py`
-
-*   **Goal**: Enable "Attestation as a Service" for SPIRE and strip legacy mobile sensor logic.
-*   **Roadmap**: Propose generic `/verify/evidence` endpoint to Keylime upstream.
-
-### Task 4: SPIRE Server Validator Plugin (with Geolocation)
+#### Task 4/5: SPIRE Plugins (Server Validator & Agent Collector)
 **Status**: ❌ NEEDS REFACTORING
-**Implementation (Current Hack)**: [service.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/api/agent/v1/service.go) and [claims.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/unifiedidentity/claims.go)
+*   **Goal**: Move core patches into a standalone plugin package: `spire-plugin-unified-identity`.
 
-*   **Goal**: Move core patches into a custom `NodeAttestor` plugin.
-*   **Scope**: Extract Keylime client calls, payload parsing, and geolocation claim mapping logic into the plugin.
-
-### Task 5: SPIRE Agent Collector Plugin
-**Status**: ❌ NEEDS REFACTORING
-*   **Implementation (Current Hack)**: Patches to `agent.go` and `client.go` in SPIRE Agent core.
-*   **Goal**: Move the complex orchestration (TPM Key -> Keylime sign -> Quote -> Server) into an Agent Node Attestor plugin.
-
-### Task 6: Credential Composer (SPIRE)
-**Status**: ✅ COMPLETE
-**Implementation**: [plugin.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/plugin/credentialcomposer/unifiedidentity/plugin.go), [context.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/unifiedidentity/context.go)
-
-*   **Goal**: Replace core `ca.go` patches with standard SPIRE `CredentialComposer` plugin configuration to inject claims into X.509 SVIDs.
-*   **Result**: Removed all "Unified Identity" patches from core `ca.go` and `builder.go`. Claims are now safely propagated via Go context and injected by the `unifiedidentity` plugin.
-*   **Verification**: Verified with unit tests and full-system integration test suite (`ci_test_runner.py`).
+#### Task 6: Credential Composer (SPIRE)
+**Status**: ✅ COMPLETE | **Implementation**: [plugin.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/plugin/credentialcomposer/unifiedidentity/plugin.go)
+*   **Result**: Replaced core SVID patches with a standard `CredentialComposer`. Claims are propagated via Go context.
 
 ---
 
-## Verification Strategy
+## 3. Risk Mitigation & Quality
+*   **Security First**: TLS hardening (Task 7) is critical before any production use.
+*   **Version Pinning**: We build against explicitly pinned versions of upstream SPIRE and Keylime to avoid breaking changes during refactoring.
+*   **TPM Nuances**: Tests prioritize real hardware (10.1.0.11) while deferring pure containerization until logic is stable.
+
+---
+
+## 4. Verification Strategy
 
 ### Full System Test
 ```bash

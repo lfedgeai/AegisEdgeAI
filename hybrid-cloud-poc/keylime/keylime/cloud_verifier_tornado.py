@@ -13,7 +13,6 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
-import requests
 import tornado.httpserver
 import tornado.ioloop
 import tornado.netutil
@@ -113,248 +112,10 @@ exclude_db: Dict[str, Any] = {
     "ssl_context": None,
 }
 
-MOBILE_SENSOR_SETTINGS_CACHE: Optional[Dict[str, Any]] = None
 
 
-class MobileSensorVerificationError(Exception):
-    """Raised when mobile sensor verification fails."""
 
 
-class _UnixSocketHTTPConnection(http_client.HTTPConnection):
-    """HTTPConnection variant that talks over a Unix domain socket."""
-
-    def __init__(self, socket_path: str, timeout: float):
-        super().__init__("localhost", timeout=timeout)
-        self.socket_path = socket_path
-
-    def connect(self) -> None:  # noqa: D401
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        if self.timeout:
-            sock.settimeout(self.timeout)
-        sock.connect(self.socket_path)
-        self.sock = sock
-
-
-def _get_mobile_sensor_settings() -> Optional[Dict[str, Any]]:
-    global MOBILE_SENSOR_SETTINGS_CACHE
-    if MOBILE_SENSOR_SETTINGS_CACHE is not None:
-        return MOBILE_SENSOR_SETTINGS_CACHE
-
-    try:
-        enabled_raw = config.get("verifier", "mobile_sensor_enabled", fallback="false")
-        logger.info(
-            "Unified-Identity: Read mobile_sensor_enabled raw value: %s (type: %s)",
-            enabled_raw,
-            type(enabled_raw).__name__,
-        )
-        enabled = config.getboolean("verifier", "mobile_sensor_enabled", fallback=False)
-        logger.info(
-            "Unified-Identity: Parsed mobile_sensor_enabled as boolean: %s",
-            enabled,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Unified-Identity: Failed to read mobile_sensor_enabled config: %s", exc
-        )
-        enabled = False
-
-    if not enabled:
-        logger.info(
-            "Unified-Identity: Mobile sensor verification disabled in config (enabled=%s)",
-            enabled,
-        )
-        MOBILE_SENSOR_SETTINGS_CACHE = None
-        return None
-
-    try:
-        endpoint = config.get("verifier", "mobile_sensor_endpoint", fallback="")
-    except Exception:  # noqa: BLE001
-        endpoint = ""
-
-    endpoint = (endpoint or "").strip()
-    if not endpoint:
-        logger.error(
-            "Unified-Identity: mobile_sensor_enabled is true but 'mobile_sensor_endpoint' missing; disabling mobile sensor verification"
-        )
-        MOBILE_SENSOR_SETTINGS_CACHE = None
-        return None
-
-    try:
-        timeout = float(config.get("verifier", "mobile_sensor_timeout_seconds", fallback=5.0))
-    except Exception:  # noqa: BLE001
-        timeout = 5.0
-
-    timeout = max(timeout, 1.0)
-    MOBILE_SENSOR_SETTINGS_CACHE = {"endpoint": endpoint, "timeout": timeout}
-    logger.info(
-        "Unified-Identity: Mobile sensor verification enabled (endpoint=%s, timeout=%ss)",
-        endpoint,
-        timeout,
-    )
-    return MOBILE_SENSOR_SETTINGS_CACHE
-
-
-def _build_http_verify_url(base_endpoint: str) -> str:
-    base = base_endpoint.rstrip("/")
-    if base.endswith("/verify"):
-        return base
-    return f"{base}/verify"
-
-
-def _call_mobile_sensor_service(payload: Dict[str, Any]) -> Dict[str, Any]:
-    settings = _get_mobile_sensor_settings()
-    if not settings:
-        return {}
-
-    endpoint = settings["endpoint"]
-    timeout = settings["timeout"]
-
-    if endpoint.startswith("unix://"):
-        socket_path = endpoint[len("unix://") :]
-        if not socket_path:
-            raise MobileSensorVerificationError("invalid unix socket endpoint for mobile sensor service")
-        return _unix_socket_mobile_sensor_request(socket_path, payload, timeout)
-
-    url = _build_http_verify_url(endpoint)
-    logger.info(
-        "Unified-Identity: Calling mobile sensor service at %s with payload: %s",
-        url,
-        payload,
-    )
-    try:
-        response = requests.post(
-            url,
-            json=payload,
-            timeout=timeout,
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
-        )
-        logger.info(
-            "Unified-Identity: Mobile sensor service response: status=%s, body=%s",
-            response.status_code,
-            response.text[:500],
-        )
-    except requests.RequestException as exc:  # noqa: BLE001
-        logger.error(
-            "Unified-Identity: Mobile sensor service HTTP request failed: %s", exc
-        )
-        raise MobileSensorVerificationError(f"mobile sensor service HTTP request failed: {exc}") from exc
-
-    if response.status_code != 200:
-        logger.error(
-            "Unified-Identity: Mobile sensor service returned HTTP %s: %s",
-            response.status_code,
-            response.text[:500],
-        )
-        raise MobileSensorVerificationError(
-            f"mobile sensor service returned HTTP {response.status_code} ({response.text[:200]})"
-        )
-
-    try:
-        result = response.json()
-        logger.info(
-            "Unified-Identity: Mobile sensor service returned JSON: %s", result
-        )
-        return result
-    except Exception as exc:  # noqa: BLE001
-        logger.error(
-            "Unified-Identity: Failed to parse mobile sensor service JSON response: %s, body: %s",
-            exc,
-            response.text[:500],
-        )
-        raise MobileSensorVerificationError("invalid JSON response from mobile sensor service") from exc
-
-
-def _unix_socket_mobile_sensor_request(socket_path: str, payload: Dict[str, Any], timeout: float) -> Dict[str, Any]:
-    conn = _UnixSocketHTTPConnection(socket_path, timeout)
-    body = json.dumps(payload)
-    body_bytes = body.encode("utf-8")
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Content-Length": str(len(body_bytes)),
-        "Host": "localhost",
-    }
-    try:
-        conn.request("POST", "/verify", body_bytes, headers=headers)
-        response = conn.getresponse()
-        status = response.status
-        resp_body = response.read()
-    except Exception as exc:  # noqa: BLE001
-        raise MobileSensorVerificationError(f"mobile sensor UDS request failed: {exc}") from exc
-    finally:
-        conn.close()
-
-    if status != 200:
-        raise MobileSensorVerificationError(
-            f"mobile sensor service returned HTTP {status} ({resp_body[:200]!r})"
-        )
-
-    try:
-        return json.loads(resp_body.decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001
-        raise MobileSensorVerificationError("invalid JSON response from mobile sensor service") from exc
-
-
-def _verify_mobile_sensor_geolocation(
-    geolocation: Optional[Dict[str, Any]], *, require_tpm_sensor: bool = False
-) -> None:
-    logger.info(
-        "Unified-Identity: _verify_mobile_sensor_geolocation called with geolocation=%s",
-        geolocation,
-    )
-    settings = _get_mobile_sensor_settings()
-    if not settings:
-        logger.info(
-            "Unified-Identity: Mobile sensor settings not available, skipping verification"
-        )
-        return
-
-    if not require_tpm_sensor:
-        logger.debug(
-            "Unified-Identity: Geolocation was not sourced from TPM quote; skipping mobile sensor verification"
-        )
-        return
-
-    # Only verify if geolocation is present and is a dict
-    # If geolocation is None (e.g., during SVID renewals without new quotes), skip verification
-    if not geolocation or not isinstance(geolocation, dict):
-        logger.debug(
-            "Unified-Identity: Mobile sensor verification enabled but geolocation is None or not a dict; skipping verification (this is normal for SVID renewals)"
-        )
-        return
-
-    geo_type = str(geolocation.get("type", "")).lower()
-    if geo_type != "mobile":
-        logger.debug(
-            "Unified-Identity: Mobile sensor verification enabled but geolocation type is '%s'; skipping microservice call",
-            geo_type or "<unknown>",
-        )
-        return
-
-    sensor_id = geolocation.get("sensor_id")
-    if not sensor_id:
-        raise MobileSensorVerificationError("sensor_id missing in mobile geolocation data")
-
-    # Unified-Identity: Include sensor_imei and sensor_imsi in the request payload
-    payload = {"sensor_id": sensor_id}
-    sensor_imei = geolocation.get("sensor_imei")
-    sensor_imsi = geolocation.get("sensor_imsi")
-    if sensor_imei:
-        payload["sensor_imei"] = sensor_imei
-    if sensor_imsi:
-        payload["sensor_imsi"] = sensor_imsi
-
-    response = _call_mobile_sensor_service(payload)
-    verification_result = response.get("verification_result")
-    if verification_result is True:
-        logger.info(
-            "Unified-Identity: Mobile sensor verification succeeded (sensor_id=%s)", sensor_id
-        )
-        return
-
-    raise MobileSensorVerificationError(
-        f"mobile sensor service returned verification_result={verification_result} for sensor_id={sensor_id}"
-    )
 
 
 def _from_db_obj(agent_db_obj: VerfierMain) -> Dict[str, Any]:
@@ -1763,8 +1524,7 @@ class VerifyEvidenceHandler(BaseHandler):
                     )
                     return
 
-                # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
-                # Handle tpm-app-key flow
+                # Unified-Identity: Handle tpm-app-key flow
                 result = self._tpm_app_key_verify(data, metadata)
                 if result is None:
                     # Error response already sent
@@ -1968,7 +1728,6 @@ class VerifyEvidenceHandler(BaseHandler):
         app_key_certificate = data.get('app_key_certificate', '')
         tpm_ak = data.get('tpm_ak', '')
         tpm_ek = data.get('tpm_ek', '')
-        geolocation_from_request = data.get('geolocation')
         agent_ip = data.get('agent_ip')
         agent_port = data.get('agent_port')
         agent_uuid = data.get('agent_uuid')
@@ -2263,50 +2022,21 @@ class VerifyEvidenceHandler(BaseHandler):
                     app_key_public = quote_payload.get('pubkey')
         
         # Task 2c: Fetch geolocation with nonce for TOCTOU protection
-        # DEBUG: Force logging to trace execution path
-        logger.error('DEBUG-GEO: Reached geolocation fetch section - agent_ip=%s, agent_port_int=%s, nonce=%s',
-                     agent_ip, agent_port_int, nonce[:16] if nonce else None)
-        
         # This ensures geolocation is cryptographically fresh and bound to the same nonce
         # used for TPM quote verification
-        # IMPORTANT: This runs ALWAYS, regardless of whether quote was provided or fetched
         if agent_ip and agent_port_int:
-            logger.error('DEBUG-GEO: Entering geolocation fetch block')
             try:
-                logger.error(
-                    'DEBUG-GEO: Calling get_agent_geolocation_with_nonce for %s:%s',
-                    agent_ip,
-                    agent_port_int
-                )
                 geo_response = cloud_verifier_common.get_agent_geolocation_with_nonce(
                     agent_ip=agent_ip,
                     agent_port=agent_port_int,
                     nonce=nonce,
                     tls_dir=web_util.get_tls_dir('verifier')
                 )
-                # Override quote_geolocation with nonce-validated geolocation
                 if geo_response:
                     quote_geolocation = geo_response
-                    logger.error(
-                        'DEBUG-GEO: Geolocation fetch SUCCESS - sensor_type=%s',
-                        geo_response.get('sensor_type', 'unknown')
-                    )
-                    # Use a dedicated variable to avoid shadowing later
                     geo_fetched_with_nonce = True
-                else:
-                    logger.error('DEBUG-GEO: Geolocation fetch returned None/empty')
             except Exception as e:
-                logger.error(
-                    'DEBUG-GEO: Geolocation fetch EXCEPTION: %s',
-                    str(e)
-                )
-                # Continue without geolocation (non-fatal error)
-                # quote_geolocation remains as extracted from quote payload or None
-        else:
-            logger.error(
-                'DEBUG-GEO: SKIPPING geolocation fetch - agent_ip=%s, agent_port_int=%s',
-                agent_ip, agent_port_int
-            )
+                logger.error('Unified-Identity: Geolocation fetch failed: %s', e)
 
 
         if not app_key_public:
@@ -2630,17 +2360,13 @@ class VerifyEvidenceHandler(BaseHandler):
 
         if not mobile_geo_from_quote and attested_claims.get('grc.geolocation'):
             logger.debug(
-                'Unified-Identity: Removing non-TPM geolocation claims (requirement: physical sensor only)'
+                'Unified-Identity: Removing non-TPM geolocation claims'
             )
             attested_claims.pop('grc.geolocation', None)
             attested_claims.pop('geolocation', None)
 
-        # Mobile sensor location verification via microservice is disabled
-        # The geolocation data is already validated in the TPM quote and included in the certificate
-        # No additional microservice call is needed
         logger.debug(
-            'Unified-Identity: Mobile sensor location verification via microservice is disabled; '
-            'geolocation data from TPM quote is used directly'
+            'Unified-Identity: Geolocation data from TPM quote is used directly'
         )
 
         audit_id = str(uuid.uuid4())
