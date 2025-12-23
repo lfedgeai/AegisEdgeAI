@@ -31,3 +31,4 @@ jobs:
                   # --single-machine targets the current host for all components
                   # --no-color ensures clean logs in GitHub Actions
                   ./ci_test_runner.py --no-color --single-machine
+                  # Triggering test run
