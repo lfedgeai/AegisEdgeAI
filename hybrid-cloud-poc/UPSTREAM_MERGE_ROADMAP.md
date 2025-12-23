@@ -20,7 +20,7 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 - [x] **Task 2**: Keylime Agent - Attested Geolocation API (Rust)
 - [x] **Task 2d**: Keylime Verifier - Geolocation Database & Integration (Python)
 - [x] **Task 3: Keylime Verifier - Verification API & Cleanup** ([Status: Complete])
-- [ ] **Task 4**: SPIRE Server - Validator Plugin with Geolocation (Go)
+- [x] **Task 4**: SPIRE Server - Validator Plugin with Geolocation (Go) ([Status: Complete])
 - [ ] **Task 5**: SPIRE Agent - Collector Plugin (Go)
 - [x] **Task 6**: SPIRE Creds - Credential Composer (Go)
 

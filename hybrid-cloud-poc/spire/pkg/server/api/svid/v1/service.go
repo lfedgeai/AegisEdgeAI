@@ -41,12 +41,8 @@ type Config struct {
 	ServerCA     ca.ServerCA
 	TrustDomain  spiffeid.TrustDomain
 	DataStore    datastore.DataStore
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Optional Keylime client for sovereign attestation verification
-	KeylimeClient *keylime.Client
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Optional policy engine for evaluating AttestedClaims
-	PolicyEngine *policy.Engine
+	TrustDomain  spiffeid.TrustDomain
+	DataStore    datastore.DataStore
 }
 
 // New creates a new SVID service
@@ -56,8 +52,8 @@ func New(config Config) *Service {
 		ef:            config.EntryFetcher,
 		td:            config.TrustDomain,
 		ds:            config.DataStore,
-		keylimeClient: config.KeylimeClient,
-		policyEngine:  config.PolicyEngine,
+		td:            config.TrustDomain,
+		ds:            config.DataStore,
 	}
 }
 
@@ -70,9 +66,9 @@ type Service struct {
 	td                           spiffeid.TrustDomain
 	ds                           datastore.DataStore
 	useLegacyDownstreamX509CATTL bool
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	keylimeClient *keylime.Client
-	policyEngine  *policy.Engine
+	td                           spiffeid.TrustDomain
+	ds                           datastore.DataStore
+	useLegacyDownstreamX509CATTL bool
 }
 
 func (s *Service) MintX509SVID(ctx context.Context, req *svidv1.MintX509SVIDRequest) (*svidv1.MintX509SVIDResponse, error) {
@@ -285,52 +281,12 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 	}
 	log = log.WithField(telemetry.SPIFFEID, spiffeID.String())
 
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Handle SovereignAttestation if feature flag is enabled and attestation is provided
-	var attestedClaims []*types.AttestedClaims
-	var attestedClaimsJSON []byte
+	// Unified-Identity - Verification: Pass SovereignAttestation to CredentialComposer via context
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) && param.SovereignAttestation != nil {
-		log.Info("Unified-Identity - Verification: Processing SovereignAttestation")
-		claims, err := s.processSovereignAttestation(ctx, log, param.SovereignAttestation, spiffeID.String())
-		if err != nil {
-			log.WithError(err).Error("Unified-Identity - Verification: Failed to process SovereignAttestation")
-			return &svidv1.BatchNewX509SVIDResponse_Result{
-				Status: api.MakeStatus(log, codes.Internal, "failed to process sovereign attestation", err),
-			}
-		}
-		if claims != nil {
-			attestedClaims = []*types.AttestedClaims{claims}
-
-			workloadKeyPEM, err := publicKeyToPEM(csr.PublicKey)
-			if err != nil {
-				log.WithError(err).Warn("Unified-Identity - Verification: Failed to encode workload public key for claims JSON")
-			}
-
-			unifiedJSON, err := unifiedidentity.BuildClaimsJSON(
-				spiffeID.String(),
-				unifiedidentity.KeySourceWorkload,
-				workloadKeyPEM,
-				param.SovereignAttestation,
-				claims,
-			)
-			if err != nil {
-				log.WithError(err).Warn("Unified-Identity - Verification: Failed to build unified identity claims JSON")
-			} else {
-				attestedClaimsJSON = unifiedJSON
-				log.WithField("claims", string(unifiedJSON)).Info("Unified-Identity - Verification: Built workload unified identity claims")
-			}
-		}
+		log.Debug("Unified-Identity - Verification: Passing SovereignAttestation (workload) to CredentialComposer via context")
+		ctx = unifiedidentity.WithSovereignAttestation(ctx, param.SovereignAttestation)
 	}
 
-	// Unified-Identity - Verification: Sign X509 SVID with AttestedClaims embedded in certificate extension
-	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
-	var attestedClaimsForCert *types.AttestedClaims
-	if attestedClaims != nil && len(attestedClaims) > 0 {
-		attestedClaimsForCert = attestedClaims[0]
-		log.Debug("Unified-Identity - Verification: Embedding AttestedClaims in workload SVID certificate")
-	}
-
-	ctx = unifiedidentity.WithClaims(ctx, attestedClaimsForCert, attestedClaimsJSON)
 	x509Svid, err := s.ca.SignWorkloadX509SVID(ctx, ca.WorkloadX509SVIDParams{
 		SPIFFEID:  spiffeID,
 		PublicKey: csr.PublicKey,
@@ -375,13 +331,7 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 		Status: api.OK(),
 	}
 
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Add AttestedClaims to response if available
-	if attestedClaims != nil {
-		result.AttestedClaims = attestedClaims
-		log.WithField("claims_count", len(attestedClaims)).Debug("Unified-Identity - Verification: Added AttestedClaims to response")
-	}
-
+	// Note: AttestedClaims is no longer returned in the response as it is embedded in the SVID
 	return result
 }
 
@@ -570,107 +520,6 @@ func parseAndCheckCSR(ctx context.Context, csrBytes []byte) (*x509.CertificateRe
 	}
 
 	return csr, nil
-}
-
-// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-// processSovereignAttestation processes SovereignAttestation by calling Keylime and evaluating policy
-func (s *Service) processSovereignAttestation(ctx context.Context, log logrus.FieldLogger, sovereignAttestation *types.SovereignAttestation, spiffeID string) (*types.AttestedClaims, error) {
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Skip Keylime verification for workload SVID requests - workloads inherit attested claims from agent SVID
-	// Agent SVIDs have pattern: spiffe://<trust-domain>/spire/agent/...
-	// Workload SVIDs have different patterns (e.g., spiffe://<trust-domain>/python-app)
-	if !strings.Contains(spiffeID, "/spire/agent/") {
-		log.Info("Unified-Identity - Verification: Skipping Keylime verification for workload SVID request (workloads inherit claims from agent SVID)")
-		return nil, nil
-	}
-
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Check if Keylime client is configured
-	if s.keylimeClient == nil {
-		log.Warn("Unified-Identity - Verification: Keylime client not configured, skipping attestation verification")
-		return nil, nil
-	}
-
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Build Keylime request from SovereignAttestation
-	keylimeReq, err := keylime.BuildVerifyEvidenceRequest(&keylime.SovereignAttestationProto{
-		TpmSignedAttestation: sovereignAttestation.TpmSignedAttestation,
-		AppKeyPublic:         sovereignAttestation.AppKeyPublic,
-		AppKeyCertificate:    sovereignAttestation.AppKeyCertificate,
-		ChallengeNonce:       sovereignAttestation.ChallengeNonce,
-		WorkloadCodeHash:     sovereignAttestation.WorkloadCodeHash,
-	}, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to build Keylime request: %w", err)
-	}
-
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Call Keylime Verifier
-	keylimeClaims, err := s.keylimeClient.VerifyEvidence(keylimeReq)
-	if err != nil {
-		return nil, fmt.Errorf("keylime verification failed: %w", err)
-	}
-
-	// Unified-Identity - Verification: Log geolocation object
-	geoLog := "none"
-	if keylimeClaims.Geolocation != nil {
-		geoLog = fmt.Sprintf("type=%s, sensor_id=%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID)
-		if keylimeClaims.Geolocation.Value != "" {
-			geoLog += fmt.Sprintf(", value=%s", keylimeClaims.Geolocation.Value)
-		}
-	}
-
-	log.WithFields(logrus.Fields{
-		"geolocation": geoLog,
-	}).Info("Unified-Identity - Verification: Received AttestedClaims from Keylime")
-
-	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-	// Evaluate policy if policy engine is configured
-	if s.policyEngine != nil {
-		// Convert Geolocation object to string for policy engine
-		policyGeoStr := ""
-		if keylimeClaims.Geolocation != nil {
-			// For policy matching, use a simple format: "type:sensor_id" or "type:sensor_id:value"
-			if keylimeClaims.Geolocation.Value != "" {
-				policyGeoStr = fmt.Sprintf("%s:%s:%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID, keylimeClaims.Geolocation.Value)
-			} else {
-				policyGeoStr = fmt.Sprintf("%s:%s", keylimeClaims.Geolocation.Type, keylimeClaims.Geolocation.SensorID)
-			}
-		}
-
-		policyClaims := policy.ConvertKeylimeAttestedClaims(&policy.KeylimeAttestedClaims{
-			Geolocation: policyGeoStr,
-		})
-
-		policyResult, err := s.policyEngine.Evaluate(policyClaims)
-		if err != nil {
-			return nil, fmt.Errorf("policy evaluation failed: %w", err)
-		}
-
-		if !policyResult.Allowed {
-			log.WithField("reason", policyResult.Reason).Warn("Unified-Identity - Verification: Policy evaluation failed")
-			// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-			// In a real implementation, this would trigger remediation actions
-			// Return an error if policy evaluation fails
-			return nil, fmt.Errorf("policy evaluation failed: %s", policyResult.Reason)
-		}
-
-		log.Info("Unified-Identity - Verification: Policy evaluation passed")
-	}
-
-	// Unified-Identity - Verification: Convert Geolocation object to protobuf Geolocation
-	var protoGeo *types.Geolocation
-	if keylimeClaims.Geolocation != nil {
-		protoGeo = &types.Geolocation{
-			Type:     keylimeClaims.Geolocation.Type,
-			SensorId: keylimeClaims.Geolocation.SensorID,
-			Value:    keylimeClaims.Geolocation.Value,
-		}
-	}
-
-	return &types.AttestedClaims{
-		Geolocation: protoGeo,
-	}, nil
 }
 
 func publicKeyToPEM(pub crypto.PublicKey) (string, error) {

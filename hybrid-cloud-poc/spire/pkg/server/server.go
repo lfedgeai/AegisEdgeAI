@@ -415,48 +415,6 @@ func (s *Server) newSVIDRotator(ctx context.Context, serverCA ca.ServerCA, metri
 	return svidRotator, nil
 }
 
-// Unified-Identity - Setup: Create Keylime client if feature flag is enabled
-func (s *Server) newKeylimeClient() *keylime.Client {
-	if !fflag.IsSet(fflag.FlagUnifiedIdentity) {
-		return nil
-	}
-	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
-	// Unified-Identity - Attestation: Core Keylime Functionality (Fact-Provider Logic)
-	// Initialize Keylime client - supports both stub (Setup) and real verifier (Attestation)
-	// Default to stub for backward compatibility, but allow override via environment variable
-	keylimeURL := os.Getenv("KEYLIME_VERIFIER_URL")
-	s.config.Log.WithField("keylime_url", keylimeURL).Info("Unified-Identity - Attestation: Reading KEYLIME_VERIFIER_URL from environment")
-	if keylimeURL == "" {
-		// Default to stub for Setup compatibility
-		keylimeURL = "http://localhost:8888"
-		s.config.Log.Warn("Unified-Identity - Attestation: KEYLIME_VERIFIER_URL not set, defaulting to stub port 8888")
-	} else {
-		s.config.Log.WithField("keylime_url", keylimeURL).Info("Unified-Identity - Attestation: Using Keylime Verifier URL from environment")
-	}
-	client, err := keylime.NewClient(keylime.Config{
-		BaseURL: keylimeURL,
-		Logger:  s.config.Log.WithField(telemetry.SubsystemName, "keylime"),
-	})
-	if err != nil {
-		s.config.Log.WithError(err).Warn("Unified-Identity - Setup: Failed to create Keylime client, SovereignAttestation will be skipped")
-		return nil
-	}
-	return client
-}
-
-// Unified-Identity - Setup: Create policy engine if feature flag is enabled
-func (s *Server) newPolicyEngine() *policy.Engine {
-	if !fflag.IsSet(fflag.FlagUnifiedIdentity) {
-		return nil
-	}
-	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
-	// Initialize policy engine with permissive policy for Setup testing
-	// In production, this would be configured via server config
-	return policy.NewEngine(policy.PolicyConfig{
-		AllowedGeolocations: []string{"*"}, // Allow all geolocations in Setup
-		Logger:             s.config.Log.WithField(telemetry.SubsystemName, "policy"),
-	})
-}
 
 func (s *Server) newEndpointsServer(ctx context.Context, catalog catalog.Catalog, svidObserver svid.Observer, serverCA ca.ServerCA, metrics telemetry.Metrics, authorityManager manager.AuthorityManager, authPolicyEngine *authpolicy.Engine, bundleManager *bundle_client.Manager) (endpoints.Server, error) {
 	config := endpoints.Config{
@@ -483,9 +441,6 @@ func (s *Server) newEndpointsServer(ctx context.Context, catalog catalog.Catalog
 		BundleManager:                bundleManager,
 		AdminIDs:                     s.config.AdminIDs,
 		MaxAttestedNodeInfoStaleness: s.config.MaxAttestedNodeInfoStaleness,
-		// Unified-Identity - Setup: Initialize Keylime client and policy engine if feature flag is enabled
-		KeylimeClient: s.newKeylimeClient(),
-		PolicyEngine:  s.newPolicyEngine(),
 	}
 	if s.config.Federation.BundleEndpoint != nil {
 		config.BundleEndpoint.Address = s.config.Federation.BundleEndpoint.Address

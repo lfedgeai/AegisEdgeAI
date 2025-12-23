@@ -32,9 +32,9 @@ import (
 	"github.com/spiffe/spire/pkg/server/cache/dscache"
 	"github.com/spiffe/spire/pkg/server/catalog"
 	"github.com/spiffe/spire/pkg/server/endpoints/bundle"
-	"github.com/spiffe/spire/pkg/server/keylime"
-	"github.com/spiffe/spire/pkg/server/policy"
-	"github.com/spiffe/spire/pkg/server/svid"
+	"github.com/spiffe/spire/pkg/server/authpolicy"
+	bundle_client "github.com/spiffe/spire/pkg/server/bundle/client"
+	"github.com/spiffe/spire/pkg/server/ca"
 )
 
 // Config is a configuration for endpoints
@@ -118,7 +118,7 @@ type Config struct {
 	KeylimeClient *keylime.Client
 	// Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 	// Optional policy engine for evaluating AttestedClaims
-	PolicyEngine *policy.Engine
+	PolicyEngine *authpolicy.Engine
 }
 
 func (c *Config) maybeMakeBundleEndpointServer() (Server, func(context.Context) error) {
@@ -176,8 +176,6 @@ func (c *Config) makeAPIServers(entryFetcher api.AuthorizedEntryFetcher) APIServ
 			TrustDomain:   c.TrustDomain,
 			Catalog:       c.Catalog,
 			Clock:         c.Clock,
-			KeylimeClient: c.KeylimeClient,
-			PolicyEngine:  c.PolicyEngine,
 		}),
 		BundleServer: bundlev1.New(bundlev1.Config{
 			TrustDomain:       c.TrustDomain,
@@ -208,8 +206,6 @@ func (c *Config) makeAPIServers(entryFetcher api.AuthorizedEntryFetcher) APIServ
 			EntryFetcher:  entryFetcher,
 			ServerCA:      c.ServerCA,
 			DataStore:     ds,
-			KeylimeClient: c.KeylimeClient,
-			PolicyEngine:  c.PolicyEngine,
 		}),
 		TrustDomainServer: trustdomainv1.New(trustdomainv1.Config{
 			TrustDomain:     c.TrustDomain,
