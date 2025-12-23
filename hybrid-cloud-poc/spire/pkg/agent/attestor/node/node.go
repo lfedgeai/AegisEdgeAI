@@ -203,7 +203,12 @@ func (a *attestor) getSVID(ctx context.Context, conn *grpc.ClientConn, csr []byt
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	stream := &ServerStream{Client: agentv1.NewAgentClient(conn), Csr: csr, Log: a.c.Log}
+	stream := &ServerStream{
+		Client:  agentv1.NewAgentClient(conn),
+		Csr:     csr,
+		Log:     a.c.Log,
+		Catalog: a.c.Catalog,
+	}
 
 	if err := attestor.Attest(ctx, stream); err != nil {
 		return nil, false, err
@@ -331,6 +336,7 @@ type ServerStream struct {
 	Client       agentv1.AgentClient
 	Csr          []byte
 	Log          logrus.FieldLogger
+	Catalog      catalog.Catalog
 	SVID         []*x509.Certificate
 	Reattestable bool
 	stream       agentv1.Agent_AttestAgentClient
@@ -342,7 +348,17 @@ func (ss *ServerStream) SendAttestationData(ctx context.Context, attestationData
 	}
 
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
-		x509Params.SovereignAttestation = client.BuildSovereignAttestationWithPlugin(nil, ss.Log)
+		if c, ok := ss.Catalog.GetCollector(); ok {
+			ss.Log.Debug("Unified-Identity: Collecting sovereign attestation data via plugin")
+			sa, err := c.CollectSovereignAttestation(ctx, "")
+			if err != nil {
+				return nil, fmt.Errorf("failed to collect sovereign attestation: %w", err)
+			}
+			x509Params.SovereignAttestation = sa
+		} else {
+			ss.Log.Warn("Unified-Identity: Collector plugin not found, falling back to stub data (deprecated)")
+			x509Params.SovereignAttestation = client.BuildSovereignAttestationStub()
+		}
 	}
 
 	return ss.sendRequest(ctx, &agentv1.AttestAgentRequest{

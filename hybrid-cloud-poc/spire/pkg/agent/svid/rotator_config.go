@@ -18,6 +18,7 @@ import (
 	"github.com/spiffe/spire/pkg/common/rotationutil"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	"github.com/spiffe/spire/pkg/common/tlspolicy"
+	"github.com/spiffe/spire/pkg/agent/catalog"
 )
 
 const DefaultRotatorInterval = 5 * time.Second
@@ -47,6 +48,8 @@ type RotatorConfig struct {
 
 	// TLSPolicy determines the post-quantum-safe policy for TLS connections.
 	TLSPolicy tlspolicy.Policy
+
+	Catalog catalog.Catalog
 }
 
 func NewRotator(c *RotatorConfig) (Rotator, client.Client) {
@@ -90,6 +93,7 @@ func newRotator(c *RotatorConfig) (*rotator, client.Client) {
 			return s.SVID, s.Key, rootCAs
 		},
 		TLSPolicy: c.TLSPolicy,
+		Catalog:   c.Catalog,
 	}
 	client := client.New(cfg)
 

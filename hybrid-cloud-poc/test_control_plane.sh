@@ -134,6 +134,9 @@ stop_control_plane_services_only() {
     rm -f /tmp/keylime-verifier.log 2>/dev/null || true
     rm -f /tmp/keylime-registrar.log 2>/dev/null || true
     
+    # Remove local Keylime database if running in test mode
+    rm -f "${KEYLIME_DIR}/cv_data.sqlite" 2>/dev/null || true
+    
     # Remove TLS certificates (needed for Keylime)
     echo "     Removing TLS certificates..."
     rm -rf "${KEYLIME_DIR}/cv_ca" 2>/dev/null || true

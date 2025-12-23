@@ -8,6 +8,7 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/spire-plugin-sdk/pluginsdk"
 	metricsv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/hostservice/common/metrics/v1"
+	"github.com/spiffe/spire/pkg/agent/plugin/collector"
 	"github.com/spiffe/spire/pkg/agent/plugin/keymanager"
 	"github.com/spiffe/spire/pkg/agent/plugin/nodeattestor"
 	"github.com/spiffe/spire/pkg/agent/plugin/nodeattestor/jointoken"
@@ -20,6 +21,7 @@ import (
 )
 
 const (
+	collectorType        = "Collector"
 	keyManagerType       = "KeyManager"
 	nodeAttestorType     = "NodeAttestor"
 	svidStoreType        = "SVIDStore"
@@ -29,6 +31,7 @@ const (
 var ReconfigureTask = catalog.ReconfigureTask
 
 type Catalog interface {
+	GetCollector() (collector.Collector, bool)
 	GetKeyManager() keymanager.KeyManager
 	GetNodeAttestor() nodeattestor.NodeAttestor
 	GetSVIDStoreNamed(name string) (svidstore.SVIDStore, bool)
@@ -47,6 +50,7 @@ type Config struct {
 }
 
 type Repository struct {
+	collectorRepository
 	keyManagerRepository
 	nodeAttestorRepository
 	svidStoreRepository
@@ -58,6 +62,7 @@ type Repository struct {
 
 func (repo *Repository) Plugins() map[string]catalog.PluginRepo {
 	return map[string]catalog.PluginRepo{
+		collectorType:        &repo.collectorRepository,
 		keyManagerType:       &repo.keyManagerRepository,
 		nodeAttestorType:     &repo.nodeAttestorRepository,
 		svidStoreType:        &repo.svidStoreRepository,

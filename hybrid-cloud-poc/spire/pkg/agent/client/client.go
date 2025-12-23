@@ -32,6 +32,7 @@ import (
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	"github.com/spiffe/spire/pkg/common/tlspolicy"
 	"github.com/spiffe/spire/proto/spire/common"
+	"github.com/spiffe/spire/pkg/agent/catalog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -109,6 +110,8 @@ type Config struct {
 
 	// TLSPolicy determines the post-quantum-safe policy to apply to all TLS connections.
 	TLSPolicy tlspolicy.Policy
+
+	Catalog catalog.Catalog
 }
 
 type client struct {
@@ -119,7 +122,8 @@ type client struct {
 	// dialOpts optionally sets gRPC dial options
 	dialOpts []grpc.DialOption
 
-	// Unified-Identity: TPM plugin client for real TPM operations
+	Catalog catalog.Catalog
+
 	tpmPlugin *tpmplugin.TPMPluginGateway
 }
 
@@ -130,15 +134,14 @@ func New(c *Config) Client {
 
 func newClient(c *Config) *client {
 	cl := &client{
-		c: c,
+		c:       c,
+		Catalog: c.Catalog,
 	}
-	
-	// Unified-Identity: Initialize TPM plugin client if feature flag is enabled
+
+	// Unified-Identity: Initialize TPM plugin client for mTLS signing if needed
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
-		// Try to find TPM plugin CLI in common locations
 		pluginPath := os.Getenv("TPM_PLUGIN_CLI_PATH")
 		if pluginPath == "" {
-			// Try common locations
 			possiblePaths := []string{
 				"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
 				filepath.Join(os.Getenv("HOME"), "AegisSovereignAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
@@ -150,22 +153,16 @@ func newClient(c *Config) *client {
 				}
 			}
 		}
-		
+
 		if pluginPath != "" {
-			// Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
-			// Default to UDS socket, but allow HTTP endpoint via environment variable
 			tpmPluginEndpoint := os.Getenv("TPM_PLUGIN_ENDPOINT")
 			if tpmPluginEndpoint == "" {
-				// Default to UDS socket
 				tpmPluginEndpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
 			}
 			cl.tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, c.Log)
-			c.Log.Info("Unified-Identity: TPM plugin client initialized")
-		} else {
-			c.Log.Warn("Unified-Identity: TPM plugin CLI not found, will use stub data")
 		}
 	}
-	
+
 	return cl
 }
 
@@ -339,7 +336,17 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 
 		// Step 3-7: Build SovereignAttestation with nonce from server
 		if nonce != "" {
-			params.SovereignAttestation = c.BuildSovereignAttestationWithNonce(nonce)
+			if collector, ok := c.c.Catalog.GetCollector(); ok {
+				c.c.Log.Debug("Unified-Identity: Collecting sovereign attestation data via plugin for renewal")
+				sa, err := collector.CollectSovereignAttestation(ctx, nonce)
+				if err != nil {
+					return nil, fmt.Errorf("failed to collect sovereign attestation for renewal: %w", err)
+				}
+				params.SovereignAttestation = sa
+			} else {
+				c.c.Log.Warn("Unified-Identity: Collector plugin not found during renewal, falling back to stub data (deprecated)")
+				params.SovereignAttestation = BuildSovereignAttestationStub()
+			}
 		}
 	}
 
@@ -449,7 +456,17 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 		
 		// Unified-Identity: Add SovereignAttestation if feature flag is enabled
 		if fflag.IsSet(fflag.FlagUnifiedIdentity) {
-			param.SovereignAttestation = BuildSovereignAttestationStub()
+			if collector, ok := c.c.Catalog.GetCollector(); ok {
+				c.c.Log.Debug("Unified-Identity: Collecting sovereign attestation data via plugin for workload")
+				sa, err := collector.CollectSovereignAttestation(ctx, "") // No nonce for workload SVID request
+				if err != nil {
+					return nil, fmt.Errorf("failed to collect sovereign attestation for workload: %w", err)
+				}
+				param.SovereignAttestation = sa
+			} else {
+				c.c.Log.Warn("Unified-Identity: Collector plugin not found for workload, falling back to stub data (deprecated)")
+				param.SovereignAttestation = BuildSovereignAttestationStub()
+			}
 		}
 		
 		params = append(params, param)
@@ -911,145 +928,20 @@ func (c *client) fetchSVIDs(ctx context.Context, params []*svidv1.NewX509SVIDPar
 // Unified-Identity: Build real SovereignAttestation using TPM plugin
 // This function uses the real TPM plugin to generate App Keys, Quotes, and Certificates
 // Falls back to stub data if TPM plugin is not available
+// Unified-Identity: Build real SovereignAttestation using Collector plugin
 func (c *client) BuildSovereignAttestation() *types.SovereignAttestation {
-	// NOTE: This method generates nonce locally (fallback)
-	// For proper flow, use BuildSovereignAttestationWithNonce() which accepts nonce from server
-	return BuildSovereignAttestationWithPlugin(c.tpmPlugin, c.c.Log)
-}
-
-// Unified-Identity: Build SovereignAttestation with nonce from SPIRE Server
-// This is the preferred method that aligns with the architecture document
-func (c *client) BuildSovereignAttestationWithNonce(nonce string) *types.SovereignAttestation {
-	return BuildSovereignAttestationWithPluginAndNonce(c.tpmPlugin, nonce, c.c.Log)
-}
-
-// Unified-Identity: Build real SovereignAttestation using TPM plugin with provided nonce
-// This version accepts a nonce parameter (from SPIRE Server) instead of generating one locally
-func BuildSovereignAttestationWithPluginAndNonce(tpmPlugin *tpmplugin.TPMPluginGateway, nonce string, log logrus.FieldLogger) *types.SovereignAttestation {
-	if tpmPlugin == nil {
-		// Try to create a TPM plugin client
-		pluginPath := os.Getenv("TPM_PLUGIN_CLI_PATH")
-		if pluginPath == "" {
-			// Try common locations
-			possiblePaths := []string{
-				"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
-				filepath.Join(os.Getenv("HOME"), "AegisSovereignAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
-			}
-			for _, path := range possiblePaths {
-				if _, err := os.Stat(path); err == nil {
-					pluginPath = path
-					break
-				}
-			}
+	if collector, ok := c.Catalog.GetCollector(); ok {
+		sa, err := collector.CollectSovereignAttestation(context.Background(), "")
+		if err == nil {
+			return sa
 		}
-		
-		if pluginPath != "" {
-			// Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
-			tpmPluginEndpoint := os.Getenv("TPM_PLUGIN_ENDPOINT")
-			if tpmPluginEndpoint == "" {
-				// Default to UDS socket
-				tpmPluginEndpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
-			}
-			tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, log)
-			if log != nil {
-				log.Info("Unified-Identity: TPM plugin client created")
-			}
-		}
-	}
-	
-	if tpmPlugin != nil && nonce != "" {
-		// Use nonce from SPIRE Server (per architecture: Step 2)
-		sovereignAttestation, err := tpmPlugin.BuildSovereignAttestation(nonce)
-		if err != nil {
-			if log != nil {
-				log.WithError(err).Warn("Unified-Identity: Failed to build real SovereignAttestation, using stub data")
-			}
-			return BuildSovereignAttestationStub()
-		}
-		
-		if log != nil {
-			log.WithField("nonce", nonce[:16]+"...").Info("Unified-Identity: Built real SovereignAttestation using TPM plugin with server nonce")
-		}
-		return sovereignAttestation
-	}
-	
-	// Fallback to stub data if TPM plugin is not available
-	if log != nil {
-		log.Warn("Unified-Identity: TPM plugin not available or nonce missing, using stub data")
+		c.c.Log.WithError(err).Warn("Unified-Identity: Failed to collect sovereign attestation via plugin, using stub data")
+	} else {
+		c.c.Log.Warn("Unified-Identity: Collector plugin not found, using stub data")
 	}
 	return BuildSovereignAttestationStub()
 }
 
-// Unified-Identity: Build real SovereignAttestation using TPM plugin
-// This is a standalone function that can be called from anywhere (e.g., node attestor)
-// It creates a TPM plugin client if one is not provided
-// NOTE: This version generates a nonce locally (fallback) - prefer BuildSovereignAttestationWithPluginAndNonce
-func BuildSovereignAttestationWithPlugin(tpmPlugin *tpmplugin.TPMPluginGateway, log logrus.FieldLogger) *types.SovereignAttestation {
-	// Unified-Identity: Try to use real TPM plugin if available
-	if tpmPlugin == nil {
-		// Try to create a TPM plugin client
-		pluginPath := os.Getenv("TPM_PLUGIN_CLI_PATH")
-		if pluginPath == "" {
-			// Try common locations
-			possiblePaths := []string{
-				"/tmp/spire-data/tpm-plugin/tpm_plugin_cli.py",
-				filepath.Join(os.Getenv("HOME"), "AegisSovereignAI/hybrid-cloud-poc/tpm-plugin/tpm_plugin_cli.py"),
-			}
-			for _, path := range possiblePaths {
-				if _, err := os.Stat(path); err == nil {
-					pluginPath = path
-					break
-				}
-			}
-		}
-		
-		if pluginPath != "" {
-			// Unified-Identity: Get TPM plugin endpoint (UDS or HTTP)
-			tpmPluginEndpoint := os.Getenv("TPM_PLUGIN_ENDPOINT")
-			if tpmPluginEndpoint == "" {
-				// Default to UDS socket
-				tpmPluginEndpoint = "unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
-			}
-			tpmPlugin = tpmplugin.NewTPMPluginGateway(pluginPath, "", tpmPluginEndpoint, log)
-			if log != nil {
-				log.Info("Unified-Identity: TPM plugin client created")
-			}
-		}
-	}
-	
-	if tpmPlugin != nil {
-		// Generate a nonce for quote generation
-		// In production, this nonce should come from the SPIRE Server challenge
-		// For now, we generate a random nonce
-		nonceBytes := make([]byte, 32)
-		if _, err := rand.Read(nonceBytes); err != nil {
-			if log != nil {
-				log.WithError(err).Warn("Unified-Identity: Failed to generate nonce, using stub data")
-			}
-			return BuildSovereignAttestationStub()
-		}
-		nonce := hex.EncodeToString(nonceBytes)
-		
-		sovereignAttestation, err := tpmPlugin.BuildSovereignAttestation(nonce)
-		if err != nil {
-			if log != nil {
-				log.WithError(err).Warn("Unified-Identity: Failed to build real SovereignAttestation, using stub data")
-			}
-			return BuildSovereignAttestationStub()
-		}
-		
-		if log != nil {
-			log.Info("Unified-Identity: Built real SovereignAttestation using TPM plugin")
-		}
-		return sovereignAttestation
-	}
-	
-	// Fallback to stub data if TPM plugin is not available
-	if log != nil {
-		log.Warn("Unified-Identity: TPM plugin not available, using stub data")
-	}
-	return BuildSovereignAttestationStub()
-}
 
 // Unified-Identity: Build stub SovereignAttestation
 // This is used as a fallback when TPM is not available or TPM plugin fails

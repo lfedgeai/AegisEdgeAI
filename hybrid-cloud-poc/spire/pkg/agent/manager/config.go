@@ -90,6 +90,7 @@ func newManager(c *Config) *manager {
 		Reattestable:     c.Reattestable,
 		RotationStrategy: c.RotationStrategy,
 		TLSPolicy:        c.TLSPolicy,
+		Catalog:          c.Catalog,
 	}
 	svidRotator, client := svid.NewRotator(rotCfg)
 

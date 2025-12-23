@@ -250,9 +250,17 @@ def prepare_get_quote(agent: Dict[str, Any]) -> Dict[str, Union[str, int]]:
     agent["nonce"] = tpm_util.random_password(20)
 
     tpm_policy = ast.literal_eval(agent["tpm_policy"])
+    
+    # Unified-Identity: Ensure PCR 15 is included in the quote if enabled
+    # This is required for Geolocation binding checking (nonce binding)
+    mask_int = int(tpm_policy["mask"], 0)
+    if config.getboolean("verifier", "unified_identity_enabled", fallback=False):
+        logger.debug("Unified-Identity: Ensuring PCR 15 is in quote mask for agent %s", agent["agent_id"])
+        mask_int |= (1 << 15)
+        
     params = {
         "nonce": agent["nonce"],
-        "mask": tpm_policy["mask"],
+        "mask": hex(mask_int),
         "ima_ml_entry": agentAttestState.get_next_ima_ml_entry(),
     }
     return params
