@@ -166,6 +166,50 @@ class TestRunner:
         except Exception as e:
             pass  # Ignore parsing errors
     
+    def dump_failure_logs(self):
+        """Dump log file contents when tests fail - visible in GitHub Actions"""
+        if not self.log_dir or not Path(self.log_dir).exists():
+            return
+        
+        print(f"\n{Colors.RED}{'='*80}{Colors.NC}")
+        print(f"{Colors.RED}FAILURE LOG DUMP (for GitHub Actions debugging){Colors.NC}")
+        print(f"{Colors.RED}{'='*80}{Colors.NC}")
+        
+        log_files = [
+            'test_control_plane.log',
+            'test_agents.log', 
+            'test_onprem.log',
+            'test_mtls_client.log',
+            'master.log'
+        ]
+        
+        for log_name in log_files:
+            log_path = Path(self.log_dir) / log_name
+            if log_path.exists():
+                try:
+                    with open(log_path, 'r') as f:
+                        content = f.read()
+                    
+                    # Only show logs that have content
+                    if content.strip():
+                        # Check if this log has any errors
+                        has_errors = any(pattern in content for pattern in ['✗', 'FAILED', 'CRITICAL', 'Error:', 'Traceback'])
+                        
+                        if has_errors:
+                            print(f"\n{Colors.YELLOW}--- {log_name} (CONTAINS ERRORS) ---{Colors.NC}")
+                            # Show last 100 lines for error logs
+                            lines = content.strip().split('\n')
+                            if len(lines) > 100:
+                                print(f"... (showing last 100 of {len(lines)} lines) ...")
+                                print('\n'.join(lines[-100:]))
+                            else:
+                                print(content)
+                            print(f"{Colors.YELLOW}--- END {log_name} ---{Colors.NC}\n")
+                except Exception as e:
+                    print(f"  Could not read {log_name}: {e}")
+        
+        print(f"{Colors.RED}{'='*80}{Colors.NC}")
+    
     def print_summary(self):
         """Print test run summary"""
         duration = (self.end_time - self.start_time).total_seconds()
@@ -199,9 +243,8 @@ class TestRunner:
             print(f"{Colors.GREEN}{Colors.BOLD}✓ TESTS PASSED{Colors.NC}")
         else:
             print(f"{Colors.RED}{Colors.BOLD}✗ TESTS FAILED{Colors.NC}")
-            if self.log_dir:
-                print(f"\n{Colors.YELLOW}Check logs for details:{Colors.NC}")
-                print(f"  master.log: {self.log_dir}/master.log")
+            # Dump failure logs directly to GitHub Actions output
+            self.dump_failure_logs()
         print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
     
     def run(self):
