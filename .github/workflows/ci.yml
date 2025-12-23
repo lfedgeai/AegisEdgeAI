@@ -2,10 +2,10 @@ name: Unified Identity CI
 
 on:
     push:
-        branches: ["main", "develop", "feat/**"] # Triggers on any branch starting with feat/
+        branches: ["main", "develop", "feat/**"]
     pull_request:
         branches: ["main", "develop"]
-    workflow_dispatch: # This allows manual testing on ANY branch
+    workflow_dispatch:
 
 jobs:
     integration-test:
@@ -18,20 +18,13 @@ jobs:
               with:
                   submodules: recursive
 
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.10"
-
-            - name: Install System Dependencies
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y python3-gpg swig libgpgme-dev
+            # Using system Python (has gpg bindings pre-installed)
+            # Do NOT use actions/setup-python as it creates isolated env without gpg
 
             - name: Install Python Dependencies
               run: |
-                  python -m pip install --upgrade pip
-                  pip install -r hybrid-cloud-poc/keylime/requirements.txt
+                  python3 -m pip install --upgrade pip
+                  python3 -m pip install -r hybrid-cloud-poc/keylime/requirements.txt
 
             - name: Run Integration Tests
               shell: bash
@@ -39,5 +32,5 @@ jobs:
                   cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
                   # --no-color ensures clean logs in GitHub Actions
-                  # Explicitly targeting 10.1.0.10 (mwserver12)
-                  ./ci_test_runner.py --no-color -- --control-plane-host 10.1.0.10 --agents-host 10.1.0.10 --onprem-host 10.1.0.10
+                  # Explicitly targeting 10.1.0.10 (mwserver12) for single-machine setup
+                  python3 ./ci_test_runner.py --no-color -- --control-plane-host 10.1.0.10 --agents-host 10.1.0.10 --onprem-host 10.1.0.10
