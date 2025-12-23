@@ -28,7 +28,6 @@ jobs:
               run: |
                   cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
-                  # --single-machine targets the current host for all components
                   # --no-color ensures clean logs in GitHub Actions
-                  ./ci_test_runner.py --no-color --single-machine
-                  # Triggering test run
+                  # test_integration.sh auto-detects single-machine mode
+                  ./ci_test_runner.py --no-color
