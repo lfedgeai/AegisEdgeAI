@@ -2343,6 +2343,9 @@ fn pcrdata_to_vec(selection_list: PcrSelectionList, pcrdata: PcrData) -> Vec<u8>
     data_vec.extend(num_tpml_digests.to_le_bytes());
     data_vec.extend(&digest_vec);
 
+    log::debug!("[PCR DEBUG] pcrdata_to_vec: num_digests={}, pcrsel_vec_len={}, digest_vec_len={}, total_len={}", 
+        num_tpml_digests, pcrsel_vec.len(), digest_vec.len(), data_vec.len());
+
     data_vec
 }
 
@@ -2522,7 +2525,13 @@ fn encode_quote_string(
     // base64 encoding
     let att_str = general_purpose::STANDARD.encode(att_vec);
     let sig_str = general_purpose::STANDARD.encode(sig_vec);
+    
+    // Log before encoding to avoid borrow issues
+    let pcr_vec_len = pcr_vec.len();
     let pcr_str = general_purpose::STANDARD.encode(pcr_vec);
+
+    log::debug!("[PCR DEBUG] encode_quote_string: pcr_vec_len={}, pcr_str_len={}, att_str_len={}, sig_str_len={}", 
+        pcr_vec_len, pcr_str.len(), att_str.len(), sig_str.len());
 
     // create concatenated string
     let mut quote = String::new();
@@ -2532,6 +2541,9 @@ fn encode_quote_string(
     quote.push_str(&sig_str);
     quote.push(':');
     quote.push_str(&pcr_str);
+
+    log::debug!("[PCR DEBUG] encode_quote_string: final quote length={}, quote prefix={}", 
+        quote.len(), &quote[..std::cmp::min(50, quote.len())]);
 
     Ok(quote)
 }
@@ -2780,58 +2792,71 @@ fn perform_quote_with_tpm2_command_using_context(
         TpmError::HexDecodeError(format!("Failed to parse quote signature: {:?}", e))
     })?;
 
-    // Parse PCR data from tpm2_quote output file to avoid deadlock with TSS context lock
-    // The -o file contains TPML_PCR_SELECTION followed by number of TPML_DIGESTS + TPML_DIGESTs
-    // This is the same format that pcrdata_to_vec creates, so we can use make_pcr_blob to parse it
-    // make_pcr_blob reads from TPM, but we can work around this by using the PCR file format
+    // Parse PCR data from tpm2_quote output file
+    // The -o file should contain PCR values in a specific format
     log::info!("Parsing PCR data from tpm2_quote output file...");
     let quote_pcrs = fs::read(quote_pcrs_path)
         .map_err(|e| TpmError::HexDecodeError(format!("Failed to read quote PCRs file: {}", e)))?;
 
-    // The PCR file format matches what pcrdata_to_vec creates:
-    // TPML_PCR_SELECTION (serialized) + u32 (count of TPML_DIGEST) + TPML_DIGEST[] (serialized)
-    // We can parse this and reconstruct PcrData
-    // But actually, make_pcr_blob reads from TPM, so we need a different approach
-
-    // Parse the format directly (reverse of pcrdata_to_vec):
-    // 1. Parse TPML_PCR_SELECTION (skip it, we already have pcrlist)
-    // 2. Parse count (u32)
-    // 3. Parse TPML_DIGEST array
-    // 4. Convert to PcrData
-
-    // TPML_PCR_SELECTION and TPML_DIGEST are from tss2_esys (C structs, don't implement UnMarshall)
-    // We need to manually deserialize based on the serialization format
+    log::debug!("[PCR FILE DEBUG] PCR file size: {} bytes", quote_pcrs.len());
+    log::debug!("[PCR FILE DEBUG] First 32 bytes (hex): {}", hex::encode(&quote_pcrs[..std::cmp::min(32, quote_pcrs.len())]));
+    
+    // The file format from tpm2_quote -o is documented as:
+    // TPML_PCR_SELECTION + TPML_DIGEST structures
+    // However, the actual format may differ from expectations
+    
     let mut pcr_bytes = quote_pcrs.as_slice();
 
-    // Skip TPML_PCR_SELECTION (we already have pcrlist, so we don't need to parse it)
-    // TPML_PCR_SELECTION is 132 bytes (see assert_eq_size! at top of file)
+    // Check if file is large enough for TPML_PCR_SELECTION
     if pcr_bytes.len() < TPML_PCR_SELECTION_SIZE {
+        log::error!("[PCR FILE DEBUG] File too small for TPML_PCR_SELECTION: {} bytes", pcr_bytes.len());
         return Err(TpmError::HexDecodeError(
-            "PCR file too short for TPML_PCR_SELECTION".to_string(),
+            format!("PCR file too short ({} bytes) for TPML_PCR_SELECTION (needs {} bytes)", 
+                pcr_bytes.len(), TPML_PCR_SELECTION_SIZE),
         ));
     }
+    
+    // Skip TPML_PCR_SELECTION (132 bytes)
     pcr_bytes = &pcr_bytes[TPML_PCR_SELECTION_SIZE..];
+    log::debug!("[PCR FILE DEBUG] After skipping PCR selection, {} bytes remain", pcr_bytes.len());
 
     // Parse count of TPML_DIGEST
     if pcr_bytes.len() < 4 {
+        log::error!("[PCR FILE DEBUG] Not enough bytes for digest count: {} bytes", pcr_bytes.len());
         return Err(TpmError::HexDecodeError(
             "PCR file too short for count".to_string(),
         ));
     }
+    
     let count = u32::from_le_bytes([pcr_bytes[0], pcr_bytes[1], pcr_bytes[2], pcr_bytes[3]]);
     pcr_bytes = &pcr_bytes[4..];
+    
+    log::debug!("[PCR FILE DEBUG] Digest count from file: {}, remaining bytes: {}", count, pcr_bytes.len());
+    log::debug!("[PCR FILE DEBUG] Expected bytes for {} digests: {}", count, count as usize * TPML_DIGEST_SIZE);
+
+    // If count is 0, we have a problem - create empty PcrData
+    if count == 0 {
+        log::warn!("[PCR FILE DEBUG] PCR file contains 0 digests! This is likely the root cause.");
+        log::warn!("[PCR FILE DEBUG] The tpm2_quote -o output format may not include PCR values.");
+        log::warn!("[PCR FILE DEBUG] Falling back to reading PCRs from TPM directly...");
+        
+        // Use make_pcr_blob to read current PCR values from TPM
+        let (pcrs_read, pcr_data) = make_pcr_blob(context, pcrlist)?;
+        log::info!("tpm2_quote completed successfully (PCRs read separately from TPM)");
+        return Ok((attest, signature, pcrs_read, pcr_data));
+    }
 
     // Parse TPML_DIGEST array
-    // Each TPML_DIGEST is 532 bytes (see assert_eq_size! at top of file)
-    // We'll use unsafe to convert bytes to struct (these are C structs from tss2_esys)
     let mut digest_list = Vec::new();
-    for _ in 0..count {
+    for i in 0..count {
         if pcr_bytes.len() < TPML_DIGEST_SIZE {
+            log::error!("[PCR FILE DEBUG] Not enough bytes for digest {}/{}: {} bytes available, {} needed", 
+                i, count, pcr_bytes.len(), TPML_DIGEST_SIZE);
             return Err(TpmError::HexDecodeError(
-                "PCR file too short for TPML_DIGEST".to_string(),
+                format!("PCR file too short for TPML_DIGEST {}/{}", i, count),
             ));
         }
-        // Unsafe: convert bytes to TPML_DIGEST struct (it's a C struct, so this is safe if aligned)
+        
         let digest: TPML_DIGEST =
             unsafe { std::ptr::read(pcr_bytes.as_ptr() as *const TPML_DIGEST) };
         digest_list.push(digest);
@@ -2839,12 +2864,8 @@ fn perform_quote_with_tpm2_command_using_context(
     }
 
     // Convert to PcrData
-    // Since pcrdata.into() gives Vec<TPML_DIGEST>, PcrData is likely a newtype wrapper
-    // We'll use unsafe transmute since the memory layout should be compatible
     use std::mem;
     let pcr_data: PcrData = unsafe {
-        // This is safe because PcrData is a newtype wrapper around Vec<TPML_DIGEST>
-        // as evidenced by: let digest: Vec<TPML_DIGEST> = pcrdata.into();
         mem::transmute(digest_list)
     };
 

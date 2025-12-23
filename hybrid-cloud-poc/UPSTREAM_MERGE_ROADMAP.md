@@ -1,73 +1,102 @@
-# Upstream Merge Roadmap: Unified Identity
+# Master Roadmap: Aegis Sovereign Unified Identity Upstreaming
+
+This document serves as the **single source of truth** for refactoring the "Unified Identity" PoC into upstream-ready components for SPIRE and Keylime.
 
 ## Executive Summary
-The "Unified Identity" feature introduces a symbiotic relationship between SPIRE and Keylime. The current "Hybrid Cloud PoC" implements these changes via a **Fork & Patch** pattern. To merge this upstream, we must separate these into distinct Feature Requests (for Keylime) and Custom Plugins (for SPIRE).
+The "Unified Identity" feature introduces a hardware-rooted relationship between SPIRE and Keylime. Currently implemented as a **Fork & Patch** pattern, this roadmap tracks the transition to Feature Requests (Keylime) and Plugin-based extensions (SPIRE).
 
-## Summary Checklist
-| Component | Task | Strategy | Complexity | Owner |
-| :--- | :--- | :--- | :--- | :--- |
-| **Keylime Agent** | **Task 1**: Add `delegated_certifier` endpoint | **Feature Request (Core)** | Medium | Rust Team |
-| **Keylime Agent** | **Task 2**: Add `attested_geolocation` API | **Separate Optional Endpoint** | Medium | Rust Team |
-| **Keylime Verifier** | **Task 3**: Add Verification API & Cleanup | **New API + Cleanup** | Medium | Python Team |
-| **SPIRE Server** | **Task 4**: Create `spire-plugin-unified-identity` (Validator) | **Separate Custom Plugin** | High | Go Team |
-| **SPIRE Agent** | **Task 5**: Create `spire-plugin-unified-identity` (Collector) | **Separate Custom Plugin** | High | Go Team |
-| **SPIRE Creds** | **Task 6**: Config `CredentialComposer` to inject claims | **Standard Configuration** | Low | Go Team |
+### Feature Flag Strategy
+All Unified Identity features are gated by a single atomic flag in the agent configuration:
+**Config** (`keylime-agent.conf`):
+```toml
+# Unified-Identity: Sovereign SVID support
+# Enables: delegated certification, geolocation attestation, TPM App Keys
+unified_identity_enabled = true
+```
+**All new endpoints and features MUST check this flag first.**
 
 ---
 
-## Task Breakdown
+## Master Checklist
 
-### Task 1: "Delegated Certifier" Endpoint (Keylime Agent)
-*Allow the Keylime Agent to sign external keys (like SPIRE's App Key) using the TPM.*
+### Pillar 1: Test Infrastructure (Safety Net)
+- [x] Create/Harden `test_integration.sh` (Fail-fast, structured logging)
+- [x] Set up clean error reporting for CI/Watcher
 
-*   **The Problem**: SPIRE Agent generates a "TPM App Key" for mTLS. It needs this key to be signed by the TPM's Attestation Key (AK) so the server can trust it.
-*   **The PoC "Hack"**: A custom HTTP endpoint `/certify_app_key` was added to `delegated_certification_handler.rs` in the Rust Agent. It blindly signs keys if a specific file exists.
-*   **The Upstream Solution**: **Feature Request: "Delegated Credential Issuance"**.
-    *   Propose a formal, configurable API endpoint in `rust-keylime` that allows signing external keys.
-    *   Must feature strict authentication (or be disabled by default) to prevent abuse.
+### Pillar 2: Upstreaming Implementation (Refactoring)
+- [x] **Task 1**: Keylime Agent - Delegated Certifier Endpoint
+- [x] **Task 2**: Keylime Agent - Attested Geolocation API
+- [ ] **Task 2d**: Keylime Verifier - Geolocation Database & Integration
+- [ ] **Task 3**: Keylime Verifier - Add Verification API & Cleanup
+- [ ] **Task 4**: SPIRE Server - Validator Plugin with Geolocation Claims
+- [ ] **Task 5**: SPIRE Agent - Collector Plugin (`spire-plugin-unified-identity`)
+- [ ] **Task 6**: SPIRE Creds - Credential Composer
 
-### Task 2: "Attested Geolocation" Optional API (Keylime Agent)
-*Add a separate, optional endpoint for retrieving geolocation bound to the device.*
+### Pillar 3: Production Readiness (Hardening)
+- [ ] Address Keylime Client TLS (`InsecureSkipVerify`)
+- [ ] Secure Secrets Management (CAMARA API Keys)
+- [ ] Resolve AegisSovereignAI GitHub Issues
 
-*   **The Problem**: The standard Keylime protocol only returns the TPM Quote and PCRs. Currently, "Unified Identity" modifies this core response payload to inject `geolocation`, which breaks schema compatibility.
-*   **The PoC "Hack"**: The `KeylimeQuote` struct was modified to include an optional `geolocation` field.
-*   **The Upstream Solution**: **Separate Optional API**.
-    *   Instead of modifying the core `/identity` or `/integrity` endpoints, add a **new optional endpoint** (e.g., `GET /v2/agent/attested_geolocation`).
-    *   This endpoint returns the signed geolocation data (or a quote including it).
-    *   *Benefit*: Allows clients who care about "Sovereign Identity" to fetch it, while keeping the core Keylime protocol clean and standard.
+---
+
+## Technical Task Deep-Dive
+
+### Task 1: Delegated Certifier Endpoint (Keylime Agent)
+**Status**: ✅ FUNCTIONAL 
+**Implementation**: [delegated_certification_handler.rs](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/rust-keylime/keylime-agent/src/delegated_certification_handler.rs)
+
+*   **Problem**: SPIRE Agent generates a "TPM App Key" and needs it signed by the TPM's Attestation Key (AK).
+*   **Upstream Solution**: Formal `POST /delegated_certification/certify_app_key` endpoint.
+*   **Hardening Roadmap**: 
+    - [x] IP Allowlist enforcement.
+    - [x] Rate limiting.
+    - [ ] Configuration options in `keylime.conf`.
+
+### Task 2: Attested Geolocation API (Keylime Agent)
+**Status**: ✅ COMPLETE
+**Implementation**: [geolocation_handler.rs](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/rust-keylime/keylime-agent/src/geolocation_handler.rs)
+
+*   **Problem**: Injecting geolocation into core Keylime quotes breaks schema compatibility.
+*   **Upstream Solution**: Separate `GET /v2/agent/attested_geolocation` endpoint.
+*   **Security (Task 2c)**: Implemented Nonce-based freshness and PCR 15 binding to prevent TOCTOU attacks.
+
+### Task 2d: Verifier Database Integration
+**Status**: 📋 PLANNED
+*   **Scope**: Update Keylime Verifier database schema to store and audit geolocation data. Implement PCR 15 validation in verification policies.
 
 ### Task 3: Add Verification API & Cleanup (Keylime Verifier)
-*Enable "Attestation as a Service" for SPIRE and cleanup dead code.*
+**Status**: ⚠️ FUNCTIONAL with DEAD CODE
+**Implementation**: `keylime/cloud_verifier_tornado.py`
 
-*   **The Request**: SPIRE needs to check the TPM Quote. It calls the custom `/verify/evidence` endpoint.
-*   **The Problem**: This endpoint is actively used by SPIRE but contains dead/legacy code for "Mobile Sensor verification".
-*   **The Upstream Solution**:
-    1.  **Upstream `/verify/evidence`**: Propose this generic endpoint to Keylime. It allows external systems (like SPIRE) to submit a Quote and get a verification result (Stateless/On-demand Attestation).
-    2.  **Remove Legacy Logic**: Strip out the `_verify_mobile_sensor` calls from this handler. The handler should *only* verify the Trusted Platform claims (TPM/PCRs) and return the raw geolocation data to the caller (SPIRE) without judging it.
+*   **Goal**: Enable "Attestation as a Service" for SPIRE and strip legacy mobile sensor logic.
+*   **Roadmap**: Propose generic `/verify/evidence` endpoint to Keylime upstream.
 
-### Task 4: "Validator" Node Attestor (SPIRE Server)
-*Validate the Unified Identity evidence on the SPIRE Server.*
+### Task 4: SPIRE Server Validator Plugin (with Geolocation)
+**Status**: ❌ NEEDS REFACTORING
+**Implementation (Current Hack)**: [service.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/api/agent/v1/service.go) and [claims.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/unifiedidentity/claims.go)
 
-*   **The Problem**: SPIRE Server doesn't know how to talk to Keylime or validate this specific "SovereignAttestation" payload.
-*   **The PoC "Hack"**: Core file `service.go` was modified (`AttestAgent` method) to manually parse the custom payload and call the Keylime Client.
-*   **The Upstream Solution**: **`spire-plugin-unified-identity` (Server Side)**.
-    *   Move all the logic from `service.go` into a custom **Node Attestor Plugin**.
-    *   This plugin receives the payload, calls the Keylime Verifier (Task 3 API), and returns the successful SPIFFE ID to the Core.
+*   **Goal**: Move core patches into a custom `NodeAttestor` plugin.
+*   **Scope**: Extract Keylime client calls, payload parsing, and geolocation claim mapping logic into the plugin.
 
-### Task 5: "Collector" Node Attestor (SPIRE Agent)
-*Collect the Unified Identity evidence on the SPIRE Agent.*
+### Task 5: SPIRE Agent Collector Plugin
+**Status**: ❌ NEEDS REFACTORING
+*   **Implementation (Current Hack)**: Patches to `agent.go` and `client.go` in SPIRE Agent core.
+*   **Goal**: Move the complex orchestration (TPM Key -> Keylime sign -> Quote -> Server) into an Agent Node Attestor plugin.
 
-*   **The Problem**: SPIRE Agent needs to orchestrate the complex dance of "Get App Key -> Sign with Keylime -> Get Quote -> Send to Server".
-*   **The PoC "Hack"**: Core files `agent.go` and `client.go` were heavily patched to perform this orchestration before the standard SVID rotation even starts.
-*   **The Upstream Solution**: **`spire-plugin-unified-identity` (Agent Side)**.
-    *   Move the orchestration logic into a custom **Node Attestor Plugin**.
-    *   The plugin handles the communication with the local Keylime Agent (Task 1 & 2) and packages the proof into a standard completion payload.
+### Task 6: Credential Composer (SPIRE)
+**Status**: ✅ EASIEST
+*   **Goal**: Replace core `ca.go` patches with standard SPIRE `CredentialComposer` plugin configuration to inject claims into X.509 SVIDs.
 
-### Task 6: "SPIRE Creds" (Credential Injection)
-*Inject Custom Claims (Geolocation, Integrity) into the X.509 Certificate.*
+---
 
-*   **The Problem**: By default, SPIRE only puts the **SPIFFE ID** into the certificate. It ignores extra metadata.
-*   **The PoC "Hack"**: Modified the Core SPIRE CA Code (`ca.go`) to force-inject these new fields into the X.509 certificate.
-*   **The Upstream Solution**: **`CredentialComposer`**.
-    *   Use the standard **Credential Composer Plugin Interface** available in modern SPIRE.
-    *   Configure it (or write a tiny plugin) to listen for the attributes verified in Task 4 and add them as standard X.509 Extensions.
+## Verification Strategy
+
+### Full System Test
+```bash
+# Run integration test on real hardware (10.1.0.11)
+./ci_test_runner.py --no-color
+```
+
+### Hardware Requirements
+- Real TPM 2.0 (Available on node 10.1.0.11)
+- Network connectivity for distributed SPIRE/Keylime setup.

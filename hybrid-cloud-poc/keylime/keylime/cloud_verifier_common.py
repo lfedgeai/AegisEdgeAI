@@ -290,6 +290,7 @@ def process_get_status(agent: VerfierMain) -> Dict[str, Any]:
         "attestation_count": agent.attestation_count,
         "last_received_quote": agent.last_received_quote,
         "last_successful_attestation": agent.last_successful_attestation,
+        "geolocation": agent.geolocation,
     }
     return response
 

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import functools
+import hashlib
 import http.client as http_client
 import multiprocessing
 import os
@@ -386,6 +387,7 @@ def _from_db_obj(agent_db_obj: VerfierMain) -> Dict[str, Any]:
         "last_received_quote",
         "last_successful_attestation",
         "tpm_clockinfo",
+        "geolocation",
     ]
     agent_dict = {}
     for field in fields:
@@ -2128,11 +2130,10 @@ class VerifyEvidenceHandler(BaseHandler):
         def _fetch_quote_from_agent() -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
             api_versions = ['2.2', '2.4', '1.0']
             for api_version in api_versions:
-                # Use HTTP if mTLS is disabled, HTTPS otherwise
                 protocol = 'https' if use_https else 'http'
-                quote_url = f"{protocol}://{agent_ip}:{agent_port_int}/v{api_version}/quotes/identity?nonce={nonce}"
+                quote_url = f"{protocol}://{agent_ip}:{agent_port_int}/v{api_version}/quotes/integrity?nonce={nonce}&mask=0x8000&partial=0"
                 logger.info(
-                    'Unified-Identity: Requesting quote from agent %s:%s via %s',
+                    'Unified-Identity: Requesting quote from agent %s:%s via %s (requesting PCR 15)',
                     agent_ip,
                     agent_port_int,
                     quote_url,
@@ -2475,7 +2476,7 @@ class VerifyEvidenceHandler(BaseHandler):
                 return None
 
         logger.info("Unified-Identity: Step 2 - Verifying TPM Quote with AK")
-        quote_valid, quote_error, quote_failure = app_key_verification.verify_quote_with_ak(
+        quote_valid, quote_error, quote_failure, pcrs_dict = app_key_verification.verify_quote_with_ak(
             quote, ak_public_for_verification, nonce, hash_alg
         )
 
@@ -2572,6 +2573,60 @@ class VerifyEvidenceHandler(BaseHandler):
             
             if not mobile_geo_from_quote:
                 mobile_geo_from_quote = bool(sensor_id and geo_type in ['mobile', 'gnss'])
+
+        # Task 2d: PCR 15 Validation (Freshness & Integrity)
+        pcr15_valid = False
+        if geo_fetched_with_nonce and pcrs_dict and 15 in pcrs_dict:
+            try:
+                # 1. Reconstruct the object that was hashed by the agent
+                # Must match rust-keylime/keylime-agent/src/geolocation_handler.rs:375
+                geo_for_hash = {
+                    "sensor_type": quote_geolocation.get("sensor_type"),
+                    "mobile": quote_geolocation.get("mobile"),
+                    "gnss": quote_geolocation.get("gnss"),
+                    "tpm_attested": quote_geolocation.get("tpm_attested"),
+                    "tpm_pcr_index": quote_geolocation.get("tpm_pcr_index"),
+                }
+                
+                # 2. Serialize exactly as serde_json::to_string does
+                geo_json = json.dumps(geo_for_hash, separators=(',', ':'))
+                data_to_hash = f"{geo_json}{nonce}"
+                
+                # 3. Compute expected hash (SHA-256)
+                expected_digest = hashlib.sha256(data_to_hash.encode("utf-8")).digest()
+                
+                # 4. Compute expected PCR 15 (assuming extension from zero for simplicity in POC)
+                # In a real system, we would track the PCR 15 chain.
+                initial_pcr15 = b'\x00' * 32
+                final_pcr15_expected = hashlib.sha256(initial_pcr15 + expected_digest).hexdigest()
+                
+                actual_pcr15 = pcrs_dict[15]
+                if actual_pcr15.lower() == final_pcr15_expected.lower():
+                    logger.info("Unified-Identity: PCR 15 validation SUCCESS (geolocation bound to nonce)")
+                    pcr15_valid = True
+                else:
+                    logger.warning("Unified-Identity: PCR 15 validation FAILED. Expected: %s, Got: %s", 
+                                 final_pcr15_expected, actual_pcr15)
+            except Exception as e:
+                logger.error("Unified-Identity: Failed to perform PCR 15 validation: %s", e)
+        elif geo_fetched_with_nonce:
+            logger.warning("Unified-Identity: Geolocation fetched with nonce but PCR 15 missing from quote")
+
+        # Task 2d: Persist Geolocation to Database
+        if agent_id and quote_geolocation:
+            try:
+                from keylime.db.keylime_db import SessionManager, make_engine
+                from keylime.db.verifier_db import VerfierMain
+                
+                engine = make_engine('cloud_verifier')
+                with SessionManager().session_context(engine) as session:
+                    agent_obj = session.query(VerfierMain).filter(VerfierMain.agent_id == agent_id).first()
+                    if agent_obj:
+                        agent_obj.geolocation = mapped_geo
+                        session.add(agent_obj)
+                        logger.info("Unified-Identity: Persisted geolocation to database for agent %s", agent_id)
+            except Exception as e:
+                logger.error("Unified-Identity: Failed to persist geolocation to DB: %s", e)
 
         if not mobile_geo_from_quote and attested_claims.get('grc.geolocation'):
             logger.debug(

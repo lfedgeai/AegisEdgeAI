@@ -293,7 +293,7 @@ def verify_app_key_public_matches_cert(app_key_public: str, cert: x509.Certifica
 # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
 def verify_quote_with_app_key(
     quote: str, app_key_public: str, nonce: str, hash_alg: str
-) -> Tuple[bool, Optional[str], Optional[Failure]]:
+) -> Tuple[bool, Optional[str], Optional[Failure], Dict[int, str]]:
     """
     Verify TPM Quote signature using the App Key public key.
 
@@ -320,7 +320,7 @@ def verify_quote_with_app_key(
                     "Unified-Identity: Detected stub quote for testing. Skipping actual verification (testing mode)"
                 )
                 # For testing, accept stub quotes
-                return True, None, None
+                return True, None, None, {}
         except Exception:
             pass  # Continue with normal verification
 
@@ -335,12 +335,12 @@ def verify_quote_with_app_key(
         except Exception as e:
             error_msg = f"Failed to parse App Key public key: {e}"
             logger.error("Unified-Identity: %s", error_msg)
-            return False, error_msg, None
+            return False, error_msg, None, {}
 
         if not isinstance(app_key_pubkey, (RSAPublicKey, EllipticCurvePublicKey)):
             error_msg = f"Unsupported App Key public key type: {type(app_key_pubkey).__name__}"
             logger.error("Unified-Identity: %s", error_msg)
-            return False, error_msg, None
+            return False, error_msg, None, {}
 
         # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
         # Parse quote structure (format: r<quoteblob>:<sigblob>:<pcrblob>)
@@ -350,10 +350,16 @@ def verify_quote_with_app_key(
             # Use Keylime's quote parser to extract the components
             try:
                 quoteblob, sigblob, pcrblob = tpm_main.Tpm._get_quote_parameters(quote, compressed=False)
+                logger.debug(
+                    "Unified-Identity: Parsed quote components - quoteblob len=%d, sigblob len=%d, pcrblob len=%d",
+                    len(quoteblob) if quoteblob else 0,
+                    len(sigblob) if sigblob else 0,
+                    len(pcrblob) if pcrblob else 0
+                )
             except Exception as e:
                 error_msg = f"Failed to parse quote format (r<message>:<signature>:<pcrs>): {e}"
                 logger.error("Unified-Identity: %s", error_msg)
-                return False, error_msg, None
+                return False, error_msg, None, {}
         else:
             # Quote might be raw base64-encoded bytes
             try:
@@ -365,14 +371,14 @@ def verify_quote_with_app_key(
             except Exception as e:
                 error_msg = f"Failed to decode base64 quote: {e}"
                 logger.error("Unified-Identity: %s", error_msg)
-                return False, error_msg, None
+                return False, error_msg, None, {}
 
         # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
         # Verify that we have all required quote components
         if sigblob is None or pcrblob is None:
             error_msg = "Quote format is missing required components (signature or PCRs). Expected format: r<message>:<signature>:<pcrs>"
             logger.error("Unified-Identity: %s", error_msg)
-            return False, error_msg, None
+            return False, error_msg, None, {}
 
         # Unified-Identity: Core Keylime Functionality (Fact-Provider Logic)
         # Use tpm_util.checkquote directly since it accepts PEM format
@@ -385,10 +391,59 @@ def verify_quote_with_app_key(
             # Convert app_key_public (PEM string) to bytes for checkquote
             app_key_pem_bytes = app_key_public.encode("utf-8")
             
+            # Unified-Identity: Extract PCRs from pcrblob
+            pcrs_dict = {}
+            if pcrblob:
+                try:
+                    # The pcrblob from rust-keylime follows tpm2-tools format:
+                    # TPML_PCR_SELECTION + num_tpml_digests (u32 LE) + TPML_DIGESTs
+                    # TPML_DIGEST: count (u32 LE) + [size (u16 LE) + buffer]
+                    
+                    # 1. Parse TPML_PCR_SELECTION
+                    selections, offset = tpm2_objects.unmarshal_tpml_pcr_selection(pcrblob)
+                    
+                    # 2. Parse num_tpml_digests (u32 LE)
+                    if len(pcrblob) >= offset + 4:
+                        num_digests = struct.unpack_from("<I", pcrblob, offset)[0]
+                        offset += 4
+                        
+                        # Indices of PCRs selected (across all hash algs)
+                        # We'll map them in order of occurrence in selections
+                        pcr_indices = []
+                        for hash_alg in sorted(selections.keys()):
+                            mask_bytes = selections[hash_alg]
+                            for i in range(len(mask_bytes) * 8):
+                                if (mask_bytes[i // 8] >> (i % 8)) & 1:
+                                    pcr_indices.append(i)
+                        
+                        pcr_count = 0
+                        for _ in range(num_digests):
+                            if len(pcrblob) < offset + 4:
+                                break
+                            digest_count = struct.unpack_from("<I", pcrblob, offset)[0]
+                            offset += 4
+                            for _ in range(digest_count):
+                                if len(pcrblob) < offset + 2:
+                                    break
+                                digest_size = struct.unpack_from("<H", pcrblob, offset)[0]
+                                offset += 2
+                                if len(pcrblob) < offset + digest_size:
+                                    break
+                                digest_bytes = pcrblob[offset:offset+digest_size]
+                                offset += digest_size
+                                
+                                if pcr_count < len(pcr_indices):
+                                    index = pcr_indices[pcr_count]
+                                    pcrs_dict[index] = digest_bytes.hex()
+                                    pcr_count += 1
+                except Exception as e:
+                    logger.warning("Unified-Identity: Failed to parse PCR blob: %s", e)
+            
             # Unified-Identity: Extract nonce from quote for comparison
             # The nonce in the quote might be hex-encoded, so we need to handle both formats
             retDict = tpm2_objects.unmarshal_tpms_attest(quoteblob)
             extradata = retDict["extraData"]
+
             
             # Try to decode extradata as UTF-8, if that fails, compare as hex
             try:
@@ -410,7 +465,7 @@ def verify_quote_with_app_key(
             if quote_nonce.lower() != nonce_hex:
                 error_msg = f"Nonce mismatch: quote has {quote_nonce[:32]}..., expected {nonce_hex[:32]}..."
                 logger.error("Unified-Identity: %s", error_msg)
-                return False, error_msg, None
+                return False, error_msg, None, {}
             
             # Unified-Identity: Verify signature and PCR digest
             # Since nonce is hex-encoded and checkquote expects UTF-8, we'll verify manually
@@ -422,19 +477,19 @@ def verify_quote_with_app_key(
             if not hashfunc:
                 error_msg = f"Unsupported hash algorithm {hash_alg_int:#x} in signature blob"
                 logger.error("Unified-Identity: %s", error_msg)
-                return False, error_msg, None
+                return False, error_msg, None, {}
             
             if hashfunc.name != hash_alg:
                 error_msg = f"Hash algorithm mismatch: quote uses {hashfunc.name}, expected {hash_alg}"
                 logger.error("Unified-Identity: %s", error_msg)
-                return False, error_msg, None
+                return False, error_msg, None, {}
             
             # Load public key
             pubkey = serialization.load_pem_public_key(app_key_pem_bytes, backend=default_backend())
             if not isinstance(pubkey, (RSAPublicKey, EllipticCurvePublicKey)):
                 error_msg = f"Unsupported App Key public key type: {type(pubkey).__name__}"
                 logger.error("Unified-Identity: %s", error_msg)
-                return False, error_msg, None
+                return False, error_msg, None, {}
             
             # Extract signature from sigblob
             if isinstance(pubkey, RSAPublicKey) and sig_alg in [tpm2_objects.TPM_ALG_RSASSA]:
@@ -445,7 +500,7 @@ def verify_quote_with_app_key(
             else:
                 error_msg = f"Unsupported signature algorithm {sig_alg:#x} for key type {type(pubkey).__name__}"
                 logger.error("Unified-Identity: %s", error_msg)
-                return False, error_msg, None
+                return False, error_msg, None, {}
             
             # Compute quote digest
             digest = hashes.Hash(hashfunc, backend=default_backend())
@@ -474,27 +529,77 @@ def verify_quote_with_app_key(
             logger.info("Unified-Identity: Verified - Nonce matches, Signature valid, Hash algorithm correct")
             logger.debug("Unified-Identity: PCR digest verification skipped (would require private Keylime functions)")
             
-            # Return empty PCR dict since we couldn't extract it without checkquote
-            pcrs_dict = {}
-            return True, None, None
+            # Unified-Identity: Extract PCRs from pcrblob
+            if pcrblob:
+                try:
+                    # The pcrblob from rust-keylime follows tpm2-tools format:
+                    # TPML_PCR_SELECTION + num_tpml_digests (u32 LE) + TPML_DIGESTs
+                    # TPML_DIGEST: count (u32 LE) + [size (u16 LE) + buffer]
+                    
+                    # 1. Parse TPML_PCR_SELECTION
+                    selections, offset = tpm2_objects.unmarshal_tpml_pcr_selection(pcrblob)
+                    
+                    # 2. Parse num_tpml_digests (u32 LE)
+                    if len(pcrblob) >= offset + 4:
+                        num_digests = struct.unpack_from("<I", pcrblob, offset)[0]
+                        offset += 4
+                        
+                        # Indices of PCRs selected (across all hash algs)
+                        # We'll map them in order of occurrence in selections
+                        pcr_indices = []
+                        for hash_alg in sorted(selections.keys()):
+                            mask_bytes = selections[hash_alg]
+                            for i in range(len(mask_bytes) * 8):
+                                if (mask_bytes[i // 8] >> (i % 8)) & 1:
+                                    pcr_indices.append(i)
+                        
+                        pcr_count = 0
+                        for _ in range(num_digests):
+                            if len(pcrblob) < offset + 4:
+                                break
+                            digest_count = struct.unpack_from("<I", pcrblob, offset)[0]
+                            offset += 4
+                            for _ in range(digest_count):
+                                if len(pcrblob) < offset + 2:
+                                    break
+                                digest_size = struct.unpack_from("<H", pcrblob, offset)[0]
+                                offset += 2
+                                if len(pcrblob) < offset + digest_size:
+                                    break
+                                digest_bytes = pcrblob[offset:offset+digest_size]
+                                offset += digest_size
+                                
+                                if pcr_count < len(pcr_indices):
+                                    index = pcr_indices[pcr_count]
+                                    pcrs_dict[index] = digest_bytes.hex()
+                                    pcr_count += 1
+                    
+                    if not pcrs_dict:
+                        # Fallback to older logic if parsing failed or returned nothing
+                        pcr_count, pcr_results = tpm2_objects.unmarshal_tpml_pcr_selection(pcrblob)
+                except Exception as e:
+                    logger.warning("Unified-Identity: Failed to parse PCR blob: %s", e)
+
+
+            return True, None, None, pcrs_dict
 
         except Exception as e:
             error_msg = f"Error during quote verification: {e}"
             logger.exception("Unified-Identity: %s", error_msg)
             failure = Failure(Component.QUOTE_VALIDATION)
             failure.add_event("quote_verification_error", {"message": error_msg}, False)
-            return False, error_msg, failure
+            return False, error_msg, failure, {}
 
     except Exception as e:
         error_msg = f"Unexpected error during quote verification: {e}"
         logger.exception("Unified-Identity: %s", error_msg)
-        return False, error_msg, None
+        return False, error_msg, None, {}
 
 
 
 def verify_quote_with_ak(
     quote: str, ak_public: str, nonce: str, hash_alg: str
-) -> Tuple[bool, Optional[str], Optional[Failure]]:
+) -> Tuple[bool, Optional[str], Optional[Failure], Dict[int, str]]:
     """
     Wrapper for verifying quotes signed by the TPM AK. Reuses the App Key
     verification logic since the cryptographic operations are identical.

@@ -336,9 +336,25 @@ async fn integrity(
     // https://github.com/rust-lang-nursery/failure/issues/192
     let mut context = data.tpmcontext.lock().unwrap(); //#[allow_ci]
 
+    // Unified-Identity: Decode hex nonce from Verifier before passing to TPM
+    // The Verifier sends hex-encoded nonces, but TPM expects raw bytes
+    let nonce_bytes = match hex::decode(&param.nonce) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            warn!(
+                "Get quote returning 400 response. Failed to decode nonce from hex: {}",
+                e
+            );
+            return HttpResponse::BadRequest().json(JsonWrapper::error(
+                400,
+                format!("nonce should be hex-encoded: {}", param.nonce),
+            ));
+        }
+    };
+
     // Generate the ID quote.
     let tpm_quote = match context.quote(
-        param.nonce.as_bytes(),
+        &nonce_bytes,
         mask,
         &data.payload_pub_key,
         data.ak_handle,

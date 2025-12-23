@@ -51,6 +51,7 @@ class VerfierMain(Base):
     last_received_quote = Column(Integer)
     last_successful_attestation = Column(Integer)
     tpm_clockinfo = Column(JSONPickleType(pickler=JSONPickler))
+    geolocation = Column(JSONPickleType(pickler=JSONPickler), nullable=True)
 
 
 class VerifierAllowlist(Base):
