@@ -330,13 +330,12 @@ func (s *Service) newX509SVID(ctx context.Context, param *svidv1.NewX509SVIDPara
 		log.Debug("Unified-Identity - Verification: Embedding AttestedClaims in workload SVID certificate")
 	}
 
+	ctx = unifiedidentity.WithClaims(ctx, attestedClaimsForCert, attestedClaimsJSON)
 	x509Svid, err := s.ca.SignWorkloadX509SVID(ctx, ca.WorkloadX509SVIDParams{
-		SPIFFEID:       spiffeID,
-		PublicKey:      csr.PublicKey,
-		DNSNames:       entry.GetDnsNames(),
-		TTL:            time.Duration(entry.GetX509SvidTtl()) * time.Second,
-		AttestedClaims: attestedClaimsForCert, // Unified-Identity - Verification: Embed AttestedClaims in certificate
-		UnifiedIdentityJSON: attestedClaimsJSON,
+		SPIFFEID:  spiffeID,
+		PublicKey: csr.PublicKey,
+		DNSNames:  entry.GetDnsNames(),
+		TTL:       time.Duration(entry.GetX509SvidTtl()) * time.Second,
 	})
 	if err != nil {
 		return &svidv1.BatchNewX509SVIDResponse_Result{

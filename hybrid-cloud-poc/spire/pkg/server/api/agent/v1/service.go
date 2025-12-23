@@ -825,11 +825,10 @@ func (s *Service) signSvid(ctx context.Context, agentID spiffeid.ID, csr []byte,
 
 	// Unified-Identity - Verification: Sign X509 SVID with AttestedClaims embedded in certificate extension
 	// This implements Model 3 from federated-jwt.md: "The assurance claims (TPM/Geo) are then anchored to the certificate."
+	ctx = unifiedidentity.WithClaims(ctx, attestedClaims, attestedClaimsJSON)
 	x509Svid, err := s.ca.SignAgentX509SVID(ctx, ca.AgentX509SVIDParams{
-		SPIFFEID:       agentID,
-		PublicKey:      parsedCsr.PublicKey,
-		AttestedClaims: attestedClaims, // Unified-Identity - Verification: Embed AttestedClaims in certificate
-		UnifiedIdentityJSON: attestedClaimsJSON,
+		SPIFFEID:  agentID,
+		PublicKey: parsedCsr.PublicKey,
 	})
 	if err != nil {
 		return nil, api.MakeErr(log, codes.Internal, "failed to sign X509 SVID", err)

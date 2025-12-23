@@ -3,6 +3,7 @@ package catalog
 import (
 	"github.com/spiffe/spire/pkg/common/catalog"
 	"github.com/spiffe/spire/pkg/server/plugin/credentialcomposer"
+	"github.com/spiffe/spire/pkg/server/plugin/credentialcomposer/unifiedidentity"
 	"github.com/spiffe/spire/pkg/server/plugin/credentialcomposer/uniqueid"
 )
 
@@ -23,7 +24,10 @@ func (repo *credentialComposerRepository) Versions() []catalog.Version {
 }
 
 func (repo *credentialComposerRepository) BuiltIns() []catalog.BuiltIn {
-	return []catalog.BuiltIn{uniqueid.BuiltIn()}
+	return []catalog.BuiltIn{
+		uniqueid.BuiltIn(),
+		unifiedidentity.BuiltIn(),
+	}
 }
 
 type credentialComposerV1 struct{}

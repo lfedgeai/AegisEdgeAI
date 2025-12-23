@@ -30,7 +30,7 @@ unified_identity_enabled = true
 - [ ] **Task 3**: Keylime Verifier - Add Verification API & Cleanup
 - [ ] **Task 4**: SPIRE Server - Validator Plugin with Geolocation Claims
 - [ ] **Task 5**: SPIRE Agent - Collector Plugin (`spire-plugin-unified-identity`)
-- [ ] **Task 6**: SPIRE Creds - Credential Composer
+- [x] **Task 6**: SPIRE Creds - Credential Composer
 
 ### Pillar 3: Production Readiness (Hardening)
 - [ ] Address Keylime Client TLS (`InsecureSkipVerify`)
@@ -88,8 +88,12 @@ unified_identity_enabled = true
 *   **Goal**: Move the complex orchestration (TPM Key -> Keylime sign -> Quote -> Server) into an Agent Node Attestor plugin.
 
 ### Task 6: Credential Composer (SPIRE)
-**Status**: ✅ EASIEST
+**Status**: ✅ COMPLETE
+**Implementation**: [plugin.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/plugin/credentialcomposer/unifiedidentity/plugin.go), [context.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/unifiedidentity/context.go)
+
 *   **Goal**: Replace core `ca.go` patches with standard SPIRE `CredentialComposer` plugin configuration to inject claims into X.509 SVIDs.
+*   **Result**: Removed all "Unified Identity" patches from core `ca.go` and `builder.go`. Claims are now safely propagated via Go context and injected by the `unifiedidentity` plugin.
+*   **Verification**: Verified with unit tests and full-system integration test suite (`ci_test_runner.py`).
 
 ---
 
