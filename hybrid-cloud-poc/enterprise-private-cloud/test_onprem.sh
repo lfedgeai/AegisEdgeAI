@@ -723,7 +723,7 @@ if [ "$NO_BUILD" != "true" ]; then
     echo -e "\n${GREEN}[6/7] Building WASM filter for sensor verification...${NC}"
     cd "$ONPREM_DIR/wasm-plugin"
     if [ -f "build.sh" ]; then
-        if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
+        if bash build.sh > /tmp/wasm-build.log 2>&1; then
             echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
             printf '  Sensor ID extraction is done directly in WASM filter - no separate service needed\n'
         else
