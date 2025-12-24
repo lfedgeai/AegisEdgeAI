@@ -101,6 +101,39 @@ The service implements intelligent caching for CAMARA `verify_location` API call
   - Reduces API rate limiting issues
   - Lowers operational costs
 
+### Kubernetes Deployment (Secrets)
+
+To deploying securely in Kubernetes, mount the secret as a file and point `CAMARA_BASIC_AUTH_FILE` to it:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mobile-sensor
+spec:
+  template:
+    spec:
+      containers:
+        - name: mobile-sensor
+          image: mobile-sensor-microservice:latest
+          env:
+            # 1. Point the app to the mounted secret file
+            - name: CAMARA_BASIC_AUTH_FILE
+              value: "/etc/secrets/camara/basic-auth"
+          volumeMounts:
+            # 2. Mount the secret volume
+            - name: camara-secret-vol
+              mountPath: "/etc/secrets/camara"
+              readOnly: true
+      volumes:
+        - name: camara-secret-vol
+          secret:
+            secretName: camara-api-credentials
+            items:
+              - key: basic-auth
+                path: basic-auth
+```
+
 **Logging**: All cache operations are logged with clear tags:
 - `[CACHE HIT]` - Using cached result (NO API CALL)
 - `[CACHE MISS]` - No cache available (CALLING API)
