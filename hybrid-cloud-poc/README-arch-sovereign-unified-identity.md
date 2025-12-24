@@ -5,7 +5,7 @@
 **Architecture Philosophy**: This implementation uses **plugin-based extension** rather than core modifications:
 
 - **SPIRE**: All functionality via plugins (NodeAttestor, CredentialComposer, etc.)
-- **Keylime**: New optional APIs added to verifier and agent (no core changes)
+- **Keylime**: New optional APIs added to verifier and agent (no core changes). **Note**: Geolocation APIs have standalone value for host location attestation independent of Unified Identity.
 - **Clean Interfaces**: Plugin boundaries enable independent upstream contribution
 - **Zero Core Dependencies**: Can be merged upstream without breaking existing deployments
 
