@@ -19,7 +19,7 @@ class Colors:
     CYAN = '\033[0;36m'
     BOLD = '\033[1m'
     NC = '\033[0m'  # No Color
-
+    
     @classmethod
     def disable(cls):
         """Disable colors for CI environments"""
@@ -34,18 +34,51 @@ class TestRunner:
         self.log_dir = None
         self.errors = []
         self.warnings = []
-
+        self.current_log_file = None
+        self.dumped_log_files = set()
+        
         if no_color or not sys.stdout.isatty():
             Colors.disable()
-
+    
     def extract_log_dir(self, line):
         """Extract log directory from test output"""
-        match = re.search(r'Logs will be aggregated in (/tmp/unified_identity_test_\d+)', line)
+        match = re.search(r'Logs will be aggregated in (/tmp/unified_identity_test_\d+_\d+)', line)
         if match:
             self.log_dir = match.group(1)
             return True
         return False
+        
+    def track_log_file(self, line):
+        """Track the currently active log file from output"""
+        # Matches "Log:    /tmp/.../foo.log"
+        match = re.search(r'Log:\s+([^ ]+\.log)', line)
+        if match:
+            self.current_log_file = match.group(1).strip()
+            return True
+        return False
 
+    def dump_current_log_tail(self):
+        """Immediately dump the tail of the current log file if not already dumped"""
+        if not self.current_log_file or self.current_log_file in self.dumped_log_files:
+            return
+
+        log_path = Path(self.current_log_file)
+        if not log_path.exists():
+            return
+
+        self.dumped_log_files.add(self.current_log_file)
+        print(f"\n{Colors.YELLOW}--- IMMEDIATE LOG DUMP: {log_path.name} ---{Colors.NC}")
+        try:
+            with open(log_path, 'r') as f:
+                # Read all lines efficiently
+                lines = f.readlines()
+                # Show last 50 lines to keep it focused
+                tail_lines = lines[-50:] if len(lines) > 50 else lines
+                print(''.join(tail_lines))
+        except Exception as e:
+            print(f"Error reading log file: {e}")
+        print(f"{Colors.YELLOW}--- END LOG DUMP ---\n{Colors.NC}")
+    
     def detect_error(self, line):
         """Detect error patterns in output"""
         # Ignore expected errors
@@ -58,7 +91,7 @@ class TestRunner:
         for pattern in ignore_patterns:
             if re.search(pattern, line, re.IGNORECASE):
                 return False
-
+        
         # Real error patterns
         error_patterns = [
             r'CRITICAL ERROR',
@@ -66,21 +99,22 @@ class TestRunner:
             r'cannot.*connect',
             r'Unable to start',
             r'Exit.*code.*[1-9]',  # Non-zero exit from subprocess
+            r'Error:', # Catch generic Error: lines
         ]
         for pattern in error_patterns:
             if re.search(pattern, line, re.IGNORECASE):
                 self.errors.append(line.strip())
                 return True
-
+        
         # Check for ✗ symbol (failure indicator) but not in cleanup-related messages
         if '✗' in line:
             if any(pattern in line.lower() for pattern in ['cleanup', 'stopping', 'cleaning up']):
                 return False  # Ignore cleanup failures
             self.errors.append(line.strip())
             return True
-
+        
         return False
-
+    
     def detect_warning(self, line):
         """Detect warning patterns in output"""
         # Ignore very noisy warnings
@@ -91,7 +125,7 @@ class TestRunner:
         for pattern in ignore_patterns:
             if re.search(pattern, line, re.IGNORECASE):
                 return False
-
+        
         warning_patterns = [
             r'WARNING',
             r'⚠.*(?!Agent services cleanup)',  # Warnings except cleanup
@@ -101,7 +135,7 @@ class TestRunner:
                 self.warnings.append(line.strip())
                 return True
         return False
-
+    
     def print_header(self):
         """Print CI run header"""
         print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
@@ -111,32 +145,32 @@ class TestRunner:
         print(f"Command: ./test_integration.sh {' '.join(self.args)}")
         print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
         print()
-
+    
     def parse_log_files(self):
         """Parse log files after completion to find failure details"""
         if not self.log_dir or not Path(self.log_dir).exists():
             return
-
+        
         log_files = list(Path(self.log_dir).glob('*.log'))
         if not log_files:
             return
-
+        
         # Parse master.log first for overall failure
         master_log = Path(self.log_dir) / 'master.log'
         if master_log.exists():
             self._parse_master_log(master_log)
-
+        
         # Parse individual script logs for specific failures
         for log_file in sorted(log_files):
             if log_file.name != 'master.log':
                 self._parse_script_log(log_file)
-
+    
     def _parse_master_log(self, log_path):
         """Parse master.log to find failure point"""
         try:
             with open(log_path, 'r') as f:
                 lines = f.readlines()
-
+            
             # Find the last error before exit
             for i in range(len(lines) - 1, max(0, len(lines) - 50), -1):
                 line = lines[i]
@@ -145,19 +179,19 @@ class TestRunner:
                     context_start = max(0, i - 5)
                     context_end = min(len(lines), i + 6)
                     context = ''.join(lines[context_start:context_end])
-
+                    
                     if line.strip() not in [e.strip() for e in self.errors]:
                         self.errors.append(f"[master.log:{i+1}] {line.strip()}")
                     break
         except Exception as e:
             pass  # Ignore parsing errors
-
+    
     def _parse_script_log(self, log_path):
         """Parse individual script log to find failure"""
         try:
             with open(log_path, 'r') as f:
                 lines = f.readlines()
-
+            
             # Look for explicit error markers
             for i, line in enumerate(lines):
                 if any(pattern in line for pattern in ['✗', 'failed', 'CRITICAL ERROR']):
@@ -165,57 +199,101 @@ class TestRunner:
                         self.errors.append(f"[{log_path.name}:{i+1}] {line.strip()}")
         except Exception as e:
             pass  # Ignore parsing errors
-
+    
+    def dump_failure_logs(self):
+        """Dump log file contents when tests fail - visible in GitHub Actions"""
+        if not self.log_dir or not Path(self.log_dir).exists():
+            return
+        
+        print(f"\n{Colors.RED}{'='*80}{Colors.NC}")
+        print(f"{Colors.RED}FAILURE LOG DUMP (for GitHub Actions debugging){Colors.NC}")
+        print(f"{Colors.RED}{'='*80}{Colors.NC}")
+        
+        log_files = [
+            'test_control_plane.log',
+            'test_agents.log', 
+            'test_onprem.log',
+            'test_mtls_client.log',
+            'master.log'
+        ]
+        
+        for log_name in log_files:
+            log_path = Path(self.log_dir) / log_name
+            if log_path.exists():
+                try:
+                    with open(log_path, 'r') as f:
+                        content = f.read()
+                    
+                    # Only show logs that have content
+                    if content.strip():
+                        # Check if this log has any errors
+                        has_errors = any(pattern in content for pattern in ['✗', 'FAILED', 'CRITICAL', 'Error:', 'Traceback'])
+                        
+                        if has_errors:
+                            print(f"\n{Colors.YELLOW}--- {log_name} (CONTAINS ERRORS) ---{Colors.NC}")
+                            # Show last 100 lines for error logs
+                            lines = content.strip().split('\n')
+                            if len(lines) > 100:
+                                print(f"... (showing last 100 of {len(lines)} lines) ...")
+                                print('\n'.join(lines[-100:]))
+                            else:
+                                print(content)
+                            print(f"{Colors.YELLOW}--- END {log_name} ---{Colors.NC}\n")
+                except Exception as e:
+                    print(f"  Could not read {log_name}: {e}")
+        
+        print(f"{Colors.RED}{'='*80}{Colors.NC}")
+    
     def print_summary(self):
         """Print test run summary"""
         duration = (self.end_time - self.start_time).total_seconds()
-
+        
         print()
         print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
         print(f"{Colors.BOLD}Test Run Summary{Colors.NC}")
         print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
         print(f"Duration: {duration:.1f} seconds")
         print(f"Exit Code: {self.exit_code}")
-
+        
         if self.log_dir:
             print(f"Logs: {self.log_dir}")
-
+        
         if self.warnings:
             print(f"\n{Colors.YELLOW}Warnings ({len(self.warnings)}):{Colors.NC}")
             for warning in self.warnings[:5]:  # Show first 5
                 print(f"  • {warning}")
             if len(self.warnings) > 5:
                 print(f"  ... and {len(self.warnings) - 5} more")
-
+        
         if self.errors:
             print(f"\n{Colors.RED}Errors ({len(self.errors)}):{Colors.NC}")
             for error in self.errors[:10]:  # Show first 10
                 print(f"  • {error}")
             if len(self.errors) > 10:
                 print(f"  ... and {len(self.errors) - 10} more")
-
+        
         print(f"\n{Colors.BOLD}{'='*80}{Colors.NC}")
         if self.exit_code == 0:
             print(f"{Colors.GREEN}{Colors.BOLD}✓ TESTS PASSED{Colors.NC}")
         else:
             print(f"{Colors.RED}{Colors.BOLD}✗ TESTS FAILED{Colors.NC}")
-            if self.log_dir:
-                print(f"\n{Colors.YELLOW}Check logs for details:{Colors.NC}")
-                print(f"  master.log: {self.log_dir}/master.log")
+            # Dump failure logs directly to GitHub Actions output (if not already dumped)
+            # We still dump here to be safe and comprehensive at the end
+            self.dump_failure_logs()
         print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
-
+    
     def run(self):
         """Run the integration tests"""
         self.print_header()
         self.start_time = datetime.now()
-
+        
         script_path = Path(__file__).parent / 'test_integration.sh'
         if not script_path.exists():
             print(f"{Colors.RED}Error: test_integration.sh not found at {script_path}{Colors.NC}")
             return 1
-
+        
         cmd = [str(script_path)] + self.args
-
+        
         try:
             # Run test_integration.sh with real-time output streaming
             process = subprocess.Popen(
@@ -225,23 +303,29 @@ class TestRunner:
                 universal_newlines=True,
                 bufsize=1
             )
-
+            
             # Stream output line by line
             for line in process.stdout:
                 # Print to stdout for real-time monitoring
                 print(line, end='')
-
+                
                 # Extract log directory
                 self.extract_log_dir(line)
-
+                
+                # Track current log file
+                self.track_log_file(line)
+                
                 # Detect errors and warnings
-                self.detect_error(line)
+                if self.detect_error(line):
+                    # Immediate failure feedback!
+                    self.dump_current_log_tail()
+                    
                 self.detect_warning(line)
-
+            
             # Wait for completion
             process.wait()
             self.exit_code = process.returncode
-
+            
         except KeyboardInterrupt:
             print(f"\n{Colors.YELLOW}Test interrupted by user{Colors.NC}")
             if process:
@@ -251,21 +335,21 @@ class TestRunner:
         except Exception as e:
             print(f"{Colors.RED}Error running tests: {e}{Colors.NC}")
             self.exit_code = 1
-
+        
         self.end_time = datetime.now()
-
+        
         # Parse log files to extract failure details
         if self.exit_code != 0:
             self.parse_log_files()
-
+        
         self.print_summary()
-
+        
         return self.exit_code
 
 def main():
     """Main entry point"""
     import argparse
-
+    
     parser = argparse.ArgumentParser(
         description='CI Test Runner for Unified Identity Integration Tests',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -287,22 +371,22 @@ Examples:
   ./ci_test_runner.py -- --no-pause --no-build
         """
     )
-
+    
     parser.add_argument('--no-color', action='store_true',
                         help='Disable color output (for CI)')
     parser.add_argument('test_args', nargs='*',
                         help='Arguments to pass to test_integration.sh (use -- to separate)')
-
+    
     # Parse only known args, let the rest pass through
     args, unknown = parser.parse_known_args()
-
+    
     # Combine test_args and unknown args
     all_test_args = args.test_args + unknown
-
+    
     # Add --no-pause by default for CI usage (unless already present)
     if '--no-pause' not in all_test_args and '--pause' not in ' '.join(all_test_args):
         all_test_args.append('--no-pause')
-
+    
     runner = TestRunner(args=all_test_args, no_color=args.no_color)
     exit_code = runner.run()
     sys.exit(exit_code)
