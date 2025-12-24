@@ -698,7 +698,18 @@ def create_app(db_path: Path) -> Flask:
     # Only create CamaraClient if bypass is disabled AND auth is provided
     camara_client = None
     if not bypass_camara:
-        camara_auth = os.getenv("CAMARA_BASIC_AUTH", "")
+        # Secrets Management: Support loading from file (Docker/K8s standard)
+        camara_auth_file = os.getenv("CAMARA_BASIC_AUTH_FILE", "")
+        if camara_auth_file and os.path.exists(camara_auth_file):
+            try:
+                with open(camara_auth_file, "r", encoding="utf-8") as f:
+                    camara_auth = f.read().strip()
+                LOG.info("Loaded CAMARA_BASIC_AUTH from file: %s", camara_auth_file)
+            except Exception as e:
+                LOG.error("Failed to read CAMARA_BASIC_AUTH_FILE: %s", e)
+                camara_auth = ""
+        else:
+            camara_auth = os.getenv("CAMARA_BASIC_AUTH", "")
         if camara_auth:
             # Check if auth_req_id was pre-obtained (e.g., from environment variable)
             pre_obtained_auth_req_id = os.getenv("CAMARA_AUTH_REQ_ID", "")

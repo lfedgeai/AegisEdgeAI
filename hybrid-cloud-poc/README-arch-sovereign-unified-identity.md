@@ -1130,7 +1130,7 @@ The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks requ
 - ✅ **Full TLS certificate validation** (Task 7 Complete - No `InsecureSkipVerify`)
 
 **Production Gaps** (See [`PILLAR2_STATUS.md`](PILLAR2_STATUS.md) for details):
-- ⚠️ CAMARA API keys in environment variables (needs secret management)
+- ✅ CAMARA API keys use file-based secret management (`CAMARA_BASIC_AUTH_FILE`)
 - ⚠️ Some code paths modify core SPIRE/Keylime files (needs plugin extraction)
 
 **TLS Certificate Validation (Task 7 - COMPLETE)**:
@@ -1143,7 +1143,7 @@ The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks requ
 
 **Recommended for Production**:
 1. Complete Task 1 enhancements (✅ Done)
-2. Implement proper secret management for CAMARA keys
+2. Implement proper secret management for CAMARA keys (✅ Done)
 3. Extract SPIRE modifications to standalone plugins (Tasks 4 & 5)
 
 ### Next Steps
@@ -1186,7 +1186,7 @@ The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks requ
 **For Production Deployment:**
 1. ✅ Test infrastructure ready
 2. ✅ Delegated certification hardened
-3. 🔄 Address security gaps (Secret management for CAMARA keys)
+3. ✅ Address security gaps (Secret management for CAMARA keys)
 4. 🔄 Monitor performance at scale
 
 **For Continued Development:**

@@ -814,56 +814,49 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     
     # Set CAMARA_BASIC_AUTH for mobile location service (only if bypass is disabled)
     if [ "$CAMARA_BYPASS" != "true" ]; then
-        # Priority: 1) Environment variable, 2) File (camara_basic_auth.txt), 3) Error
-        if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
-            # Try to load from file (similar to how auth_req_id is stored)
-            # Check in multiple possible locations
-            CAMARA_AUTH_FILE=""
-            for possible_path in \
-                "$REPO_ROOT/mobile-sensor-microservice/camara_basic_auth.txt" \
-                "$REPO_ROOT/camara_basic_auth.txt" \
-                "/tmp/mobile-sensor-service/camara_basic_auth.txt" \
-                "$(pwd)/camara_basic_auth.txt"; do
-                if [ -f "$possible_path" ]; then
-                    CAMARA_AUTH_FILE="$possible_path"
-                    break
-                fi
-            done
-            
-            if [ -n "$CAMARA_AUTH_FILE" ] && [ -f "$CAMARA_AUTH_FILE" ]; then
-                # Read file, trim only newlines/carriage returns, preserve spaces
-                CAMARA_BASIC_AUTH=$(cat "$CAMARA_AUTH_FILE" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -c 200)
-                if [ -n "$CAMARA_BASIC_AUTH" ]; then
-                    printf '  [OK] Loaded CAMARA_BASIC_AUTH from file: %s\n' "$CAMARA_AUTH_FILE"
-                else
-                    CAMARA_BASIC_AUTH=""
-                fi
+        # secrets-management: Prefer passing file path over reading content
+        CAMARA_AUTH_FILE=""
+        for possible_path in \
+            "$REPO_ROOT/mobile-sensor-microservice/camara_basic_auth.txt" \
+            "$REPO_ROOT/camara_basic_auth.txt" \
+            "/tmp/mobile-sensor-service/camara_basic_auth.txt" \
+            "$(pwd)/camara_basic_auth.txt"; do
+            if [ -f "$possible_path" ]; then
+                CAMARA_AUTH_FILE="$possible_path"
+                break
             fi
+        done
+        
+        if [ -n "$CAMARA_AUTH_FILE" ] && [ -f "$CAMARA_AUTH_FILE" ]; then
+            printf '  [OK] Found CAMARA secret file: %s\n' "$CAMARA_AUTH_FILE"
+            # Secure mode: Export path only
+            export CAMARA_BASIC_AUTH_FILE="$CAMARA_AUTH_FILE"
+            chmod 600 "$CAMARA_AUTH_FILE" 2>/dev/null || true
             
-            # If still not set, show error
-            if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
-                printf '  [ERROR] CAMARA_BYPASS=false but CAMARA_BASIC_AUTH is not set\n'
-                printf '          CAMARA_BASIC_AUTH must be provided via one of:\n'
-                printf '          1. Environment variable: export CAMARA_BASIC_AUTH="Basic <base64(client_id:client_secret)>"\n'
-                printf '          2. File: Create camara_basic_auth.txt with the credentials\n'
-                printf '             Location options:\n'
-                printf '             - %s/mobile-sensor-microservice/camara_basic_auth.txt\n' "$REPO_ROOT"
-                printf '             - %s/camara_basic_auth.txt\n' "$REPO_ROOT"
-                printf '             - /tmp/mobile-sensor-service/camara_basic_auth.txt\n'
-                printf '          Format: Basic <base64(client_id:client_secret)>\n'
-                printf '          See mobile-sensor-microservice/README.md for instructions\n'
+            # Export empty value for the env var to prevent confusion, service will use file
+            export CAMARA_BASIC_AUTH=""
+        else
+            # Fallback to env var if explicitly set
+            if [ -n "${CAMARA_BASIC_AUTH:-}" ]; then
+                printf '  [OK] Using CAMARA_BASIC_AUTH from environment\n'
+                export CAMARA_BASIC_AUTH
+            else
+                printf '  [ERROR] CAMARA_BYPASS=false but no credentials found\n'
+                printf '          Please provide camara_basic_auth.txt in %s/mobile-sensor-microservice\n' "$REPO_ROOT"
                 exit 1
             fi
-        else
-            printf '  [OK] Using CAMARA_BASIC_AUTH from environment\n'
         fi
 
-        # Create environment file for mobile sensor service
-        if [ -n "$CAMARA_BASIC_AUTH" ]; then
+        # Create environment file for mobile sensor service - storing PATH now
+        if [ -n "${CAMARA_BASIC_AUTH_FILE:-}" ]; then
+            printf '%s\n' "CAMARA_BASIC_AUTH_FILE=$CAMARA_BASIC_AUTH_FILE" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
+            printf '  [OK] Mobile sensor service environment configured (File-based)\n'
+        elif [ -n "${CAMARA_BASIC_AUTH:-}" ]; then
             printf '%s\n' "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
-            printf '  [OK] Mobile sensor service environment configured\n'
-            printf '  [INFO] Service will obtain auth_req_id from /bc-authorize during initialization\n'
+            printf '  [OK] Mobile sensor service environment configured (Env-based)\n'
         fi
+        
+        printf '  [INFO] Service will obtain auth_req_id from /bc-authorize during initialization\n'
     else
         printf '  [OK] CAMARA_BYPASS=true (CAMARA API calls will be skipped)\n'
     fi

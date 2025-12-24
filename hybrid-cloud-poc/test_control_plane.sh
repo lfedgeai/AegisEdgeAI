@@ -18,14 +18,7 @@ PYTHON_KEYLIME_DIR="${KEYLIME_DIR}"
 RUST_KEYLIME_DIR="${SCRIPT_DIR}/rust-keylime"
 SPIRE_DIR="${SCRIPT_DIR}/spire"
 
-MOBILE_SENSOR_DIR="${SCRIPT_DIR}/mobile-sensor-microservice"
-MOBILE_SENSOR_HOST="${MOBILE_SENSOR_HOST:-127.0.0.1}"
-MOBILE_SENSOR_PORT="${MOBILE_SENSOR_PORT:-9050}"
-MOBILE_SENSOR_BASE_URL="http://${MOBILE_SENSOR_HOST}:${MOBILE_SENSOR_PORT}"
-MOBILE_SENSOR_DB_ROOT="/tmp/mobile-sensor-service"
-MOBILE_SENSOR_DB_PATH="${MOBILE_SENSOR_DB_ROOT}/sensor_mapping.db"
-MOBILE_SENSOR_LOG="/tmp/mobile-sensor-microservice.log"
-MOBILE_SENSOR_PID_FILE="/tmp/mobile-sensor-microservice.pid"
+
 
 # Colors
 GREEN='\033[0;32m'
@@ -202,166 +195,7 @@ pause_at_phase() {
     fi
 }
 
-start_mobile_sensor_microservice() {
-    echo ""
-    #echo -e "${CYAN}Step 1.5: Starting Mobile Location Verification microservice...${NC}"
-    if [ ! -d "${MOBILE_SENSOR_DIR}" ]; then
-        abort_on_error "Mobile sensor microservice directory not found: ${MOBILE_SENSOR_DIR}"
-    fi
 
-    #echo "  Preparing mobile sensor service data directory..."
-    mkdir -p "${MOBILE_SENSOR_DB_ROOT}" 2>/dev/null || true
-    rm -f "${MOBILE_SENSOR_DB_PATH}" 2>/dev/null || true
-
-    export MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB_PATH}"
-    # CAMARA APIs are bypassed by default (set CAMARA_BYPASS=false to enable CAMARA API calls)
-    # Set CAMARA_BYPASS=false to use real CAMARA API calls
-    export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
-    
-    # Set CAMARA_BASIC_AUTH (priority: 1) Environment variable, 2) File (camara_basic_auth.txt), 3) Error if bypass disabled
-    if [ -z "${CAMARA_BASIC_AUTH:-}" ]; then
-        # Try to load from file (similar to how auth_req_id is stored)
-        # Check in multiple possible locations
-        CAMARA_AUTH_FILE=""
-        for possible_path in \
-            "${MOBILE_SENSOR_DIR}/camara_basic_auth.txt" \
-            "${SCRIPT_DIR}/camara_basic_auth.txt" \
-            "${MOBILE_SENSOR_DB_ROOT}/camara_basic_auth.txt" \
-            "$(pwd)/camara_basic_auth.txt"; do
-            if [ -f "$possible_path" ]; then
-                CAMARA_AUTH_FILE="$possible_path"
-                break
-            fi
-        done
-        
-        if [ -n "$CAMARA_AUTH_FILE" ] && [ -f "$CAMARA_AUTH_FILE" ]; then
-            # Read file, trim only newlines/carriage returns, preserve spaces
-            CAMARA_BASIC_AUTH=$(cat "$CAMARA_AUTH_FILE" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -c 200)
-            if [ -n "$CAMARA_BASIC_AUTH" ]; then
-                echo "  [OK] Loaded CAMARA_BASIC_AUTH from file: $CAMARA_AUTH_FILE"
-            else
-                CAMARA_BASIC_AUTH=""
-            fi
-        fi
-        
-        # If still not set and bypass is disabled, show error
-        if [ -z "${CAMARA_BASIC_AUTH:-}" ] && [ "$CAMARA_BYPASS" != "true" ]; then
-            echo "  [ERROR] CAMARA_BYPASS=false but CAMARA_BASIC_AUTH is not set"
-            echo "          CAMARA_BASIC_AUTH must be provided via one of:"
-            echo "          1. Environment variable: export CAMARA_BASIC_AUTH=\"Basic <base64(client_id:client_secret)>\""
-            echo "          2. File: Create camara_basic_auth.txt with the credentials"
-            echo "             Location options:"
-            echo "             - ${MOBILE_SENSOR_DIR}/camara_basic_auth.txt"
-            echo "             - ${SCRIPT_DIR}/camara_basic_auth.txt"
-            echo "             - ${MOBILE_SENSOR_DB_ROOT}/camara_basic_auth.txt"
-            echo "          Format: Basic <base64(client_id:client_secret)>"
-            echo "          See mobile-sensor-microservice/README.md for instructions"
-            exit 1
-        fi
-    fi
-    
-    # Export if set (either from env var or file)
-    if [ -n "${CAMARA_BASIC_AUTH:-}" ]; then
-        export CAMARA_BASIC_AUTH
-    fi
-    
-    # Allow lat/lon/accuracy to be overridden via env vars for testing
-    if [ -n "${MOBILE_SENSOR_LATITUDE:-}" ]; then
-        export MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE}"
-    #    echo "    Using custom latitude from MOBILE_SENSOR_LATITUDE: ${MOBILE_SENSOR_LATITUDE}"
-    fi
-    if [ -n "${MOBILE_SENSOR_LONGITUDE:-}" ]; then
-        export MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE}"
-    #    echo "    Using custom longitude from MOBILE_SENSOR_LONGITUDE: ${MOBILE_SENSOR_LONGITUDE}"
-    fi
-    if [ -n "${MOBILE_SENSOR_ACCURACY:-}" ]; then
-        export MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY}"
-    #    echo "    Using custom accuracy from MOBILE_SENSOR_ACCURACY: ${MOBILE_SENSOR_ACCURACY}"
-    fi
-
-    cd "${MOBILE_SENSOR_DIR}" || exit 1
-    
-    # Ensure port is free before starting
-    # Port check removed - mobile sensor microservice not started by control plane
-    # if command -v lsof > /dev/null 2>&1; then
-    #     if lsof -ti :${MOBILE_SENSOR_PORT} >/dev/null 2>&1; then
-    #         echo "    Port ${MOBILE_SENSOR_PORT} is in use..."
-    #     fi
-    # fi
-    
-    #echo "  Starting mobile sensor microservice..."
-    #echo "    Endpoint: ${MOBILE_SENSOR_BASE_URL}"
-    #echo "    Database: ${MOBILE_SENSOR_DB_PATH}"
-    #echo "    Log file: ${MOBILE_SENSOR_LOG}"
-    #echo "    CAMARA_BYPASS: ${CAMARA_BYPASS}"
-    # Use setsid + nohup to ensure mobile sensor service continues running after script exits
-    # setsid creates a new session, preventing SIGHUP when parent shell exits
-    setsid nohup env MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB}" \
-             CAMARA_BYPASS="${CAMARA_BYPASS}" \
-             CAMARA_BASIC_AUTH="${CAMARA_BASIC_AUTH:-}" \
-             MOBILE_SENSOR_LATITUDE="${MOBILE_SENSOR_LATITUDE:-}" \
-             MOBILE_SENSOR_LONGITUDE="${MOBILE_SENSOR_LONGITUDE:-}" \
-             MOBILE_SENSOR_ACCURACY="${MOBILE_SENSOR_ACCURACY:-}" \
-             python3 service.py --host "${MOBILE_SENSOR_HOST}" --port "${MOBILE_SENSOR_PORT}" > "${MOBILE_SENSOR_LOG}" 2>&1 &
-    local pid=$!
-    #echo $pid > "${MOBILE_SENSOR_PID_FILE}"
-    #echo "    Mobile sensor microservice PID: ${pid}"
-    
-    # Wait a moment for startup logs
-    sleep 2
-    
-    # Show startup logs
-    #if [ -f "${MOBILE_SENSOR_LOG}" ]; then
-    #    echo "  Startup logs:"
-    #    tail -10 "${MOBILE_SENSOR_LOG}" | grep -E "(Starting|latitude|longitude|accuracy|CAMARA_BYPASS|ready)" | sed 's/^/    /' || true
-    #fi
-
-    #echo "    Performing readiness health check against /verify (seed sensor_id used)"
-    local started=false
-    for i in {1..30}; do
-        local status
-        status=$(curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" -d '{}' "${MOBILE_SENSOR_BASE_URL}/verify" || true)
-        if [ -n "${status}" ] && [ "${status}" != "000" ]; then
-    #        echo -e "${GREEN}    ✓ Health check passed (mobile sensor microservice responded HTTP ${status})${NC}"
-            started=true
-            break
-        fi
-        sleep 1
-    done
-
-    if [ "$started" = false ]; then
-        echo -e "${RED}    ✗ Mobile sensor microservice failed to start (check ${MOBILE_SENSOR_LOG})${NC}"
-        if [ -f "${MOBILE_SENSOR_LOG}" ]; then
-    #        echo "    Recent logs:"
-            tail -30 "${MOBILE_SENSOR_LOG}" | sed 's/^/      /'
-        fi
-        if [ -f "${MOBILE_SENSOR_PID_FILE}" ]; then
-            local check_pid
-            check_pid=$(cat "${MOBILE_SENSOR_PID_FILE}" 2>/dev/null || echo "")
-            if [ -n "${check_pid}" ]; then
-                if ps -p "${check_pid}" > /dev/null 2>&1; then
-                    echo "    Process ${check_pid} is still running"
-                else
-                    echo "    Process ${check_pid} is not running (may have crashed)"
-                fi
-            fi
-        fi
-        return 1
-    fi
-    
-    # Double-check the service is actually listening on the port
-    if command -v netstat > /dev/null 2>&1; then
-        if ! netstat -tln 2>/dev/null | grep -q ":${MOBILE_SENSOR_PORT} "; then
-            echo -e "${YELLOW}    ⚠ Warning: Service may not be listening on port ${MOBILE_SENSOR_PORT}${NC}"
-        fi
-    elif command -v ss > /dev/null 2>&1; then
-        if ! ss -tln 2>/dev/null | grep -q ":${MOBILE_SENSOR_PORT} "; then
-            echo -e "${YELLOW}    ⚠ Warning: Service may not be listening on port ${MOBILE_SENSOR_PORT}${NC}"
-        fi
-    fi
-
-    #pause_at_phase "Step 1.5 Complete" "Mobile Location Verification microservice is running on ${MOBILE_SENSOR_BASE_URL}."
-}
 
 # Function to extract timestamp from log line
 extract_timestamp() {
@@ -456,15 +290,7 @@ generate_workflow_log_file() {
             done > "$TEMP_DIR/rust-keylime.log"
         fi
         
-        # Mobile Location Verification Microservice logs
-        if [ -f /tmp/mobile-sensor-microservice.log ]; then
-            grep -E "verify|CAMARA|sensor|verification|request|response" /tmp/mobile-sensor-microservice.log | \
-            while IFS= read -r line; do
-                ts=$(extract_timestamp "$line")
-                nts=$(normalize_timestamp "$ts")
-                echo "$nts|MOBILE_SENSOR|$line"
-            done > "$TEMP_DIR/mobile-sensor.log"
-        fi
+
         
         # Sort all logs chronologically
         cat "$TEMP_DIR"/*.log 2>/dev/null | sort -t'|' -k1,1 > "$TEMP_DIR/all-logs-sorted.log"
@@ -570,19 +396,7 @@ generate_workflow_log_file() {
         done
         echo ""
         
-        # Step 7: Mobile Location Verification
-        echo "[Step 13-14] Mobile Location Verification:"
-        {
-            grep -E "KEYLIME_VERIFIER.*mobile|KEYLIME_VERIFIER.*sensor|KEYLIME_VERIFIER.*geolocation" "$TEMP_DIR/all-logs-sorted.log"
-            grep -E "MOBILE_SENSOR" "$TEMP_DIR/all-logs-sorted.log"
-        } | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
-            formatted_ts=$(echo "$ts" | sed 's/|.*//')
-            clean_line=$(echo "$line" | sed 's/^[^|]*|//')
-            comp_name="Keylime Verifier"
-            [[ "$component" == "MOBILE_SENSOR" ]] && comp_name="Mobile Location Verification"
-            echo "  [$formatted_ts] [$comp_name] $clean_line"
-        done
-        echo ""
+
         
         # Step 8: Keylime Verifier Returns Result to SPIRE Server
         echo "[Step 16] Keylime Verifier Returns Verification Result:"
@@ -639,13 +453,7 @@ generate_workflow_log_file() {
         done
         echo ""
         
-        # Mobile Location Verification
-        echo "[4] Mobile Location Verification:"
-        grep -E "MOBILE_SENSOR|KEYLIME_VERIFIER.*mobile|KEYLIME_VERIFIER.*sensor" "$TEMP_DIR/all-logs-sorted.log" | head -8 | \
-        while IFS='|' read -r ts component line; do
-            echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
-        done
-        echo ""
+
         
         # Agent SVID Issuance
         echo "[5] Agent SVID Issuance:"
@@ -1526,11 +1334,7 @@ fi
 
 pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
 
-# Step 1.5: Mobile Location Verification microservice is NOT started by control plane
-# The mobile location microservice is only used by Envoy WASM Filter for runtime verification
-# Keylime Verifier no longer calls the mobile location microservice during attestation
-# (Mobile sensor microservice is started by test_onprem.sh for enterprise gateway)
-# start_mobile_sensor_microservice  # DISABLED - not needed for control plane
+
 
 # Helper function to stop control plane services
 stop_control_plane_services() {
