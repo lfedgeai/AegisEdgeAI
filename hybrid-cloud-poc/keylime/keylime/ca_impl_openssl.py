@@ -1,4 +1,5 @@
 import datetime
+import ipaddress
 from typing import List, Optional, Tuple
 
 from cryptography import x509
@@ -154,6 +155,49 @@ def mk_signed_cert(
     cert_req = mk_cert_valid(cert_req)
     cert_req = cert_req.issuer_name(cacert.issuer)
 
+    # Subject Alternative Name - comprehensive for multi-machine deployments
+    # Build SAN list with: CN name + localhost + 127.0.0.1 + configured IPs
+    san_list = []
+    
+    # Always include the CN name as DNS
+    try:
+        # Check if name is a valid IP address
+        ipaddress.ip_address(name)
+        # If name is an IP, add it as IPAddress
+        san_list.append(x509.IPAddress(ipaddress.ip_address(name)))
+    except ValueError:
+        # Name is not an IP, treat as DNS name
+        san_list.append(x509.DNSName(name))
+    
+    # Always include localhost and 127.0.0.1 for local testing
+    if name != "localhost":
+        san_list.append(x509.DNSName("localhost"))
+    if name != "127.0.0.1":
+        san_list.append(x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")))
+    
+    # Add configured IP addresses for multi-machine deployments
+    # Read from standard environment variables used in test scripts
+    import os
+    
+    # Collect IPs from standard deployment variables
+    ip_sources = [
+        os.environ.get("CONTROL_PLANE_HOST", ""),  # Verifier host
+        os.environ.get("AGENTS_HOST", ""),  # Agent host
+        os.environ.get("KEYLIME_AGENT_IP", ""),  # Legacy/explicit agent IP
+    ]
+    
+    for ip_str in ip_sources:
+        ip_str = ip_str.strip()
+        if ip_str and ip_str not in ["", "0.0.0.0", "127.0.0.1", name]:
+            try:
+                ip_obj = ipaddress.ip_address(ip_str)
+                ip_san = x509.IPAddress(ip_obj)
+                if ip_san not in san_list:
+                    san_list.append(ip_san)
+            except ValueError:
+                # Not a valid IP, skip
+                pass
+
     # Extensions.
     extensions = [
         # OID 2.16.840.1.113730.1.13 is Netscape Comment.
@@ -163,7 +207,7 @@ def mk_signed_cert(
             value=b"SSL Server",
         ),
         # Subject Alternative Name.
-        x509.SubjectAlternativeName([x509.DNSName(name)]),
+        x509.SubjectAlternativeName(san_list),
         # CRL Distribution Points.
         x509.CRLDistributionPoints(
             [

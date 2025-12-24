@@ -1598,6 +1598,41 @@ else
     echo -e "${YELLOW}    ⚠ Verifier CA certificate not found at $VERIFIER_CA_CERT, mTLS may not work${NC}"
 fi
 
+# Unified-Identity: Configure agent to use CA-signed server certificate for TLS validation
+# This allows Keylime Verifier to properly validate the agent's certificate when fetching geolocation
+SERVER_CERT="${AGENT_CV_CA_DST}/server-cert.crt"
+SERVER_KEY="${AGENT_CV_CA_DST}/server-private.pem"
+if [ -f "$SERVER_CERT" ] && [ -f "$SERVER_KEY" ]; then
+    # Update server_cert in config
+    if grep -q "^server_cert" "$TEMP_CONFIG" 2>/dev/null; then
+        sed -i "s|^server_cert = .*|server_cert = \"$SERVER_CERT\"|" "$TEMP_CONFIG" 2>/dev/null || \
+        sed -i "s|server_cert = .*|server_cert = \"$SERVER_CERT\"|" "$TEMP_CONFIG" 2>/dev/null || true
+    else
+        if grep -q "^\\[agent\\]" "$TEMP_CONFIG" 2>/dev/null; then
+            sed -i "/^\\[agent\\]/a server_cert = \"$SERVER_CERT\"" "$TEMP_CONFIG" 2>/dev/null || \
+            echo "server_cert = \"$SERVER_CERT\"" >> "$TEMP_CONFIG" 2>/dev/null || true
+        else
+            echo "server_cert = \"$SERVER_CERT\"" >> "$TEMP_CONFIG" 2>/dev/null || true
+        fi
+    fi
+    
+    # Update server_key in config
+    if grep -q "^server_key" "$TEMP_CONFIG" 2>/dev/null; then
+        sed -i "s|^server_key = .*|server_key = \"$SERVER_KEY\"|" "$TEMP_CONFIG" 2>/dev/null || \
+        sed -i "s|server_key = .*|server_key = \"$SERVER_KEY\"|" "$TEMP_CONFIG" 2>/dev/null || true
+    else
+        if grep -q "^\\[agent\\]" "$TEMP_CONFIG" 2>/dev/null; then
+            sed -i "/^\\[agent\\]/a server_key = \"$SERVER_KEY\"" "$TEMP_CONFIG" 2>/dev/null || \
+            echo "server_key = \"$SERVER_KEY\"" >> "$TEMP_CONFIG" 2>/dev/null || true
+        else
+            echo "server_key = \"$SERVER_KEY\"" >> "$TEMP_CONFIG" 2>/dev/null || true
+        fi
+    fi
+    echo "    ✓ Configured agent to use CA-signed server certificate for TLS: $SERVER_CERT"
+else
+    echo -e "${YELLOW}    ⚠ CA-signed server certificate not found, agent will use self-signed cert${NC}"
+fi
+
 # Unified-Identity: Enable unified_identity_enabled feature flag in agent config
 if grep -q "^unified_identity_enabled" "$TEMP_CONFIG" 2>/dev/null; then
     sed -i "s|^unified_identity_enabled = .*|unified_identity_enabled = true|" "$TEMP_CONFIG" 2>/dev/null || \

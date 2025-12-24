@@ -21,12 +21,12 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 - [x] **Task 2d**: Keylime Verifier - Geolocation Database & Integration (Python)
 - [x] **Task 3: Keylime Verifier - Verification API & Cleanup** ([Status: Complete])
 - [x] **Task 4**: SPIRE Server - Validator Plugin with Geolocation (Go) ([Status: Complete])
-- [ ] **Task 5**: SPIRE Agent - Collector Plugin (Go)
+- [x] **Task 5**: SPIRE Agent - Collector Plugin (Go) ([Status: Complete])
 - [x] **Task 6**: SPIRE Creds - Credential Composer (Go)
 
 ### Pillar 3: Production Readiness (Hardening)
 *Goal: Transform the PoC into a secure, production-grade solution.*
-- [ ] **Task 7**: TLS Verification - Remove `InsecureSkipVerify` across all components
+- [x] **Task 7**: TLS Verification - Remove `InsecureSkipVerify` across all components ([Status: Complete] - Enhanced certificate generation with SANs for multi-machine support)
 - [ ] **Task 8**: Secrets Management - Move CAMARA API keys to secure providers
 - [ ] **Task 9**: Quality Assurance - Linting, pre-commit hooks, and issue resolution
 
@@ -56,9 +56,13 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 **Status**: ⚠️ FUNCTIONAL (In Progress)
 *   **Goal**: Propose generic `/verify/evidence` endpoint to Keylime upstream and strip legacy mobile sensor code.
 
-#### Task 4/5: SPIRE Plugins (Server Validator & Agent Collector)
-**Status**: ❌ NEEDS REFACTORING
+#### Task 4: SPIRE Server Validator Plugin
+**Status**: ✅ COMPLETE | **Implementation**: [plugin.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/plugin/credentialcomposer/unifiedidentity/plugin.go)
 *   **Goal**: Move core patches into a standalone plugin package: `spire-plugin-unified-identity`.
+
+#### Task 5: SPIRE Agent Collector Plugin
+**Status**: ✅ COMPLETE | **Implementation**: [plugin.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/agent/plugin/collector/sovereign/plugin.go)
+*   **Result**: Implemented `sovereign` Collector plugin to gather TPM quotes and certificates. Refactored Agent Client to use the plugin interface.
 
 #### Task 6: Credential Composer (SPIRE)
 **Status**: ✅ COMPLETE | **Implementation**: [plugin.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/plugin/credentialcomposer/unifiedidentity/plugin.go)

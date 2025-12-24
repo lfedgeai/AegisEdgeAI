@@ -474,9 +474,6 @@ def get_agent_geolocation_with_nonce(agent_ip: str, agent_port: int, nonce: str,
     import urllib3
     import os
     
-    # Suppress InsecureRequestWarning for self-signed certs (development only)
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    
     # Encode nonce for URL (handle binary nonce)
     if isinstance(nonce, bytes):
         nonce_str = base64.b64encode(nonce).decode('ascii')
@@ -498,19 +495,18 @@ def get_agent_geolocation_with_nonce(agent_ip: str, agent_port: int, nonce: str,
         
         # Verify that certificate files exist
         if not os.path.exists(client_cert) or not os.path.exists(client_key) or not os.path.exists(ca_cert):
-            logger.warning("Unified-Identity: mTLS certificates not found in %s, attempting with verify=False", tls_dir)
-            cert = None
-            verify = False
-        else:
-            cert = (client_cert, client_key)
-            verify = ca_cert
-            logger.debug("Unified-Identity: Using mTLS certs: %s, %s", client_cert, ca_cert)
+            logger.error("Unified-Identity: mTLS certificates not found in %s. Strict TLS verification required.", tls_dir)
+            raise Exception(f"mTLS certificates not found in {tls_dir}")
+        
+        cert = (client_cert, client_key)
+        verify = ca_cert
+        logger.debug("Unified-Identity: Using mTLS certs: %s, %s", client_cert, ca_cert)
 
         # Make request with mTLS
-        # Use verify=False because the agent uses a self-signed certificate
-        # that may not be signed by the verifier's CA in this POC environment.
-        # However, we still provide the 'cert' for the agent to authenticate us.
-        response = requests.get(url, cert=cert, verify=False, timeout=10)
+        # Use verify=ca_cert to enforce strict CA validation
+        # Certificates now include SANs for localhost and 127.0.0.1 for test environments
+        response = requests.get(url, cert=cert, verify=verify, timeout=10)
+
         
         if response.status_code != 200:
             raise Exception(f"Geolocation fetch failed: HTTP {response.status_code}: {response.text}")
