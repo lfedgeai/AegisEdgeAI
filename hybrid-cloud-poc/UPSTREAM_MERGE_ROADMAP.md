@@ -27,7 +27,7 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 ### Pillar 3: Production Readiness (Hardening)
 *Goal: Transform the PoC into a secure, production-grade solution.*
 - [x] **Task 7**: TLS Verification - Remove `InsecureSkipVerify` across all components ([Status: Complete] - Enhanced certificate generation with SANs for multi-machine support)
-- [ ] **Task 8**: Secrets Management - Move CAMARA API keys to secure providers
+- [x] **Task 8**: Secrets Management - Move CAMARA API keys to secure providers ([Status: Complete] - File-based secrets implemented)
 - [ ] **Task 9**: Quality Assurance - Linting, pre-commit hooks, and issue resolution
 
 ---
