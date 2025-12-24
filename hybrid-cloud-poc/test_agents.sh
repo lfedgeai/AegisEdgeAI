@@ -2507,6 +2507,17 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
     rm -f /tmp/spire-agent.log 2>/dev/null || true
+    # CRITICAL: Clean up persistent data directories to ensure fresh trust bundle is used
+    # If the agent reuses an old DB, it might trust an old CA and reject the new server CA
+    if [ -d "/opt/spire/data/agent" ]; then
+        if sudo -n true 2>/dev/null; then
+             sudo rm -rf /opt/spire/data/agent 2>/dev/null || true
+        else
+             rm -rf /opt/spire/data/agent 2>/dev/null || true
+        fi
+    fi
+    rm -rf "${PROJECT_DIR}/spire/data/agent" 2>/dev/null || true
+    rm -rf "${PROJECT_DIR}/spire/.data" 2>/dev/null || true
     echo "    Cleanup complete."
     
         # Wait for server to be ready - SKIPPED for act 2 (server assumed running from test_control_plane.sh)
@@ -2572,6 +2583,15 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
         echo "    SPIRE Agent requires the trust bundle to connect to SPIRE Server"
         echo "    Please ensure SPIRE Server is running and accessible"
         abort_on_error "Trust bundle not available - SPIRE Agent cannot start without it"
+    fi
+    
+    # CRITICAL: Also copy bundle to the path that agent config actually uses
+    # The agent config has: trust_bundle_path = "./conf/agent/dummy_root_ca.crt"
+    # This path is relative to where the agent runs from (the spire directory)
+    AGENT_BUNDLE_PATH="${PROJECT_DIR}/spire/conf/agent/dummy_root_ca.crt"
+    if [ -f "${TRUST_BUNDLE_PATH}" ] && [ -s "${TRUST_BUNDLE_PATH}" ]; then
+        cp "${TRUST_BUNDLE_PATH}" "${AGENT_BUNDLE_PATH}"
+        echo -e "${GREEN}    ✓ Trust bundle also copied to ${AGENT_BUNDLE_PATH}${NC}"
     fi
     
     # Configure SVID renewal interval if specified via environment variable
