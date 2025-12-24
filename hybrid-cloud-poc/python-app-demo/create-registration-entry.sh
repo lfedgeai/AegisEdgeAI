@@ -11,7 +11,7 @@ echo "Getting agent SPIFFE ID..."
 # Extract SPIFFE ID from "SPIFFE ID         : spiffe://..."
 AGENT_ID=$("${SPIRE_DIR}/bin/spire-server" agent list \
     -socketPath /tmp/spire-server/private/api.sock \
-    | grep "SPIFFE ID" | awk -F': ' '{print $2}' | awk '{print $1}')
+    | grep "SPIFFE ID" | awk -F': ' '{print $2}' | awk '{print $1}' | head -1)
 
 # Fallback: try sed if awk doesn't work
 if [ -z "$AGENT_ID" ] || [ "$AGENT_ID" = "SPIFFE" ]; then

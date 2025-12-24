@@ -2,9 +2,11 @@ package attestor
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -350,7 +352,17 @@ func (ss *ServerStream) SendAttestationData(ctx context.Context, attestationData
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 		if c, ok := ss.Catalog.GetCollector(); ok {
 			ss.Log.Debug("Unified-Identity: Collecting sovereign attestation data via plugin")
-			sa, err := c.CollectSovereignAttestation(ctx, "")
+			
+			// Generate a random nonce for the initial attestation
+			// In a full implementation, this might come from a server challenge,
+			// but for initial bootstrap/PoR, we generate a fresh nonce to bind the attestation.
+			nonceBytes := make([]byte, 32)
+			if _, err := rand.Read(nonceBytes); err != nil {
+				return nil, fmt.Errorf("failed to generate nonce: %w", err)
+			}
+			nonce := hex.EncodeToString(nonceBytes)
+
+			sa, err := c.CollectSovereignAttestation(ctx, nonce)
 			if err != nil {
 				return nil, fmt.Errorf("failed to collect sovereign attestation: %w", err)
 			}

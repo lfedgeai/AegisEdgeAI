@@ -322,6 +322,14 @@ func (g *TPMPluginGateway) VerifySignature(data []byte, signature []byte, hashAl
 // - SPIRE Agent only needs to get App Key public and certificate from TPM plugin
 // - Quote field will be empty/stub since Keylime Verifier requests it directly from agent
 func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.SovereignAttestation, error) {
+	if g.log == nil {
+		return nil, fmt.Errorf("logger is nil")
+	}
+	if g.httpClient == nil {
+		g.log.Error("HTTP client is nil")
+		return nil, fmt.Errorf("HTTP client is nil")
+	}
+
 	g.log.Info("Unified-Identity - Verification: Building real SovereignAttestation via TPM plugin")
 
 	// Unified-Identity - Verification: Get App Key public key and certificate

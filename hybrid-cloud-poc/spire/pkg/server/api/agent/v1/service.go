@@ -29,8 +29,6 @@ import (
 	"github.com/spiffe/spire/pkg/server/catalog"
 	"github.com/spiffe/spire/pkg/server/datastore"
 	"github.com/spiffe/spire/pkg/server/plugin/nodeattestor"
-	"github.com/spiffe/spire/pkg/server/policy"
-	"github.com/spiffe/spire/pkg/server/keylime"
 	"github.com/spiffe/spire/pkg/server/unifiedidentity"
 	"github.com/spiffe/spire/proto/spire/common"
 	"google.golang.org/grpc"
@@ -47,8 +45,6 @@ type Config struct {
 	DataStore   datastore.DataStore
 	ServerCA    ca.ServerCA
 	TrustDomain spiffeid.TrustDomain
-
-	TrustDomain spiffeid.TrustDomain
 }
 
 // Service implements the v1 agent service
@@ -60,9 +56,6 @@ type Service struct {
 	ds  datastore.DataStore
 	ca  ca.ServerCA
 	td  spiffeid.TrustDomain
-
-	ca  ca.ServerCA
-	td  spiffeid.TrustDomain
 }
 
 // New creates a new agent service
@@ -71,8 +64,6 @@ func New(config Config) *Service {
 		cat: config.Catalog,
 		clk: config.Clock,
 		ds:  config.DataStore,
-		ca:  config.ServerCA,
-		td:  config.TrustDomain,
 		ca:  config.ServerCA,
 		td:  config.TrustDomain,
 	}
@@ -551,13 +542,6 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 	}
 	rpccontext.AuditRPC(ctx)
 
-	// Send response with new X509 SVID
-	if len(attestedClaims) > 0 {
-		claim := attestedClaims[0]
-		log.WithFields(logrus.Fields{
-			"geolocation": claim.Geolocation,
-		}).Info("Unified-Identity - Verification: AttestedClaims attached to agent SVID")
-	}
 
 	resp := &agentv1.RenewAgentResponse{
 		Svid: &types.X509SVID{
@@ -565,7 +549,7 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 			ExpiresAt: agentSVID[0].NotAfter.Unix(),
 			CertChain: x509util.RawCertsFromCertificates(agentSVID),
 		},
-		AttestedClaims: attestedClaims,
+		AttestedClaims: nil,
 	}
 
 	// Unified-Identity - Verification: Include challenge nonce in response if generated

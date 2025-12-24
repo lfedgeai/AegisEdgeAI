@@ -272,7 +272,7 @@ func (r *rotator) reattest(ctx context.Context) (err error) {
 	}
 	defer conn.Close()
 
-	stream := &node_attestor.ServerStream{Client: agentv1.NewAgentClient(conn), Csr: csr, Log: r.c.Log}
+	stream := &node_attestor.ServerStream{Client: agentv1.NewAgentClient(conn), Csr: csr, Log: r.c.Log, Catalog: r.c.Catalog}
 	if err := r.c.NodeAttestor.Attest(ctx, stream); err != nil {
 		return err
 	}

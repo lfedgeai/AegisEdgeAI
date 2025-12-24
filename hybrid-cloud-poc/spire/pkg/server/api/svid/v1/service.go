@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"strings"
 	"time"
 
@@ -22,8 +21,6 @@ import (
 	"github.com/spiffe/spire/pkg/server/api/rpccontext"
 	"github.com/spiffe/spire/pkg/server/ca"
 	"github.com/spiffe/spire/pkg/server/datastore"
-	"github.com/spiffe/spire/pkg/server/keylime"
-	"github.com/spiffe/spire/pkg/server/policy"
 	"github.com/spiffe/spire/pkg/server/unifiedidentity"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -41,19 +38,15 @@ type Config struct {
 	ServerCA     ca.ServerCA
 	TrustDomain  spiffeid.TrustDomain
 	DataStore    datastore.DataStore
-	TrustDomain  spiffeid.TrustDomain
-	DataStore    datastore.DataStore
 }
 
 // New creates a new SVID service
 func New(config Config) *Service {
 	return &Service{
-		ca:            config.ServerCA,
-		ef:            config.EntryFetcher,
-		td:            config.TrustDomain,
-		ds:            config.DataStore,
-		td:            config.TrustDomain,
-		ds:            config.DataStore,
+		ca: config.ServerCA,
+		ef: config.EntryFetcher,
+		td: config.TrustDomain,
+		ds: config.DataStore,
 	}
 }
 
@@ -63,9 +56,6 @@ type Service struct {
 
 	ca                           ca.ServerCA
 	ef                           api.AuthorizedEntryFetcher
-	td                           spiffeid.TrustDomain
-	ds                           datastore.DataStore
-	useLegacyDownstreamX509CATTL bool
 	td                           spiffeid.TrustDomain
 	ds                           datastore.DataStore
 	useLegacyDownstreamX509CATTL bool

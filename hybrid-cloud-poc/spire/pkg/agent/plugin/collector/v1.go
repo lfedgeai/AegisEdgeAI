@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // V1 is the V1 facade for the Collector plugin.
@@ -26,9 +27,9 @@ func (v1 *V1) InitLog(log logrus.FieldLogger) {
 }
 
 func (v1 *V1) InitClient(conn grpc.ClientConnInterface) interface{} {
-	// Since we don't have a proto-generated client, we can't do much here.
-	// In a real plugin, we would initialize the client with the connection.
-	return nil
+	client := &grpcClient{conn: conn}
+	v1.impl = client
+	return client
 }
 
 func (v1 *V1) GRPCServiceName() string {
@@ -40,4 +41,26 @@ func (v1 *V1) CollectSovereignAttestation(ctx context.Context, nonce string) (*t
 		return nil, v1.Error(codes.Internal, "plugin implementation not found")
 	}
 	return v1.impl.CollectSovereignAttestation(ctx, nonce)
+}
+
+type grpcClient struct {
+	conn grpc.ClientConnInterface
+}
+
+func (c *grpcClient) CollectSovereignAttestation(ctx context.Context, nonce string) (*types.SovereignAttestation, error) {
+	in := &wrapperspb.StringValue{Value: nonce}
+	out := new(types.SovereignAttestation)
+	err := c.conn.Invoke(ctx, "/spire.agent.collector.v1.Collector/CollectSovereignAttestation", in, out)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *grpcClient) Name() string {
+	return "sovereign"
+}
+
+func (c *grpcClient) Type() string {
+	return "Collector"
 }

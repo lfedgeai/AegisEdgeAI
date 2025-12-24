@@ -1,14 +1,15 @@
 package unifiedidentity
 
+import (
 	"context"
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/hashicorp/hcl"
+	"github.com/sirupsen/logrus"
 	credentialcomposerv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/server/credentialcomposer/v1"
 	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
@@ -26,6 +27,7 @@ func BuiltIn() catalog.BuiltIn {
 	return builtIn(New())
 }
 
+func builtIn(p *Plugin) catalog.BuiltIn {
 	return catalog.MakeBuiltIn("unifiedidentity",
 		credentialcomposerv1.CredentialComposerPluginServer(p),
 		configv1.ConfigServiceServer(p),
@@ -34,6 +36,10 @@ func BuiltIn() catalog.BuiltIn {
 
 type Configuration struct {
 	KeylimeURL          string   `hcl:"keylime_url"`
+	TLSCert             string   `hcl:"tls_cert"`
+	TLSKey              string   `hcl:"tls_key"`
+	CACert              string   `hcl:"ca_cert"`
+	ServerName          string   `hcl:"server_name"`
 	AllowedGeolocations []string `hcl:"allowed_geolocations"`
 }
 
@@ -78,7 +84,12 @@ func (p *Plugin) Configure(ctx context.Context, req *configv1.ConfigureRequest) 
 
 	if newConfig.KeylimeURL != "" {
 		client, err := keylime.NewClient(keylime.Config{
-			BaseURL: newConfig.KeylimeURL,
+			BaseURL:    newConfig.KeylimeURL,
+			TLSCert:    newConfig.TLSCert,
+			TLSKey:     newConfig.TLSKey,
+			CACert:     newConfig.CACert,
+			ServerName: newConfig.ServerName,
+			Logger:     logrus.New(), // The client will wrap this with its own logger if needed
 		})
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to create Keylime client: %v", err)
@@ -108,8 +119,12 @@ func (p *Plugin) ComposeAgentX509SVID(ctx context.Context, req *credentialcompos
 	}
 
 	attributes := req.Attributes
-	claims, unifiedJSON, err := p.processSovereignAttestation(ctx, req.SpiffeId, req.Csr, unifiedidentity.KeySourceTPMApp)
+	// Debug logging
+	logrus.Infof("Unified-Identity: ComposeAgentX509SVID called for %s", req.SpiffeId)
+	
+	claims, unifiedJSON, err := p.processSovereignAttestation(ctx, req.SpiffeId, req.PublicKey, unifiedidentity.KeySourceTPMApp, true)
 	if err != nil {
+		logrus.Errorf("Unified-Identity: processSovereignAttestation failed: %v", err)
 		return nil, err
 	}
 
@@ -138,7 +153,7 @@ func (p *Plugin) ComposeWorkloadX509SVID(ctx context.Context, req *credentialcom
 	}
 
 	attributes := req.Attributes
-	claims, unifiedJSON, err := p.processSovereignAttestation(ctx, req.SpiffeId, req.Csr, unifiedidentity.KeySourceWorkload)
+	claims, unifiedJSON, err := p.processSovereignAttestation(ctx, req.SpiffeId, req.PublicKey, unifiedidentity.KeySourceWorkload, false)
 	if err != nil {
 		return nil, err
 	}
@@ -162,22 +177,51 @@ func (p *Plugin) ComposeWorkloadX509SVID(ctx context.Context, req *credentialcom
 	}, nil
 }
 
-func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID string, csr []byte, keySource string) (*types.AttestedClaims, []byte, error) {
+func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID string, publicKey []byte, keySource string, isAgent bool) (*types.AttestedClaims, []byte, error) {
 	sa := unifiedidentity.FromSovereignAttestation(ctx)
 	if sa == nil {
+		logrus.Infof("Unified-Identity: SovereignAttestation is nil in context (falling back to legacy/empty)")
 		// Fallback to legacy context claims if any
 		claims, unifiedJSON := unifiedidentity.FromContext(ctx)
 		return claims, unifiedJSON, nil
 	}
+	logrus.Infof("Unified-Identity: SovereignAttestation found in context for %s", spiffeID)
+	logrus.Infof("Unified-Identity: SA Details: TpmAttestation len=%d, AppKeyCert len=%d", len(sa.TpmSignedAttestation), len(sa.AppKeyCertificate))
 
 	p.mu.RLock()
 	client := p.keylimeClient
-	engine := p.policyEngine
+    engine := p.policyEngine
 	p.mu.RUnlock()
 
+	// Workload SVIDs are handled locally for scalability; only agent SVIDs go to Keylime
+	if !isAgent {
+		logrus.Infof("Unified-Identity: Skipping Keylime verification for workload SVID (handled locally)")
+		// Build local claims without Keylime verification
+		claims := &types.AttestedClaims{}
+		unifiedJSON, err := buildLocalWorkloadClaims(sa, spiffeID, keySource)
+		if err != nil {
+			return nil, nil, status.Errorf(codes.Internal, "failed to build local workload claims: %v", err)
+		}
+		return claims, unifiedJSON, nil
+	}
+	
 	if client == nil {
+		logrus.Infof("Unified-Identity: Keylime Client is nil - skipping verification")
 		return nil, nil, nil
 	}
+    logrus.Infof("Unified-Identity: Proceeding to verify evidence with Keylime for agent SVID")
+    
+    // Debug: Inspect SovereignAttestation fields
+    logrus.Infof("Unified-Identity: Debug Payload - Quote Length: %d", len(sa.TpmSignedAttestation))
+    if len(sa.TpmSignedAttestation) > 50 {
+         logrus.Infof("Unified-Identity: Debug Payload - Quote Preview: %s...", sa.TpmSignedAttestation[:50])
+    } else {
+         logrus.Infof("Unified-Identity: Debug Payload - Quote Full: %s", sa.TpmSignedAttestation)
+    }
+    logrus.Infof("Unified-Identity: Debug Payload - AppKeyPublic Length: %d", len(sa.AppKeyPublic))
+    logrus.Infof("Unified-Identity: Debug Payload - AppKeyCertificate Length: %d", len(sa.AppKeyCertificate))
+    logrus.Infof("Unified-Identity: Debug Payload - ChallengeNonce: %s", sa.ChallengeNonce)
+    logrus.Infof("Unified-Identity: Debug Payload - WorkloadCodeHash: %s", sa.WorkloadCodeHash)
 
 	// Build Keylime request
 	keylimeReq, err := keylime.BuildVerifyEvidenceRequest(&keylime.SovereignAttestationProto{
@@ -241,9 +285,9 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 	// Build unified identity JSON
 	var workloadKeyPEM string
 	if keySource == unifiedidentity.KeySourceWorkload {
-		parsedCsr, err := x509.ParseCertificateRequest(csr)
+		parsedKey, err := x509.ParsePKIXPublicKey(publicKey)
 		if err == nil {
-			workloadKeyPEM, _ = publicKeyToPEM(parsedCsr.PublicKey)
+			workloadKeyPEM, _ = publicKeyToPEM(parsedKey)
 		}
 	}
 
@@ -253,6 +297,17 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 	}
 
 	return claims, unifiedJSON, nil
+}
+
+// buildLocalWorkloadClaims builds claims for workload SVIDs locally without Keylime verification
+func buildLocalWorkloadClaims(sa *types.SovereignAttestation, spiffeID string, keySource string) ([]byte, error) {
+	// For workload SVIDs, we inherit the attestation evidence from the agent SVID
+	// but don't send it to Keylime for verification (scalability)
+	unifiedJSON, err := unifiedidentity.BuildClaimsJSON(spiffeID, keySource, "", sa, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build workload claims JSON: %w", err)
+	}
+	return unifiedJSON, nil
 }
 
 func publicKeyToPEM(pub crypto.PublicKey) (string, error) {
