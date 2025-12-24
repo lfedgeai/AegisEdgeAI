@@ -1108,6 +1108,8 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         sleep 3
         if ps -p $ENVOY_PID > /dev/null 2>&1; then
             printf '    [OK] Envoy started (PID: %s)\n' "$ENVOY_PID"
+            # Restore terminal settings as Envoy/sudo might have messed them up (causing staircase output)
+            stty sane 2>/dev/null || true
         else
             printf '    [WARN] Envoy may have failed - check /opt/envoy/logs/envoy.log\n'
         fi
