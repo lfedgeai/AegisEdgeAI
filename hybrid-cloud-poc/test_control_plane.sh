@@ -1032,6 +1032,73 @@ configure_spire_server_agent_ttl() {
     fi
 }
 
+# Unified-Identity - Verification: Configure unifiedidentity plugin with strict TLS (Task 7)
+configure_spire_server_unified_identity() {
+    local server_config="$1"
+    local keylime_url="${2:-https://localhost:8881}"
+    local tls_cert="${3}"
+    local tls_key="${4}"
+    local ca_cert="${5}"
+    local server_name="${6:-server}"
+    
+    echo "    Configuring SPIRE server unifiedidentity plugin with strict TLS..."
+    echo "      URL: ${keylime_url}"
+    echo "      CA: ${ca_cert}"
+    
+    if [ ! -f "$server_config" ]; then
+        echo -e "${YELLOW}    ⚠ SPIRE server config not found: $server_config${NC}"
+        return 1
+    fi
+    
+    # Create a backup
+    local backup_config="${server_config}.bak.$$"
+    cp "$server_config" "$backup_config" 2>/dev/null || true
+    
+    # Remove existing unifiedidentity plugin configuration if it exists to ensure fresh config
+    if grep -q "CredentialComposer \"unifiedidentity\"" "$server_config"; then
+        awk '
+            BEGIN { skip = 0; braces = 0 }
+            /CredentialComposer "unifiedidentity"/ { 
+                skip = 1; 
+                line = $0;
+                braces += gsub(/\{/, "{", line);
+                braces -= gsub(/\}/, "}", line);
+                if (braces <= 0) skip = 0;
+                next 
+            }
+            skip {
+                line = $0;
+                braces += gsub(/\{/, "{", line);
+                braces -= gsub(/\}/, "}", line);
+                if (braces <= 0) { skip = 0; next }
+                next
+            }
+            { print }
+        ' "$server_config" > "${server_config}.tmp" && mv "${server_config}.tmp" "$server_config"
+    fi
+    
+    # Add the plugin configuration to the plugins block
+    awk -v url="$keylime_url" -v cert="$tls_cert" -v key="$tls_key" -v ca="$ca_cert" -v name="$server_name" '
+        /plugins \{/ {
+            print
+            print "    CredentialComposer \"unifiedidentity\" {"
+            print "        plugin_data {"
+            print "            keylime_url = \"" url "\""
+            print "            tls_cert = \"" cert "\""
+            print "            tls_key = \"" key "\""
+            print "            ca_cert = \"" ca "\""
+            print "            server_name = \"" name "\""
+            print "            allowed_geolocations = [\"*\"]"
+            print "        }"
+            print "    }"
+            next
+        }
+        { print }
+    ' "$server_config" > "${server_config}.tmp" && mv "${server_config}.tmp" "$server_config"
+    
+    return 0
+}
+
 # Function to configure SPIRE agent SVID renewal interval
 configure_spire_agent_svid_renewal() {
     local agent_config="$1"
@@ -1799,6 +1866,19 @@ if [ -f "${SERVER_CONFIG}" ]; then
                 echo -e "${YELLOW}    ⚠ Failed to configure agent_ttl, using config file default${NC}"
             }
         fi
+
+        # Unified-Identity - Verification: Configure unifiedidentity plugin (Task 7)
+        echo "    Configuring unifiedidentity plugin with strict TLS paths..."
+        # Use absolute paths for Keylime directory to avoid issues
+        KEYLIME_DIR_ABS=$(cd "${KEYLIME_DIR}" && pwd)
+        configure_spire_server_unified_identity "${SERVER_CONFIG}" \
+            "https://localhost:8881" \
+            "${KEYLIME_DIR_ABS}/cv_ca/client-cert.crt" \
+            "${KEYLIME_DIR_ABS}/cv_ca/client-private.pem" \
+            "${KEYLIME_DIR_ABS}/cv_ca/cacert.crt" \
+            "server" || {
+                echo -e "${YELLOW}    ⚠ Failed to configure unifiedidentity plugin, using config file default${NC}"
+            }
     fi
     
     # Cleanup existing SPIRE Server before starting

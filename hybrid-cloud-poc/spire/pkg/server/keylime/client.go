@@ -5,6 +5,7 @@ package keylime
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -28,12 +29,13 @@ type Client struct {
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // Config holds configuration for the Keylime client
 type Config struct {
-	BaseURL string
-	TLSCert string
-	TLSKey  string
-	CACert  string
-	Timeout time.Duration
-	Logger  logrus.FieldLogger
+	BaseURL    string
+	TLSCert    string
+	TLSKey     string
+	CACert     string
+	ServerName string
+	Timeout    time.Duration
+	Logger     logrus.FieldLogger
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification
@@ -126,16 +128,32 @@ func NewClient(config Config) (*Client, error) {
 // Authentication: TLS client certificate authentication (mTLS)
 // Configure TLS for mTLS connection to Keylime Verifier
 	tlsConfig := &tls.Config{
-		// For testing with self-signed certificates, allow insecure skip
-		// In production, this should be false and CA cert should be loaded
-		InsecureSkipVerify: true, // TODO: Verification: Make configurable for production
+		// Default to insecure skip if no CA provided (legacy/compat)
+		// but encourage proper CA usage via config.
+		InsecureSkipVerify: config.CACert == "",
 	}
 
-	// Unified-Identity - Verification: Load CA certificate for server verification (production)
+	// Unified-Identity - Verification: Load CA certificate for server verification
 	if config.CACert != "" {
-		// TODO: Implement CA cert loading for production use
-		// This would set tlsConfig.RootCAs to verify the Keylime Verifier's server certificate
-		config.Logger.Info("Unified-Identity - Verification: CA certificate loading not yet implemented (using InsecureSkipVerify for testing)")
+		caCert, err := os.ReadFile(config.CACert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate: %w", err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		if ok := caCertPool.AppendCertsFromPEM(caCert); !ok {
+			return nil, fmt.Errorf("failed to parse CA certificate")
+		}
+
+		tlsConfig.RootCAs = caCertPool
+		tlsConfig.InsecureSkipVerify = false
+		config.Logger.Info("Unified-Identity - Verification: Enabled strict TLS verification with CA certificate")
+	}
+
+	// Unified-Identity - Verification: Set ServerName for certificate verification
+	if config.ServerName != "" {
+		tlsConfig.ServerName = config.ServerName
+		config.Logger.Infof("Unified-Identity - Verification: Using ServerName %s for TLS verification", config.ServerName)
 	}
 
 	// Unified-Identity - Verification: Configure client certificate for mTLS
@@ -180,6 +198,9 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
+
+    // Debug: Log full request body
+    c.logger.WithField("body", string(reqBody)).Info("Unified-Identity: Debug Payload - Full Keylime Request Body")
 
 	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Create HTTP request
