@@ -19,7 +19,7 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 - [x] **Task 1**: Keylime Agent - Delegated Certifier Endpoint (Rust)
 - [x] **Task 2**: Keylime Agent - Attested Geolocation API (Rust)
 - [x] **Task 2d**: Keylime Verifier - Geolocation Database & Integration (Python)
-- [x] **Task 3: Keylime Verifier - Verification API & Cleanup** ([Status: Complete])
+- [x] **Task 3**: Keylime Verifier - Verification API & Cleanup ([Status: Complete])
 - [x] **Task 4**: SPIRE Server - Validator Plugin with Geolocation (Go) ([Status: Complete])
 - [x] **Task 5**: SPIRE Agent - Collector Plugin (Go) ([Status: Complete])
 - [x] **Task 6**: SPIRE Creds - Credential Composer (Go)
@@ -53,8 +53,8 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 *   **Solution**: Added `geolocation` persistence to verifier DB.
 
 #### Task 3: Verification API & Cleanup (Keylime Verifier)
-**Status**: ⚠️ FUNCTIONAL (In Progress)
-*   **Goal**: Propose generic `/verify/evidence` endpoint to Keylime upstream and strip legacy mobile sensor code.
+**Status**: ✅ COMPLETE | **Implementation**: [cloud_verifier_tornado.py](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime/keylime/cloud_verifier_tornado.py)
+*   **Result**: Implemented generic `/verify/evidence` endpoint (tpm-app-key) and stripped legacy mobile sensor code.
 
 #### Task 4: SPIRE Server Validator Plugin
 **Status**: ✅ COMPLETE | **Implementation**: [plugin.go](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/server/plugin/credentialcomposer/unifiedidentity/plugin.go)

@@ -1186,7 +1186,7 @@ The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks requ
 **For Production Deployment:**
 1. ✅ Test infrastructure ready
 2. ✅ Delegated certification hardened
-3. 🔄 Address security gaps (TLS, secrets)
+3. 🔄 Address security gaps (Secret management for CAMARA keys)
 4. 🔄 Monitor performance at scale
 
 **For Continued Development:**
