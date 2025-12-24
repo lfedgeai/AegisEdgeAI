@@ -829,5 +829,5 @@ if is_on_host "${ONPREM_HOST}"; then
 fi
 
 # Run main function
-main "$@"
+main "$@@"
 
