@@ -266,4 +266,4 @@ Address Bearer/Proof of possession token and Source IP issue by **Proof of Geofe
 
 (3) https://github.com/keylime/enhancements/pull/108
 
-(4) for testing
+(4) for testing 1
