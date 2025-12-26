@@ -1,0 +1,36 @@
+name: Unified Identity CI
+
+on:
+    push:
+        branches: ["main", "develop", "feat/**"]
+    pull_request:
+        branches: ["main", "develop"]
+    workflow_dispatch:
+
+jobs:
+    integration-test:
+        name: Hybrid Cloud PoC Integration Test
+        runs-on: self-hosted
+
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+
+            # Using system Python (has gpg bindings pre-installed)
+            # Do NOT use actions/setup-python as it creates isolated env without gpg
+
+            - name: Install Python Dependencies
+              run: |
+                  python3 -m pip install --upgrade pip
+                  python3 -m pip install -r hybrid-cloud-poc/keylime/requirements.txt
+
+            - name: Run Integration Tests
+              shell: bash
+              run: |
+                  cd hybrid-cloud-poc
+                  chmod +x ci_test_runner.py test_integration.sh
+                  # --no-color ensures clean logs in GitHub Actions
+                  # Explicitly targeting 10.1.0.10 (mwserver12) for single-machine setup
+                  python3 ./hello_world_test_runner.py

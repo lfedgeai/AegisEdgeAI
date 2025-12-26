@@ -117,14 +117,23 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
   - **Geolocation verification works standalone**: Verifier can fetch and validate geolocation independently
 - **Keylime Registrar**: Agent registration database (no changes)
 
-**Integration Layer:**
+**Integration Layer (Client-Side & Server-Side):**
 - **Mobile Sensor Microservice**: Location verification via CAMARA APIs
+  - **CAMARA Enhancement**: Binds **IMEI/IMSI to Device TPM**, providing hardware-assured identity for "Premium Tier" location verification (see [proposals/camara-hardware-location.md](../proposals/camara-hardware-location.md))
+  - **Deployment**: Runs as a **sidecar** to Envoy (same pod/host, `localhost:9050`)
   - Used by Envoy WASM filter for runtime authorization
   - Not called during attestation (direct agent → verifier)
+- **Envoy WASM Plugin** (New): Standardized authorization filter
+  - Extracts sensor identity from SPIRE SVIDs
+  - Enforces location policies at the API Gateway level
 
 **Upstreaming Strategy:**
-- SPIRE plugins can be contributed as standalone packages
-- Keylime APIs are optional extensions (feature-flagged)
+- **Core Components**:
+  - SPIRE plugins can be contributed as standalone packages
+  - Keylime APIs are optional extensions (feature-flagged)
+  - Keylime APIs are optional extensions (feature-flagged)
+- **Integration Components** (See **[UPSTREAM_MERGE_ROADMAP.md](UPSTREAM_MERGE_ROADMAP.md) Pillar 3**):
+  - Envoy WASM Plugin and Mobile Sensor Microservice to be released as standalone, reusable open source projects
 - No breaking changes to either upstream project
 - Each component independently mergeable
 
@@ -973,37 +982,74 @@ SPIRE Server (Port 8081)
 
 **Status:** ✅ Implemented and integrated
 
-**Implementation Details:**
-- **Database**: SQLite database (`sensor_mapping.db`) stores sensor_id, sensor_imei, sensor_imsi → MSISDN, latitude, longitude, accuracy mappings
-  - Schema: `sensor_map(sensor_id TEXT, sensor_imei TEXT, sensor_imsi TEXT, msisdn TEXT, latitude REAL, longitude REAL, accuracy REAL, PRIMARY KEY (sensor_id, sensor_imei, sensor_imsi))`
-  - Lookup priority: sensor_id > sensor_imei > sensor_imsi
-- **Default Seed**: `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7.0` (with optional sensor_imei and sensor_imsi)
-- **Communication**: Keylime Verifier connects to microservice via REST API (HTTP/JSON) over TCP (port 9050 by default, configurable via `mobile_sensor_endpoint`)
-  - Note: UDS support was deferred (similar to SPIRE Agent TPM Plugin Server (Sidecar) → Keylime Agent communication)
-- **Sensor ID Extraction**: Verifier extracts `sensor_id`, `sensor_imei`, and/or `sensor_imsi` from TPM quote response geolocation data (no hardcoded defaults)
-- **CAMARA API Flow**: Microservice implements three-step CAMARA API sequence:
-  1. `POST /bc-authorize` with `login_hint` (phone number) and `scope` (auth_req_id is cached and reused)
-  2. `POST /token` with `grant_type=urn:openid:params:grant-type:ciba` and `auth_req_id` (access token is cached with expiration)
-  3. `POST /location/v0/verify` with `access_token`, `ueId` (phone number), `latitude`, `longitude`, `accuracy`
-- **Token Caching**: The microservice caches `auth_req_id` (persisted to file) and `access_token` (with expiration) to reduce API calls
-- **Location Verification Caching**: The `verify_location` API result is cached with configurable TTL (default: 15 minutes). The actual CAMARA API is called at most once per TTL period; subsequent calls within the TTL return the cached result. This significantly reduces CAMARA API calls and improves performance.
-- **Attestation Flow**: The Keylime Verifier extracts geolocation data from the TPM quote and includes it in attested claims. No microservice call is made during attestation. The geolocation data is validated as part of the TPM quote verification process.
-- **Runtime Verification**: The mobile location verification microservice is still used by the Enterprise On-Prem Envoy WASM Filter for runtime verification at the gateway (see "Enterprise On-Prem Envoy WASM Filter" section below).
-- **Configuration** (for Envoy WASM Filter runtime verification): 
-  - `CAMARA_BYPASS` environment variable (default: false, set to true to skip CAMARA APIs for testing)
-  - `CAMARA_BASIC_AUTH` environment variable (required for CAMARA API authentication)
-  - `CAMARA_AUTH_REQ_ID` environment variable (optional, pre-obtained auth_req_id)
-  - `CAMARA_VERIFY_CACHE_TTL_SECONDS` environment variable (default: 900 seconds = 15 minutes). Controls how long `verify_location` results are cached. Set to 0 to disable caching.
-  - `MOBILE_SENSOR_DB` environment variable (default: `sensor_mapping.db`)
-  - `MOBILE_SENSOR_LATITUDE`, `MOBILE_SENSOR_LONGITUDE`, `MOBILE_SENSOR_ACCURACY` environment variables for coordinate overrides
-  - `MOBILE_SENSOR_IMEI`, `MOBILE_SENSOR_IMSI` environment variables for sensor identifiers
+> [!NOTE]
+> **Architecture Simplification**: The sensor → MSISDN mapping is now stored in the **Keylime DB** (client-side) and **embedded in the SPIRE Agent SVID**. This eliminates the need for a server-side database lookup. The microservice is now a **thin CAMARA API wrapper** that receives MSISDN directly from the SVID claims.
+
+### Data Flow: Attestation Time vs Runtime
+
+| Phase | Location | Data Source | CAMARA Call |
+|-------|----------|-------------|-------------|
+| **Attestation** (Keylime DB) | Sovereign Cloud | Keylime DB → SVID | ✅ Once (verified at attestation) |
+| **Runtime** (Envoy Gateway) | Enterprise On-Prem | SVID claims | Policy-based (optional) |
+
+### Keylime DB Schema (Client-Side)
+
+The Keylime Verifier database stores the sensor → MSISDN mapping:
+
+```sql
+-- Schema: keylime verifier database
+-- New columns added to verifier agent table
+sensor_id TEXT,
+sensor_imei TEXT,
+sensor_imsi TEXT,
+msisdn TEXT,           -- e.g., "tel:+34696810912"
+latitude REAL,
+longitude REAL,
+accuracy REAL
+```
+
+- **Lookup priority**: sensor_id > sensor_imei > sensor_imsi
+- **Default Seed**: `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7.0`
+- **MSISDN in SVID**: After attestation, MSISDN is embedded in the Agent SVID `grc.geolocation.msisdn` claim
+
+### SVID Claim Structure (Updated)
+
+```
+Agent SVID
+├── grc.geolocation:
+│   ├── sensor_id: "12d1:1433"
+│   ├── sensor_imei: "unknown"
+│   ├── sensor_imsi: "214070610960475"
+│   ├── msisdn: "tel:+34696810912"    ← NEW (from Keylime DB)
+│   ├── type: "mobile"
+│   ├── tpm-attested-location: true
+│   └── tpm-attested-pcr-index: 15
+```
+
+### Mobile Sensor Microservice (Server-Side Sidecar)
+
+**Role**: Thin CAMARA API wrapper (no database lookup required)
+
+The microservice receives MSISDN directly from the Envoy WASM filter (extracted from SVID claims) and calls CAMARA APIs for runtime verification when policy requires it.
+
+**CAMARA API Flow** (when called):
+1. `POST /bc-authorize` with `login_hint` (MSISDN from SVID) and `scope`
+2. `POST /token` with `grant_type=urn:openid:params:grant-type:ciba` and `auth_req_id`
+3. `POST /location/v0/verify` with `access_token`, `ueId` (MSISDN), coordinates
+
+**Caching**:
+- **Token Caching**: `auth_req_id` (persisted to file) and `access_token` (with expiration)
+- **Location Verification Caching**: TTL-based (default: 15 minutes), configurable via `CAMARA_VERIFY_CACHE_TTL_SECONDS`
+
+**Configuration**:
+- `CAMARA_BYPASS`: Skip CAMARA APIs for testing (default: false)
+- `CAMARA_BASIC_AUTH_FILE`: Path to file containing CAMARA credentials (secure secret management)
+- `CAMARA_VERIFY_CACHE_TTL_SECONDS`: Cache TTL (default: 900 seconds = 15 minutes, set to 0 to disable)
 
 **Location:**
-- `mobile-sensor-microservice/service.py` - Flask microservice implementation (used by Envoy WASM Filter)
-- `keylime/keylime/cloud_verifier_tornado.py` - Verifier extracts geolocation from TPM quote (no microservice call)
-- `keylime/verifier.conf.minimal` - Configuration (`[verifier]` section)
-- `tpm-plugin/tpm_plugin_server.py` - SPIRE Agent TPM Plugin Server (sidecar) implementation
-- `tpm-plugin/delegated_certification.py` - Delegated certification client implementation
+- `mobile-sensor-microservice/service.py` - Flask microservice implementation
+- `keylime/keylime/cloud_verifier_tornado.py` - Verifier extracts geolocation and MSISDN
+- `tpm-plugin/tpm_plugin_server.py` - SPIRE Agent TPM Plugin Server implementation
 
 ---
 
@@ -1011,27 +1057,142 @@ SPIRE Server (Port 8081)
 
 **Status:** ✅ Implemented and integrated
 
-**Implementation Details:**
-- **Purpose**: Envoy proxy filter that verifies sensor identity from SPIRE certificates at the enterprise on-prem gateway
-- **Location**: `enterprise-private-cloud/wasm-plugin/src/lib.rs`
-- **Certificate Extraction**: Extracts sensor_id, sensor_type, sensor_imei, and sensor_imsi from SPIRE certificate Unified Identity extension (OID `1.3.6.1.4.1.99999.2`)
-- **Sensor Type Handling**:
-  - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely (allow request directly without verification)
-  - **Mobile sensors**: Calls mobile location service at `localhost:9050/verify` for CAMARA API verification
-- **No Caching in WASM Filter**: The WASM filter does NOT implement any caching. All caching (CAMARA API result caching with 15-minute TTL) is handled by the mobile location service. This simplifies the filter logic and ensures a single source of truth for caching behavior.
-- **Blocking Verification**: For mobile sensors, requests pause until mobile location service responds
-- **Header Injection**: If verification succeeds, adds `X-Sensor-ID` header and forwards to backend mTLS server
-- **Error Handling**: Returns 403 Forbidden if verification fails or sensor information is missing
+> [!IMPORTANT]
+> **Architecture Decision**: WASM + Sidecar is the recommended pattern. The WASM filter handles certificate extraction (unavoidable for custom X.509 extensions), while the sidecar handles OAuth token management, caching, and secrets.
 
-**Architecture Benefits:**
-- **Simplified Filter Logic**: No cache state management, expiration logic, or synchronization in the WASM filter
-- **Single Source of Truth**: All caching logic centralized in the mobile location service
-- **Performance**: GPS sensors bypass verification entirely (trusted hardware)
-- **Maintainability**: Easier to debug and maintain without distributed caching logic
+### Simplified Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│               ATTESTATION TIME (Sovereign Cloud)                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────────┐         ┌─────────────────────────────────┐           │
+│   │  Keylime DB     │         │  SPIRE Agent SVID               │           │
+│   │  ┌───────────┐  │         │  grc.geolocation:               │           │
+│   │  │sensor_id  │──┼────────►│    sensor_id: "12d1:1433"       │           │
+│   │  │msisdn     │──┼────────►│    msisdn: "tel:+34696810912"   │           │
+│   │  │lat, lon   │  │         │    verified: true               │           │
+│   │  └───────────┘  │         └─────────────────────────────────┘           │
+│   └─────────────────┘                                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│               RUNTIME (Enterprise On-Prem Gateway)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌──────────────────┐    Policy Mode?                                      │
+│   │  Envoy WASM      │    ┌─────────┬──────────┬─────────┐                  │
+│   │  Filter          │───►│  Trust  │  Runtime │ Strict  │                  │
+│   └──────────────────┘    └────┬────┴────┬─────┴────┬────┘                  │
+│                                │         │          │                       │
+│                                ▼         ▼          ▼                       │
+│                           ✅ Allow   ┌────────┐ ┌────────┐                  │
+│                           (no call)  │Sidecar │ │Sidecar │                  │
+│                                      │(cached)│ │(no TTL)│                  │
+│                                      └────────┘ └────────┘                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Policy-Based Verification Modes
+
+The WASM filter supports three verification modes, configurable per-deployment:
+
+| Mode | CAMARA Call | Sidecar Required | Use Case |
+|------|-------------|------------------|----------|
+| **Trust** (default) | ❌ None | ❌ No | Standard workloads, trust attestation-time verification |
+| **Runtime** | ✅ With cache (15min TTL) | ✅ Yes | High-security apps, banking, enterprise |
+| **Strict** | ✅ No cache (real-time) | ✅ Yes | Critical infrastructure, military, regulatory compliance |
+
+**Configuration** (envoy.yaml):
+```yaml
+# WASM filter configuration
+typed_config:
+  "@type": "type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm"
+  config:
+    configuration:
+      "@type": "type.googleapis.com/google.protobuf.StringValue"
+      value: |
+        verification_mode: "trust"   # Options: trust, runtime, strict
+        sidecar_endpoint: "http://localhost:9050/verify"
+```
+
+### Certificate Extraction & Claim Processing
+
+The WASM filter extracts claims from the SPIRE certificate chain:
+
+1. **Extract Unified Identity Extension** (OID `1.3.6.1.4.1.99999.2`) from Agent SVID
+2. **Parse JSON claims**: `sensor_id`, `sensor_type`, `sensor_imei`, `sensor_imsi`, **`msisdn`** ← NEW
+3. **Apply policy**:
+   - GPS/GNSS sensors: Always bypass (trusted hardware)
+   - Mobile sensors: Apply verification mode policy
+
+### Verification Flow by Mode
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           WASM FILTER DECISION TREE                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. Extract claims from Agent SVID (Unified Identity extension)             │
+│     └─ sensor_id, sensor_type, sensor_imei, sensor_imsi, msisdn             │
+│                                                                             │
+│  2. Check sensor_type:                                                      │
+│     ├─ "gnss" → ✅ ALLOW (trusted hardware, no verification)               │
+│     └─ "mobile" → Apply verification mode:                                  │
+│                                                                             │
+│  3. Verification Mode:                                                      │
+│     ├─ TRUST   → ✅ ALLOW (trust SVID attestation, no CAMARA call)         │
+│     ├─ RUNTIME → Call sidecar (with caching) → Allow/Deny                  │
+│     └─ STRICT  → Call sidecar (no caching) → Allow/Deny                    │
+│                                                                             │
+│  4. On success: Add X-Sensor-ID, X-MSISDN headers → Forward to backend     │
+│     On failure: Return 403 Forbidden                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Sidecar Communication (Runtime/Strict modes only)
+
+When verification mode requires CAMARA validation:
+
+**Request** (WASM → Sidecar):
+```json
+POST http://localhost:9050/verify
+{
+  "msisdn": "tel:+34696810912",    // From SVID claim (no DB lookup!)
+  "sensor_id": "12d1:1433",
+  "sensor_imei": "unknown",
+  "sensor_imsi": "214070610960475",
+  "skip_cache": false              // true for Strict mode
+}
+```
+
+**Response** (Sidecar → WASM):
+```json
+{
+  "verified": true,
+  "latitude": 40.33,
+  "longitude": -3.7707,
+  "accuracy": 7.0,
+  "cached": true,
+  "cache_expires_at": "2025-12-26T03:30:00Z"
+}
+```
+
+### Architecture Benefits
+
+- **WASM filter is unavoidable**: Required for extracting custom X.509 extensions from certificates
+- **Sidecar handles complexity**: OAuth tokens, response caching, secure secrets
+- **Policy flexibility**: Operators choose verification level per deployment
+- **No server-side DB**: MSISDN comes from SVID claims (attestation-time binding)
+- **GPS bypass**: Hardware-trusted sensors skip all verification
 
 **Location:**
 - `enterprise-private-cloud/wasm-plugin/src/lib.rs` - WASM filter implementation
 - `enterprise-private-cloud/envoy/envoy.yaml` - Envoy configuration
+- `mobile-sensor-microservice/service.py` - Sidecar implementation
 
 ---
 
