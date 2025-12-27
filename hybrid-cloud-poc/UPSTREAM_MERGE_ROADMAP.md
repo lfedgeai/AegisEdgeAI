@@ -48,23 +48,18 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 - [x] **Task 8**: Envoy WASM Plugin - MSISDN Extraction from SVID ([Status: Complete])
   - Extract `sensor_msisdn` from Unified Identity extension JSON
   - Pass MSISDN to sidecar (no DB lookup needed)
-- [ ] **Task 9**: Envoy WASM Plugin - Standalone Repo Setup (includes sidecar)
-- [ ] **Task 10**: Envoy WASM Plugin - Publish Signed WASM + Sidecar Image
+- [ ] **Task 9**: Envoy WASM Plugin - Standalone Repo Setup (includes sidecar) [RELEVANT: For open-source upstreaming]
+- [ ] **Task 10**: Envoy WASM Plugin - Publish Signed WASM + Sidecar Image [RELEVANT: For production distribution]
 - [x] **Task 11**: Mobile Sensor Sidecar - Pure Mobile & DB-less Flow ([Status: Complete])
   - Refined to "Pure Mobile" (GNSS handled by WASM, sidecar rejects non-mobile).
   - Implements **DB-LESS flow**: Prioritizes `msisdn`, `latitude`, `longitude`, `accuracy` from SVID.
   - Falls back to DB-BASED lookup ONLY if SVID data is missing.
   - Added support for `sensor_imei`, `sensor_imsi`, and `sensor_serial` in mapping.
-- [ ] **Task 12**: Mobile Sensor Sidecar - Pluggable Backends
-- [x] **Task 12b**: Sensor Schema Separation (Mobile vs GNSS) ([Status: Complete])
+- [ ] **Task 12**: Mobile Sensor Sidecar - Pluggable Backends [RELEVANT: For multi-telco support]
+- [/] **Task 12b**: Sensor Schema Separation (Mobile vs GNSS) ([Status: Partial])
   - **Mobile Sensor Schema**: `{sensor_id, sensor_imei, sensor_imsi, sensor_msisdn, latitude, longitude, accuracy}`
   - **GNSS Sensor Schema**: `{sensor_id, sensor_serial_number, latitude, longitude, sensor_signature (optional)}`
-  - **Full Pipeline Impact Completed**:
-    - Keylime Agent: Verified geolocation API binds to mobile/gnss types.
-    - Keylime Verifier DB: Type-aware schema implemented.
-    - SPIRE SVID Claims: `grc.geolocation` updated for legacy support; coordinates propagated.
-    - Envoy WASM Filter: GNSS bypass implemented; mobile DB-less flow enabled.
-    - Sidecar API: Pure Mobile focus with DB-less priority.
+  - **Status Update**: Sidecar and WASM filter logic updated. Keylime/SPIRE pipeline transition to new namespaces pending.
 
 ### Pillar 4: Production Readiness (Hardening)
 *Goal: Transform the PoC into a secure, production-grade solution.*
