@@ -59,8 +59,8 @@ configuration:
    - **GNSS sensors**: Trusted hardware, allow directly (no sidecar call)
    - **Mobile sensors**: Apply verification_mode policy
      - Trust: Allow without sidecar call
-     - Runtime: Call sidecar with caching
-     - Strict: Call sidecar with `skip_cache=true`
+     - Runtime: Call sidecar with caching (DB-less if coordinates present in SVID)
+     - Strict: Call sidecar with `skip_cache=true` (DB-less if coordinates present in SVID)
 5. **Header Injection**: Adds `X-Sensor-Type`, `X-Sensor-ID`, `X-Mobile-MSISDN` headers
 
 ## Sidecar Request Format
@@ -74,9 +74,12 @@ POST /verify
   "sensor_imei": "352099001761481",
   "sensor_imsi": "214070610960475",
   "msisdn": "tel:+34696810912",
+  "latitude": 40.33,
+  "longitude": -3.7707,
+  "accuracy": 7.0,
   "skip_cache": true
 }
 ```
 
-- `msisdn`: Extracted from SVID claims (no DB lookup needed)
+- `msisdn`, `latitude`, `longitude`, `accuracy`: Extracted from SVID claims (enables DB-less flow)
 - `skip_cache`: Set to `true` in strict mode
