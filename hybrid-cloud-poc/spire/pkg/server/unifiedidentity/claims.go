@@ -58,34 +58,61 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 		}
 
 		// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-		// Structure geolocation according to federated-jwt.md schema
-		// Geolocation is NOT part of grc.tpm-attestation - it's a separate top-level claim
-		// Only include geolocation in agent SVIDs
-		// Geolocation is now a structured object (Geolocation message)
+		// Structured claims for Sensor Type Isolation (Task 12b)
 		if attestedClaims != nil && attestedClaims.Geolocation != nil {
+			geo := attestedClaims.Geolocation
+
+			// 1. Common Sensor Metadata (Namespace grc.sensor)
+			sensorObj := map[string]any{
+				"id":           geo.SensorId,
+				"type":         geo.Type,
+				"tpm-attested": true,
+			}
+			claims["grc.sensor"] = sensorObj
+
+			// 2. Mobile-Specific Claims (Namespace grc.mobile)
+			if geo.Type == "mobile" {
+				mobileObj := map[string]any{
+					"imei":      geo.SensorImei,
+					"imsi":      geo.SensorImsi,
+					"msisdn":    geo.SensorMsisdn,
+					"latitude":  geo.Latitude,
+					"longitude": geo.Longitude,
+					"accuracy":  geo.Accuracy,
+				}
+				claims["grc.mobile"] = mobileObj
+			}
+
+			// 3. GNSS-Specific Claims (Namespace grc.gnss)
+			if geo.Type == "gnss" {
+				gnssObj := map[string]any{
+					"serial_number": geo.SensorSerialNumber,
+					"latitude":      geo.Latitude,
+					"longitude":     geo.Longitude,
+					"accuracy":      geo.Accuracy,
+				}
+				claims["grc.gnss"] = gnssObj
+			}
+
+			// 4. Backward Compatible Claim (Namespace grc.geolocation)
 			geoObj := map[string]any{
-				"type":      attestedClaims.Geolocation.Type,
-				"sensor_id": attestedClaims.Geolocation.SensorId,
+				"type":      geo.Type,
+				"sensor_id": geo.SensorId,
 			}
-			if attestedClaims.Geolocation.Value != "" {
-				geoObj["value"] = attestedClaims.Geolocation.Value
+			if geo.Value != "" {
+				geoObj["value"] = geo.Value
 			}
-			// Unified-Identity: Add IMEI and IMSI for mobile devices
-			if attestedClaims.Geolocation.SensorImei != "" {
-				geoObj["sensor_imei"] = attestedClaims.Geolocation.SensorImei
+			if geo.SensorImei != "" {
+				geoObj["sensor_imei"] = geo.SensorImei
 			}
-			if attestedClaims.Geolocation.SensorImsi != "" {
-				geoObj["sensor_imsi"] = attestedClaims.Geolocation.SensorImsi
+			if geo.SensorImsi != "" {
+				geoObj["sensor_imsi"] = geo.SensorImsi
 			}
-			// Task 2f: Add sensor_msisdn for mobile devices (from Keylime verification)
-			if attestedClaims.Geolocation.SensorMsisdn != "" {
-				geoObj["sensor_msisdn"] = attestedClaims.Geolocation.SensorMsisdn
+			if geo.SensorMsisdn != "" {
+				geoObj["sensor_msisdn"] = geo.SensorMsisdn
 			}
-			// Add TPM attestation markers
-			if sovereignAttestation != nil {
-				geoObj["tpm-attested-location"] = true
-				geoObj["tpm-attested-pcr-index"] = 15 // PCR 15 is used for geolocation per rust-keylime agent
-			}
+			geoObj["tpm-attested-location"] = true
+			geoObj["tpm-attested-pcr-index"] = 15
 			claims["grc.geolocation"] = geoObj
 		}
 

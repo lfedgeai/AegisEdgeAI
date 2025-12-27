@@ -13,13 +13,23 @@ const LEGACY_OID_STR: &str = "1.3.6.1.4.1.99999.1";
 struct VerifyRequest {
     sensor_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    sensor_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     sensor_imei: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sensor_imsi: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    sensor_serial_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     msisdn: Option<String>,        // Task 8: MSISDN from SVID (no DB lookup needed)
     #[serde(skip_serializing_if = "Option::is_none")]
     skip_cache: Option<bool>,      // Task 7: true for Strict mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    longitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accuracy: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -134,7 +144,11 @@ impl RootContext for SensorVerificationRoot {
             sensor_type: None,
             sensor_imei: None,
             sensor_imsi: None,
+            sensor_serial_number: None,
             sensor_msisdn: None,
+            sensor_latitude: None,
+            sensor_longitude: None,
+            sensor_accuracy: None,
         }))
     }
 
@@ -149,7 +163,11 @@ struct SensorVerificationFilter {
     sensor_type: Option<String>, // "mobile" or "gnss"
     sensor_imei: Option<String>,
     sensor_imsi: Option<String>,
+    sensor_serial_number: Option<String>,
     sensor_msisdn: Option<String>, // Task 8: MSISDN from SVID
+    sensor_latitude: Option<f64>,
+    sensor_longitude: Option<f64>,
+    sensor_accuracy: Option<f64>,
 }
 
 impl Context for SensorVerificationFilter {
@@ -334,6 +352,9 @@ impl HttpContext for SensorVerificationFilter {
         self.sensor_imei = sensor_info.sensor_imei.clone();
         self.sensor_imsi = sensor_info.sensor_imsi.clone();
         self.sensor_msisdn = sensor_info.sensor_msisdn.clone(); // Task 8: Store MSISDN from SVID
+        self.sensor_latitude = sensor_info.latitude;
+        self.sensor_longitude = sensor_info.longitude;
+        self.sensor_accuracy = sensor_info.accuracy;
         
         let sensor_id = sensor_info.sensor_id;
         let sensor_type_str = self.sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
@@ -344,8 +365,9 @@ impl HttpContext for SensorVerificationFilter {
         // Log sensor information with type
         if sensor_type_str == "mobile" {
             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                "Sensor information stored for verification: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={}, sensor_msisdn={}",
-                sensor_type_str, sensor_id, imei_str, imsi_str, msisdn_str
+                "Sensor information stored for verification: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={}, sensor_msisdn={}, lat={:?}, lon={:?}, acc={:?}",
+                sensor_type_str, sensor_id, imei_str, imsi_str, msisdn_str,
+                self.sensor_latitude, self.sensor_longitude, self.sensor_accuracy
             ));
         } else {
             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
@@ -357,6 +379,14 @@ impl HttpContext for SensorVerificationFilter {
         // Unified-Identity: Apply policy-based verification modes (Task 7)
         // GPS/GNSS sensors are always trusted hardware - allow directly
         // Mobile sensors: apply verification_mode policy
+        // Unified-Identity: Apply policy-based verification modes (Task 7 & 12b)
+        // All sensor types (mobile/gnss) now route through the Sidecar Adapter Backends
+        let mode_str = match self.config.verification_mode {
+            VerificationMode::Trust => "trust",
+            VerificationMode::Runtime => "runtime",
+            VerificationMode::Strict => "strict",
+        };
+        
         if sensor_type_str == "mobile" {
             let mode_str = match self.config.verification_mode {
                 VerificationMode::Trust => "trust",
@@ -368,7 +398,7 @@ impl HttpContext for SensorVerificationFilter {
                 VerificationMode::Trust => {
                     // Trust mode: No sidecar call - trust attestation-time verification
                     proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                        "Mobile sensor (sensor_id={}): verification_mode=trust - allowing without sidecar call (attestation-time verified)",
+                        "Mobile sensor (sensor_id={}): verification_mode=trust - allowing without sidecar call",
                         sensor_id
                     ));
                     Action::Continue
@@ -379,10 +409,16 @@ impl HttpContext for SensorVerificationFilter {
                     
                     let verify_body = serde_json::to_string(&VerifyRequest {
                         sensor_id: sensor_id.clone(),
+                        sensor_type: self.sensor_type.clone(),
                         sensor_imei: self.sensor_imei.clone(),
                         sensor_imsi: self.sensor_imsi.clone(),
-                        msisdn: self.sensor_msisdn.clone(),  // Task 8: MSISDN from SVID
+                        sensor_serial_number: self.sensor_serial_number.clone(),
+                        msisdn: self.sensor_msisdn.clone(),
                         skip_cache: if skip_cache { Some(true) } else { None },
+                        // Pass location details if available (enables DB-less sidecar flow)
+                        latitude: self.sensor_latitude,
+                        longitude: self.sensor_longitude,
+                        accuracy: self.sensor_accuracy,
                     }).unwrap_or_default();
                     
                     let headers = vec![
@@ -400,10 +436,9 @@ impl HttpContext for SensorVerificationFilter {
                         Duration::from_secs(5),
                     ) {
                         Ok(_) => {
-                            let msisdn_str = self.sensor_msisdn.as_ref().map(|s| s.as_str()).unwrap_or("(from DB)");
                             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                                "Mobile sensor (sensor_id={}): verification_mode={}, skip_cache={}, msisdn={} - dispatched sidecar call",
-                                sensor_id, mode_str, skip_cache, msisdn_str
+                                "Mobile sensor (sensor_id={}): verification_mode={}, skip_cache={} - dispatched sidecar call",
+                                sensor_id, mode_str, skip_cache
                             ));
                             Action::Pause
                         }
@@ -422,9 +457,9 @@ impl HttpContext for SensorVerificationFilter {
                 }
             }
         } else {
-            // GPS/GNSS sensors: Trusted hardware, no verification needed
+            // Task 12b: GNSS sensors are always trusted hardware - no sidecar call needed (Pure Mobile Sidecar)
             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                "GNSS sensor (type={}, sensor_id={}): Trusted hardware - allowing directly",
+                "{} sensor (sensor_id={}): Trusted hardware - allowing directly",
                 sensor_type_str, sensor_id
             ));
             Action::Continue
@@ -435,10 +470,14 @@ impl HttpContext for SensorVerificationFilter {
 // Unified-Identity: Sensor information extracted from certificate
 struct SensorInfo {
     sensor_id: String,
-    sensor_type: Option<String>, // "mobile" or "gnss"
+    sensor_type: Option<String>,
     sensor_imei: Option<String>,
     sensor_imsi: Option<String>,
-    sensor_msisdn: Option<String>, // Task 8: MSISDN from SVID claims (e.g., "tel:+34696810912")
+    sensor_serial_number: Option<String>,
+    sensor_msisdn: Option<String>,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+    accuracy: Option<f64>,
 }
 
 fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
@@ -506,71 +545,74 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                         
                         match serde_json::from_str::<serde_json::Value>(json_str) {
                             Ok(json) => {
-                                if let Some(geo) = json.get("grc.geolocation") {
-                                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found grc.geolocation claim", cert_idx));
+                                // 1. Try new structured namespaces (Task 12b)
+                                if let Some(sensor_meta) = json.get("grc.sensor") {
+                                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found grc.sensor claim", cert_idx));
                                     
-                                    // Unified-Identity: Extract sensor_type, sensor_id (required), sensor_imei, and sensor_imsi (optional)
+                                    let sensor_id = sensor_meta.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                    let sensor_type = sensor_meta.get("type").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                    
+                                    if let Some(id) = sensor_id {
+                                        let mut info = SensorInfo {
+                                            sensor_id: id,
+                                            sensor_type: sensor_type.clone(),
+                                            sensor_imei: None,
+                                            sensor_imsi: None,
+                                            sensor_serial_number: None,
+                                            sensor_msisdn: None,
+                                            latitude: None,
+                                            longitude: None,
+                                            accuracy: None,
+                                        };
+                                        
+                                        // 2. Extract type-specific claims
+                                        if let Some(t) = sensor_type {
+                                            if t == "mobile" {
+                                                if let Some(mobile) = json.get("grc.mobile") {
+                                                    info.sensor_imei = mobile.get("imei").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                                    info.sensor_imsi = mobile.get("imsi").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                                    info.sensor_msisdn = mobile.get("msisdn").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                                    info.latitude = mobile.get("latitude").and_then(|v| v.as_f64());
+                                                    info.longitude = mobile.get("longitude").and_then(|v| v.as_f64());
+                                                    info.accuracy = mobile.get("accuracy").and_then(|v| v.as_f64());
+                                                }
+                                            } else if t == "gnss" {
+                                                if let Some(gnss) = json.get("grc.gnss") {
+                                                    info.sensor_serial_number = gnss.get("serial_number").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                                    info.latitude = gnss.get("latitude").and_then(|v| v.as_f64());
+                                                    info.longitude = gnss.get("longitude").and_then(|v| v.as_f64());
+                                                    info.accuracy = gnss.get("accuracy").and_then(|v| v.as_f64());
+                                                }
+                                            }
+                                        }
+                                        
+                                        return Some(info);
+                                    }
+                                }
+                                
+                                // 3. Fallback to legacy grc.geolocation (Task 8/11)
+                                if let Some(geo) = json.get("grc.geolocation") {
+                                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found legacy grc.geolocation claim", cert_idx));
+                                    
                                     if let Some(sensor_id_val) = geo.get("sensor_id") {
                                         if let Some(sensor_id_str) = sensor_id_val.as_str() {
-                                            let sensor_id = sensor_id_str.to_string();
-                                            
-                                            // Extract sensor_type if present
-                                            let sensor_type = geo.get("type")
-                                                .and_then(|v| v.as_str())
-                                                .map(|s| s.to_string());
-                                            
-                                            // Extract sensor_imei if present
-                                            let sensor_imei = geo.get("sensor_imei")
-                                                .and_then(|v| v.as_str())
-                                                .map(|s| s.to_string());
-                                            
-                                            // Extract sensor_imsi if present
-                                            let sensor_imsi = geo.get("sensor_imsi")
-                                                .and_then(|v| v.as_str())
-                                                .map(|s| s.to_string());
-                                            
-                                            // Task 8: Extract sensor_msisdn if present
-                                            let sensor_msisdn = geo.get("sensor_msisdn")
-                                                .and_then(|v| v.as_str())
-                                                .map(|s| s.to_string());
-                                            
-                                            // Print sensor information when found
-                                            let type_str = sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
-                                            let imei_str = sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
-                                            let imsi_str = sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
-                                            let msisdn_str = sensor_msisdn.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
-                                            
-                                            if type_str == "mobile" {
-                                                proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                                                    "=== SENSOR INFORMATION EXTRACTED ===\n  type: {}\n  sensor_id: {}\n  sensor_imei: {}\n  sensor_imsi: {}\n  sensor_msisdn: {}\n========================================",
-                                                    type_str, sensor_id, imei_str, imsi_str, msisdn_str
-                                                ));
-                                            } else {
-                                                proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                                                    "=== SENSOR INFORMATION EXTRACTED ===\n  type: {}\n  sensor_id: {}\n========================================",
-                                                    type_str, sensor_id
-                                                ));
-                                            }
-                                            
                                             return Some(SensorInfo {
-                                                sensor_id,
-                                                sensor_type,
-                                                sensor_imei,
-                                                sensor_imsi,
-                                                sensor_msisdn,
+                                                sensor_id: sensor_id_str.to_string(),
+                                                sensor_type: geo.get("type").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                                sensor_imei: geo.get("sensor_imei").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                                sensor_imsi: geo.get("sensor_imsi").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                                sensor_serial_number: None,
+                                                sensor_msisdn: geo.get("sensor_msisdn").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                                latitude: geo.get("latitude").and_then(|v| v.as_f64()),
+                                                longitude: geo.get("longitude").and_then(|v| v.as_f64()),
+                                                accuracy: geo.get("accuracy").and_then(|v| v.as_f64()),
                                             });
-                                        } else {
-                                            proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Certificate {}: sensor_id found but is not a string: {:?}", cert_idx, sensor_id_val));
                                         }
-                                    } else {
-                                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("=== SENSOR INFORMATION MISSING ===\n  sensor_id: MISSING\n  sensor_imei: MISSING\n  sensor_imsi: MISSING\n========================================\nCertificate {}: grc.geolocation found but sensor_id is missing", cert_idx));
                                     }
-                                } else {
-                                    proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Unified Identity extension found but grc.geolocation claim is missing", cert_idx));
                                 }
                             }
                             Err(e) => {
-                                proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Certificate {}: Failed to parse extension value as JSON: {:?}", cert_idx, e));
+                                proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Certificate {}: Failed to parse JSON: {:?}", cert_idx, e));
                             }
                         }
                     }
