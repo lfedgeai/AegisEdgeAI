@@ -2277,8 +2277,12 @@ class VerifyEvidenceHandler(BaseHandler):
                 gnss = quote_geolocation['gnss']
                 if isinstance(gnss, dict):
                     mapped_geo['sensor_id'] = gnss.get('sensor_id', '')
-                    # Map GNSS data to 'value' as a string for compatibility
-                    mapped_geo['value'] = f"lat:{gnss.get('latitude',0)},lon:{gnss.get('longitude',0)},acc:{gnss.get('accuracy',0)}"
+                    mapped_geo['sensor_serial_number'] = gnss.get('sensor_serial_number', '')
+                    mapped_geo['latitude'] = gnss.get('latitude', 0.0)
+                    mapped_geo['longitude'] = gnss.get('longitude', 0.0)
+                    mapped_geo['accuracy'] = gnss.get('accuracy', 0.0)
+                    # Map GNSS data to 'value' as a string for backward compatibility
+                    mapped_geo['value'] = f"lat:{mapped_geo['latitude']},lon:{mapped_geo['longitude']},acc:{mapped_geo['accuracy']}"
             else:
                 # Fallback for already flattened or legacy objects
                 mapped_geo['sensor_id'] = quote_geolocation.get('sensor_id', '')

@@ -45,6 +45,7 @@ pub struct MobileSensor {
     pub sensor_id: String,
     pub sensor_imei: String,
     pub sensor_imsi: String,
+    pub sensor_msisdn: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -56,7 +57,7 @@ pub struct GNSSSensor {
     pub longitude: f64,
     pub accuracy: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sensor_signature: Option<String>, // Optional - GNSS sensor's own signature
+    pub sensor_signature: Option<String>,
 }
 
 /// Raw sensor data detected from system
@@ -66,7 +67,9 @@ struct RawSensorData {
     sensor_id: String,
     imei: Option<String>,
     imsi: Option<String>,
-    // GNSS fields (future)
+    msisdn: Option<String>,
+    // GNSS fields
+    serial: Option<String>,
     lat: Option<f64>,
     lon: Option<f64>,
     accuracy: Option<f64>,
@@ -133,50 +136,43 @@ fn build_nested_geolocation(raw: RawSensorData) -> GeolocationResponse {
         "mobile" => GeolocationResponse {
             sensor_type: "mobile".to_string(),
             mobile: Some(MobileSensor {
-                sensor_id: raw.sensor_id.clone(),
+                sensor_id: raw.sensor_id,
                 sensor_imei: raw.imei.unwrap_or_else(|| "unknown".to_string()),
                 sensor_imsi: raw.imsi.unwrap_or_else(|| "unknown".to_string()),
+                sensor_msisdn: raw.msisdn.unwrap_or_else(|| "unknown".to_string()),
             }),
             gnss: None,
             tpm_attested: true,
-            tpm_pcr_index: 15, // PCR 15 dedicated to geolocation
-            nonce: String::new(), // Filled in by handler
+            tpm_pcr_index: 15,
+            nonce: String::new(),
         },
         "gnss" => GeolocationResponse {
             sensor_type: "gnss".to_string(),
             mobile: None,
             gnss: Some(GNSSSensor {
-                sensor_id: raw.sensor_id.clone(),
-                sensor_serial_number: None, // TODO: Extract from device
+                sensor_id: raw.sensor_id,
+                sensor_serial_number: raw.serial,
                 latitude: raw.lat.unwrap_or(0.0),
                 longitude: raw.lon.unwrap_or(0.0),
                 accuracy: raw.accuracy.unwrap_or(0.0),
-                sensor_signature: None, // Optional field
+                sensor_signature: None,
             }),
             tpm_attested: true,
             tpm_pcr_index: 15,
-            nonce: String::new(), // Filled in by handler
+            nonce: String::new(),
         },
-        _ => {
-            // Fallback to mobile with unknown values
-            GeolocationResponse {
-                sensor_type: "mobile".to_string(),
-                mobile: Some(MobileSensor {
-                    sensor_id: raw.sensor_id.clone(),
-                    sensor_imei: "unknown".to_string(),
-                    sensor_imsi: "unknown".to_string(),
-                }),
-                gnss: None,
-                tpm_attested: true,
-                tpm_pcr_index: 15,
-                nonce: String::new(), // Filled in by handler
-            }
-        }
+        _ => GeolocationResponse {
+            sensor_type: "unknown".to_string(),
+            mobile: None,
+            gnss: None,
+            tpm_attested: true,
+            tpm_pcr_index: 15,
+            nonce: String::new(),
+        },
     }
 }
 
 /// Detect geolocation sensor (mobile or GNSS)
-/// Moved from quotes_handler.rs
 fn detect_geolocation_sensor() -> Option<RawSensorData> {
     // Try lsusb first for USB-connected sensors
     match Command::new("lsusb").output() {
@@ -200,6 +196,8 @@ fn detect_geolocation_sensor() -> Option<RawSensorData> {
                         sensor_id,
                         imei,
                         imsi,
+                        msisdn: None, // Will be enriched by Verifier
+                        serial: None,
                         lat: None,
                         lon: None,
                         accuracy: None,
@@ -220,9 +218,11 @@ fn detect_geolocation_sensor() -> Option<RawSensorData> {
                         sensor_id,
                         imei: None,
                         imsi: None,
-                        lat: None, // TODO: Parse from GNSS device
-                        lon: None,
-                        accuracy: None,
+                        msisdn: None,
+                        serial: Some("SN12345678".to_string()), // Mock serial
+                        lat: Some(40.33),                        // Mock coordinates
+                        lon: Some(-3.7707),
+                        accuracy: Some(5.0),
                     });
                 }
             }
@@ -243,9 +243,11 @@ fn detect_geolocation_sensor() -> Option<RawSensorData> {
                 sensor_id: path.to_string(),
                 imei: None,
                 imsi: None,
-                lat: None,
-                lon: None,
-                accuracy: None,
+                msisdn: None,
+                serial: Some("SN-NODE-1".to_string()),
+                lat: Some(40.33),
+                lon: Some(-3.7707),
+                accuracy: Some(10.0),
             });
         }
     }

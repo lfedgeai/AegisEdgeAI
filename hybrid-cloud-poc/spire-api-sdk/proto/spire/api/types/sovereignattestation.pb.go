@@ -165,15 +165,21 @@ func (x *AttestedClaims) GetGeolocation() *Geolocation {
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // Geolocation represents geolocation sensor metadata
 type Geolocation struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                               // "mobile" or "gnss"
-	SensorId      string                 `protobuf:"bytes,2,opt,name=sensor_id,json=sensorId,proto3" json:"sensor_id,omitempty"`       // Sensor identifier (e.g., USB ID "12d1:1433" for mobile)
-	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`                             // Optional for mobile, mandatory for gnss (e.g., GNSS coordinates)
-	SensorImei    string                 `protobuf:"bytes,4,opt,name=sensor_imei,json=sensorImei,proto3" json:"sensor_imei,omitempty"` // Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
-	SensorImsi    string                 `protobuf:"bytes,5,opt,name=sensor_imsi,json=sensorImsi,proto3" json:"sensor_imsi,omitempty"` // Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
-	SensorMsisdn  string                 `protobuf:"bytes,6,opt,name=sensor_msisdn,json=sensorMsisdn,proto3" json:"sensor_msisdn,omitempty"` // Task 2f: MSISDN (phone number) for mobile devices (e.g., "tel:+34696810912")
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Type         string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                                     // "mobile" or "gnss"
+	SensorId     string                 `protobuf:"bytes,2,opt,name=sensor_id,json=sensorId,proto3" json:"sensor_id,omitempty"`             // Sensor identifier (e.g., USB ID "12d1:1433" for mobile)
+	Value        string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`                                   // Optional for mobile, mandatory for gnss (e.g., GNSS coordinates)
+	SensorImei   string                 `protobuf:"bytes,4,opt,name=sensor_imei,json=sensorImei,proto3" json:"sensor_imei,omitempty"`       // IMEI for mobile devices
+	SensorImsi   string                 `protobuf:"bytes,5,opt,name=sensor_imsi,json=sensorImsi,proto3" json:"sensor_imsi,omitempty"`       // IMSI for mobile devices
+	SensorMsisdn string                 `protobuf:"bytes,6,opt,name=sensor_msisdn,json=sensorMsisdn,proto3" json:"sensor_msisdn,omitempty"` // MSISDN for mobile devices
+	// GNSS-specific fields
+	SensorSerialNumber string  `protobuf:"bytes,7,opt,name=sensor_serial_number,json=sensorSerialNumber,proto3" json:"sensor_serial_number,omitempty"`
+	Latitude           float64 `protobuf:"fixed64,8,opt,name=latitude,proto3" json:"latitude,omitempty"`
+	Longitude          float64 `protobuf:"fixed64,9,opt,name=longitude,proto3" json:"longitude,omitempty"`
+	Accuracy           float64 `protobuf:"fixed64,10,opt,name=accuracy,proto3" json:"accuracy,omitempty"`
+	SensorSignature    string  `protobuf:"bytes,11,opt,name=sensor_signature,json=sensorSignature,proto3" json:"sensor_signature,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Geolocation) Reset() {
@@ -241,10 +247,44 @@ func (x *Geolocation) GetSensorImsi() string {
 	return ""
 }
 
-// Task 2f: Get sensor MSISDN for mobile devices
 func (x *Geolocation) GetSensorMsisdn() string {
 	if x != nil {
 		return x.SensorMsisdn
+	}
+	return ""
+}
+
+func (x *Geolocation) GetSensorSerialNumber() string {
+	if x != nil {
+		return x.SensorSerialNumber
+	}
+	return ""
+}
+
+func (x *Geolocation) GetLatitude() float64 {
+	if x != nil {
+		return x.Latitude
+	}
+	return 0
+}
+
+func (x *Geolocation) GetLongitude() float64 {
+	if x != nil {
+		return x.Longitude
+	}
+	return 0
+}
+
+func (x *Geolocation) GetAccuracy() float64 {
+	if x != nil {
+		return x.Accuracy
+	}
+	return 0
+}
+
+func (x *Geolocation) GetSensorSignature() string {
+	if x != nil {
+		return x.SensorSignature
 	}
 	return ""
 }
@@ -262,7 +302,7 @@ const file_spire_api_types_sovereignattestation_proto_rawDesc = "" +
 	"\x12workload_code_hash\x18\x05 \x01(\tR\x10workloadCodeHash\x12,\n" +
 	"\x12keylime_agent_uuid\x18\x06 \x01(\tR\x10keylimeAgentUuid\"P\n" +
 	"\x0eAttestedClaims\x12>\n" +
-	"\vgeolocation\x18\x01 \x01(\v2\x1c.spire.api.types.GeolocationR\vgeolocation\"\x96\x01\n" +
+	"\vgeolocation\x18\x01 \x01(\v2\x1c.spire.api.types.GeolocationR\vgeolocation\"\xee\x02\n" +
 	"\vGeolocation\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1b\n" +
 	"\tsensor_id\x18\x02 \x01(\tR\bsensorId\x12\x14\n" +
@@ -270,7 +310,14 @@ const file_spire_api_types_sovereignattestation_proto_rawDesc = "" +
 	"\vsensor_imei\x18\x04 \x01(\tR\n" +
 	"sensorImei\x12\x1f\n" +
 	"\vsensor_imsi\x18\x05 \x01(\tR\n" +
-	"sensorImsiB7Z5github.com/spiffe/spire-api-sdk/proto/spire/api/typesb\x06proto3"
+	"sensorImsi\x12#\n" +
+	"\rsensor_msisdn\x18\x06 \x01(\tR\fsensorMsisdn\x120\n" +
+	"\x14sensor_serial_number\x18\a \x01(\tR\x12sensorSerialNumber\x12\x1a\n" +
+	"\blatitude\x18\b \x01(\x01R\blatitude\x12\x1c\n" +
+	"\tlongitude\x18\t \x01(\x01R\tlongitude\x12\x1a\n" +
+	"\baccuracy\x18\n" +
+	" \x01(\x01R\baccuracy\x12)\n" +
+	"\x10sensor_signature\x18\v \x01(\tR\x0fsensorSignatureB7Z5github.com/spiffe/spire-api-sdk/proto/spire/api/typesb\x06proto3"
 
 var (
 	file_spire_api_types_sovereignattestation_proto_rawDescOnce sync.Once

@@ -32,20 +32,25 @@ def config_env(tmp_path, monkeypatch):
     conn.execute(
         """
         CREATE TABLE sensor_map (
-            sensor_id TEXT PRIMARY KEY,
-            msisdn TEXT NOT NULL,
+            sensor_id TEXT,
+            sensor_imei TEXT,
+            sensor_imsi TEXT,
+            sensor_serial TEXT,
+            sensor_type TEXT DEFAULT 'mobile',
+            msisdn TEXT,
             latitude REAL NOT NULL,
             longitude REAL NOT NULL,
-            accuracy REAL NOT NULL
+            accuracy REAL NOT NULL,
+            PRIMARY KEY (sensor_id, sensor_imei, sensor_imsi, sensor_serial)
         )
         """
     )
     conn.execute(
         """
-        INSERT INTO sensor_map(sensor_id, msisdn, latitude, longitude, accuracy)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO sensor_map(sensor_id, sensor_imei, sensor_imsi, sensor_serial, sensor_type, msisdn, latitude, longitude, accuracy)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (DEFAULT_SENSOR_ID, DEFAULT_MSISDN, 40.33, -3.7707, 7.0),
+        (DEFAULT_SENSOR_ID, "356345043865103", "214070610960475", None, 'mobile', DEFAULT_MSISDN, 40.33, -3.7707, 7.0),
     )
     conn.commit()
     conn.close()
