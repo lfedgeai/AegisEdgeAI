@@ -1147,7 +1147,7 @@ typed_config:
     configuration:
       "@type": "type.googleapis.com/google.protobuf.StringValue"
       value: |
-        verification_mode: "trust"   # Options: trust, runtime, strict
+        verification_mode: "runtime"   # Options: trust, runtime, strict (Default: runtime)
         sidecar_endpoint: "http://localhost:9050/verify"
 ```
 
@@ -1177,7 +1177,7 @@ The WASM filter extracts claims from the SPIRE certificate chain:
 │                                                                             │
 │  3. Verification Mode:                                                      │
 │     ├─ TRUST   → ✅ ALLOW (trust SVID attestation, no CAMARA call)         │
-│     ├─ RUNTIME → Call sidecar (with caching) → Allow/Deny                  │
+│     ├─ RUNTIME → Call sidecar (with caching) → Allow/Deny (DEFAULT)       │
 │     └─ STRICT  → Call sidecar (no caching) → Allow/Deny                    │
 │                                                                             │
 │  4. On success: Add X-Sensor-ID, X-MSISDN headers → Forward to backend     │
@@ -1196,7 +1196,7 @@ POST http://localhost:9050/verify
 {
   "msisdn": "tel:+34696810912",    // From SVID claim (no DB lookup!)
   "sensor_id": "12d1:1433",
-  "sensor_imei": "unknown",
+  "sensor_imei": "356345043865103",
   "sensor_imsi": "214070610960475",
   "skip_cache": false              // true for Strict mode
 }
