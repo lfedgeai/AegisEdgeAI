@@ -37,7 +37,7 @@ configuration:
   "@type": "type.googleapis.com/google.protobuf.StringValue"
   value: |
     {
-      "verification_mode": "trust",
+      "verification_mode": "runtime",
       "sidecar_endpoint": "http://localhost:9050"
     }
 ```
@@ -46,9 +46,9 @@ configuration:
 
 | Mode | Sidecar Call | Cache | Use Case |
 |------|--------------|-------|----------|
-| **trust** (default) | ❌ None | N/A | Standard workloads, trust attestation-time verification |
-| **runtime** | ✅ Yes | ✅ 15min TTL | High-security apps, banking |
-| **strict** | ✅ Yes | ❌ Real-time | Critical infrastructure, military |
+| **trust** | ❌ None | N/A | Low-security workloads, trust attestation-time verification |
+| **runtime** (default) | ✅ Yes | ✅ 15min TTL | Standard workloads, balanced security & performance |
+| **strict** | ✅ Yes | ❌ Real-time | Critical infrastructure, banking, military |
 
 ## How It Works
 
