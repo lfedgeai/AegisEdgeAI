@@ -77,6 +77,10 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 			if attestedClaims.Geolocation.SensorImsi != "" {
 				geoObj["sensor_imsi"] = attestedClaims.Geolocation.SensorImsi
 			}
+			// Task 2f: Add sensor_msisdn for mobile devices (from Keylime verification)
+			if attestedClaims.Geolocation.SensorMsisdn != "" {
+				geoObj["sensor_msisdn"] = attestedClaims.Geolocation.SensorMsisdn
+			}
 			// Add TPM attestation markers
 			if sovereignAttestation != nil {
 				geoObj["tpm-attested-location"] = true

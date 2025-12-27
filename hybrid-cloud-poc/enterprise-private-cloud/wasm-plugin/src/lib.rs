@@ -16,6 +16,10 @@ struct VerifyRequest {
     sensor_imei: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sensor_imsi: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    msisdn: Option<String>,        // Task 8: MSISDN from SVID (no DB lookup needed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    skip_cache: Option<bool>,      // Task 7: true for Strict mode
 }
 
 #[derive(Deserialize)]
@@ -26,24 +30,111 @@ struct VerifyResponse {
     extra: serde_json::Map<String, serde_json::Value>,
 }
 
+// Policy-based verification modes (Task 7)
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum VerificationMode {
+    Trust,    // No sidecar call (default) - trust attestation-time verification
+    Runtime,  // Sidecar call with caching (15min TTL)
+    Strict,   // Sidecar call without caching (real-time)
+}
+
+impl Default for VerificationMode {
+    fn default() -> Self {
+        VerificationMode::Trust
+    }
+}
+
+// Plugin configuration parsed from Envoy WASM config
+#[derive(Clone)]
+struct PluginConfig {
+    verification_mode: VerificationMode,
+    sidecar_endpoint: String,
+}
+
+impl Default for PluginConfig {
+    fn default() -> Self {
+        PluginConfig {
+            verification_mode: VerificationMode::Runtime, // Default to runtime (cached CAMARA verification)
+            sidecar_endpoint: "http://localhost:9050".to_string(),
+        }
+    }
+}
+
+impl PluginConfig {
+    fn from_json(json_str: &str) -> Self {
+        let mut config = PluginConfig::default();
+        
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+            // Parse verification_mode
+            if let Some(mode_str) = json.get("verification_mode").and_then(|v| v.as_str()) {
+                config.verification_mode = match mode_str.to_lowercase().as_str() {
+                    "trust" => VerificationMode::Trust,
+                    "runtime" => VerificationMode::Runtime,
+                    "strict" => VerificationMode::Strict,
+                    _ => {
+                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!(
+                            "Unknown verification_mode '{}', defaulting to 'trust'", mode_str
+                        ));
+                        VerificationMode::Trust
+                    }
+                };
+            }
+            
+            // Parse sidecar_endpoint
+            if let Some(endpoint) = json.get("sidecar_endpoint").and_then(|v| v.as_str()) {
+                config.sidecar_endpoint = endpoint.to_string();
+            }
+        }
+        
+        config
+    }
+}
+
 proxy_wasm::main! {{
     proxy_wasm::set_log_level(LogLevel::Info);
     proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
-        Box::new(SensorVerificationRoot)
+        Box::new(SensorVerificationRoot {
+            config: PluginConfig::default(),
+        })
     });
 }}
 
-struct SensorVerificationRoot;
+struct SensorVerificationRoot {
+    config: PluginConfig,
+}
 
 impl Context for SensorVerificationRoot {}
 
 impl RootContext for SensorVerificationRoot {
+    fn on_configure(&mut self, _plugin_configuration_size: usize) -> bool {
+        // Parse configuration from Envoy
+        if let Some(config_bytes) = self.get_plugin_configuration() {
+            if let Ok(config_str) = String::from_utf8(config_bytes) {
+                self.config = PluginConfig::from_json(&config_str);
+                let mode_str = match self.config.verification_mode {
+                    VerificationMode::Trust => "trust",
+                    VerificationMode::Runtime => "runtime",
+                    VerificationMode::Strict => "strict",
+                };
+                proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                    "WASM filter configured: verification_mode={}, sidecar_endpoint={}",
+                    mode_str, self.config.sidecar_endpoint
+                ));
+            }
+        } else {
+            proxy_wasm::hostcalls::log(LogLevel::Info, "WASM filter using default config: verification_mode=runtime");
+        }
+        true
+    }
+
     fn create_http_context(&self, _context_id: u32) -> Option<Box<dyn HttpContext>> {
         Some(Box::new(SensorVerificationFilter {
+            config: self.config.clone(),
             sensor_id: None,
             sensor_type: None,
             sensor_imei: None,
             sensor_imsi: None,
+            sensor_msisdn: None,
         }))
     }
 
@@ -53,10 +144,12 @@ impl RootContext for SensorVerificationRoot {
 }
 
 struct SensorVerificationFilter {
+    config: PluginConfig,
     sensor_id: Option<String>,
     sensor_type: Option<String>, // "mobile" or "gnss"
     sensor_imei: Option<String>,
     sensor_imsi: Option<String>,
+    sensor_msisdn: Option<String>, // Task 8: MSISDN from SVID
 }
 
 impl Context for SensorVerificationFilter {
@@ -240,17 +333,19 @@ impl HttpContext for SensorVerificationFilter {
         self.sensor_type = sensor_info.sensor_type.clone();
         self.sensor_imei = sensor_info.sensor_imei.clone();
         self.sensor_imsi = sensor_info.sensor_imsi.clone();
+        self.sensor_msisdn = sensor_info.sensor_msisdn.clone(); // Task 8: Store MSISDN from SVID
         
         let sensor_id = sensor_info.sensor_id;
         let sensor_type_str = self.sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
         let imei_str = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
         let imsi_str = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
+        let msisdn_str = self.sensor_msisdn.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
         
         // Log sensor information with type
         if sensor_type_str == "mobile" {
             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                "Sensor information stored for verification: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={}",
-                sensor_type_str, sensor_id, imei_str, imsi_str
+                "Sensor information stored for verification: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={}, sensor_msisdn={}",
+                sensor_type_str, sensor_id, imei_str, imsi_str, msisdn_str
             ));
         } else {
             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
@@ -259,54 +354,77 @@ impl HttpContext for SensorVerificationFilter {
             ));
         }
         
-        // Unified-Identity: Only mobile sensors require CAMARA API verification via mobile location service
-        // GPS/GNSS sensors are trusted hardware and don't need CAMARA verification
+        // Unified-Identity: Apply policy-based verification modes (Task 7)
+        // GPS/GNSS sensors are always trusted hardware - allow directly
+        // Mobile sensors: apply verification_mode policy
         if sensor_type_str == "mobile" {
-            // Call mobile location service to verify mobile sensor with sensor_id, sensor_imei, and sensor_imsi
-            // Note: Caching is handled by the mobile location service (CAMARA API caching), not in the WASM filter
-            let verify_body = serde_json::to_string(&VerifyRequest {
-                sensor_id: sensor_id.clone(),
-                sensor_imei: self.sensor_imei.clone(),
-                sensor_imsi: self.sensor_imsi.clone(),
-            }).unwrap_or_default();
+            let mode_str = match self.config.verification_mode {
+                VerificationMode::Trust => "trust",
+                VerificationMode::Runtime => "runtime",
+                VerificationMode::Strict => "strict",
+            };
             
-            let headers = vec![
-                (":method", "POST"),
-                (":path", "/verify"),
-                (":authority", "localhost:9050"),
-                ("content-type", "application/json"),
-            ];
-            
-            // Dispatch HTTP call for verification (blocking - pause request until response)
-            match self.dispatch_http_call(
-                "mobile_location_service",
-                headers,
-                Some(verify_body.as_bytes()),
-                vec![],
-                Duration::from_secs(5),
-            ) {
-                Ok(_) => {
-                    let sensor_imei = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("none");
-                    let sensor_imsi = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("none");
-                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Dispatched blocking verification request for mobile sensor: type={}, sensor_id={}, sensor_imei={}, sensor_imsi={} (request paused, waiting for response)", sensor_type_str, sensor_id, sensor_imei, sensor_imsi));
-                    // Pause request processing until verification response is received
-                    Action::Pause
+            match self.config.verification_mode {
+                VerificationMode::Trust => {
+                    // Trust mode: No sidecar call - trust attestation-time verification
+                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                        "Mobile sensor (sensor_id={}): verification_mode=trust - allowing without sidecar call (attestation-time verified)",
+                        sensor_id
+                    ));
+                    Action::Continue
                 }
-                Err(e) => {
-                    proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Failed to call mobile location service for sensor_id {}: {:?} - rejecting request", sensor_id, e));
-                    // On dispatch error, reject request
-                    self.send_http_response(
-                        503,
-                        vec![("content-type", "text/plain")],
-                        Some(b"Verification service unavailable"),
-                    );
-                    Action::Pause
+                VerificationMode::Runtime | VerificationMode::Strict => {
+                    // Runtime/Strict mode: Call sidecar for CAMARA verification
+                    let skip_cache = self.config.verification_mode == VerificationMode::Strict;
+                    
+                    let verify_body = serde_json::to_string(&VerifyRequest {
+                        sensor_id: sensor_id.clone(),
+                        sensor_imei: self.sensor_imei.clone(),
+                        sensor_imsi: self.sensor_imsi.clone(),
+                        msisdn: self.sensor_msisdn.clone(),  // Task 8: MSISDN from SVID
+                        skip_cache: if skip_cache { Some(true) } else { None },
+                    }).unwrap_or_default();
+                    
+                    let headers = vec![
+                        (":method", "POST"),
+                        (":path", "/verify"),
+                        (":authority", "localhost:9050"),
+                        ("content-type", "application/json"),
+                    ];
+                    
+                    match self.dispatch_http_call(
+                        "mobile_location_service",
+                        headers,
+                        Some(verify_body.as_bytes()),
+                        vec![],
+                        Duration::from_secs(5),
+                    ) {
+                        Ok(_) => {
+                            let msisdn_str = self.sensor_msisdn.as_ref().map(|s| s.as_str()).unwrap_or("(from DB)");
+                            proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                                "Mobile sensor (sensor_id={}): verification_mode={}, skip_cache={}, msisdn={} - dispatched sidecar call",
+                                sensor_id, mode_str, skip_cache, msisdn_str
+                            ));
+                            Action::Pause
+                        }
+                        Err(e) => {
+                            proxy_wasm::hostcalls::log(LogLevel::Warn, &format!(
+                                "Failed to call sidecar for sensor_id {}: {:?} - rejecting request", sensor_id, e
+                            ));
+                            self.send_http_response(
+                                503,
+                                vec![("content-type", "text/plain")],
+                                Some(b"Verification service unavailable"),
+                            );
+                            Action::Pause
+                        }
+                    }
                 }
             }
         } else {
-            // GPS/GNSS sensors: Trusted hardware, no CAMARA verification needed - allow request directly
+            // GPS/GNSS sensors: Trusted hardware, no verification needed
             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                "GPS/GNSS sensor (type={}, sensor_id={}): Trusted hardware, no mobile location service call needed - allowing request",
+                "GNSS sensor (type={}, sensor_id={}): Trusted hardware - allowing directly",
                 sensor_type_str, sensor_id
             ));
             Action::Continue
@@ -320,6 +438,7 @@ struct SensorInfo {
     sensor_type: Option<String>, // "mobile" or "gnss"
     sensor_imei: Option<String>,
     sensor_imsi: Option<String>,
+    sensor_msisdn: Option<String>, // Task 8: MSISDN from SVID claims (e.g., "tel:+34696810912")
 }
 
 fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
@@ -410,15 +529,21 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                                                 .and_then(|v| v.as_str())
                                                 .map(|s| s.to_string());
                                             
+                                            // Task 8: Extract sensor_msisdn if present
+                                            let sensor_msisdn = geo.get("sensor_msisdn")
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            
                                             // Print sensor information when found
                                             let type_str = sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
                                             let imei_str = sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
                                             let imsi_str = sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
+                                            let msisdn_str = sensor_msisdn.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
                                             
                                             if type_str == "mobile" {
                                                 proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
-                                                    "=== SENSOR INFORMATION EXTRACTED ===\n  type: {}\n  sensor_id: {}\n  sensor_imei: {}\n  sensor_imsi: {}\n========================================",
-                                                    type_str, sensor_id, imei_str, imsi_str
+                                                    "=== SENSOR INFORMATION EXTRACTED ===\n  type: {}\n  sensor_id: {}\n  sensor_imei: {}\n  sensor_imsi: {}\n  sensor_msisdn: {}\n========================================",
+                                                    type_str, sensor_id, imei_str, imsi_str, msisdn_str
                                                 ));
                                             } else {
                                                 proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
@@ -432,6 +557,7 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                                                 sensor_type,
                                                 sensor_imei,
                                                 sensor_imsi,
+                                                sensor_msisdn,
                                             });
                                         } else {
                                             proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Certificate {}: sensor_id found but is not a string: {:?}", cert_idx, sensor_id_val));

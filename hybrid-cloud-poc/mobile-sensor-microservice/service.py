@@ -807,45 +807,78 @@ def create_app(db_path: Path) -> Flask:
         # Normalize empty strings to None
         sensor_imei = sensor_imei if sensor_imei else None
         sensor_imsi = sensor_imsi if sensor_imsi else None
+        
+        # Task 11: Accept msisdn directly from WASM filter (skip DB lookup if provided)
+        direct_msisdn = payload.get("msisdn") if payload else None
+        if direct_msisdn and isinstance(direct_msisdn, str):
+            # Strip tel: prefix if present for validation, but keep for use
+            direct_msisdn = direct_msisdn.strip()
+            if not direct_msisdn:
+                direct_msisdn = None
+        
+        # Task 11: Accept skip_cache parameter for Strict mode (bypass CAMARA cache)
+        skip_cache = payload.get("skip_cache", False) if payload else False
+        if not isinstance(skip_cache, bool):
+            skip_cache = str(skip_cache).lower() in ("true", "1", "yes")
 
         if is_healthcheck:
             LOG.info("Health-check verification request received (readiness probe)")
         else:
             LOG.info(
-                "Received verification request: sensor_id=%s, sensor_imei=%s, sensor_imsi=%s",
+                "Received verification request: sensor_id=%s, sensor_imei=%s, sensor_imsi=%s, direct_msisdn=%s, skip_cache=%s",
                 sensor_id,
                 sensor_imei or "none",
-                sensor_imsi or "none"
+                sensor_imsi or "none",
+                direct_msisdn or "(from DB)",
+                skip_cache
             )
 
-        # Unified-Identity: Lookup by sensor_id, sensor_imei, or sensor_imsi
-        sensor = database.get_sensor(sensor_id, sensor_imei, sensor_imsi)
-        if not sensor:
-            LOG.warning(
-                "Unknown sensor: sensor_id=%s, sensor_imei=%s, sensor_imsi=%s",
-                sensor_id,
-                sensor_imei or "none",
-                sensor_imsi or "none"
-            )
-            return jsonify({"error": "unknown_sensor"}), 404
-
-        s_id, s_imei, s_imsi, msisdn, latitude, longitude, accuracy = sensor
-        
-        # Determine which identifier was used for lookup
-        lookup_key = None
-        if sensor_id and s_id == sensor_id:
-            lookup_key = f"sensor_id={sensor_id}"
-        elif sensor_imei and s_imei == sensor_imei:
-            lookup_key = f"sensor_imei={sensor_imei}"
-        elif sensor_imsi and s_imsi == sensor_imsi:
-            lookup_key = f"sensor_imsi={sensor_imsi}"
+        # Task 11: If MSISDN provided directly (from SVID), skip database lookup
+        if direct_msisdn:
+            LOG.info("Task 11: Using MSISDN from SVID claims (no DB lookup): %s", direct_msisdn)
+            msisdn = direct_msisdn
+            # Strip tel: prefix for CAMARA API if present
+            if msisdn.startswith("tel:"):
+                msisdn = msisdn[4:]
+            # Still get lat/lon from DB for verification if sensor exists
+            sensor = database.get_sensor(sensor_id, sensor_imei, sensor_imsi)
+            if sensor:
+                s_id, s_imei, s_imsi, _, latitude, longitude, accuracy = sensor
+            else:
+                # Use default location if sensor not in DB
+                s_id, s_imei, s_imsi = sensor_id, sensor_imei, sensor_imsi
+                latitude, longitude, accuracy = _get_default_latitude(), _get_default_longitude(), _get_default_accuracy()
+                LOG.warning("Sensor not in DB, using default location for verification")
+            lookup_key = "direct_msisdn"
         else:
-            lookup_key = f"sensor_id={s_id}"  # Fallback
-        
-        # Ensure MSISDN is always from database, never a test user
-        if not msisdn or not isinstance(msisdn, str) or msisdn.strip() == "":
-            LOG.error("Invalid MSISDN from database for %s: %s", lookup_key, msisdn)
-            return jsonify({"error": "invalid_msisdn_from_database"}), 500
+            # Legacy path: Lookup from database
+            sensor = database.get_sensor(sensor_id, sensor_imei, sensor_imsi)
+            if not sensor:
+                LOG.warning(
+                    "Unknown sensor: sensor_id=%s, sensor_imei=%s, sensor_imsi=%s",
+                    sensor_id,
+                    sensor_imei or "none",
+                    sensor_imsi or "none"
+                )
+                return jsonify({"error": "unknown_sensor"}), 404
+
+            s_id, s_imei, s_imsi, msisdn, latitude, longitude, accuracy = sensor
+            
+            # Determine which identifier was used for lookup
+            lookup_key = None
+            if sensor_id and s_id == sensor_id:
+                lookup_key = f"sensor_id={sensor_id}"
+            elif sensor_imei and s_imei == sensor_imei:
+                lookup_key = f"sensor_imei={sensor_imei}"
+            elif sensor_imsi and s_imsi == sensor_imsi:
+                lookup_key = f"sensor_imsi={sensor_imsi}"
+            else:
+                lookup_key = f"sensor_id={s_id}"  # Fallback
+            
+            # Ensure MSISDN is valid from database
+            if not msisdn or not isinstance(msisdn, str) or msisdn.strip() == "":
+                LOG.error("Invalid MSISDN from database for %s: %s", lookup_key, msisdn)
+                return jsonify({"error": "invalid_msisdn_from_database"}), 500
         
         # Validate MSISDN format (should start with + and contain digits)
         if not msisdn.startswith("+") or not msisdn[1:].replace(" ", "").isdigit():
@@ -855,7 +888,7 @@ def create_app(db_path: Path) -> Flask:
             LOG.info("Health-check using default seeded sensor profile from database")
         else:
             LOG.info(
-                "Resolved sensor using %s to msisdn=%s (from database), sensor_id=%s, sensor_imei=%s, sensor_imsi=%s, lat=%.6f, lon=%.6f, accuracy=%.1f",
+                "Resolved sensor using %s to msisdn=%s, sensor_id=%s, sensor_imei=%s, sensor_imsi=%s, lat=%.6f, lon=%.6f, accuracy=%.1f, skip_cache=%s",
                 lookup_key,
                 msisdn,
                 s_id or "none",
@@ -864,6 +897,7 @@ def create_app(db_path: Path) -> Flask:
                 latitude,
                 longitude,
                 accuracy,
+                skip_cache
             )
 
         if bypass_camara:
@@ -1061,6 +1095,65 @@ def create_app(db_path: Path) -> Flask:
                 "accuracy": accuracy,
             }
         )
+
+    # Task 2e: MSISDN lookup endpoint for Keylime Verifier
+    # Called during attestation to enrich geolocation claims with MSISDN
+    @app.route("/lookup_msisdn", methods=["POST"])
+    def lookup_msisdn():
+        """
+        Lookup MSISDN for a sensor by sensor_id, sensor_imei, or sensor_imsi.
+        This endpoint is called by Keylime Verifier during attestation
+        to add sensor_msisdn to SVID claims.
+        
+        Request body:
+            {"sensor_id": "12d1:1433"} or
+            {"sensor_imei": "352099001761481"} or  
+            {"sensor_imsi": "214070610960475"}
+            
+        Response:
+            {"sensor_msisdn": "tel:+34696810912", "found": true} or
+            {"sensor_msisdn": null, "found": false}
+        """
+        try:
+            payload = request.get_json(force=True) or {}
+        except Exception as exc:
+            LOG.error("Failed to parse JSON payload for lookup_msisdn: %s", exc)
+            return jsonify({"error": "invalid JSON payload", "found": False}), 400
+        
+        sensor_id = payload.get("sensor_id")
+        sensor_imei = payload.get("sensor_imei")
+        sensor_imsi = payload.get("sensor_imsi")
+        
+        if not sensor_id and not sensor_imei and not sensor_imsi:
+            return jsonify({
+                "error": "at least one of sensor_id, sensor_imei, or sensor_imsi required",
+                "found": False
+            }), 400
+        
+        sensor = database.get_sensor(sensor_id, sensor_imei, sensor_imsi)
+        if not sensor:
+            LOG.debug("MSISDN lookup: sensor not found for id=%s, imei=%s, imsi=%s",
+                     sensor_id, sensor_imei, sensor_imsi)
+            return jsonify({"sensor_msisdn": None, "found": False})
+        
+        # sensor tuple: (sensor_id, sensor_imei, sensor_imsi, msisdn, lat, lon, accuracy)
+        s_id, s_imei, s_imsi, msisdn, _, _, _ = sensor
+        
+        # Format MSISDN as tel: URI if not already
+        sensor_msisdn = msisdn
+        if msisdn and not msisdn.startswith("tel:"):
+            sensor_msisdn = f"tel:{msisdn}"
+        
+        LOG.info("MSISDN lookup: found sensor_msisdn=%s for id=%s, imei=%s, imsi=%s",
+                sensor_msisdn, s_id, s_imei, s_imsi)
+        
+        return jsonify({
+            "sensor_msisdn": sensor_msisdn,
+            "sensor_id": s_id,
+            "sensor_imei": s_imei,
+            "sensor_imsi": s_imsi,
+            "found": True
+        })
 
     return app
 

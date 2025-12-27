@@ -290,8 +290,8 @@ fn get_imei_imsi() -> (Option<String>, Option<String>) {
                 let mut imsi: Option<String> = None;
 
                 for line in stdout.lines() {
-                    // Look for "SIM IMEI:   <value>"
-                    if line.contains("SIM IMEI:") {
+                    // Look for "Modem IMEI: <value>" (actual script output)
+                    if line.contains("Modem IMEI:") || line.contains("SIM IMEI:") || line.contains("IMEI (Hardware ID):") {
                         if let Some(colon_pos) = line.find(':') {
                             let value = line[colon_pos + 1..].trim();
                             if !value.is_empty()
@@ -306,8 +306,8 @@ fn get_imei_imsi() -> (Option<String>, Option<String>) {
                             }
                         }
                     }
-                    // Look for "SIM IMSI:   <value>"
-                    if line.contains("SIM IMSI:") {
+                    // Look for "SIM IMSI:   <value>" or "IMSI (Subscriber ID)"
+                    if line.contains("SIM IMSI:") || line.contains("IMSI (Subscriber ID):") {
                         if let Some(colon_pos) = line.find(':') {
                             let value = line[colon_pos + 1..].trim();
                             if !value.is_empty()

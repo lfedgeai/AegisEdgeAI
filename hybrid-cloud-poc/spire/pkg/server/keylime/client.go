@@ -46,11 +46,12 @@ type Config struct {
 // sensor_imei: Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
 // sensor_imsi: Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
 type Geolocation struct {
-	Type       string `json:"type"`        // "mobile" or "gnss"
-	SensorID   string `json:"sensor_id"`   // Sensor identifier
-	Value      string `json:"value"`       // Optional for mobile, mandatory for gnss
-	SensorIMEI string `json:"sensor_imei,omitempty"` // Unified-Identity: IMEI for mobile devices
-	SensorIMSI string `json:"sensor_imsi,omitempty"` // Unified-Identity: IMSI for mobile devices
+	Type         string `json:"type"`                     // "mobile" or "gnss"
+	SensorID     string `json:"sensor_id"`                // Sensor identifier
+	Value        string `json:"value"`                    // Optional for mobile, mandatory for gnss
+	SensorIMEI   string `json:"sensor_imei,omitempty"`    // Unified-Identity: IMEI for mobile devices
+	SensorIMSI   string `json:"sensor_imsi,omitempty"`    // Unified-Identity: IMSI for mobile devices
+	SensorMSISDN string `json:"sensor_msisdn,omitempty"` // Task 2f: MSISDN (phone number) for mobile devices
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification
@@ -265,6 +266,9 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 		}
 		if verifyResp.Results.AttestedClaims.Geolocation.SensorIMSI != "" {
 			geoLog += fmt.Sprintf(", sensor_imsi=%s", verifyResp.Results.AttestedClaims.Geolocation.SensorIMSI)
+		}
+		if verifyResp.Results.AttestedClaims.Geolocation.SensorMSISDN != "" {
+			geoLog += fmt.Sprintf(", sensor_msisdn=%s", verifyResp.Results.AttestedClaims.Geolocation.SensorMSISDN)
 		}
 	}
 	c.logger.WithFields(logrus.Fields{

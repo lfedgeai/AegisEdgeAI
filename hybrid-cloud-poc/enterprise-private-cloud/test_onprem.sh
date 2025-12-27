@@ -389,7 +389,7 @@ if [ "$NO_BUILD" != "true" ]; then
     echo -e "${GREEN}  Building WASM filter...${NC}"
     cd "$ONPREM_DIR/wasm-plugin"
     if [ -f "build.sh" ]; then
-        if bash build.sh 2>&1 | tee /tmp/wasm-build.log; then
+        if bash build.sh > /tmp/wasm-build.log 2>&1; then
             echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
         else
             echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
