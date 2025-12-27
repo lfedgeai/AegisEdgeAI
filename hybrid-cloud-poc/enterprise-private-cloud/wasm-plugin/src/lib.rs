@@ -54,7 +54,7 @@ struct PluginConfig {
 impl Default for PluginConfig {
     fn default() -> Self {
         PluginConfig {
-            verification_mode: VerificationMode::Trust,
+            verification_mode: VerificationMode::Runtime, // Default to runtime (cached CAMARA verification)
             sidecar_endpoint: "http://localhost:9050".to_string(),
         }
     }
@@ -122,7 +122,7 @@ impl RootContext for SensorVerificationRoot {
                 ));
             }
         } else {
-            proxy_wasm::hostcalls::log(LogLevel::Info, "WASM filter using default config: verification_mode=trust");
+            proxy_wasm::hostcalls::log(LogLevel::Info, "WASM filter using default config: verification_mode=runtime");
         }
         true
     }
