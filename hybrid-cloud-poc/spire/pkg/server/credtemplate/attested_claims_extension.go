@@ -111,6 +111,10 @@ func convertUnifiedJSONToAttestedClaims(data map[string]any) *types.AttestedClai
 			if sensorImsiVal, ok := geoMap["sensor_imsi"].(string); ok {
 				geo.SensorImsi = sensorImsiVal
 			}
+			// Task 2f: Extract sensor_msisdn
+			if sensorMsisdnVal, ok := geoMap["sensor_msisdn"].(string); ok {
+				geo.SensorMsisdn = sensorMsisdnVal
+			}
 			if geo.Type != "" || geo.SensorId != "" {
 				claims.Geolocation = geo
 			}
@@ -139,6 +143,10 @@ func convertUnifiedJSONToAttestedClaims(data map[string]any) *types.AttestedClai
 						}
 						if sensorImsiVal, ok := geoMap["sensor_imsi"].(string); ok {
 							geo.SensorImsi = sensorImsiVal
+						}
+						// Task 2f: Extract sensor_msisdn
+						if sensorMsisdnVal, ok := geoMap["sensor_msisdn"].(string); ok {
+							geo.SensorMsisdn = sensorMsisdnVal
 						}
 						if geo.Type != "" || geo.SensorId != "" {
 							claims.Geolocation = geo

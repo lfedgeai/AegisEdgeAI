@@ -19,12 +19,13 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 - [x] **Task 1**: Keylime Agent - Delegated Certifier Endpoint (Rust)
 - [x] **Task 2**: Keylime Agent - Attested Geolocation API (Rust)
 - [x] **Task 2d**: Keylime Verifier - Geolocation Database & Integration (Python)
-- [ ] **Task 2e**: Keylime Verifier - MSISDN in Verifier DB Schema (Python) ← NEW
-  - Add `msisdn` column to verifier agent table
-  - Populate from sensor → MSISDN mapping during attestation
-- [ ] **Task 2f**: SPIRE Server - MSISDN in SVID Claims (Go) ← NEW
-  - Add `grc.geolocation.msisdn` to attested claims
-  - Extract MSISDN from Keylime verification response
+- [x] **Task 2e**: Keylime Verifier - MSISDN in Verifier DB Schema (Python) ([Status: Complete])
+  - Add `/lookup_msisdn` endpoint to sidecar for MSISDN lookup
+  - Call sidecar from Keylime verifier during attestation
+- [x] **Task 2f**: SPIRE Server - MSISDN in SVID Claims (Go) ([Status: Complete])
+  - Add `SensorMsisdn` field to Geolocation proto message
+  - Add `grc.geolocation.sensor_msisdn` to attested claims
+  - Extract from Keylime verification response
 - [x] **Task 3**: Keylime Verifier - Verification API & Cleanup ([Status: Complete])
 - [x] **Task 4**: SPIRE Server - Validator Plugin with Geolocation (Go) ([Status: Complete])
 - [x] **Task 5**: SPIRE Agent - Collector Plugin (Go) ([Status: Complete])
@@ -39,21 +40,30 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 > [!IMPORTANT]
 > **Simplification**: With MSISDN embedded in SVID claims (Task 2f), the sidecar no longer needs database lookup. It becomes a **thin CAMARA API wrapper**.
 
-- [ ] **Task 7**: Envoy WASM Plugin - Policy-Based Verification Modes ← UPDATED
-  - Implement `verification_mode` config: `trust`, `runtime`, `strict`
+- [x] **Task 7**: Envoy WASM Plugin - Policy-Based Verification Modes ([Status: Complete])
+  - Implemented `verification_mode` config: `trust`, `runtime`, `strict`
   - Trust mode: No sidecar call (default, trust attestation-time verification)
   - Runtime mode: Sidecar call with caching (15min TTL)
-  - Strict mode: Sidecar call without caching (real-time)
-- [ ] **Task 8**: Envoy WASM Plugin - MSISDN Extraction from SVID ← UPDATED
-  - Extract `msisdn` from Unified Identity extension JSON
+  - Strict mode: Sidecar call with `skip_cache=true` (real-time)
+- [x] **Task 8**: Envoy WASM Plugin - MSISDN Extraction from SVID ([Status: Complete])
+  - Extract `sensor_msisdn` from Unified Identity extension JSON
   - Pass MSISDN to sidecar (no DB lookup needed)
 - [ ] **Task 9**: Envoy WASM Plugin - Standalone Repo Setup (includes sidecar)
 - [ ] **Task 10**: Envoy WASM Plugin - Publish Signed WASM + Sidecar Image
-- [ ] **Task 11**: Mobile Sensor Sidecar - Simplified API ← UPDATED
-  - Remove database lookup (MSISDN comes from WASM filter)
-  - Accept `msisdn` in request body directly
+- [x] **Task 11**: Mobile Sensor Sidecar - Simplified API ([Status: Complete])
+  - Accept `msisdn` directly from WASM filter (skip DB lookup if provided)
   - Implement `skip_cache` parameter for Strict mode
+  - Add `/lookup_msisdn` endpoint for Keylime attestation lookup
 - [ ] **Task 12**: Mobile Sensor Sidecar - Pluggable Backends
+- [ ] **Task 12b**: Sensor Schema Separation (Mobile vs GNSS) ← NEW
+  - **Mobile Sensor Schema**: `{sensor_id, sensor_imei, sensor_imsi, sensor_msisdn}`
+  - **GNSS Sensor Schema**: `{sensor_id, sensor_serial_number, latitude, longitude, sensor_signature (optional)}`
+  - **Full Pipeline Impact**:
+    - Keylime Agent: Separate endpoints/payloads for mobile vs GNSS sensor data
+    - Keylime Verifier DB: Type-aware schema (mobile table, gnss table, or polymorphic)
+    - SPIRE SVID Claims: `grc.sensor.type`, `grc.mobile.*`, `grc.gnss.*` claim namespaces
+    - Envoy WASM Filter: Type-aware claim extraction and header injection
+    - Sidecar API: Separate verification logic per sensor type
 
 ### Pillar 4: Production Readiness (Hardening)
 *Goal: Transform the PoC into a secure, production-grade solution.*

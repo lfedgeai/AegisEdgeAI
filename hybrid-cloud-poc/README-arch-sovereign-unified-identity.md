@@ -992,36 +992,69 @@ SPIRE Server (Port 8081)
 | **Attestation** (Keylime DB) | Sovereign Cloud | Keylime DB → SVID | ✅ Once (verified at attestation) |
 | **Runtime** (Envoy Gateway) | Enterprise On-Prem | SVID claims | Policy-based (optional) |
 
+### Sensor Type Schemas
+
+The system supports two distinct sensor types with different data models:
+
+| Sensor Type | Schema Fields | Use Case |
+|-------------|---------------|----------|
+| **Mobile** | `sensor_id`, `sensor_imei`, `sensor_imsi`, `sensor_msisdn` | Cellular devices, CAMARA API verification |
+| **GNSS** | `sensor_id`, `sensor_serial_number`, `latitude`, `longitude`, `sensor_signature` (optional) | GPS/satellite receivers, trusted hardware |
+
 ### Keylime DB Schema (Client-Side)
 
-The Keylime Verifier database stores the sensor → MSISDN mapping:
+The Keylime Verifier database stores sensor data with type-aware tables:
 
 ```sql
 -- Schema: keylime verifier database
--- New columns added to verifier agent table
-sensor_id TEXT,
+-- Common sensor fields
+sensor_id TEXT PRIMARY KEY,
+sensor_type TEXT,          -- "mobile" or "gnss"
+
+-- Mobile Sensor fields (sensor_type = "mobile")
 sensor_imei TEXT,
 sensor_imsi TEXT,
-msisdn TEXT,           -- e.g., "tel:+34696810912"
+sensor_msisdn TEXT,        -- e.g., "tel:+34696810912"
+
+-- GNSS Sensor fields (sensor_type = "gnss")
+sensor_serial_number TEXT,
 latitude REAL,
 longitude REAL,
+sensor_signature TEXT,     -- Optional cryptographic signature
 accuracy REAL
 ```
 
-- **Lookup priority**: sensor_id > sensor_imei > sensor_imsi
-- **Default Seed**: `12d1:1433 → tel:%2B34696810912, 40.33, -3.7707, 7.0`
-- **MSISDN in SVID**: After attestation, MSISDN is embedded in the Agent SVID `grc.geolocation.msisdn` claim
+- **Lookup priority (Mobile)**: sensor_id > sensor_imei > sensor_imsi
+- **Default Seed (Mobile)**: `12d1:1433 → tel:%2B34696810912`
+- **SVID Claims**: After attestation, sensor data is embedded in SVID with type-specific claim namespaces
 
 ### SVID Claim Structure (Updated)
 
+**Mobile Sensor SVID Claims:**
 ```
 Agent SVID
-├── grc.geolocation:
+├── grc.sensor.type: "mobile"
+├── grc.mobile:
 │   ├── sensor_id: "12d1:1433"
-│   ├── sensor_imei: "unknown"
+│   ├── sensor_imei: "352099001761481"
 │   ├── sensor_imsi: "214070610960475"
-│   ├── msisdn: "tel:+34696810912"    ← NEW (from Keylime DB)
-│   ├── type: "mobile"
+│   └── sensor_msisdn: "tel:+34696810912"
+├── grc.geolocation:
+│   ├── tpm-attested-location: true
+│   └── tpm-attested-pcr-index: 15
+```
+
+**GNSS Sensor SVID Claims:**
+```
+Agent SVID
+├── grc.sensor.type: "gnss"
+├── grc.gnss:
+│   ├── sensor_id: "gnss-001"
+│   ├── sensor_serial_number: "SN-GPS-2024-001"
+│   ├── latitude: 40.33
+│   ├── longitude: -3.7707
+│   └── sensor_signature: "<optional>"     ← Trusted hardware signature
+├── grc.geolocation:
 │   ├── tpm-attested-location: true
 │   └── tpm-attested-pcr-index: 15
 ```

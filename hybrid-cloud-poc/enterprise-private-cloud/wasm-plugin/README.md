@@ -1,9 +1,10 @@
 # WASM Filter for Sensor Verification
 
 This directory contains a WebAssembly (WASM) filter for Envoy that:
-- Extracts sensor ID directly from SPIRE certificate Unified Identity extension
-- Calls mobile location service to verify the sensor
-- Adds `X-Sensor-ID` header to verified requests
+- Extracts sensor information from SPIRE certificate Unified Identity extension
+- Applies policy-based verification modes (trust/runtime/strict)
+- Calls mobile location sidecar for CAMARA verification when needed
+- Adds sensor headers to verified requests
 
 ## Building
 
@@ -15,9 +16,9 @@ This directory contains a WebAssembly (WASM) filter for Envoy that:
    source ~/.cargo/env
    ```
 
-2. **wasm32-wasi target**:
+2. **wasm32-wasip1 target**:
    ```bash
-   rustup target add wasm32-wasi
+   rustup target add wasm32-wasip1
    ```
 
 ### Build
@@ -27,25 +28,55 @@ cd enterprise-private-cloud/wasm-plugin
 bash build.sh
 ```
 
-This will:
-1. Compile the Rust code to WASM
-2. Copy the WASM module to `/opt/envoy/plugins/sensor_verification_wasm.wasm`
+## Configuration
+
+The filter accepts JSON configuration via Envoy WASM config:
+
+```yaml
+configuration:
+  "@type": "type.googleapis.com/google.protobuf.StringValue"
+  value: |
+    {
+      "verification_mode": "trust",
+      "sidecar_endpoint": "http://localhost:9050"
+    }
+```
+
+### Verification Modes
+
+| Mode | Sidecar Call | Cache | Use Case |
+|------|--------------|-------|----------|
+| **trust** (default) | ❌ None | N/A | Standard workloads, trust attestation-time verification |
+| **runtime** | ✅ Yes | ✅ 15min TTL | High-security apps, banking |
+| **strict** | ✅ Yes | ❌ Real-time | Critical infrastructure, military |
 
 ## How It Works
 
-1. **Certificate Extraction**: The filter gets the client certificate from the TLS connection
-2. **Sensor Information Extraction**: Parses the X.509 certificate to find the Unified Identity extension (OID `1.3.6.1.4.1.99999.2`)
-3. **JSON Parsing**: Extracts the JSON from the extension and parses `grc.geolocation` (sensor_id, sensor_type, sensor_imei, sensor_imsi)
-4. **Sensor Type Handling**:
-   - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely (allow request directly)
-   - **Mobile sensors**: Calls the mobile location service at `localhost:9050/verify` with sensor_id, sensor_imei, and sensor_imsi
-     - Note: CAMARA API caching is handled by the mobile location service (15-minute TTL, configurable), not in the WASM filter
-5. **Header Injection**: If verification succeeds, adds `X-Sensor-ID` header and forwards to backend
+1. **Certificate Extraction**: Gets client certificate from TLS connection
+2. **Sensor Info Extraction**: Parses X.509 Unified Identity extension (OID `1.3.6.1.4.1.99999.2`)
+3. **Claim Parsing**: Extracts `grc.sensor.type`, `grc.mobile.*`, `grc.gnss.*` claims
+4. **Policy Application**:
+   - **GNSS sensors**: Trusted hardware, allow directly (no sidecar call)
+   - **Mobile sensors**: Apply verification_mode policy
+     - Trust: Allow without sidecar call
+     - Runtime: Call sidecar with caching
+     - Strict: Call sidecar with `skip_cache=true`
+5. **Header Injection**: Adds `X-Sensor-Type`, `X-Sensor-ID`, `X-Mobile-MSISDN` headers
 
-## Advantages Over Lua Filter
+## Sidecar Request Format
 
-- **Direct Certificate Parsing**: Can parse X.509 extensions natively without external services
-- **Better Performance**: WASM is more performant than Lua for complex operations
-- **Type Safety**: Rust provides compile-time type checking
-- **No External Dependencies**: Eliminates the need for the sensor-id-extractor service
+When calling sidecar (runtime/strict modes):
 
+```json
+POST /verify
+{
+  "sensor_id": "12d1:1433",
+  "sensor_imei": "352099001761481",
+  "sensor_imsi": "214070610960475",
+  "msisdn": "tel:+34696810912",
+  "skip_cache": true
+}
+```
+
+- `msisdn`: Extracted from SVID claims (no DB lookup needed)
+- `skip_cache`: Set to `true` in strict mode

@@ -171,6 +171,7 @@ type Geolocation struct {
 	Value         string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`                             // Optional for mobile, mandatory for gnss (e.g., GNSS coordinates)
 	SensorImei    string                 `protobuf:"bytes,4,opt,name=sensor_imei,json=sensorImei,proto3" json:"sensor_imei,omitempty"` // Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
 	SensorImsi    string                 `protobuf:"bytes,5,opt,name=sensor_imsi,json=sensorImsi,proto3" json:"sensor_imsi,omitempty"` // Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
+	SensorMsisdn  string                 `protobuf:"bytes,6,opt,name=sensor_msisdn,json=sensorMsisdn,proto3" json:"sensor_msisdn,omitempty"` // Task 2f: MSISDN (phone number) for mobile devices (e.g., "tel:+34696810912")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -236,6 +237,14 @@ func (x *Geolocation) GetSensorImei() string {
 func (x *Geolocation) GetSensorImsi() string {
 	if x != nil {
 		return x.SensorImsi
+	}
+	return ""
+}
+
+// Task 2f: Get sensor MSISDN for mobile devices
+func (x *Geolocation) GetSensorMsisdn() string {
+	if x != nil {
+		return x.SensorMsisdn
 	}
 	return ""
 }

@@ -9,6 +9,7 @@ import signal
 import socket
 import sys
 import traceback
+import requests  # Task 2e: For MSISDN lookup from sidecar
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
@@ -2285,6 +2286,35 @@ class VerifyEvidenceHandler(BaseHandler):
                 mapped_geo['sensor_imsi'] = quote_geolocation.get('sensor_imsi', '')
                 if quote_geolocation.get('value'):
                     mapped_geo['value'] = quote_geolocation['value']
+
+            # Task 2e: Lookup sensor_msisdn from sidecar for mobile sensors
+            if geo_type == 'mobile':
+                sensor_msisdn = None
+                sidecar_url = os.getenv('MOBILE_SENSOR_SIDECAR_URL', 'http://localhost:9050')
+                try:
+                    lookup_payload = {
+                        'sensor_id': mapped_geo.get('sensor_id'),
+                        'sensor_imei': mapped_geo.get('sensor_imei'),
+                        'sensor_imsi': mapped_geo.get('sensor_imsi'),
+                    }
+                    response = requests.post(
+                        f"{sidecar_url}/lookup_msisdn",
+                        json=lookup_payload,
+                        timeout=5
+                    )
+                    if response.status_code == 200:
+                        lookup_result = response.json()
+                        if lookup_result.get('found'):
+                            sensor_msisdn = lookup_result.get('sensor_msisdn')
+                            logger.info(
+                                "Unified-Identity Task 2e: MSISDN lookup successful: sensor_id=%s -> sensor_msisdn=%s",
+                                mapped_geo.get('sensor_id'), sensor_msisdn
+                            )
+                except Exception as e:
+                    logger.warning("Unified-Identity Task 2e: MSISDN lookup failed: %s", e)
+                
+                if sensor_msisdn:
+                    mapped_geo['sensor_msisdn'] = sensor_msisdn
 
             # Set the claim with the correct SPIRE prefix
             attested_claims['grc.geolocation'] = mapped_geo
