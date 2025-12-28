@@ -39,13 +39,13 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 
 | Pillar | Complete | In Progress | Blocked | Not Started |
 |--------|----------|-------------|---------|-------------|
-| Pillar 0 | 0 | 0 | 0 | 6 |
-| Pillar 1 | 2 | 0 | 0 | 0 |
+| Pillar 0 | 6 | 0 | 0 | 0 |
+| Pillar 1 | 2 | 0 | 0 | 2 |
 | Pillar 2 | 10 | 1 | 0 | 0 |
 | Pillar 3 | 5 | 0 | 0 | 3 |
 | Pillar 4 | 2 | 0 | 1 | 2 |
-| Pillar 5 | 0 | 0 | 0 | 5 |
-| **Total** | **19** | **1** | **1** | **16** |
+| Pillar 5 | 0 | 0 | 0 | 8 |
+| **Total** | **25** | **1** | **1** | **15** |
 
 ---
 
@@ -58,12 +58,12 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 
 | Task | Description | Priority | Status | Owner | Target |
 |------|-------------|----------|--------|-------|--------|
-| **Task G1** | Add top-level `LICENSE` file (Apache 2.0 recommended) | P0 | `[ ]` | TBD | Week 1 |
-| **Task G2** | Add `CONTRIBUTING.md` with DCO/CLA requirements | P0 | `[ ]` | TBD | Week 1 |
-| **Task G3** | Add `SECURITY.md` with vulnerability reporting process | P0 | `[ ]` | TBD | Week 1 |
-| **Task G4** | Add `CODE_OF_CONDUCT.md` (LF standard recommended) | P0 | `[ ]` | TBD | Week 1 |
-| **Task G5** | Add `.github/ISSUE_TEMPLATE/` (bug, feature, security) | P0 | `[ ]` | TBD | Week 1 |
-| **Task G6** | Add `.github/PULL_REQUEST_TEMPLATE.md` | P0 | `[ ]` | TBD | Week 1 |
+| **Task G1** | Add top-level `LICENSE` file (Apache 2.0 recommended) | P0 | `[x]` | — | Done |
+| **Task G2** | Add `CONTRIBUTING.md` with DCO/CLA requirements | P0 | `[x]` | — | Done |
+| **Task G3** | Add `SECURITY.md` with vulnerability reporting process | P0 | `[x]` | — | Done |
+| **Task G4** | Add `CODE_OF_CONDUCT.md` (LF standard recommended) | P0 | `[x]` | — | Done |
+| **Task G5** | Add `.github/ISSUE_TEMPLATE/` (bug, feature, security) | P0 | `[x]` | — | Done |
+| **Task G6** | Add `.github/PULL_REQUEST_TEMPLATE.md` | P0 | `[x]` | — | Done |
 
 ### Task G1: LICENSE File
 ```
