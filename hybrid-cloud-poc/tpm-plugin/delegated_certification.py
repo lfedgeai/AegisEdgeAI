@@ -440,13 +440,15 @@ class DelegatedCertificationClient:
                 e.code,
                 e.reason,
             )
-            # Try to read error response body
+            # Try to read error response body - return it so caller can parse error details
             try:
                 error_body = e.read().decode("utf-8")
                 logger.debug("Error response body: %s", error_body)
-            except:
-                pass
-            return None
+                # Return error body so caller can extract error message from JsonWrapper
+                return error_body
+            except Exception as read_err:
+                logger.debug("Failed to read error response body: %s", read_err)
+                return None
         except urllib.error.URLError as e:
             logger.error(
                 "Unified-Identity: URL error: %s",
