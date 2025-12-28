@@ -76,12 +76,13 @@ class DelegatedCertificationClient:
             )
             endpoint = "https://127.0.0.1:9002"
         elif endpoint.startswith("http://") and ("127.0.0.1" in endpoint or "localhost" in endpoint):
-            # Keep HTTP as-is - agent may have mTLS disabled (KEYLIME_AGENT_ENABLE_AGENT_MTLS=false)
-            # The endpoint is explicitly specified, so trust the caller
+            # Convert HTTP to HTTPS - agent requires HTTPS (mTLS enabled by default)
             logger.info(
-                "Unified-Identity: Using HTTP endpoint as specified (agent may have mTLS disabled): %s",
-                endpoint
+                "Unified-Identity: Converting HTTP to HTTPS (agent requires HTTPS/mTLS): %s -> %s",
+                endpoint,
+                endpoint.replace("http://", "https://")
             )
+            endpoint = endpoint.replace("http://", "https://")
 
         # Support both UDS and HTTP endpoints
         if endpoint.startswith("unix://"):
