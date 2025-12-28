@@ -406,18 +406,31 @@ SPIRE Server logs: TpmAttestation len=0, AppKeyCert len=0
 ```
 
 **Investigation Checklist:**
-- [ ] Debug `rust-keylime` `/v2.2/delegated_certification/certify_app_key` endpoint
+- [x] Debug `rust-keylime` `/v2.2/delegated_certification/certify_app_key` endpoint
 - [ ] Verify TPM context file path is accessible
 - [ ] Check AK handle loading in `delegated_certification_handler.rs`
 - [ ] Verify `create_qualifying_data()` hash computation
 - [ ] Test `TPM2_Certify` directly via `tpm2-tools`
 - [ ] Verify App Key certificate chain: App Key → AK → EK
 
-**Root Cause Candidates:**
+**Root Cause Identified:**
+✅ **JSON Response Format Mismatch** - The Rust endpoint was returning raw struct instead of `JsonWrapper`, causing the Python client to fail parsing the response.
+
+**Fix Applied (2025-12-28):**
+1. **Rust Handler** (`delegated_certification_handler.rs` line 286):
+   - Changed from: `HttpResponse::Ok().json(response)`
+   - Changed to: `HttpResponse::Ok().json(JsonWrapper::success(response))`
+   - Now consistent with all other rust-keylime endpoints
+
+2. **Python Client** (`delegated_certification.py` lines 199-221):
+   - Updated to extract from `JsonWrapper` format: `response.get("results", {}).get("result")`
+   - Added proper error handling for JsonWrapper error responses
+   - Now correctly parses: `{ "code": 200, "status": "Success", "results": {...} }`
+
+**Remaining Root Cause Candidates (if issue persists):**
 1. TPM context file not found/accessible by rust-keylime
 2. AK handle mismatch between keylime-agent and TPM Plugin
 3. Challenge nonce format mismatch
-4. JSON serialization issue in response
 
 **Files to Investigate:**
 ```

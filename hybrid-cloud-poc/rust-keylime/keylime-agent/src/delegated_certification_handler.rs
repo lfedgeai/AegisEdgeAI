@@ -283,7 +283,8 @@ async fn certify_app_key(
         data.agent_uuid
     );
 
-    HttpResponse::Ok().json(response)
+    // Wrap response in JsonWrapper to match API format (consistent with other endpoints)
+    HttpResponse::Ok().json(JsonWrapper::success(response))
 }
 
 /// Create qualifying data (hash) from PEM public key and challenge nonce
