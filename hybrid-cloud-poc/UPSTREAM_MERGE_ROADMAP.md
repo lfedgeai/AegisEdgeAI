@@ -39,13 +39,13 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 
 | Pillar | Complete | In Progress | Blocked | Not Started |
 |--------|----------|-------------|---------|-------------|
-| Pillar 0 | 6 | 0 | 0 | 0 |
-| Pillar 1 | 2 | 0 | 0 | 2 |
+| Pillar 0 | 6 | 0 | 0 | 1 |
+| Pillar 1 | 2 | 0 | 0 | 3 |
 | Pillar 2 | 10 | 1 | 0 | 0 |
 | Pillar 3 | 5 | 0 | 0 | 3 |
-| Pillar 4 | 2 | 0 | 1 | 2 |
-| Pillar 5 | 0 | 0 | 0 | 8 |
-| **Total** | **25** | **1** | **1** | **15** |
+| Pillar 4 | 2 | 0 | 1 | 4 |
+| Pillar 5 | 0 | 0 | 0 | 9 |
+| **Total** | **25** | **1** | **1** | **20** |
 
 ---
 
@@ -59,6 +59,7 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 | Task | Description | Priority | Status | Owner | Target |
 |------|-------------|----------|--------|-------|--------|
 | **Task G1** | Add top-level `LICENSE` file (Apache 2.0 recommended) | P0 | `[x]` | — | Done |
+| **Task G1b** | Automate Source File License Header checks | P2 | `[ ]` | TBD | Week 3 |
 | **Task G2** | Add `CONTRIBUTING.md` with DCO/CLA requirements | P0 | `[x]` | — | Done |
 | **Task G3** | Add `SECURITY.md` with vulnerability reporting process | P0 | `[x]` | — | Done |
 | **Task G4** | Add `CODE_OF_CONDUCT.md` (LF standard recommended) | P0 | `[x]` | — | Done |
@@ -113,6 +114,17 @@ Files:
 Dependencies: None
 ```
 
+### Task G1b: License Header Automation (NEW)
+```
+Goal: Ensure all source files contain the Apache 2.0 header.
+Actions:
+1. Create a script to audit all .go, .rs, .py, and .sh files.
+2. Integrate into CI/CD as a blocking gate.
+3. Integrate into pre-commit hooks.
+Dependencies: Task G1
+Effort: 0.5 days
+```
+
 ---
 
 ## Pillar 1: Test Infrastructure (Safety Net)
@@ -125,6 +137,7 @@ Dependencies: None
 | **Task 0b** | CI Runner (`ci_test_runner.py`) for real-time monitoring | P1 | `[x]` | — | Done |
 | **Task 0c** | Add GitHub Actions CI/CD pipeline | P1 | `[ ]` | TBD | Week 2 |
 | **Task 0d** | Add pre-commit hooks configuration | P2 | `[ ]` | TBD | Week 3 |
+| **Task 0e** | Implement Software TPM (`swtpm`) for dev/test | P2 | `[ ]` | TBD | Week 3 |
 
 ### Task 0c: GitHub Actions CI/CD (NEW)
 ```yaml
@@ -137,17 +150,15 @@ Dependencies: Tasks G1-G6 complete
 Effort: 2-3 days
 ```
 
-### Task 0d: Pre-commit Hooks (NEW)
+### Task 0e: Software TPM Support (NEW)
 ```
-Location: /.pre-commit-config.yaml
-Hooks:
-- golangci-lint (Go)
-- clippy (Rust)
-- ruff/black (Python)
-- markdownlint (Documentation)
-- detect-secrets (Security)
+Goal: Enable development and testing on systems without physical TPM hardware.
+Actions:
+1. Integrate `swtpm` or `ibmtpm` into `scripts/setup_tpm_plugin.sh`.
+2. Update `test_integration.sh` to auto-detect and use soft-TPM if no hardware is present.
+3. Update README for non-hardware developer onboarding.
 Dependencies: None
-Effort: 1 day
+Effort: 2 days
 ```
 
 ---
@@ -381,6 +392,7 @@ Effort: 2 days
 | **Task 15** | Quality Assurance - Linting, pre-commit hooks | P2 | `[ ]` | TBD | Week 3 |
 | **Task 16** | Cleanup stale backup files | P1 | `[ ]` | TBD | Week 1 |
 | **Task 17** | Rate limiting at Envoy gateway level | P2 | `[ ]` | TBD | Week 4 |
+| **Task 18** | Standardize Observability (Metrics & Telemetry) | P1 | `[ ]` | TBD | Week 4 |
 
 ### Task 14b: Delegated Certification Fix (CRITICAL BLOCKER)
 
@@ -448,6 +460,18 @@ Implementation:
 Effort: 1-2 days
 ```
 
+### Task 18: Observability & Telemetry (NEW)
+```
+Goal: Standardize telemetry for production visibility.
+Actions:
+1. Implement Prometheus metrics in Envoy WASM filter (request latency, verification results).
+2. Implement Prometheus metrics in Mobile Sensor Microservice.
+3. Define standard Grafana dashboard for "Unified Identity Health".
+4. Ensure structured JSON logging across all components.
+Dependencies: None
+Effort: 3-4 days
+```
+
 ---
 
 ## Pillar 5: Documentation Completeness (NEW)
@@ -464,6 +488,7 @@ Effort: 1-2 days
 | **Task D6** | Standardize sensor type casing (mobile/gnss) | P2 | `[ ]` | TBD | Week 2 |
 | **Task D7** | Expand troubleshooting section in README | P2 | `[ ]` | TBD | Week 3 |
 | **Task D8** | Add container/Kubernetes deployment docs | P2 | `[ ]` | TBD | Week 4 |
+| **Task D9** | Define Versioning & Release Strategy (SemVer) | P2 | `[ ]` | TBD | Week 2 |
 
 ### Task D1: PREREQUISITES.md
 ```
@@ -609,6 +634,17 @@ deploy/
 └── README.md
 
 Effort: 3-5 days (significant new work)
+```
+
+### Task D9: Versioning Strategy (NEW)
+```
+Goal: Establish a reliable release cadence and compatibility model.
+Actions:
+1. Define Semantic Versioning (SemVer) policy for plugins and APIs.
+2. Establish a CHANGELOG.md maintenance process.
+3. Design the "Pre-release" vs "Release" tag flow in GitHub Actions.
+Dependencies: Task 0c (CI/CD)
+Effort: 1 day
 ```
 
 ---
@@ -818,17 +854,21 @@ hybrid-cloud-poc/README-arch-sovereign-unified-identity.md (fix URLs, remove sta
 
 ---
 
-## Appendix B: External Dependencies
+## Appendix B: External Dependencies & Toolchains
 
-| Dependency | Version | Purpose | Upgrade Risk |
-|------------|---------|---------|--------------|
-| SPIRE | 1.9.x | Identity management | Medium |
-| Keylime | 7.11.x | Remote attestation | Medium |
-| Envoy | 1.28.x | API gateway | Low |
-| Proxy-Wasm SDK | 0.2.x | WASM filter | Low |
-| tss-esapi (Rust) | 7.x | TPM bindings | Medium |
-| tpm2-tss (Python) | 2.x | TPM bindings | Medium |
+| Dependency | Verified Version | Target Upstream | Purpose |
+|------------|------------------|-----------------|---------|
+| **SPIRE** | 1.14.0 | v1.11.x+ | Identity management |
+| **Keylime (Python)**| 7.13.0 | v7.14.x | Remote attestation |
+| **Keylime (Rust)** | 0.2.8 | v0.3.x | Remote attestation |
+| **Envoy** | 1.35.x | v1.31.x+ | API gateway |
+| **tss-esapi** (Rust)| 7.6.0 | Latest | TPM bindings |
+| **Go Toolchain** | 1.22.0 | v1.22+ | Build & Runtime |
+| **Rust Toolchain** | 1.91.1 | Stable | Build & Runtime |
+| **Python** | 3.10.12 | 3.10+ | Build & Runtime |
 
 ---
 
 *Last Updated: 2025-12-28 | Next Review: 2025-01-04*
+
+

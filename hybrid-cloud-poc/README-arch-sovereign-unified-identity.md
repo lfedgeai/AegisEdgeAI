@@ -172,7 +172,7 @@ TPM Hardware
 **Every workload SVID request requires:**
 1. SPIRE Agent initiates mTLS connection to SPIRE Server
 2. TLS handshake needs signature
-3. `TPMSigner.Sign()` invoked ([tpm_signer.go:122](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/agent/tpmplugin/tpm_signer.go#L122))
+3. `TPMSigner.Sign()` invoked ([tpm_signer.go:122](./spire/pkg/agent/tpmplugin/tpm_signer.go#L122))
 4. **Real-time gRPC/HTTP call to TPM Plugin Server**
 5. TPM Plugin calls `tpm2_sign` on physical TPM
 6. Signature returned and used in TLS handshake
@@ -190,7 +190,7 @@ TPM Hardware
 | Phase | TLS Private Key | Purpose |
 |-------|----------------|---------|
 | **Initial Attestation** | Ephemeral SPIRE key | Standard agent enrollment |
-| **After Attestation** ([client.go:597](file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/pkg/agent/client/client.go#L597)) | **TPM App Key** | All workload SVID operations |
+| **After Attestation** ([client.go:597](./spire/pkg/agent/client/client.go#L597)) | **TPM App Key** | All workload SVID operations |
 
 **Code Reference:**
 ```go
