@@ -58,7 +58,7 @@ pub struct CertifyAppKeyRequest {
     pub challenge_nonce: Option<String>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CertifyAppKeyResponse {
     pub result: String,
     #[serde(
