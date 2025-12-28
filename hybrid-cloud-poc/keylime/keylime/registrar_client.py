@@ -144,7 +144,8 @@ def doRegistrarDelete(
 
 
 def doRegistrarList(
-    registrar_ip: str, registrar_port: str, tls_context: Optional[ssl.SSLContext]
+    registrar_ip: str, registrar_port: str, tls_context: Optional[ssl.SSLContext],
+    allow_insecure_http: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
     Get the list of registered agents from the registrar.
@@ -154,6 +155,9 @@ def doRegistrarList(
     :returns: The request response body
     """
     tls_enabled = tls_context is not None
+    if not tls_enabled and not allow_insecure_http:
+        logger.warning("Registrar list query requires TLS or allow_insecure_http=True")
+        return None
     client = RequestsClient(f"{bracketize_ipv6(registrar_ip)}:{registrar_port}", tls_enabled, tls_context=tls_context)
     response = client.get(f"/v{API_VERSION}/agents/")
     response_body: Dict[str, Any] = response.json()

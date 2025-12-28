@@ -551,9 +551,9 @@ cd ~/AegisSovereignAI/hybrid-cloud-poc
 8. Envoy WASM filter behavior:
     - GPS/GNSS sensors: Trusted hardware, bypass mobile location service (allow directly)
     - Mobile sensors: Calls Mobile Location Service to verify geolocation
+      - Prioritizes **DB-less flow** using coordinates/MSISDN extracted from SVID claims
+      - Falls back to DB-BASED lookup if SVID data is incomplete
       - Mobile Location Service handles CAMARA API caching (15-min TTL, configurable)
-      - CAMARA API is called at most once per TTL period; cached results are reused
-9. If verified, Envoy forwards request to backend mTLS server with `X-Sensor-ID` header
 10. Backend server logs the sensor ID for audit trail
 
 **Expected output:**

@@ -43,7 +43,7 @@ unified_identity_default_gpu_status = healthy
 unified_identity_default_gpu_utilization = 15.0
 unified_identity_default_gpu_memory = 10240
 
-# Enable agent mTLS so the verifier can mutually authenticate with rust-keylime agent
+# Enable agent mTLS to match rust-keylime agent's default configuration
 enable_agent_mtls = True
 
 # Auto-migrate database

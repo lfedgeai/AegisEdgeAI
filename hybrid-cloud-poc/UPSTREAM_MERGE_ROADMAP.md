@@ -38,7 +38,7 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 > **Architecture Decision (December 2025)**: WASM + Sidecar is the confirmed pattern. WASM filter extracts claims from certificates (unavoidable for custom X.509 extensions), sidecar handles OAuth/caching/secrets.
 
 > [!IMPORTANT]
-> **Simplification**: With MSISDN embedded in SVID claims (Task 2f), the sidecar no longer needs database lookup. It becomes a **thin CAMARA API wrapper**.
+> **Simplification**: With MSISDN and location data embedded in SVID claims (Task 2f), the sidecar implements a **DB-LESS flow** that bypasses database lookups. It remains a thin CAMARA API wrapper with intelligent caching.
 
 - [x] **Task 7**: Envoy WASM Plugin - Policy-Based Verification Modes ([Status: Complete])
   - Implemented `verification_mode` config: `trust`, `runtime`, `strict`
@@ -48,27 +48,29 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 - [x] **Task 8**: Envoy WASM Plugin - MSISDN Extraction from SVID ([Status: Complete])
   - Extract `sensor_msisdn` from Unified Identity extension JSON
   - Pass MSISDN to sidecar (no DB lookup needed)
-- [ ] **Task 9**: Envoy WASM Plugin - Standalone Repo Setup (includes sidecar)
-- [ ] **Task 10**: Envoy WASM Plugin - Publish Signed WASM + Sidecar Image
-- [x] **Task 11**: Mobile Sensor Sidecar - Simplified API ([Status: Complete])
-  - Accept `msisdn` directly from WASM filter (skip DB lookup if provided)
-  - Implement `skip_cache` parameter for Strict mode
-  - Add `/lookup_msisdn` endpoint for Keylime attestation lookup
-- [ ] **Task 12**: Mobile Sensor Sidecar - Pluggable Backends
-- [ ] **Task 12b**: Sensor Schema Separation (Mobile vs GNSS) ← NEW
-  - **Mobile Sensor Schema**: `{sensor_id, sensor_imei, sensor_imsi, sensor_msisdn}`
+- [ ] **Task 9**: Envoy WASM Plugin - Standalone Repo Setup (includes sidecar) [RELEVANT: For open-source upstreaming]
+- [ ] **Task 10**: Envoy WASM Plugin - Publish Signed WASM + Sidecar Image [RELEVANT: For production distribution]
+- [x] **Task 11**: Mobile Sensor Sidecar - Pure Mobile & DB-less Flow ([Status: Complete])
+  - Refined to "Pure Mobile" (GNSS handled by WASM, sidecar rejects non-mobile).
+  - Implements **DB-LESS flow**: Prioritizes `msisdn`, `latitude`, `longitude`, `accuracy` from SVID.
+  - Falls back to DB-BASED lookup ONLY if SVID data is missing.
+  - Added support for `sensor_imei`, `sensor_imsi`, and `sensor_serial` in mapping.
+- [ ] **Task 12**: Mobile Sensor Sidecar - Pluggable Backends [RELEVANT: For multi-telco support]
+- [/] **Task 12b**: Sensor Schema Separation (Mobile vs GNSS) ([Status: Partial])
+  - **Mobile Sensor Schema**: `{sensor_id, sensor_imei, sensor_imsi, sensor_msisdn, latitude, longitude, accuracy}`
   - **GNSS Sensor Schema**: `{sensor_id, sensor_serial_number, latitude, longitude, sensor_signature (optional)}`
-  - **Full Pipeline Impact**:
-    - Keylime Agent: Separate endpoints/payloads for mobile vs GNSS sensor data
-    - Keylime Verifier DB: Type-aware schema (mobile table, gnss table, or polymorphic)
-    - SPIRE SVID Claims: `grc.sensor.type`, `grc.mobile.*`, `grc.gnss.*` claim namespaces
-    - Envoy WASM Filter: Type-aware claim extraction and header injection
-    - Sidecar API: Separate verification logic per sensor type
+  - **Status Update**: Sidecar and WASM filter logic updated. Keylime/SPIRE pipeline transition to new namespaces pending.
 
 ### Pillar 4: Production Readiness (Hardening)
 *Goal: Transform the PoC into a secure, production-grade solution.*
 - [x] **Task 13**: TLS Verification - Remove `InsecureSkipVerify` across all components ([Status: Complete])
 - [x] **Task 14**: Secrets Management - Move CAMARA API keys to secure providers ([Status: Complete])
+- [ ] **Task 14b**: Delegated Certification Fix (Pre-Open-Source Blocker)
+  - **Issue**: `Failed to request certificate: Empty response` from rust-keylime during TPM2_Certify
+  - **Impact**: `TpmAttestation len=0, AppKeyCert len=0` in SPIRE Server logs (attestation succeeds but without real TPM evidence)
+  - Debug rust-keylime `/v2.2/delegated_certification/certify_app_key` endpoint
+  - Fix empty response in `delegated_certification.py` → rust-keylime flow
+  - Verify App Key certificate is properly signed by AK
 - [ ] **Task 15**: Quality Assurance - Linting, pre-commit hooks, and issue resolution
 
 ---

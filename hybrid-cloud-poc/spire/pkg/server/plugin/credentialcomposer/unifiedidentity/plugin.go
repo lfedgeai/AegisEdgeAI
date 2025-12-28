@@ -230,6 +230,7 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 		AppKeyCertificate:    sa.AppKeyCertificate,
 		ChallengeNonce:       sa.ChallengeNonce,
 		WorkloadCodeHash:     sa.WorkloadCodeHash,
+		KeylimeAgentUuid:     sa.KeylimeAgentUuid,
 	}, "")
 	if err != nil {
 		return nil, nil, status.Errorf(codes.Internal, "failed to build Keylime request: %v", err)
@@ -270,12 +271,16 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 	var protoGeo *types.Geolocation
 	if keylimeClaims.Geolocation != nil {
 		protoGeo = &types.Geolocation{
-			Type:         keylimeClaims.Geolocation.Type,
-			SensorId:     keylimeClaims.Geolocation.SensorID,
-			Value:        keylimeClaims.Geolocation.Value,
-			SensorImei:   keylimeClaims.Geolocation.SensorIMEI,
-			SensorImsi:   keylimeClaims.Geolocation.SensorIMSI,
-			SensorMsisdn: keylimeClaims.Geolocation.SensorMSISDN, // Task 2f: MSISDN from Keylime
+			Type:               keylimeClaims.Geolocation.Type,
+			SensorId:           keylimeClaims.Geolocation.SensorID,
+			Value:              keylimeClaims.Geolocation.Value,
+			SensorImei:         keylimeClaims.Geolocation.SensorIMEI,
+			SensorImsi:         keylimeClaims.Geolocation.SensorIMSI,
+			SensorMsisdn:       keylimeClaims.Geolocation.SensorMSISDN,       // Task 2f: MSISDN from Keylime
+			SensorSerialNumber: keylimeClaims.Geolocation.SensorSerialNumber, // Task 12b: Serial from Keylime
+			Latitude:           keylimeClaims.Geolocation.Latitude,
+			Longitude:          keylimeClaims.Geolocation.Longitude,
+			Accuracy:           keylimeClaims.Geolocation.Accuracy,
 		}
 	}
 

@@ -54,13 +54,16 @@ configuration:
 
 1. **Certificate Extraction**: Gets client certificate from TLS connection
 2. **Sensor Info Extraction**: Parses X.509 Unified Identity extension (OID `1.3.6.1.4.1.99999.2`)
-3. **Claim Parsing**: Extracts `grc.sensor.type`, `grc.mobile.*`, `grc.gnss.*` claims
+3. **Claim Parsing**: Extracts sensor metadata from nested `grc.geolocation` structure:
+   - **Mobile**: `grc.geolocation.mobile` → `sensor_id`, `sensor_imei`, `sim_imsi`, `sim_msisdn`, and `location_verification` (lat/lon/acc)
+   - **GNSS**: `grc.geolocation.gnss` → `sensor_id`, `sensor_serial_number`, and `retrieved_location` (lat/lon/acc)
+   - **Legacy Fallback**: Also supports flattened `grc.geolocation` for backward compatibility.
 4. **Policy Application**:
    - **GNSS sensors**: Trusted hardware, allow directly (no sidecar call)
    - **Mobile sensors**: Apply verification_mode policy
      - Trust: Allow without sidecar call
-     - Runtime: Call sidecar with caching
-     - Strict: Call sidecar with `skip_cache=true`
+     - Runtime: Call sidecar with caching (DB-less if coordinates present in SVID)
+     - Strict: Call sidecar with `skip_cache=true` (DB-less if coordinates present in SVID)
 5. **Header Injection**: Adds `X-Sensor-Type`, `X-Sensor-ID`, `X-Mobile-MSISDN` headers
 
 ## Sidecar Request Format
@@ -71,12 +74,15 @@ When calling sidecar (runtime/strict modes):
 POST /verify
 {
   "sensor_id": "12d1:1433",
-  "sensor_imei": "352099001761481",
-  "sensor_imsi": "214070610960475",
-  "msisdn": "tel:+34696810912",
+  "sensor_imei": "356345043865103",
+  "sim_imsi": "214070610960475",
+  "sim_msisdn": "tel:+34696810912",
+  "latitude": 0,
+  "longitude": 0,
+  "accuracy": 0,
   "skip_cache": true
 }
 ```
 
-- `msisdn`: Extracted from SVID claims (no DB lookup needed)
+- `msisdn`, `latitude`, `longitude`, `accuracy`: Extracted from SVID claims (enables DB-less flow)
 - `skip_cache`: Set to `true` in strict mode

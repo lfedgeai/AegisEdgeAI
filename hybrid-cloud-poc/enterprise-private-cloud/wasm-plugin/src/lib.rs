@@ -545,55 +545,41 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                         
                         match serde_json::from_str::<serde_json::Value>(json_str) {
                             Ok(json) => {
-                                // 1. Try new structured namespaces (Task 12b)
-                                if let Some(sensor_meta) = json.get("grc.sensor") {
-                                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found grc.sensor claim", cert_idx));
+                                // 3. Parse Nested grc.geolocation (Refined Schema)
+                                if let Some(geo) = json.get("grc.geolocation") {
+                                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found grc.geolocation claim", cert_idx));
                                     
-                                    let sensor_id = sensor_meta.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                    let sensor_type = sensor_meta.get("type").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                    // Check for "mobile" nested object
+                                    if let Some(mobile) = geo.get("mobile") {
+                                        return Some(SensorInfo {
+                                            sensor_id: mobile.get("sensor_id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+                                            sensor_type: Some("mobile".to_string()),
+                                            sensor_imei: mobile.get("sensor_imei").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                            sensor_imsi: mobile.get("sim_imsi").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                            sensor_serial_number: None,
+                                            sensor_msisdn: mobile.get("sim_msisdn").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                            latitude: mobile.get("location_verification").and_then(|v| v.get("latitude")).and_then(|v| v.as_f64()),
+                                            longitude: mobile.get("location_verification").and_then(|v| v.get("longitude")).and_then(|v| v.as_f64()),
+                                            accuracy: mobile.get("location_verification").and_then(|v| v.get("accuracy")).and_then(|v| v.as_f64()),
+                                        });
+                                    }
                                     
-                                    if let Some(id) = sensor_id {
-                                        let mut info = SensorInfo {
-                                            sensor_id: id,
-                                            sensor_type: sensor_type.clone(),
+                                    // Check for "gnss" nested object
+                                    if let Some(gnss) = geo.get("gnss") {
+                                        return Some(SensorInfo {
+                                            sensor_id: gnss.get("sensor_id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+                                            sensor_type: Some("gnss".to_string()),
                                             sensor_imei: None,
                                             sensor_imsi: None,
-                                            sensor_serial_number: None,
+                                            sensor_serial_number: gnss.get("sensor_serial_number").and_then(|v| v.as_str()).map(|s| s.to_string()),
                                             sensor_msisdn: None,
-                                            latitude: None,
-                                            longitude: None,
-                                            accuracy: None,
-                                        };
-                                        
-                                        // 2. Extract type-specific claims
-                                        if let Some(t) = sensor_type {
-                                            if t == "mobile" {
-                                                if let Some(mobile) = json.get("grc.mobile") {
-                                                    info.sensor_imei = mobile.get("imei").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                                    info.sensor_imsi = mobile.get("imsi").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                                    info.sensor_msisdn = mobile.get("msisdn").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                                    info.latitude = mobile.get("latitude").and_then(|v| v.as_f64());
-                                                    info.longitude = mobile.get("longitude").and_then(|v| v.as_f64());
-                                                    info.accuracy = mobile.get("accuracy").and_then(|v| v.as_f64());
-                                                }
-                                            } else if t == "gnss" {
-                                                if let Some(gnss) = json.get("grc.gnss") {
-                                                    info.sensor_serial_number = gnss.get("serial_number").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                                    info.latitude = gnss.get("latitude").and_then(|v| v.as_f64());
-                                                    info.longitude = gnss.get("longitude").and_then(|v| v.as_f64());
-                                                    info.accuracy = gnss.get("accuracy").and_then(|v| v.as_f64());
-                                                }
-                                            }
-                                        }
-                                        
-                                        return Some(info);
+                                            latitude: gnss.get("retrieved_location").and_then(|v| v.get("latitude")).and_then(|v| v.as_f64()),
+                                            longitude: gnss.get("retrieved_location").and_then(|v| v.get("longitude")).and_then(|v| v.as_f64()),
+                                            accuracy: gnss.get("retrieved_location").and_then(|v| v.get("accuracy")).and_then(|v| v.as_f64()),
+                                        });
                                     }
-                                }
-                                
-                                // 3. Fallback to legacy grc.geolocation (Task 8/11)
-                                if let Some(geo) = json.get("grc.geolocation") {
-                                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found legacy grc.geolocation claim", cert_idx));
-                                    
+
+                                    // Fallback for legacy flattened grc.geolocation (Backward Compatibility)
                                     if let Some(sensor_id_val) = geo.get("sensor_id") {
                                         if let Some(sensor_id_str) = sensor_id_val.as_str() {
                                             return Some(SensorInfo {
@@ -601,7 +587,7 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                                                 sensor_type: geo.get("type").and_then(|v| v.as_str()).map(|s| s.to_string()),
                                                 sensor_imei: geo.get("sensor_imei").and_then(|v| v.as_str()).map(|s| s.to_string()),
                                                 sensor_imsi: geo.get("sensor_imsi").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                                                sensor_serial_number: None,
+                                                sensor_serial_number: geo.get("sensor_serial_number").and_then(|v| v.as_str()).map(|s| s.to_string()),
                                                 sensor_msisdn: geo.get("sensor_msisdn").and_then(|v| v.as_str()).map(|s| s.to_string()),
                                                 latitude: geo.get("latitude").and_then(|v| v.as_f64()),
                                                 longitude: geo.get("longitude").and_then(|v| v.as_f64()),

@@ -18,14 +18,14 @@ Envoy Proxy (10.1.0.10:8080)
     |
     | 1. Terminates mTLS
     | 2. Verifies SPIRE cert signature (using SPIRE CA bundle)
-    | 3. WASM filter extracts sensor ID and type from certificate chain
+    | 3. WASM filter extracts sensor metadata and coordinates from certificate chain
     |    (Unified Identity extension in intermediate cert)
     | 4. WASM filter behavior:
     |    - GPS/GNSS sensors: Trusted hardware, bypass mobile location service (allow directly)
-    |    - Mobile sensors: Calls mobile location service (blocking)
-    |      - Mobile location service handles CAMARA API caching (15-min TTL, configurable)
-    |      - Requests pause until verification completes
-    | 5. If verified: adds X-Sensor-ID header and forwards request
+    |    - Mobile sensors: Calls mobile location service with SVID coordinates (blocking)
+    |      - Mobile location service: DB-LESS flow priority; Fallback to DB-BASED
+    |      - CAMARA API caching (15-min TTL, configurable)
+    | 5. If verified: adds X-Sensor-ID and X-Mobile-MSISDN headers and forwards request
     |    If not verified: returns 403 Forbidden
     |
     v
@@ -49,20 +49,20 @@ mTLS Server (10.1.0.10:9443)
   - Uses SPIRE bundle to verify SPIRE client certificates
   - Uses backend server certificate to verify backend server when connecting upstream
 - **WASM Filter**: 
-  - Extracts sensor ID, sensor_type, sensor_imei, and sensor_imsi from certificate chain (Unified Identity extension in intermediate certificate, OID 1.3.6.1.4.1.99999.2)
+  - Extracts `sensor_id`, `sensor_type`, `sensor_imei`, `sim_imsi`, and `sim_msisdn` from certificate chain.
+  - **Coordinate Extraction**: Extracts `latitude`, `longitude`, and `accuracy` (if available) for the **DB-less flow**.
   - **Sensor Type Handling**:
-    - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely (allow request directly)
-    - **Mobile sensors**: Calls mobile location service for CAMARA API verification
-  - **Blocking verification**: For mobile sensors, requests pause until mobile location service responds
-  - **Caching**: CAMARA API caching is handled by the mobile location service (15-minute TTL, configurable), not in the WASM filter
-  - Adds `X-Sensor-ID` header to verified requests
+    - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely.
+    - **Mobile sensors**: Calls mobile location service for CAMARA API verification (blocking).
+  - **Caching**: All result caching is handled by the mobile location service (15-minute TTL, configurable).
+  - Adds `X-Sensor-ID` and `X-Mobile-MSISDN` headers to verified requests.
   - Returns 403 Forbidden if verification fails
 
-### 3. Mobile Location Service
+### 2. Mobile Location Service
 - **Port**: 9050
 - **Location**: `../mobile-sensor-microservice/`
-- **Function**: Verifies sensor ID via CAMARA API
-- **API**: `POST /verify` with `{"sensor_id": "12d1:1433"}`
+- **Function**: Pure Mobile location verification via CAMARA API (DB-less flow priority).
+- **API**: `POST /verify` with sensor metadata AND coordinates (latitude, longitude, accuracy).
 
 ### 3. mTLS Server
 - **Port**: 9443

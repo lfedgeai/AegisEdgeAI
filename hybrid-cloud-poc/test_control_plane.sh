@@ -115,6 +115,8 @@ stop_control_plane_services_only() {
     rm -rf /tmp/spire-server 2>/dev/null || true
     rm -f /tmp/spire-server.pid 2>/dev/null || true
     rm -f /tmp/spire-server.log 2>/dev/null || true
+    # Also clean up the data directory in the SPIRE folder
+    rm -rf "${SPIRE_DIR}/.data" 2>/dev/null || true
     # Also clean up any SQLite database files that might be in the data directory
     find /tmp -name "*.db" -path "*/spire-server/*" -delete 2>/dev/null || true
     find /tmp -name "*.sqlite" -path "*/spire-server/*" -delete 2>/dev/null || true
@@ -1387,6 +1389,17 @@ cd "${KEYLIME_DIR}"
 # Cleanup existing Keylime Verifier before starting
 stop_control_plane_services
 
+# Detect Keylime source changes (Python)
+# We check if any .py files in keylime/ have been modified recently
+if [ -f /tmp/keylime-verifier.pid ]; then
+    LAST_START=$(stat -c %Y /tmp/keylime-verifier.pid 2>/dev/null || stat -c %Y /tmp/keylime-verifier.log 2>/dev/null || echo 0)
+    CHANGED_FILES=$(find "${KEYLIME_DIR}/keylime" -name "*.py" -newermt "@${LAST_START}" -print -quit 2>/dev/null)
+    if [ -n "$CHANGED_FILES" ]; then
+        echo -e "${YELLOW}  ⚠ Keylime source changes detected since last start${NC}"
+        echo "  (Python services pick up changes on restart, which we are doing now)"
+    fi
+fi
+
 # Start verifier in background
 echo "  Starting verifier on port 8881..."
 echo "    Config: ${KEYLIME_VERIFIER_CONFIG}"
@@ -1597,10 +1610,27 @@ export KEYLIME_AGENT_IP="${KEYLIME_AGENT_IP:-127.0.0.1}"
 export KEYLIME_AGENT_PORT="${KEYLIME_AGENT_PORT:-9002}"
 echo "  Using rust-keylime agent endpoint: ${KEYLIME_AGENT_IP}:${KEYLIME_AGENT_PORT}"
 
-# Check if SPIRE binaries exist, build if needed
+# Check if SPIRE Server binary exists or needs a rebuild
 SPIRE_SERVER="${PROJECT_DIR}/spire/bin/spire-server"
+NEEDS_REBUILD=false
+
 if [ ! -f "${SPIRE_SERVER}" ]; then
-    if [ "$NO_BUILD" = "true" ]; then
+    echo "  SPIRE Server binary not found, need to build."
+    NEEDS_REBUILD=true
+elif [ "${FORCE_BUILD:-false}" = "true" ]; then
+    echo "  Forced build requested."
+    NEEDS_REBUILD=true
+else
+    # Check if any .go file in spire directory is newer than the binary
+    # We limit to last 30 days to avoid scanning too many files if something is weird
+    if [ -n "$(find "${PROJECT_DIR}/spire" -name "*.go" -newer "${SPIRE_SERVER}" -print -quit 2>/dev/null)" ]; then
+        echo -e "${YELLOW}  ⚠ SPIRE Source code changes detected, rebuilding...${NC}"
+        NEEDS_REBUILD=true
+    fi
+fi
+
+if [ "$NEEDS_REBUILD" = "true" ]; then
+    if [ "$NO_BUILD" = "true" ] && [ ! -f "${SPIRE_SERVER}" ]; then
         echo -e "${YELLOW}  ⚠ SPIRE Server binary not found and --no-build specified, skipping SPIRE Server startup${NC}"
         echo -e "${GREEN}============================================================${NC}"
         echo -e "${GREEN}Control Plane Services Summary:${NC}"

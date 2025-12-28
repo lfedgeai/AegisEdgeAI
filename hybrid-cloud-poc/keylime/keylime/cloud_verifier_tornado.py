@@ -1739,6 +1739,10 @@ class VerifyEvidenceHandler(BaseHandler):
             web_util.echo_json_response(self, 400, 'missing required field: data.nonce')
             return None
         
+        # Debug: Log received values to trace hydration issues
+        logger.info("Unified-Identity: Request data - agent_ip=%s agent_port=%s agent_uuid=%s tpm_ak_len=%d",
+                    agent_ip, agent_port, agent_uuid, len(tpm_ak) if tpm_ak else 0)
+        
         def _hydrate_agent_from_db() -> None:
             nonlocal agent_ip, agent_port, agent_uuid, tpm_ak, agent_mtls_cert
             try:
@@ -1796,15 +1800,18 @@ class VerifyEvidenceHandler(BaseHandler):
                     
                 def _list_agents(context):
                     try:
-                        return registrar_client.doRegistrarList(registrar_ip, registrar_port, context)
+                        return registrar_client.doRegistrarList(registrar_ip, registrar_port, context, allow_insecure_http=True)
                     except Exception as exc:  # noqa: BLE001
-                        logger.debug('Unified-Identity: Registrar list failed: %s', exc)
+                        logger.info('Unified-Identity: Registrar list failed with exception: %s', exc)
                         return None
 
                 agent_list = _list_agents(None)
                 if not agent_list and registrar_tls_context:
                     agent_list = _list_agents(registrar_tls_context)
+                logger.info('Unified-Identity: Registrar list result: %s', 
+                            'found' if agent_list else 'empty')
                 if not agent_list or 'results' not in agent_list or 'uuids' not in agent_list['results']:
+                    logger.info('Unified-Identity: Registrar list incomplete, aborting hydration (agent_list=%s)', agent_list)
                     return
 
                 agent_uuids = agent_list['results']['uuids']
@@ -1834,6 +1841,8 @@ class VerifyEvidenceHandler(BaseHandler):
 
                     if registrar_data:
                         registrar_results = registrar_data.get('results', registrar_data)
+                        logger.info('Unified-Identity: Registrar data found for candidate=%s, aik_tpm_present=%s, ak_tpm_present=%s',
+                                    candidate, bool(registrar_results.get('aik_tpm')), bool(registrar_results.get('ak_tpm')))
                         agent_ip = agent_ip or registrar_results.get('ip')
                         agent_port = agent_port or registrar_results.get('port')
                         agent_uuid = agent_uuid or registrar_results.get('agent_id') or candidate
@@ -1843,6 +1852,7 @@ class VerifyEvidenceHandler(BaseHandler):
                                 or registrar_results.get('ak_tpm')
                                 or tpm_ak
                             )
+                            logger.info('Unified-Identity: Retrieved tpm_ak from registrar, len=%d', len(tpm_ak) if tpm_ak else 0)
                         reg_cert = registrar_results.get('mtls_cert') or registrar_results.get('aik_cert')
                         if reg_cert and reg_cert != 'disabled' and not agent_mtls_cert:
                             agent_mtls_cert = reg_cert
@@ -1854,6 +1864,10 @@ class VerifyEvidenceHandler(BaseHandler):
             _hydrate_agent_from_db()
         if not agent_ip or not agent_port or not agent_mtls_cert or not agent_uuid or not tpm_ak:
             _hydrate_agent_from_registrar()
+
+        # Debug: Log values after hydration
+        logger.info("Unified-Identity: After hydration - agent_ip=%s agent_port=%s agent_uuid=%s tpm_ak_len=%d",
+                    agent_ip, agent_port, agent_uuid, len(tpm_ak) if tpm_ak else 0)
 
         if not agent_ip or not agent_port:
             logger.error('Unified-Identity: Agent IP/port unavailable; cannot contact agent for quote')
@@ -1877,7 +1891,11 @@ class VerifyEvidenceHandler(BaseHandler):
         else:
             try:
                 ssl_context = web_util.generate_agent_tls_context('verifier', agent_mtls_cert, logger=logger)
-                logger.info('Unified-Identity: Using mTLS for agent communication (agent: %s:%s)', agent_ip, agent_port_int)
+                if ssl_context:
+                    logger.info('Unified-Identity: Using mTLS for agent communication (agent: %s:%s)', agent_ip, agent_port_int)
+                else:
+                    logger.warning('Unified-Identity: Agent mTLS disabled in configuration; using HTTP fallback')
+                    use_https = False
             except Exception as e:  # noqa: BLE001
                 logger.warning('Unified-Identity: Failed to build mTLS context: %s; falling back to HTTP', e)
                 use_https = False
@@ -2027,11 +2045,14 @@ class VerifyEvidenceHandler(BaseHandler):
         # used for TPM quote verification
         if agent_ip and agent_port_int:
             try:
+                # Use allow_insecure_http if enable_agent_mtls is False
+                allow_insecure_http = not config.getboolean('verifier', 'enable_agent_mtls', fallback=True)
                 geo_response = cloud_verifier_common.get_agent_geolocation_with_nonce(
                     agent_ip=agent_ip,
                     agent_port=agent_port_int,
                     nonce=nonce,
-                    tls_dir=web_util.get_tls_dir('verifier')
+                    tls_dir=web_util.get_tls_dir('verifier'),
+                    allow_insecure_http=allow_insecure_http
                 )
                 if geo_response:
                     quote_geolocation = geo_response
@@ -2273,6 +2294,9 @@ class VerifyEvidenceHandler(BaseHandler):
                     mapped_geo['sensor_id'] = mobile.get('sensor_id', '')
                     mapped_geo['sensor_imei'] = mobile.get('sensor_imei', '')
                     mapped_geo['sensor_imsi'] = mobile.get('sensor_imsi', '')
+                    mapped_geo['latitude'] = mobile.get('latitude', 0.0)
+                    mapped_geo['longitude'] = mobile.get('longitude', 0.0)
+                    mapped_geo['accuracy'] = mobile.get('accuracy', 0.0)
             elif geo_type == 'gnss' and quote_geolocation.get('gnss'):
                 gnss = quote_geolocation['gnss']
                 if isinstance(gnss, dict):
@@ -2288,6 +2312,10 @@ class VerifyEvidenceHandler(BaseHandler):
                 mapped_geo['sensor_id'] = quote_geolocation.get('sensor_id', '')
                 mapped_geo['sensor_imei'] = quote_geolocation.get('sensor_imei', '')
                 mapped_geo['sensor_imsi'] = quote_geolocation.get('sensor_imsi', '')
+                mapped_geo['sensor_serial_number'] = quote_geolocation.get('sensor_serial_number', '')
+                mapped_geo['latitude'] = quote_geolocation.get('latitude', 0.0)
+                mapped_geo['longitude'] = quote_geolocation.get('longitude', 0.0)
+                mapped_geo['accuracy'] = quote_geolocation.get('accuracy', 0.0)
                 if quote_geolocation.get('value'):
                     mapped_geo['value'] = quote_geolocation['value']
 
@@ -2310,9 +2338,16 @@ class VerifyEvidenceHandler(BaseHandler):
                         lookup_result = response.json()
                         if lookup_result.get('found'):
                             sensor_msisdn = lookup_result.get('sensor_msisdn')
+                            # Also extract location_verification coordinates from DB lookup
+                            if lookup_result.get('latitude') is not None:
+                                mapped_geo['latitude'] = lookup_result.get('latitude')
+                            if lookup_result.get('longitude') is not None:
+                                mapped_geo['longitude'] = lookup_result.get('longitude')
+                            if lookup_result.get('accuracy') is not None:
+                                mapped_geo['accuracy'] = lookup_result.get('accuracy')
                             logger.info(
-                                "Unified-Identity Task 2e: MSISDN lookup successful: sensor_id=%s -> sensor_msisdn=%s",
-                                mapped_geo.get('sensor_id'), sensor_msisdn
+                                "Unified-Identity Task 2e: MSISDN+location lookup successful: sensor_id=%s -> sensor_msisdn=%s, loc=(%s, %s)",
+                                mapped_geo.get('sensor_id'), sensor_msisdn, mapped_geo.get('latitude'), mapped_geo.get('longitude')
                             )
                 except Exception as e:
                     logger.warning("Unified-Identity Task 2e: MSISDN lookup failed: %s", e)
