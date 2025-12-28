@@ -255,6 +255,11 @@ class CamaraVerifier(LocationVerifier):
         self.bypass = bypass
 
     def verify(self, sensor_data: Dict[str, Any], skip_cache: bool = False) -> bool:
+        imei = sensor_data.get("sensor_imei")
+        imsi = sensor_data.get("sensor_imsi")
+        if imei or imsi:
+            LOG.info("[FUTURE-PROOF] Hardware identifiers present: imei=%s, imsi=%s", imei, imsi)
+
         if self.bypass:
             if not _demo_mode_enabled():
                 LOG.info("CAMARA_BYPASS enabled: automatically approving")
@@ -321,7 +326,16 @@ def create_app(db_path: Path) -> Flask:
         
         if msisdn and lat is not None and lon is not None:
             LOG.info("DB-LESS flow: using data from SVID claims")
-            sensor = {"sensor_id": sensor_id, "sensor_type": sensor_type, "msisdn": msisdn, "latitude": lat, "longitude": lon, "accuracy": payload.get("accuracy", 1000.0)}
+            sensor = {
+                "sensor_id": sensor_id,
+                "sensor_type": sensor_type,
+                "msisdn": msisdn,
+                "latitude": lat,
+                "longitude": lon,
+                "accuracy": payload.get("accuracy", 1000.0),
+                "sensor_imei": payload.get("sensor_imei"),
+                "sensor_imsi": payload.get("sensor_imsi"),
+            }
         else:
             LOG.info("DB-BASED flow: looking up sensor %s", sensor_id)
             sensor = database.get_sensor(sensor_id, payload.get("sensor_imei"), payload.get("sensor_imsi"), payload.get("sensor_serial_number"))
@@ -343,7 +357,14 @@ def create_app(db_path: Path) -> Flask:
         if not sensor or not sensor.get("msisdn"):
             return jsonify({"found": False})
         msisdn = sensor["msisdn"]
-        return jsonify({"found": True, "sensor_msisdn": msisdn if msisdn.startswith("tel:") else f"tel:{msisdn}", "sensor_id": sensor["sensor_id"]})
+        return jsonify({
+            "found": True,
+            "sensor_msisdn": msisdn if msisdn.startswith("tel:") else f"tel:{msisdn}",
+            "sensor_id": sensor["sensor_id"],
+            "latitude": sensor.get("latitude", 0.0),
+            "longitude": sensor.get("longitude", 0.0),
+            "accuracy": sensor.get("accuracy", 0.0),
+        })
 
     return app
 

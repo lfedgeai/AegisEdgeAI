@@ -273,7 +273,7 @@ class TPMPlugin:
                 return (False, None, None)
         
         with open(app_pub_path, 'r') as f:
-            app_key_public = f.read()
+            app_key_public = f.read().strip()
         
         # Store for later retrieval
         self._app_key_public = app_key_public

@@ -451,7 +451,7 @@ def process_verify_attestation(
     return failure
 
 
-def get_agent_geolocation_with_nonce(agent_ip: str, agent_port: int, nonce: str, tls_dir: str = "") -> Dict[str, Any]:
+def get_agent_geolocation_with_nonce(agent_ip: str, agent_port: int, nonce: str, tls_dir: str = "", allow_insecure_http: bool = False) -> Dict[str, Any]:
     """
     Fetch geolocation from agent with nonce for freshness guarantee (Task 2c).
     
@@ -463,6 +463,7 @@ def get_agent_geolocation_with_nonce(agent_ip: str, agent_port: int, nonce: str,
         agent_port: Agent port (usually 9002)
         nonce: Challenge nonce from SPIRE Server (same as TPM quote nonce)
         tls_dir: Directory containing TLS certificates for mTLS (optional)
+        allow_insecure_http: If True, allow falling back to HTTP if mTLS fails or is disabled (default False)
     
     Returns:
         Geolocation response with nonce validation
@@ -473,6 +474,7 @@ def get_agent_geolocation_with_nonce(agent_ip: str, agent_port: int, nonce: str,
     import requests
     import urllib3
     import os
+    import base64
     
     # Encode nonce for URL (handle binary nonce)
     if isinstance(nonce, bytes):
@@ -480,31 +482,37 @@ def get_agent_geolocation_with_nonce(agent_ip: str, agent_port: int, nonce: str,
     else:
         nonce_str = str(nonce)
     
-    logger.info("Unified-Identity: Fetching geolocation with nonce from %s:%s (mTLS enabled)", agent_ip, agent_port)
+    logger.info("Unified-Identity: Fetching geolocation with nonce from %s:%s (allow_insecure_http=%s)", agent_ip, agent_port, allow_insecure_http)
     logger.debug("Unified-Identity: Geolocation nonce: %s...", nonce_str[:16])
     
     # Use v2.2 as required by the agent in this POC
-    url = f"https://{agent_ip}:{agent_port}/v2.2/agent/attested_geolocation?nonce={nonce_str}"
+    scheme = "https" if not allow_insecure_http else "http"
+    url = f"{scheme}://{agent_ip}:{agent_port}/v2.2/agent/attested_geolocation?nonce={nonce_str}"
     
     try:
-        # Load TLS certificates for mTLS
-        # These are usually in cv_ca directory
-        client_cert = os.path.join(tls_dir, "client-cert.crt")
-        client_key = os.path.join(tls_dir, "client-private.pem")
-        ca_cert = os.path.join(tls_dir, "cacert.crt")
+        cert = None
+        verify = False
         
-        # Verify that certificate files exist
-        if not os.path.exists(client_cert) or not os.path.exists(client_key) or not os.path.exists(ca_cert):
-            logger.error("Unified-Identity: mTLS certificates not found in %s. Strict TLS verification required.", tls_dir)
-            raise Exception(f"mTLS certificates not found in {tls_dir}")
-        
-        cert = (client_cert, client_key)
-        verify = ca_cert
-        logger.debug("Unified-Identity: Using mTLS certs: %s, %s", client_cert, ca_cert)
+        if not allow_insecure_http:
+            # Load TLS certificates for mTLS
+            # These are usually in cv_ca directory
+            client_cert = os.path.join(tls_dir, "client-cert.crt")
+            client_key = os.path.join(tls_dir, "client-private.pem")
+            ca_cert = os.path.join(tls_dir, "cacert.crt")
+            
+            # Verify that certificate files exist
+            if not os.path.exists(client_cert) or not os.path.exists(client_key) or not os.path.exists(ca_cert):
+                logger.error("Unified-Identity: mTLS certificates not found in %s. Strict TLS verification required.", tls_dir)
+                raise Exception(f"mTLS certificates not found in {tls_dir}")
+            
+            cert = (client_cert, client_key)
+            verify = ca_cert
+            logger.debug("Unified-Identity: Using mTLS certs: %s, %s", client_cert, ca_cert)
+        else:
+            logger.debug("Unified-Identity: Skipping mTLS cert loading for HTTP request")
 
-        # Make request with mTLS
-        # Use verify=ca_cert to enforce strict CA validation
-        # Certificates now include SANs for localhost and 127.0.0.1 for test environments
+        # Make request
+        # Use verify=ca_cert to enforce strict CA validation if HTTPS
         response = requests.get(url, cert=cert, verify=verify, timeout=10)
 
         

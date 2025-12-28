@@ -5,6 +5,7 @@ This standalone microservice implements the flow described in the Sovereign Unif
 ### Features
 - **Pure Mobile Focus**: Optimized for mobile sensors. Non-mobile sensors (e.g., GNSS) are rejected by the sidecar as they are handled directly by the WASM filter.
 - **DB-LESS Verification Flow**: Prioritizes using `msisdn`, `latitude`, `longitude`, and `accuracy` directly from the request payload (extracted from SVID claims).
+- **Future-Proof Hardware Location**: Captures and logs `sensor_imei` and `sensor_imsi` for integration with the [AegisSovereignAI hardware-location proposal](https://github.com/lfedgeai/AegisSovereignAI/blob/main/proposals/camara-hardware-location.md).
 - **Fallback DB-BASED Flow**: Looks up a `sensor_id` in a local SQLite database to resolve parameters if they are missing from the request.
 - **Enhanced Mapping**: Database includes `sensor_imei`, `sensor_imsi`, and `sensor_serial` for improved sensor-to-subscriber mapping.
 - **CAMARA Integration**: Executes the standard CAMARA Device Location verification sequence with intelligent caching.

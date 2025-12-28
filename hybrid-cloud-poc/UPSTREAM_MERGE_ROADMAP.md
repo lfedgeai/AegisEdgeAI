@@ -65,6 +65,12 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 *Goal: Transform the PoC into a secure, production-grade solution.*
 - [x] **Task 13**: TLS Verification - Remove `InsecureSkipVerify` across all components ([Status: Complete])
 - [x] **Task 14**: Secrets Management - Move CAMARA API keys to secure providers ([Status: Complete])
+- [ ] **Task 14b**: Delegated Certification Fix (Pre-Open-Source Blocker)
+  - **Issue**: `Failed to request certificate: Empty response` from rust-keylime during TPM2_Certify
+  - **Impact**: `TpmAttestation len=0, AppKeyCert len=0` in SPIRE Server logs (attestation succeeds but without real TPM evidence)
+  - Debug rust-keylime `/v2.2/delegated_certification/certify_app_key` endpoint
+  - Fix empty response in `delegated_certification.py` → rust-keylime flow
+  - Verify App Key certificate is properly signed by AK
 - [ ] **Task 15**: Quality Assurance - Linting, pre-commit hooks, and issue resolution
 
 ---

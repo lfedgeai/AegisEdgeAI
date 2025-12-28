@@ -123,14 +123,10 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(500, "Unified-Identity - Verification: App Key context unavailable")
                 return
             
-            # Unified-Identity - Verification: Default to HTTPS endpoint (agent uses mTLS, Gap #2 fix)
+            # Unified-Identity - Verification: Use HTTP endpoint (agent may have mTLS disabled)
             if not endpoint or endpoint == "unix:///tmp/keylime-agent.sock":
-                endpoint = "https://127.0.0.1:9002"
-                logger.info("Unified-Identity - Verification: Using default HTTPS endpoint (agent uses mTLS): %s", endpoint)
-            elif endpoint.startswith("http://") and ("127.0.0.1" in endpoint or "localhost" in endpoint):
-                # Convert HTTP to HTTPS for localhost (agent now uses mTLS)
-                endpoint = endpoint.replace("http://", "https://")
-                logger.info("Unified-Identity - Verification: Converting HTTP to HTTPS endpoint (agent uses mTLS): %s", endpoint)
+                endpoint = "http://127.0.0.1:9002"
+                logger.info("Unified-Identity - Verification: Using default HTTP endpoint (agent may have mTLS disabled): %s", endpoint)
             
             client = DelegatedCertificationClient(endpoint=endpoint)
             success, cert_b64, agent_uuid, error = client.request_certificate(
@@ -149,6 +145,9 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             }
             if agent_uuid:
                 response["agent_uuid"] = agent_uuid
+                logger.info("Unified-Identity - Verification: Including agent_uuid in response: %s", agent_uuid)
+            else:
+                logger.warning("Unified-Identity - Verification: agent_uuid is empty/None, not including in response")
             
             self.send_json_response(200, response)
         except Exception as e:

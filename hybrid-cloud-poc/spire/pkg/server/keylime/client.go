@@ -46,12 +46,16 @@ type Config struct {
 // sensor_imei: Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
 // sensor_imsi: Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
 type Geolocation struct {
-	Type         string `json:"type"`                     // "mobile" or "gnss"
-	SensorID     string `json:"sensor_id"`                // Sensor identifier
-	Value        string `json:"value"`                    // Optional for mobile, mandatory for gnss
-	SensorIMEI   string `json:"sensor_imei,omitempty"`    // Unified-Identity: IMEI for mobile devices
-	SensorIMSI   string `json:"sensor_imsi,omitempty"`    // Unified-Identity: IMSI for mobile devices
-	SensorMSISDN string `json:"sensor_msisdn,omitempty"` // Task 2f: MSISDN (phone number) for mobile devices
+	Type               string  `json:"type"`                     // "mobile" or "gnss"
+	SensorID           string  `json:"sensor_id"`                // Sensor identifier
+	Value              string  `json:"value"`                    // Optional for mobile, mandatory for gnss
+	SensorIMEI         string  `json:"sensor_imei,omitempty"`    // Unified-Identity: IMEI for mobile devices
+	SensorIMSI         string  `json:"sensor_imsi,omitempty"`    // Unified-Identity: IMSI for mobile devices
+	SensorMSISDN       string  `json:"sensor_msisdn,omitempty"` // Task 2f: MSISDN (phone number) for mobile devices
+	SensorSerialNumber string  `json:"sensor_serial_number,omitempty"`
+	Latitude           float64 `json:"latitude,omitempty"`
+	Longitude          float64 `json:"longitude,omitempty"`
+	Accuracy           float64 `json:"accuracy,omitempty"`
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification

@@ -1471,14 +1471,29 @@ echo ""
 
 cd "${RUST_KEYLIME_DIR}"
 
-# Check if binary exists, build if needed
+# Check if rust-keylime binary exists or needs a rebuild
+NEEDS_REBUILD=false
 if [ ! -f "target/release/keylime_agent" ]; then
-    if [ "$NO_BUILD" = "true" ]; then
+    echo "  rust-keylime agent binary not found, need to build."
+    NEEDS_REBUILD=true
+elif [ "${FORCE_BUILD:-false}" = "true" ]; then
+    echo "  Forced build requested for rust-keylime."
+    NEEDS_REBUILD=true
+else
+    # Check if any .rs or Cargo.toml file is newer than the binary
+    if [ -n "$(find . -maxdepth 3 \( -name "*.rs" -o -name "Cargo.toml" \) -newer "target/release/keylime_agent" -print -quit 2>/dev/null)" ]; then
+        echo -e "${YELLOW}  ⚠ rust-keylime source changes detected, rebuilding...${NC}"
+        NEEDS_REBUILD=true
+    fi
+fi
+
+if [ "$NEEDS_REBUILD" = "true" ]; then
+    if [ "$NO_BUILD" = "true" ] && [ ! -f "target/release/keylime_agent" ]; then
         echo -e "${RED}  ✗ rust-keylime agent binary not found and --no-build specified${NC}"
         echo "  Build it manually: cd ${RUST_KEYLIME_DIR} && cargo build --release"
         exit 1
-    else
-        echo -e "${YELLOW}  ⚠ rust-keylime agent binary not found, building...${NC}"
+    elif [ "$NO_BUILD" != "true" ]; then
+        echo -e "${YELLOW}  Building rust-keylime agent...${NC}"
         source "$HOME/.cargo/env" 2>/dev/null || true
         cargo build --release > /tmp/rust-keylime-build.log 2>&1 || {
             echo -e "${RED}  ✗ Failed to build rust-keylime agent${NC}"
@@ -2456,13 +2471,27 @@ fi
 export KEYLIME_AGENT_PORT="${KEYLIME_AGENT_PORT:-9002}"
 echo "  Using rust-keylime agent endpoint: ${KEYLIME_AGENT_IP}:${KEYLIME_AGENT_PORT}"
 
-# Check if SPIRE binaries exist, build if needed
-SPIRE_SERVER="${PROJECT_DIR}/spire/bin/spire-server"
+# Check if SPIRE Agent binary exists or needs a rebuild
 SPIRE_AGENT="${PROJECT_DIR}/spire/bin/spire-agent"
+NEEDS_REBUILD=false
 
 if [ ! -f "${SPIRE_AGENT}" ]; then
-    if [ "$NO_BUILD" = "true" ]; then
-        echo -e "${YELLOW}  ⚠ SPIRE Agent binary not found and --no-build specified, skipping SPIRE Agent${NC}"
+    echo "  SPIRE Agent binary not found, need to build."
+    NEEDS_REBUILD=true
+elif [ "${FORCE_BUILD:-false}" = "true" ]; then
+    echo "  Forced build requested."
+    NEEDS_REBUILD=true
+else
+    # Check if any .go file in spire directory is newer than the binary
+    if [ -n "$(find "${PROJECT_DIR}/spire" -name "*.go" -newer "${SPIRE_AGENT}" -print -quit 2>/dev/null)" ]; then
+        echo -e "${YELLOW}  ⚠ SPIRE Source code changes detected, rebuilding...${NC}"
+        NEEDS_REBUILD=true
+    fi
+fi
+
+if [ "$NEEDS_REBUILD" = "true" ]; then
+    if [ "$NO_BUILD" = "true" ] && [ ! -f "${SPIRE_AGENT}" ]; then
+        echo -e "${YELLOW}  ⚠ SPIRE Agent binary not found and --no-build specified, skipping SPIRE Agent startup${NC}"
         echo -e "${GREEN}============================================================${NC}"
         echo -e "${GREEN}Integration Test Summary:${NC}"
         echo -e "${GREEN}  ✓ rust-keylime Agent started${NC}"

@@ -49,7 +49,7 @@ mTLS Server (10.1.0.10:9443)
   - Uses SPIRE bundle to verify SPIRE client certificates
   - Uses backend server certificate to verify backend server when connecting upstream
 - **WASM Filter**: 
-  - Extracts `sensor_id`, `sensor_type`, `sensor_imei`, `sensor_imsi`, and `sensor_msisdn` from certificate chain.
+  - Extracts `sensor_id`, `sensor_type`, `sensor_imei`, `sim_imsi`, and `sim_msisdn` from certificate chain.
   - **Coordinate Extraction**: Extracts `latitude`, `longitude`, and `accuracy` (if available) for the **DB-less flow**.
   - **Sensor Type Handling**:
     - **GPS/GNSS sensors**: Trusted hardware, bypass mobile location service entirely.

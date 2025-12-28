@@ -371,6 +371,8 @@ func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.Sover
 
 	// Build SovereignAttestation
 	// Quote is empty since Keylime Verifier will request it directly from rust-keylime agent
+	g.log.WithField("agent_uuid", agentUUID).Info("Unified-Identity - Verification: Building SovereignAttestation with agentUUID")
+	
 	sovereignAttestation := &types.SovereignAttestation{
 		TpmSignedAttestation: "", // Empty - Keylime Verifier will request quote from rust-keylime agent
 		AppKeyPublic:         appKeyResult.AppKeyPublic,
@@ -379,7 +381,7 @@ func (g *TPMPluginGateway) BuildSovereignAttestation(nonce string) (*types.Sover
 		KeylimeAgentUuid:     agentUUID,
 	}
 
-	g.log.Info("Unified-Identity - Verification: SovereignAttestation built successfully (quote handled by Keylime Verifier)")
+	g.log.WithField("keylime_agent_uuid", sovereignAttestation.KeylimeAgentUuid).Info("Unified-Identity - Verification: SovereignAttestation built successfully (quote handled by Keylime Verifier)")
 
 	return sovereignAttestation, nil
 }

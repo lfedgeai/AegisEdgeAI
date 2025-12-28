@@ -385,24 +385,39 @@ sudo mkdir -p /opt/mobile-sensor-service
 sudo mkdir -p /opt/mtls-server
 
 # Build and install WASM filter for sensor verification (if needed)
-if [ "$NO_BUILD" != "true" ]; then
-    echo -e "${GREEN}  Building WASM filter...${NC}"
-    cd "$ONPREM_DIR/wasm-plugin"
-    if [ -f "build.sh" ]; then
-        if bash build.sh > /tmp/wasm-build.log 2>&1; then
-            echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
+WASM_FILTER="/opt/envoy/plugins/sensor_verification_wasm.wasm"
+NEEDS_REBUILD=false
+
+if [ ! -f "$WASM_FILTER" ]; then
+    echo "  WASM filter binary not found, need to build."
+    NEEDS_REBUILD=true
+elif [ "${FORCE_BUILD:-false}" = "true" ]; then
+    echo "  Forced build requested for WASM filter."
+    NEEDS_REBUILD=true
+else
+    # Check if any .rs or Cargo.toml file in wasm-plugin/ is newer than the binary
+    if [ -n "$(find "$ONPREM_DIR/wasm-plugin" -maxdepth 3 \( -name "*.rs" -o -name "Cargo.toml" \) -newer "$WASM_FILTER" -print -quit 2>/dev/null)" ]; then
+        echo -e "${YELLOW}  ⚠ WASM filter source changes detected, rebuilding...${NC}"
+        NEEDS_REBUILD=true
+    fi
+fi
+
+if [ "$NEEDS_REBUILD" = "true" ]; then
+    if [ "$NO_BUILD" != "true" ]; then
+        echo -e "${GREEN}  Building WASM filter...${NC}"
+        cd "$ONPREM_DIR/wasm-plugin"
+        if [ -f "build.sh" ]; then
+            if bash build.sh > /tmp/wasm-build.log 2>&1; then
+                echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
+            else
+                echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
+                echo -e "${YELLOW}  You may need to install Rust and target: rustup target add wasm32-wasip1${NC}"
+            fi
         else
-            echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
-            echo -e "${YELLOW}  You may need to install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+            echo -e "${YELLOW}  ⚠ WASM plugin build script not found${NC}"
         fi
     else
-        echo -e "${YELLOW}  ⚠ WASM plugin directory not found${NC}"
-    fi
-else
-    echo -e "${GREEN}  Skipping WASM filter build (--no-build specified)${NC}"
-    if [ ! -f "/opt/envoy/plugins/sensor_verification_wasm.wasm" ]; then
-        echo -e "${YELLOW}  ⚠ WASM filter not found at /opt/envoy/plugins/sensor_verification_wasm.wasm${NC}"
-        echo -e "${YELLOW}  Build it manually: cd $ONPREM_DIR/wasm-plugin && bash build.sh${NC}"
+        echo -e "${YELLOW}  ⚠ WASM filter rebuild needed but --no-build specified${NC}"
     fi
 fi
 
@@ -703,6 +718,16 @@ fi
 source .venv/bin/activate
 pip install -q -r requirements.txt
 echo -e "${GREEN}  ✓ Mobile location service dependencies installed${NC}"
+
+# Detect Mobile Sidecar source changes (Python)
+if [ -f /tmp/mobile-sensor.log ]; then
+    LAST_START=$(stat -c %Y /tmp/mobile-sensor.log 2>/dev/null || echo 0)
+    CHANGED_FILES=$(find "$REPO_ROOT/mobile-sensor-microservice" -name "*.py" -newermt "@${LAST_START}" -print -quit 2>/dev/null)
+    if [ -n "$CHANGED_FILES" ]; then
+        echo -e "${YELLOW}  ⚠ Mobile sidecar source changes detected since last start${NC}"
+        echo "  (Python services pick up changes on restart, which we are doing now)"
+    fi
+fi
 printf '  To start manually:\n'
 printf '    cd $REPO_ROOT/mobile-sensor-microservice\n'
 printf '    source .venv/bin/activate\n'

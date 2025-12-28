@@ -15,6 +15,14 @@
 - **When enabled**: Activates TPM App Key mTLS, geolocation attestation, delegated certification
 - **Backward Compatible**: Existing deployments unaffected when flag is disabled
 
+**Data Isolation for Clean Open Sourcing**:
+- **Keylime Verifier DB**: Existing database for agent attestation state (no schema changes)
+- **Mobile Sensor Sidecar DB**: Separate SQLite database for sensor-to-subscriber mapping
+  - Key: `sensor_imei` + `sim_imsi` (composite key)
+  - Value: `sim_msisdn`, `location_verification` (lat/lon/acc)
+- **Decoupled Components**: Sidecar can be deployed independently as standalone CAMARA API wrapper
+- **No Cross-DB Dependencies**: Keylime calls sidecar API for lookups, not direct DB access
+
 **Result**: Each component can be contributed to its respective open source project independently with zero breaking changes.
 
 ---
@@ -333,7 +341,9 @@ unified_identity_enabled = true  # Default: false
     - It requests the current geolocation using the challenge nonce from SPIRE Server
     - The agent generates a geolocation response where the hash of (geolocation + nonce) is extended into **PCR 15**
     - The verifier validates that the returned nonce matches the request, providing a freshness guarantee (TOCTOU protection)
-    - Geolocation data includes: sensor type (mobile/gnss), sensor_id, sensor_imei, sensor_imsi, and optional value (for GNSS)
+    - **TPM-Attested Data (Mobile)**: `sensor_id`, `sensor_imei`, `sim_imsi` only
+    - **TPM-Attested Data (GNSS)**: `sensor_id`, `sensor_serial_number`, `latitude`, `longitude`, `accuracy`
+    - **NOT TPM-Attested**: `sim_msisdn` (looked up from sidecar database using IMEI+IMSI composite key)
     - **Note**: The verifier validates geolocation data as part of the hardware-backed attestation process. No additional microservice verification is performed during attestation.
 
 14. **Verifier Retrieves Attested Claims**
@@ -999,66 +1009,98 @@ The system supports two distinct sensor types with different data models:
 
 | Sensor Type | Schema Fields | Use Case |
 |-------------|---------------|----------|
-| **Mobile** | `sensor_id`, `sensor_imei`, `sensor_imsi`, `sensor_msisdn` | Cellular devices, CAMARA API verification |
-| **GNSS** | `sensor_id`, `sensor_serial_number`, `latitude`, `longitude`, `sensor_signature` (optional) | GPS/satellite receivers, trusted hardware |
+| **Mobile** | `sensor_id`, `sensor_imei`, `sim_imsi`, `sim_msisdn`, `location_verification` | Cellular devices, CAMARA API verification |
+| **GNSS** | `sensor_id`, `sensor_serial_number`, `retrieved_location` | GPS/satellite receivers, trusted hardware |
 
 ### Keylime DB Schema (Client-Side)
 
-The Keylime Verifier database stores sensor data with type-aware tables:
+The Keylime Verifier database stores sensor data with type-aware key-value structure:
 
-```sql
--- Schema: keylime verifier database
--- Common sensor fields
-sensor_id TEXT PRIMARY KEY,
-sensor_type TEXT,          -- "mobile" or "gnss"
+**Mobile Sensor (Key → Value):**
+```
+Key Fields (Composite: sensor_imei + sim_imsi):
+├── sensor_imei: "356345043865103"    ← Part of composite key
+├── sim_imsi: "214070610960475"       ← Part of composite key
+└── sensor_id: "12d1:1433"            ← Optional (can be 0)
 
--- Mobile Sensor fields (sensor_type = "mobile")
-sensor_imei TEXT,
-sensor_imsi TEXT,
-sensor_msisdn TEXT,        -- e.g., "tel:+34696810912"
-
--- GNSS Sensor fields (sensor_type = "gnss")
-sensor_serial_number TEXT,
-latitude REAL,
-longitude REAL,
-sensor_signature TEXT,     -- Optional cryptographic signature
-accuracy REAL
+Value Fields (Returned):
+├── sim_msisdn: "tel:+34696810912"
+└── location_verification:
+    ├── latitude: 0
+    ├── longitude: 0
+    └── accuracy: 0
 ```
 
-- **Lookup priority (Mobile)**: sensor_id > sensor_imei > sensor_imsi
-- **Default Seed (Mobile)**: `12d1:1433 → tel:%2B34696810912`
+**GNSS Sensor (Key → Value):**
+```
+Key Fields (Primary = sensor_serial_number):
+├── sensor_serial_number: "SN-GPS-2024-001"    ← Primary identifier
+└── sensor_id: "gnss-001"                       ← Optional (can be 0)
+
+Value Fields (Returned):
+└── retrieved_location:
+    ├── latitude: 40.33
+    ├── longitude: -3.7707
+    └── accuracy: 5.0
+```
+
+- **Lookup (Mobile)**: `sensor_imei` + `sim_imsi` (composite key - IMEI alone is not unique)
+- **Lookup (GNSS)**: `sensor_serial_number` (primary)
+- **Default Seed (Mobile)**: `(imei:356345043865103, imsi:214070610960475) → sim_msisdn:tel:+34696810912`
 - **SVID Claims**: After attestation, sensor data is embedded in SVID with type-specific claim namespaces
 
-### SVID Claim Structure (Updated)
+### SVID Claim Structure (Refined - Nested Hierarchy)
+
+All sensor metadata is consolidated under a single `grc.geolocation` namespace with type-specific nested objects.
+
+> **Note**: The values shown below are examples. Actual values are populated from detected hardware (IMEI, IMSI) and database lookups (MSISDN).
 
 **Mobile Sensor SVID Claims:**
-```
-Agent SVID
-├── grc.sensor.type: "mobile"
-├── grc.mobile:
-│   ├── sensor_id: "12d1:1433"
-│   ├── sensor_imei: "352099001761481"
-│   ├── sensor_imsi: "214070610960475"
-│   └── sensor_msisdn: "tel:+34696810912"
-├── grc.geolocation:
-│   ├── tpm-attested-location: true
-│   └── tpm-attested-pcr-index: 15
+```json
+{
+  "grc.geolocation": {
+    "tpm-attested-location": true,
+    "tpm-attested-pcr-index": 15,
+    "mobile": {
+      "sensor_id": "12d1:1433",           // ← TPM-attested
+      "sensor_imei": "356345043865103",   // ← TPM-attested
+      "sim_imsi": "214070610960475",      // ← TPM-attested
+      "sim_msisdn": "tel:+34696810912",   // ← DB lookup (IMEI+IMSI key)
+      "location_verification": {          // ← DB lookup (IMEI+IMSI key)
+        "latitude": 40.33,
+        "longitude": -3.7707,
+        "accuracy": 7.0
+      }
+    }
+  }
+}
 ```
 
 **GNSS Sensor SVID Claims:**
+```json
+{
+  "grc.geolocation": {
+    "tpm-attested-location": true,
+    "tpm-attested-pcr-index": 15,
+    "gnss": {
+      "sensor_id": "gnss-001",                    // ← TPM-attested
+      "sensor_serial_number": "SN-GPS-2024-001", // ← TPM-attested
+      "retrieved_location": {                     // ← TPM-attested (trusted hardware)
+        "latitude": 40.33,
+        "longitude": -3.7707,
+        "accuracy": 5.0
+      }
+    }
+  }
+}
 ```
-Agent SVID
-├── grc.sensor.type: "gnss"
-├── grc.gnss:
-│   ├── sensor_id: "gnss-001"
-│   ├── sensor_serial_number: "SN-GPS-2024-001"
-│   ├── latitude: 40.33
-│   ├── longitude: -3.7707
-│   └── sensor_signature: "<optional>"     ← Trusted hardware signature
-├── grc.geolocation:
-│   ├── tpm-attested-location: true
-│   └── tpm-attested-pcr-index: 15
-```
+
+**Key Schema Features:**
+- **TPM-Attested (Mobile)**: `sensor_id`, `sensor_imei`, `sim_imsi` only
+- **TPM-Attested (GNSS)**: `sensor_id`, `sensor_serial_number`, `retrieved_location`
+- **Database-Derived (Mobile)**: `sim_msisdn`, `location_verification` (looked up using IMEI+IMSI composite key)
+- **Future-Proof**: Schema aligned with [AegisSovereignAI hardware-location proposal](https://github.com/lfedgeai/AegisSovereignAI/blob/main/proposals/camara-hardware-location.md).
+
 
 ### Mobile Sensor Microservice (Server-Side Sidecar)
 
