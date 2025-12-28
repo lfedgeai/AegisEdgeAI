@@ -57,10 +57,10 @@ SPIRE SERVER and KEYLIME VERIFIER VERIFICATION PHASE:
 ┌──────────────┐  [8]  ┌──────────────┐  [9]  ┌──────────────┐  [10] ┌──────────────┐  [11] ┌──────────────┐  [12] ┌──────────────┐  [13] ┌──────────────┐  [14] ┌──────────────┐  [15] ┌──────────────┐
 │ SPIRE Server │──────>│ Keylime      │──────>│   Keylime    │──────>│ Keylime      │──────>│ rust-keylime │──────>│ Mobile Sensor│──────>│ rust-keylime │──────>│ Keylime      │──────>│ SPIRE Server │
 │ Extract: App │       │ Verifier     │       │  Registrar   │       │ Verifier     │       │    Agent     │       │ Microservice │       │    Agent     │       │ Verifier     │       │ Issue Agent  │
-│ Key, Cert,   │       │ Verify App   │       │ Return: IP,  │       │ Request TPM  │       │ Generate     │       │ Verify       │       │ Return Quote │       │ Verify Quote │       │ SVID with    │
-│ Nonce, UUID  │       │ Key Cert     │       │ Port, AK,    │       │ Quote        │       │ TPM Quote    │       │ Location     │       │ + Geolocation│       │ Verify Cert  │       │ BroaderClaims│
-└──────────────┘       └──────────────┘       │ mTLS Cert    │       └──────────────┘       │ (with geo)   │       │ (Optional)   │       └──────────────┘       │ Verify Geo   │       └──────────────┘
-                                              └──────────────┘                              │  (PCR 15)    │                                                             │ Return       │
+│ Key, Cert,   │       │ Verify App   │       │ Return: IP,  │       │ Verify AK    │       │ Generate     │       │ Verify       │       │ Return Quote │       │ Verify Quote │       │ SVID with    │
+│ Nonce, UUID  │       │ Key Cert     │       │ Port, AK,    │       │ Registration │       │ TPM Quote    │       │ Location     │       │ + Geolocation│       │ Verify Cert  │       │ BroaderClaims│
+└──────────────┘       │ Signature    │       │ mTLS Cert    │       │ (PoC Check)  │       │ (with geo)   │       │ (Optional)   │       └──────────────┘       │ Verify Geo   │       └──────────────┘
+                       └──────────────┘       └──────────────┘       └──────────────┘       │  (PCR 15)    │                                                             │ Return       │
                                                                                              └──────────────┘                                                             │ BroaderClaims│
                                                                                                                                                                  └──────────────┘
 
@@ -83,20 +83,21 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 **[5]** Certificate Response: TPM2_Certify result (AK-signed App Key certificate)  
 **[6]** Build Attestation: Assemble SovereignAttestation (App Key, Cert, Nonce, UUID)  
 **[7]** Send Attestation: SPIRE Agent sends SovereignAttestation to SPIRE Server (Server receives and extracts)  
-**[8]** Lookup Agent: Verifier queries Registrar for agent info (IP, Port, AK, mTLS Cert)  
-**[9]** Agent Info: Registrar returns agent details  
-**[10]** Quote Request: Verifier requests fresh TPM quote with challenge nonce  
-**[11]** Geolocation Detection: Agent detects mobile sensor, binds to PCR 15 with nonce  
-**[12]** Geolocation Extraction: Verifier fetches geolocation via mTLS, validates nonce and PCR index*  
-**[13]** Quote Response: Agent returns TPM quote and nonce-bound geolocation data  
-**[14]** Verification Result: Verifier returns BroaderClaims (geolocation, TPM attestation) → SPIRE Server  
-**[15]** Agent SVID: Server issues agent SVID with BroaderClaims embedded → SPIRE Agent  
-**[16]** Workload Request: Workload connects to Agent Workload API  
-**[17]** Workload API: Workload requests SVID via Agent Workload API  
-**[18]** Forward Request: Agent forwards workload SVID request to Server  
-**[19]** Spire Server Issues Workload SVID: Server issues workload SVID (inherits agent claims, no Keylime call) to spire agent
-**[20]** Spire Agent Returns SVID: Agent returns workload SVID to workload  
-**[21]** Workload Receives SVID: Workload receives workload SVID from SPIRE Agent  
+**[8]** Verify App Key Cert: Verifier verifies App Key certificate signature using TPM AK  
+**[9]** Lookup Agent: Verifier queries Registrar for agent info (IP, Port, AK, mTLS Cert)  
+**[10]** Verify AK Registration: Verifier verifies TPM AK is registered with registrar/verifier (PoC security check - only registered AKs can attest)  
+**[11]** Quote Request: Verifier requests fresh TPM quote with challenge nonce  
+**[12]** Geolocation Detection: Agent detects mobile sensor, binds to PCR 15 with nonce  
+**[13]** Geolocation Extraction: Verifier fetches geolocation via mTLS, validates nonce and PCR index*  
+**[14]** Quote Response: Agent returns TPM quote and nonce-bound geolocation data  
+**[15]** Verification Result: Verifier returns BroaderClaims (geolocation, TPM attestation) → SPIRE Server  
+**[16]** Agent SVID: Server issues agent SVID with BroaderClaims embedded → SPIRE Agent  
+**[17]** Workload Request: Workload connects to Agent Workload API  
+**[18]** Workload API: Workload requests SVID via Agent Workload API  
+**[19]** Forward Request: Agent forwards workload SVID request to Server  
+**[20]** Spire Server Issues Workload SVID: Server issues workload SVID (inherits agent claims, no Keylime call) to spire agent
+**[21]** Spire Agent Returns SVID: Agent returns workload SVID to workload  
+**[22]** Workload Receives SVID: Workload receives workload SVID from SPIRE Agent  
 
 ### Key Components:
 
@@ -895,17 +896,24 @@ SPIRE Server (Port 8081)
    - Proves App Key exists in TPM
    - Cryptographic binding to hardware
 
-4. **Certificate Chain**
+4. **TPM AK Registration Verification (PoC Security Model)**
+   - Keylime Verifier verifies that the TPM AK used to sign the App Key certificate is registered with the registrar/verifier
+   - Only registered/trusted AKs can proceed with SPIRE Agent SVID attestation
+   - Prevents unregistered AKs from attesting (security enforcement)
+   - Verification occurs after App Key certificate signature validation and before TPM quote verification
+   - Checks verifier database first, then falls back to registrar query
+
+5. **Certificate Chain**
    - Agent SVID contains TPM attestation claims
    - Workload SVID chain includes agent SVID
    - Policy enforcement at multiple levels
 
-5. **Nonce-Based Freshness**
+6. **Nonce-Based Freshness**
    - SPIRE Server provides challenge nonce
    - Included in TPM quote and App Key certificate
    - Prevents replay attacks
 
-6. **Nonce-Based Freshness (TOCTOU Prevention)**
+7. **Nonce-Based Freshness (TOCTOU Prevention)**
    - Geolocation sensor identifiers (sensor_type, sensor_id, sensor_imei, sensor_imsi) are bound to a fresh challenge nonce.
    - The hash of (geolocation + nonce) is extended into **PCR 15** on the TPM.
    - The verifier fetches this data via mTLS and validates the nonce, ensuring the location is current at the time of SVID issuance.

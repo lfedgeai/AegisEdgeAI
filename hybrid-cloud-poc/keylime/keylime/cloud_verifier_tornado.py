@@ -2197,6 +2197,110 @@ class VerifyEvidenceHandler(BaseHandler):
                 
                 cert_validated = True
                 logger.info("Unified-Identity: App Key certificate signature verified successfully with AK")
+                
+                # Unified-Identity: Verify that the TPM AK used to sign the App Key certificate is registered
+                # This ensures the AK is known/trusted before attesting the SPIRE Agent SVID (PoC behavior)
+                logger.info("Unified-Identity: Verifying TPM AK is registered with registrar/verifier")
+                ak_is_registered = False
+                
+                # Check verifier database first
+                try:
+                    from keylime.db.keylime_db import SessionManager, make_engine
+                    from keylime.db.verifier_db import VerfierMain
+                    
+                    engine = make_engine('cloud_verifier')
+                    with SessionManager().session_context(engine) as session:
+                        # Check if AK is registered in verifier database
+                        # AKs are stored in base64 TPM2B_PUBLIC format, so direct comparison should work
+                        verifier_agent = session.query(VerfierMain).filter(VerfierMain.ak_tpm == tpm_ak).first()
+                        if verifier_agent:
+                            ak_is_registered = True
+                            logger.info("Unified-Identity: TPM AK found in verifier database (agent_id=%s)", verifier_agent.agent_id)
+                except Exception as e:  # noqa: BLE001
+                    logger.debug('Unified-Identity: Could not check verifier database for AK: %s', e)
+                
+                # If not found in verifier, check registrar
+                if not ak_is_registered:
+                    try:
+                        from keylime import registrar_client
+                        
+                        registrar_ip = config.get('verifier', 'registrar_ip', fallback='127.0.0.1')
+                        registrar_port = config.getint('verifier', 'registrar_port', fallback=8890)
+                        registrar_tls_context = None
+                        try:
+                            (cert, key, trusted_ca, key_password), verify_server = web_util.get_tls_options(
+                                'verifier', is_client=True, logger=logger
+                            )
+                            if cert and key:
+                                registrar_tls_context = web_util.generate_tls_context(
+                                    cert,
+                                    key,
+                                    trusted_ca,
+                                    private_key_password=key_password,
+                                    verify_peer_cert=verify_server,
+                                    is_client=True,
+                                    logger=logger,
+                                )
+                        except Exception as e:  # noqa: BLE001
+                            logger.debug('Unified-Identity: Could not create TLS context for registrar queries: %s', e)
+                        
+                        # Get list of registered agents
+                        def _list_agents(context):
+                            try:
+                                return registrar_client.doRegistrarList(registrar_ip, registrar_port, context, allow_insecure_http=True)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.info('Unified-Identity: Registrar list failed with exception: %s', exc)
+                                return None
+                        
+                        agent_list = _list_agents(None)
+                        if not agent_list and registrar_tls_context:
+                            agent_list = _list_agents(registrar_tls_context)
+                        
+                        if agent_list and 'results' in agent_list and 'uuids' in agent_list['results']:
+                            agent_uuids = agent_list['results']['uuids']
+                            for candidate_uuid in agent_uuids:
+                                registrar_data = None
+                                try:
+                                    registrar_data = registrar_client.getData(
+                                        registrar_ip, registrar_port, candidate_uuid, None, allow_insecure_http=True
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    registrar_data = None
+                                
+                                if not registrar_data and registrar_tls_context:
+                                    try:
+                                        registrar_data = registrar_client.getData(
+                                            registrar_ip, registrar_port, candidate_uuid, registrar_tls_context
+                                        )
+                                    except Exception:  # noqa: BLE001
+                                        registrar_data = None
+                                
+                                if registrar_data:
+                                    registrar_results = registrar_data.get('results', registrar_data)
+                                    # Check both aik_tpm and ak_tpm fields (Keylime uses both)
+                                    registrar_ak = registrar_results.get('aik_tpm') or registrar_results.get('ak_tpm')
+                                    if registrar_ak and registrar_ak == tpm_ak:
+                                        ak_is_registered = True
+                                        logger.info("Unified-Identity: TPM AK found in registrar (agent_id=%s)", candidate_uuid)
+                                        break
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning('Unified-Identity: Could not query registrar for AK registration: %s', e)
+                
+                if not ak_is_registered:
+                    logger.error(
+                        "Unified-Identity: TPM AK used to sign App Key certificate is not registered with registrar/verifier. "
+                        "Rejecting attestation for security (PoC behavior: only registered AKs can attest SPIRE Agent SVID)."
+                    )
+                    web_util.echo_json_response(
+                        self,
+                        403,
+                        "TPM Attestation Key (AK) is not registered with registrar/verifier. "
+                        "The AK used to sign the App Key certificate must be registered before attestation can proceed.",
+                        {'verified': False, 'ak_registered': False},
+                    )
+                    return None
+                
+                logger.info("Unified-Identity: TPM AK registration verified - AK is registered and trusted")
         else:
             logger.warning("Unified-Identity: Missing 'app_key_certificate', proceeding without certificate validation")
 

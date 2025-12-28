@@ -475,6 +475,15 @@ hybrid-cloud-poc/spire/pkg/agent/tpmplugin/delegated_certification.go
    - Log: "App Key certificate received successfully from rust-keylime agent"
    - Multiple successful certificate requests in test run
 
+✅ **TPM AK Registration Check: IMPLEMENTED & VERIFIED (2025-12-28)**
+   - **Security Enhancement**: Keylime Verifier now verifies that the TPM AK used to sign the App Key certificate is registered with the registrar/verifier before attesting SPIRE Agent SVID
+   - **PoC Behavior Restored**: Only registered/trusted AKs can proceed with attestation (matches original PoC security model)
+   - **Implementation**: Added AK registration verification in `cloud_verifier_tornado.py` after App Key certificate signature verification
+   - **Verification Flow**: Checks verifier database first, then falls back to registrar query
+   - **Security Impact**: Prevents unregistered AKs from attesting SPIRE Agent SVIDs
+   - **Test Results**: Integration test confirms AK registration check is working correctly
+   - **Log Evidence**: `INFO:keylime.verifier:Unified-Identity: Verifying TPM AK is registered with registrar/verifier` followed by `INFO:keylime.verifier:Unified-Identity: TPM AK registration verified - AK is registered and trusted`
+
 ✅ **TPM Operations: VERIFIED**
    - App Key generated via TPM Plugin
    - TPM Quote generated with nonce
