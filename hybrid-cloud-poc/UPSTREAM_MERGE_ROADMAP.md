@@ -405,18 +405,20 @@ Failed to request certificate: Empty response from rust-keylime
 SPIRE Server logs: TpmAttestation len=0, AppKeyCert len=0
 ```
 
-**Investigation Checklist:**
-- [x] Debug `rust-keylime` `/v2.2/delegated_certification/certify_app_key` endpoint
-- [ ] Verify TPM context file path is accessible
-- [ ] Check AK handle loading in `delegated_certification_handler.rs`
-- [ ] Verify `create_qualifying_data()` hash computation
-- [ ] Test `TPM2_Certify` directly via `tpm2-tools`
-- [ ] Verify App Key certificate chain: App Key → AK → EK
+**Investigation & Resolution (All items below are part of Task 14b):**
 
-**Root Cause Identified:**
+**Investigation Checklist:**
+- [x] Debug `rust-keylime` `/v2.2/delegated_certification/certify_app_key` endpoint → **FIXED**
+- [ ] Verify TPM context file path is accessible (if issue persists after fix)
+- [ ] Check AK handle loading in `delegated_certification_handler.rs` (if issue persists)
+- [ ] Verify `create_qualifying_data()` hash computation (if issue persists)
+- [ ] Test `TPM2_Certify` directly via `tpm2-tools` (if issue persists)
+- [ ] Verify App Key certificate chain: App Key → AK → EK (if issue persists)
+
+**Root Cause Identified & Fixed (2025-12-28):**
 ✅ **JSON Response Format Mismatch** - The Rust endpoint was returning raw struct instead of `JsonWrapper`, causing the Python client to fail parsing the response.
 
-**Fix Applied (2025-12-28):**
+**Fix Applied:**
 1. **Rust Handler** (`delegated_certification_handler.rs` line 286):
    - Changed from: `HttpResponse::Ok().json(response)`
    - Changed to: `HttpResponse::Ok().json(JsonWrapper::success(response))`
@@ -427,7 +429,7 @@ SPIRE Server logs: TpmAttestation len=0, AppKeyCert len=0
    - Added proper error handling for JsonWrapper error responses
    - Now correctly parses: `{ "code": 200, "status": "Success", "results": {...} }`
 
-**Remaining Root Cause Candidates (if issue persists):**
+**Additional Root Cause Candidates (to investigate if fix doesn't resolve issue):**
 1. TPM context file not found/accessible by rust-keylime
 2. AK handle mismatch between keylime-agent and TPM Plugin
 3. Challenge nonce format mismatch
