@@ -473,12 +473,18 @@ hybrid-cloud-poc/spire/pkg/agent/tpmplugin/delegated_certification.go
    - Certificate successfully received from rust-keylime agent
    - App Key certificate present in Agent SVID claims
    - Log: "App Key certificate received successfully from rust-keylime agent"
+   - Multiple successful certificate requests in test run
 
 ✅ **TPM Operations: VERIFIED**
    - App Key generated via TPM Plugin
    - TPM Quote generated with nonce
    - App Key certified via rust-keylime agent (TPM2_Certify)
    - SovereignAttestation built with real TPM evidence
+
+✅ **Unit Tests: FIXED & PASSING**
+   - Updated test mocks to use JsonWrapper format
+   - All 4 unit tests now pass
+   - Integration test passes with exit code 0
 
 **Note:** `TpmAttestation len=0` is expected - TPM quotes are handled by Keylime Verifier separately, not included in SovereignAttestation. The App Key certificate (which contains the TPM2_Certify signature) is what matters for delegated certification.
 
