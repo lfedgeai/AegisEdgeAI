@@ -409,11 +409,17 @@ SPIRE Server logs: TpmAttestation len=0, AppKeyCert len=0
 
 **Investigation Checklist:**
 - [x] Debug `rust-keylime` `/v2.2/delegated_certification/certify_app_key` endpoint → **FIXED**
-- [ ] Verify TPM context file path is accessible (if issue persists after fix)
-- [ ] Check AK handle loading in `delegated_certification_handler.rs` (if issue persists)
-- [ ] Verify `create_qualifying_data()` hash computation (if issue persists)
-- [ ] Test `TPM2_Certify` directly via `tpm2-tools` (if issue persists)
-- [ ] Verify App Key certificate chain: App Key → AK → EK (if issue persists)
+- [x] Verify TPM context file path is accessible → **VERIFIED** (file exists, accessible via tpm2_readpublic)
+- [x] Check AK handle loading in `delegated_certification_handler.rs` → **CODE VERIFIED** (uses `data.ak_handle`, error handling present)
+- [x] Verify `create_qualifying_data()` hash computation → **CODE VERIFIED** (SHA-256 implementation correct)
+- [ ] Test `TPM2_Certify` directly via `tpm2-tools` → **PENDING** (code verified, direct tpm2-tools test not performed)
+- [ ] Verify App Key certificate chain: App Key → AK → EK → **PENDING** (code verified, full chain validation not tested)
+
+**Verification Status:**
+- ✅ **Code Logic**: All items verified in code review
+- ✅ **TPM Context File**: Verified file exists and is accessible
+- ⚠️ **Runtime Testing**: Pending - previous test failed due to HTTP/HTTPS issue (now fixed)
+- 📋 **Next Step**: Re-run integration test to verify end-to-end TPM operations work correctly
 
 **Root Causes Identified & Fixed (2025-12-28):**
 
