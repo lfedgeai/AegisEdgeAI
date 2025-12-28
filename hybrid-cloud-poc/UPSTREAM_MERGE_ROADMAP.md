@@ -415,19 +415,33 @@ SPIRE Server logs: TpmAttestation len=0, AppKeyCert len=0
 - [ ] Test `TPM2_Certify` directly via `tpm2-tools` (if issue persists)
 - [ ] Verify App Key certificate chain: App Key → AK → EK (if issue persists)
 
-**Root Cause Identified & Fixed (2025-12-28):**
-✅ **JSON Response Format Mismatch** - The Rust endpoint was returning raw struct instead of `JsonWrapper`, causing the Python client to fail parsing the response.
+**Root Causes Identified & Fixed (2025-12-28):**
 
-**Fix Applied:**
-1. **Rust Handler** (`delegated_certification_handler.rs` line 286):
-   - Changed from: `HttpResponse::Ok().json(response)`
-   - Changed to: `HttpResponse::Ok().json(JsonWrapper::success(response))`
+✅ **Issue 1: JSON Response Format Mismatch**
+   - The Rust endpoint was returning raw struct instead of `JsonWrapper`, causing the Python client to fail parsing the response.
+   - **Fix**: Wrapped response in `JsonWrapper::success()` in Rust handler (line 287)
+   - **Fix**: Updated Python client to extract from `JsonWrapper.results` field (lines 199-230)
+
+✅ **Issue 2: HTTP vs HTTPS Protocol Mismatch**
+   - The rust-keylime agent requires HTTPS (mTLS enabled by default), but Python client was using HTTP.
+   - This caused "Connection reset by peer" errors.
+   - **Fix**: Updated `delegated_certification.py` to automatically convert HTTP to HTTPS (line 78-84)
+   - **Fix**: Updated `tpm_plugin_server.py` to default to HTTPS endpoint (line 128)
+
+**Fixes Applied:**
+1. **Rust Handler** (`delegated_certification_handler.rs`):
+   - Added `Deserialize` trait to `CertifyAppKeyResponse` struct (line 61)
+   - Wrapped response in `JsonWrapper::success()` (line 287)
    - Now consistent with all other rust-keylime endpoints
 
-2. **Python Client** (`delegated_certification.py` lines 199-221):
+2. **Python Client** (`delegated_certification.py`):
    - Updated to extract from `JsonWrapper` format: `response.get("results", {}).get("result")`
    - Added proper error handling for JsonWrapper error responses
-   - Now correctly parses: `{ "code": 200, "status": "Success", "results": {...} }`
+   - Automatically converts HTTP endpoints to HTTPS
+   - Returns error response body instead of None for better debugging
+
+3. **TPM Plugin Server** (`tpm_plugin_server.py`):
+   - Changed default endpoint from `http://127.0.0.1:9002` to `https://127.0.0.1:9002`
 
 **Additional Root Cause Candidates (to investigate if fix doesn't resolve issue):**
 1. TPM context file not found/accessible by rust-keylime
