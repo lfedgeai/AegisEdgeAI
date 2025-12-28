@@ -76,12 +76,13 @@ class DelegatedCertificationClient:
             )
             endpoint = "https://127.0.0.1:9002"
         elif endpoint.startswith("http://") and ("127.0.0.1" in endpoint or "localhost" in endpoint):
-            # Keep HTTP as-is - agent may have mTLS disabled (KEYLIME_AGENT_ENABLE_AGENT_MTLS=false)
-            # The endpoint is explicitly specified, so trust the caller
+            # Convert HTTP to HTTPS - agent requires HTTPS (mTLS enabled by default)
             logger.info(
-                "Unified-Identity: Using HTTP endpoint as specified (agent may have mTLS disabled): %s",
-                endpoint
+                "Unified-Identity: Converting HTTP to HTTPS (agent requires HTTPS/mTLS): %s -> %s",
+                endpoint,
+                endpoint.replace("http://", "https://")
             )
+            endpoint = endpoint.replace("http://", "https://")
 
         # Support both UDS and HTTP endpoints
         if endpoint.startswith("unix://"):
@@ -198,27 +199,41 @@ class DelegatedCertificationClient:
 
             response = json.loads(response_json)
 
-            if response.get("result") == "SUCCESS":
-                cert_b64 = response.get("app_key_certificate")
-                agent_uuid = response.get("agent_uuid")
-                if not agent_uuid:
-                    agent_uuid = self._fetch_agent_uuid()
-                if cert_b64:
-                    logger.info(
-                        "Unified-Identity: App Key certificate received successfully from rust-keylime agent"
+            # Extract from JsonWrapper format: { "code": 200, "status": "Success", "results": {...} }
+            # For error responses: { "code": 400, "status": "error message", "results": {} }
+            if response.get("code") == 200 and response.get("status") == "Success":
+                # Success response - extract from "results" field
+                results = response.get("results", {})
+                if results.get("result") == "SUCCESS":
+                    cert_b64 = results.get("app_key_certificate")
+                    agent_uuid = results.get("agent_uuid")
+                    if not agent_uuid:
+                        agent_uuid = self._fetch_agent_uuid()
+                    if cert_b64:
+                        logger.info(
+                            "Unified-Identity: App Key certificate received successfully from rust-keylime agent"
+                        )
+                        return (True, cert_b64, agent_uuid, None)
+                    logger.error(
+                        "Unified-Identity: Certificate missing in response"
                     )
-                    return (True, cert_b64, agent_uuid, None)
+                    return (False, None, None, "Certificate missing in response")
+                else:
+                    error_msg = results.get("error", "Unknown error in results")
+                    logger.error(
+                        "Unified-Identity: Certificate request failed: %s",
+                        error_msg,
+                    )
+                    return (False, None, None, error_msg)
+            else:
+                # Error response - status field contains error message
+                error_msg = response.get("status", "Unknown error")
                 logger.error(
-                    "Unified-Identity: Certificate missing in response"
+                    "Unified-Identity: Certificate request failed: %s (code: %d)",
+                    error_msg,
+                    response.get("code", 0),
                 )
-                return (False, None, None, "Certificate missing in response")
-
-            error_msg = response.get("error", "Unknown error")
-            logger.error(
-                "Unified-Identity: Certificate request failed: %s",
-                error_msg,
-            )
-            return (False, None, None, error_msg)
+                return (False, None, None, error_msg)
 
         except FileNotFoundError:
             logger.error(
@@ -426,13 +441,15 @@ class DelegatedCertificationClient:
                 e.code,
                 e.reason,
             )
-            # Try to read error response body
+            # Try to read error response body - return it so caller can parse error details
             try:
                 error_body = e.read().decode("utf-8")
                 logger.debug("Error response body: %s", error_body)
-            except:
-                pass
-            return None
+                # Return error body so caller can extract error message from JsonWrapper
+                return error_body
+            except Exception as read_err:
+                logger.debug("Failed to read error response body: %s", read_err)
+                return None
         except urllib.error.URLError as e:
             logger.error(
                 "Unified-Identity: URL error: %s",

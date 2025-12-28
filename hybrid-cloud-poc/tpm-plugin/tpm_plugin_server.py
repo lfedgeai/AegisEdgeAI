@@ -123,10 +123,10 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(500, "Unified-Identity - Verification: App Key context unavailable")
                 return
             
-            # Unified-Identity - Verification: Use HTTP endpoint (agent may have mTLS disabled)
+            # Unified-Identity - Verification: Use HTTPS endpoint (agent requires HTTPS/mTLS)
             if not endpoint or endpoint == "unix:///tmp/keylime-agent.sock":
-                endpoint = "http://127.0.0.1:9002"
-                logger.info("Unified-Identity - Verification: Using default HTTP endpoint (agent may have mTLS disabled): %s", endpoint)
+                endpoint = "https://127.0.0.1:9002"
+                logger.info("Unified-Identity - Verification: Using default HTTPS endpoint (agent requires HTTPS/mTLS): %s", endpoint)
             
             client = DelegatedCertificationClient(endpoint=endpoint)
             success, cert_b64, agent_uuid, error = client.request_certificate(

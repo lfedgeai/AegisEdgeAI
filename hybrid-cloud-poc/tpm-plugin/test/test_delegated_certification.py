@@ -46,10 +46,15 @@ class TestDelegatedCertificationClient(unittest.TestCase):
     @patch.object(DelegatedCertificationClient, "_perform_http_request")
     def test_request_certificate_success(self, mock_http_request):
         """Test successful certificate request"""
+        # Updated to use JsonWrapper format (consistent with rust-keylime agent)
         response = {
-            "result": "SUCCESS",
-            "app_key_certificate": base64.b64encode(b"test-certificate").decode("utf-8"),
-            "agent_uuid": "1234-uuid",
+            "code": 200,
+            "status": "Success",
+            "results": {
+                "result": "SUCCESS",
+                "app_key_certificate": base64.b64encode(b"test-certificate").decode("utf-8"),
+                "agent_uuid": "1234-uuid",
+            }
         }
         mock_http_request.return_value = json.dumps(response)
         
@@ -78,9 +83,11 @@ class TestDelegatedCertificationClient(unittest.TestCase):
     @patch.object(DelegatedCertificationClient, "_perform_http_request")
     def test_request_certificate_error(self, mock_http_request):
         """Test certificate request with error response"""
+        # Updated to use JsonWrapper error format (consistent with rust-keylime agent)
         response = {
-            "result": "ERROR",
-            "error": "Test error message",
+            "code": 400,
+            "status": "Test error message",
+            "results": {}
         }
         mock_http_request.return_value = json.dumps(response)
         
