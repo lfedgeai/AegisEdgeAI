@@ -39,13 +39,13 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 
 | Pillar | Complete | In Progress | Blocked | Not Started |
 |--------|----------|-------------|---------|-------------|
-| Pillar 0 | 6 | 0 | 0 | 1 |
-| Pillar 1 | 2 | 0 | 0 | 3 |
+| Pillar 0 | 6 | 0 | 0 | 0 |
+| Pillar 1 | 2 | 0 | 0 | 2 |
 | Pillar 2 | 10 | 1 | 0 | 0 |
 | Pillar 3 | 5 | 0 | 0 | 3 |
-| Pillar 4 | 2 | 0 | 1 | 4 |
-| Pillar 5 | 0 | 0 | 0 | 9 |
-| **Total** | **25** | **1** | **1** | **20** |
+| Pillar 4 | 3 | 0 | 0 | 2 |
+| Pillar 5 | 0 | 0 | 0 | 8 |
+| **Total** | **26** | **1** | **0** | **15** |
 
 ---
 
