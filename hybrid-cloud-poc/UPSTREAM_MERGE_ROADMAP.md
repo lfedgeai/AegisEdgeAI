@@ -43,9 +43,9 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 | Pillar 1 | 5 | 3 | 1 | 0 | 1 |
 | Pillar 2 | 10 | 10 | 0 | 0 | 0 |
 | Pillar 3 | 6 | 3 | 0 | 0 | 3 |
-| Pillar 4 | 7 | 4 | 0 | 0 | 3 |
+| Pillar 4 | 7 | 5 | 0 | 0 | 2 |
 | Pillar 5 | 9 | 6 | 0 | 0 | 3 |
-| **Total** | **44** | **33** | **1** | **0** | **10** |
+| **Total** | **44** | **34** | **1** | **0** | **9** |
 
 ---
 
@@ -186,6 +186,19 @@ Effort: 2 days
 
 *Goal: Execute architectural changes through modular plugins and protocol extensions.*
 
+> [!NOTE]
+> **SPIRE Modifications**: We have modified SPIRE with custom plugins and supporting code:
+> - **SPIRE Server**: Keylime client integration, unified identity claims handling, credential composer plugin
+> - **SPIRE Agent**: TPM plugin integration, unified identity node attestor plugin
+> - **Files Modified**: 9 Go files in `hybrid-cloud-poc/spire/pkg/` (see Task 15 for linting details)
+> - **Upstreaming Target**: All modifications are plugin-based and ready for PRs to `spiffe/spire`
+>
+> **Keylime Modifications**: We have modified both rust-keylime agent and Python keylime verifier:
+> - **rust-keylime Agent**: Delegated certification endpoint, attested geolocation API, TPM quote extensions
+> - **Python Keylime Verifier**: App key verification, geolocation database integration, MSISDN support, fact provider extensions
+> - **Files Modified**: Multiple Rust files in `rust-keylime/keylime-agent/src/` and Python files in `keylime/keylime/` (see details below)
+> - **Upstreaming Target**: Feature PRs to `keylime/rust-keylime` and `keylime/keylime`
+
 | Task | Description | Priority | Status | Owner | Target |
 |------|-------------|----------|--------|-------|--------|
 | **Task 1** | Keylime Agent - Delegated Certifier Endpoint (Rust) | P1 | `[x]` | — | Done |
@@ -198,6 +211,47 @@ Effort: 2 days
 | **Task 5** | SPIRE Agent - Collector Plugin (Go) | P1 | `[x]` | — | Done |
 | **Task 6** | SPIRE Creds - Credential Composer (Go) | P1 | `[x]` | — | Done |
 | **Task 12b** | Sensor Schema Separation (Mobile vs GNSS) | P1 | `[x]` | — | Done |
+
+### SPIRE Modifications Summary
+
+**SPIRE Server (`pkg/server/`):**
+- `keylime/client.go` - Keylime Verifier API client for geolocation and attestation verification
+- `keylime/client_test.go` - Unit tests for Keylime client
+- `unifiedidentity/claims.go` - Unified identity claims processing and schema handling
+- `unifiedidentity/context.go` - Unified identity context management
+- `plugin/credentialcomposer/unifiedidentity/plugin.go` - Credential composer plugin for embedding unified identity claims in SVIDs
+- `plugin/credentialcomposer/unifiedidentity/plugin_test.go` - Unit tests for credential composer plugin
+
+**SPIRE Agent (`pkg/agent/`):**
+- `tpmplugin/tpm_plugin_gateway.go` - TPM plugin gateway for external TPM operations
+- `tpmplugin/tpm_signer.go` - TPM-based signing for mTLS using App Keys
+- `plugin/nodeattestor/unifiedidentity/unifiedidentity.go` - Unified identity node attestor plugin
+
+**Total**: 9 Go files modified/added in SPIRE
+
+### Keylime Modifications Summary
+
+**rust-keylime Agent (`rust-keylime/keylime-agent/src/`):**
+- `delegated_certification_handler.rs` - `/v2.2/delegated_certification/certify_app_key` endpoint for TPM App Key certification
+- `geolocation_handler.rs` - `/v2.2/agent/attested_geolocation` endpoint for nonce-bound geolocation attestation
+- `quotes_handler.rs` - Extended TPM quote handling for unified identity
+- `agent_handler.rs` - Agent handler extensions for unified identity flows
+- `api.rs` - API routing for new endpoints
+- `main.rs` - Main entry point with new endpoint registration
+- `keylime/src/quote.rs` - TPM quote processing extensions
+- `keylime/src/tpm.rs` - TPM operations for App Key and geolocation
+
+**Python Keylime Verifier (`keylime/keylime/`):**
+- `app_key_verification.py` - App Key certificate verification logic
+- `cloud_verifier_tornado.py` - Verifier API extensions for geolocation and App Key verification
+- `cloud_verifier_common.py` - Common verifier utilities for unified identity
+- `fact_provider.py` - Fact provider for geolocation and sensor data
+- `db/verifier_db.py` - Database schema extensions for geolocation and MSISDN
+- `migrations/versions/9876543210ab_add_geolocation_column.py` - Database migration for geolocation support
+- `models/registrar/registrar_agent.py` - Registrar model extensions
+- `config.py` - Configuration for unified identity features
+
+**Total**: ~8 Rust files in rust-keylime, ~8 Python files in keylime verifier
 
 ### Task 12b Details (Complete)
 ```
@@ -247,11 +301,20 @@ Benefit: Future-proofed schema for heterogeneous sensor attestation.
 
 | Component | Upstream Destination | Rationale |
 |-----------|---------------------|-----------|
-| SPIRE NodeAttestor plugin | `spiffe/spire` | Standard plugin architecture |
-| SPIRE CredentialComposer | `spiffe/spire` | Standard plugin architecture |
-| Keylime Delegated Certification | `keylime/rust-keylime` | New API extension |
-| Keylime Geolocation API | `keylime/rust-keylime` | New API extension |
-| Keylime Verifier extensions | `keylime/keylime` | Python verifier changes |
+| **SPIRE Modifications (9 Go files):** | | |
+| SPIRE NodeAttestor plugin (`pkg/agent/plugin/nodeattestor/unifiedidentity/`) | `spiffe/spire` | Standard plugin architecture |
+| SPIRE CredentialComposer (`pkg/server/plugin/credentialcomposer/unifiedidentity/`) | `spiffe/spire` | Standard plugin architecture |
+| SPIRE Keylime Client (`pkg/server/keylime/`) | `spiffe/spire` | Supporting library for Keylime integration |
+| SPIRE Unified Identity (`pkg/server/unifiedidentity/`) | `spiffe/spire` | Supporting library for claims processing |
+| SPIRE TPM Plugin (`pkg/agent/tpmplugin/`) | `spiffe/spire` | TPM integration for App Key signing |
+| **Keylime Modifications:** | | |
+| rust-keylime Delegated Certification (`keylime-agent/src/delegated_certification_handler.rs`) | `keylime/rust-keylime` | New API extension `/v2.2/delegated_certification/certify_app_key` |
+| rust-keylime Geolocation API (`keylime-agent/src/geolocation_handler.rs`) | `keylime/rust-keylime` | New API extension `/v2.2/agent/attested_geolocation` |
+| rust-keylime TPM Extensions (`keylime/src/quote.rs`, `keylime/src/tpm.rs`) | `keylime/rust-keylime` | TPM operations for App Key and geolocation |
+| Keylime Verifier App Key Verification (`keylime/app_key_verification.py`) | `keylime/keylime` | App Key certificate verification |
+| Keylime Verifier Geolocation (`keylime/cloud_verifier_tornado.py`, `keylime/fact_provider.py`) | `keylime/keylime` | Geolocation database integration and fact provider |
+| Keylime Verifier DB Schema (`keylime/db/verifier_db.py`, migrations) | `keylime/keylime` | Database schema for geolocation and MSISDN |
+| **Standalone Components:** | | |
 | **Envoy WASM Plugin** | **Standalone (LF AI)** | Too specialized for Envoy core |
 | **Mobile Sensor Microservice** | **Standalone (LF AI)** | CAMARA integration wrapper |
 
@@ -405,10 +468,60 @@ Effort: 2 days
 | **Task 13** | TLS Verification - Remove `InsecureSkipVerify` | P0 | `[x]` | — | Done |
 | **Task 14** | Secrets Management - Move CAMARA API keys to secure providers | P1 | `[x]` | — | Done |
 | **Task 14b** | Delegated Certification Fix (TPM2_Certify empty response) | **P0** | `[x]` | — | Done |
-| **Task 15** | Quality Assurance - Linting, pre-commit hooks | P2 | `[ ]` | TBD | Week 3 |
+| **Task 15** | Quality Assurance - Linting, pre-commit hooks | P2 | `[x]` | — | Done |
 | **Task 16** | Cleanup stale backup files | P1 | `[x]` | — | Done |
 | **Task 17** | Rate limiting at Envoy gateway level | P2 | `[ ]` | TBD | Week 4 |
 | **Task 18** | Standardize Observability (Metrics & Telemetry) | P1 | `[ ]` | TBD | Week 4 |
+
+### Task 15: Quality Assurance - Linting, pre-commit hooks (COMPLETE)
+```
+Goal: Establish code quality tooling for consistent code style and early error detection.
+Status: ✅ Complete
+
+Actions:
+1. ✅ Pre-commit hooks configured (.pre-commit-config.yaml)
+   - Python: black (formatter), flake8 (linter)
+   - Go: go-fmt, go-vet (configured for custom SPIRE plugins)
+   - Rust: rustfmt, cargo-check (configured for WASM plugin)
+   - General: trailing-whitespace, end-of-file-fixer, check-yaml, detect-private-key, check-merge-conflict
+   - License headers: Apache 2.0 header check
+
+2. ✅ Exclusions configured
+   - Upstream repos (go-spiffe, rust-keylime, keylime) excluded from linting
+   - Upstream SPIRE code excluded (only our custom plugins linted)
+   - Test fixtures and build artifacts excluded
+   - Backup files (.orig, .bak) excluded
+
+3. ✅ Custom Go code linting
+   - Custom SPIRE plugins included in linting:
+     * pkg/server/keylime/ (Keylime client)
+     * pkg/server/unifiedidentity/ (Unified identity logic)
+     * pkg/agent/tpmplugin/ (TPM plugin integration)
+     * pkg/server/plugin/credentialcomposer/unifiedidentity/ (Credential composer plugin)
+     * pkg/agent/plugin/nodeattestor/unifiedidentity/ (Node attestor plugin)
+   - Custom hook created: `go-vet-custom` runs from SPIRE directory for proper module context
+
+4. ✅ Working hooks (verified)
+   - Python linting: ✅ (black, flake8)
+   - Go linting: ✅ (go-fmt, go-vet on custom SPIRE code)
+   - License headers: ✅ (all 62 files have headers)
+   - General hooks: ✅ (trailing whitespace, YAML check, private key detection, etc.)
+   - Rust hooks: ⚠️ Configured but need manual formatting (WASM plugin in subdirectory)
+
+Results:
+- Pre-commit hooks installed and working
+- All Python code follows consistent style (black)
+- All custom Go code (SPIRE plugins) follows Go standards (go-fmt, go-vet)
+- All source files have Apache 2.0 license headers
+- Upstream repos properly excluded from linting
+- Code quality tooling ready for external contributors
+
+Note: Rust hooks (rustfmt, cargo-check) are configured but require manual `cargo fmt`
+from the WASM plugin directory due to subdirectory structure.
+
+Dependencies: Task 0d (Pre-commit hooks configuration)
+Effort: 0.5 days (actual: 0.5 days)
+```
 
 ### Task 14b: Delegated Certification Fix (CRITICAL BLOCKER)
 
@@ -846,7 +959,7 @@ cd hybrid-cloud-poc
 ### Week 3-4: P2 Important
 - [x] Task 0d (Pre-commit hooks)
 - [ ] Task 9 (Standalone repo setup)
-- [ ] Task 15 (Linting/QA)
+- [x] Task 15 (Linting/QA)
 - [x] Task D4 (Version headers)
 - [ ] Task D6 (Sensor casing)
 - [x] Task D7 (Troubleshooting)

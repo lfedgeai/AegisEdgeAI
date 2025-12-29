@@ -9,10 +9,38 @@ repos:
     rev: v4.5.0
     hooks:
     -   id: trailing-whitespace
+        exclude: |
+            (?x)^(
+                hybrid-cloud-poc/(spire|go-spiffe|rust-keylime|keylime)/.*\.build/.*|
+                hybrid-cloud-poc/spire/.*testdata.*|
+                hybrid-cloud-poc/spire/.*test/fixture.*|
+                hybrid-cloud-poc/.*\.orig$|
+                hybrid-cloud-poc/.*\.bak$
+            )
     -   id: end-of-file-fixer
+        exclude: |
+            (?x)^(
+                hybrid-cloud-poc/(spire|go-spiffe|rust-keylime|keylime)/.*\.build/.*|
+                hybrid-cloud-poc/spire/.*testdata.*|
+                hybrid-cloud-poc/spire/.*test/fixture.*|
+                hybrid-cloud-poc/.*\.orig$|
+                hybrid-cloud-poc/.*\.bak$
+            )
     -   id: check-yaml
+        exclude: |
+            (?x)^(
+                hybrid-cloud-poc/(spire|go-spiffe|rust-keylime|keylime)/.*|
+                hybrid-cloud-poc/.*\.orig$|
+                hybrid-cloud-poc/.*\.bak$
+            )
     -   id: check-added-large-files
     -   id: detect-private-key
+        exclude: |
+            (?x)^(
+                hybrid-cloud-poc/(spire|go-spiffe|rust-keylime|keylime)/.*|
+                hybrid-cloud-poc/.*\.orig$|
+                hybrid-cloud-poc/.*\.bak$
+            )
     -   id: check-merge-conflict
 
 -   repo: https://github.com/psf/black
@@ -36,16 +64,36 @@ repos:
     hooks:
     -   id: go-fmt
         name: "go fmt"
-    -   id: go-vet
-        name: "go vet"
+        files: ^hybrid-cloud-poc/(spire/pkg/(server|agent)/(keylime|unifiedidentity|tpmplugin|plugin/(credentialcomposer/unifiedidentity|nodeattestor/unifiedidentity))/.*\.go|.*\.go)$
+        exclude: |
+            (?x)^(
+                hybrid-cloud-poc/(go-spiffe|rust-keylime|keylime)/.*|
+                hybrid-cloud-poc/spire/.*\.build/.*|
+                hybrid-cloud-poc/.*\.orig$|
+                hybrid-cloud-poc/.*\.bak$
+            )
 
 -   repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
     hooks:
     -   id: fmt
         name: "rustfmt"
+        files: ^hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin/.*\.rs$
+        exclude: |
+            (?x)^(
+                hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin/target/.*|
+                hybrid-cloud-poc/.*\.orig$|
+                hybrid-cloud-poc/.*\.bak$
+            )
     -   id: cargo-check
         name: "cargo check"
+        files: ^hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin/.*\.rs$
+        exclude: |
+            (?x)^(
+                hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin/target/.*|
+                hybrid-cloud-poc/.*\.orig$|
+                hybrid-cloud-poc/.*\.bak$
+            )
 
 -   repo: local
     hooks:
@@ -55,3 +103,9 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+    -   id: go-vet-custom
+        name: "go vet (custom SPIRE code)"
+        entry: bash -c 'cd hybrid-cloud-poc/spire && go vet ./pkg/server/keylime/... ./pkg/server/unifiedidentity/... ./pkg/agent/tpmplugin/... ./pkg/server/plugin/credentialcomposer/unifiedidentity/... ./pkg/agent/plugin/nodeattestor/unifiedidentity/...'
+        language: system
+        files: ^hybrid-cloud-poc/spire/pkg/(server|agent)/(keylime|unifiedidentity|tpmplugin|plugin/(credentialcomposer/unifiedidentity|nodeattestor/unifiedidentity))/.*\.go$
+        pass_filenames: false
