@@ -11,6 +11,9 @@ jobs:
     integration-test:
         name: Hybrid Cloud PoC Integration Test
         runs-on: self-hosted
+        defaults:
+          run:
+            working-directory: hybrid-cloud-poc
 
         steps:
             - name: Checkout Code
