@@ -24,6 +24,12 @@ jobs:
             # Using system Python (has gpg bindings pre-installed)
             # Do NOT use actions/setup-python as it creates isolated env without gpg
 
+            - name: Debug - List Files
+              run: |
+                  pwd
+                  ls -F
+                  ls -F keylime/
+
             - name: Install Python Dependencies
               run: |
                   python3 -m pip install --upgrade pip
