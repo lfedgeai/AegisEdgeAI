@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Unified-Identity - Setup: Create registration entry for Python app
 
 set -e
@@ -57,7 +72,7 @@ if echo "$ENTRY_SHOW_OUTPUT" | grep -qi "Entry ID" && ! echo "$ENTRY_SHOW_OUTPUT
     if [ -z "$ENTRY_ID" ]; then
         ENTRY_ID=$(echo "$ENTRY_SHOW_OUTPUT" | grep -i "Entry ID" | awk -F': ' '{print $2}' | awk '{print $1}' | head -1)
     fi
-    
+
     if [ -n "$ENTRY_ID" ]; then
         echo "  Found entry ID: $ENTRY_ID"
         if "${SPIRE_DIR}/bin/spire-server" entry delete \
@@ -128,4 +143,3 @@ if [ -f /tmp/spire-server.log ]; then
     tail -5 /tmp/spire-server.log | grep -E "(entry|Entry|$WORKLOAD_SPIFFE_ID)" | tail -2 | sed 's/^/    /' || echo "    (No matching log entries found)"
 fi
 echo ""
-

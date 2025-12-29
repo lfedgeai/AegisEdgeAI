@@ -1,8 +1,23 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Unified-Identity: Demo - Generate Sovereign SVID
 # This script demonstrates the complete workflow for generating a Sovereign SVID
 # with TPM attestation and geolocation claims.
-# 
+#
 # Prerequisites: All services must be running (SPIRE Server/Agent, Keylime Verifier, rust-keylime Agent)
 # This script can be called standalone or reused by test_agents.sh
 #
@@ -131,11 +146,11 @@ cd "${PHASE1_DIR}/python-app-demo"
 if [ -f "./fetch-sovereign-svid-grpc.py" ]; then
     python3 fetch-sovereign-svid-grpc.py
     EXIT_CODE=$?
-    
+
     if [ $EXIT_CODE -eq 0 ]; then
         echo ""
         echo -e "${GREEN}✓ Sovereign SVID generated successfully${NC}"
-        
+
         # Check if SVID was created
         if [ -f "/tmp/svid-dump/svid.pem" ]; then
             echo ""
@@ -146,7 +161,7 @@ if [ -f "./fetch-sovereign-svid-grpc.py" ]; then
                 echo "  openssl x509 -in /tmp/svid-dump/svid.pem -text -noout | grep -A 2 \"1.3.6.1.4.1.99999\""
             fi
         fi
-        
+
         echo ""
         echo -e "${GREEN}Demo completed successfully!${NC}"
         exit 0
@@ -159,4 +174,3 @@ else
     echo -e "${RED}✗ fetch-sovereign-svid-grpc.py not found${NC}"
     exit 1
 fi
-

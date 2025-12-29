@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 mTLS Client App with SPIRE SVID and Automatic Renewal
 This client connects to the mTLS server using SPIRE SVIDs and automatically renews when agent SVID renews.
@@ -31,7 +46,7 @@ try:
     except Exception:
         # If patching fails at import time, we'll patch later when needed
         pass
-    
+
     from spiffe.workloadapi.x509_source import X509Source
     HAS_SPIFFE = True
 except ImportError:
@@ -69,29 +84,29 @@ class SPIREmTLSClient:
         self._first_connection_logged = False
         # Track if reconnection is due to renewal (should be logged)
         self._reconnect_due_to_renewal = False
-        
+
         # Certificate mode configuration
         if use_spire is None:
             # Auto-detect: use SPIRE if socket exists and spiffe is available, otherwise use standard
             self.use_spire = HAS_SPIFFE and os.path.exists(socket_path) if socket_path else False
         else:
             self.use_spire = use_spire
-        
+
         # Standard cert paths
         self.client_cert_path = client_cert_path
         self.client_key_path = client_key_path
         self.ca_cert_path = ca_cert_path
-        
+
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
-        
+
     def _signal_handler(self, signum, frame):
         self.log("Received signal, shutting down...")
         self.running = False
         if self.source:
             self.source.close()
-        
+
     def log(self, message):
         """Log message to both console and file if specified."""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -100,17 +115,17 @@ class SPIREmTLSClient:
         if self.log_file:
             with open(self.log_file, 'a') as f:
                 f.write(log_msg + '\n')
-    
+
     def _save_svid(self, svid):
         """Save SVID certificate chain (workload + agent SVID) to /tmp/svid-dump/svid.pem."""
         if not svid:
             return
-        
+
         try:
             # Create directory if it doesn't exist
             svid_dump_dir = '/tmp/svid-dump'
             os.makedirs(svid_dump_dir, mode=0o755, exist_ok=True)
-            
+
             # Get certificate chain in PEM format (leaf + intermediates)
             from cryptography.hazmat.primitives import serialization
             # Handle both X509Source (.leaf) and DefaultX509Source (.cert) structures
@@ -135,29 +150,29 @@ class SPIREmTLSClient:
             except Exception as e:
                 # If we can't get intermediates, log but continue with leaf only
                 self.log(f"  ⚠ Could not extract intermediate certificates (agent SVID): {e}")
-            
+
             # Save to file
             svid_path = os.path.join(svid_dump_dir, 'svid.pem')
             with open(svid_path, 'wb') as f:
                 f.write(cert_pem)
-            
+
             self.log(f"  ✓ SVID certificate chain saved to {svid_path}")
         except Exception as e:
             self.log(f"  ⚠ Warning: Failed to save SVID: {e}")
-    
+
     def generate_self_signed_cert(self, cert_path, key_path):
         """Generate a self-signed certificate and key for standard cert mode."""
         if not HAS_CRYPTOGRAPHY:
             raise Exception("cryptography library required for standard cert mode")
-        
+
         self.log("Generating self-signed client certificate...")
-        
+
         # Generate private key
         private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
         )
-        
+
         # Create certificate
         subject = issuer = x509.Name([
             x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
@@ -166,7 +181,7 @@ class SPIREmTLSClient:
             x509.NameAttribute(NameOID.ORGANIZATION_NAME, "mTLS Demo"),
             x509.NameAttribute(NameOID.COMMON_NAME, "mtls-client"),
         ])
-        
+
         cert = x509.CertificateBuilder().subject_name(
             subject
         ).issuer_name(
@@ -186,11 +201,11 @@ class SPIREmTLSClient:
             ]),
             critical=False,
         ).sign(private_key, hashes.SHA256())
-        
+
         # Write certificate
         with open(cert_path, "wb") as f:
             f.write(cert.public_bytes(serialization.Encoding.PEM))
-        
+
         # Write private key
         with open(key_path, "wb") as f:
             f.write(private_key.private_bytes(
@@ -198,18 +213,18 @@ class SPIREmTLSClient:
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
             ))
-        
+
         self.log(f"  ✓ Client certificate saved to {cert_path}")
         self.log(f"  ✓ Client key saved to {key_path}")
         return cert_path, key_path
-    
+
     def setup_tls_context_standard(self):
         """Setup TLS context with standard certificates (no SPIRE)."""
         if not HAS_CRYPTOGRAPHY:
             raise Exception("cryptography library required for standard cert mode")
-        
+
         self.log("Setting up TLS context with standard certificates...")
-        
+
         # Determine certificate paths
         if self.client_cert_path and self.client_key_path:
             cert_path = self.client_cert_path
@@ -223,17 +238,17 @@ class SPIREmTLSClient:
             os.makedirs(cert_dir, mode=0o700, exist_ok=True)
             cert_path = os.path.join(cert_dir, "client-cert.pem")
             key_path = os.path.join(cert_dir, "client-key.pem")
-            
+
             if not os.path.exists(cert_path) or not os.path.exists(key_path):
                 self.generate_self_signed_cert(cert_path, key_path)
             else:
                 self.log(f"  Using existing certificates: {cert_path}, {key_path}")
-        
+
         # Create TLS context
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.check_hostname = False
         context.load_cert_chain(cert_path, key_path)
-        
+
         # Load CA certificate for server verification
         if self.ca_cert_path and os.path.exists(self.ca_cert_path):
             context.load_verify_locations(self.ca_cert_path)
@@ -249,80 +264,80 @@ class SPIREmTLSClient:
             else:
                 context.verify_mode = ssl.CERT_NONE  # No server verification
                 self.log(f"  ⚠ No CA certificate found, server verification disabled")
-        
+
         self.log("  ✓ Standard TLS context configured")
         return context
-    
+
     def setup_tls_context(self):
         """Setup TLS context - either SPIRE or standard cert mode."""
         if self.use_spire:
             return self.setup_tls_context_spire()
         else:
             return self.setup_tls_context_standard()
-    
+
     def _fetch_svid_via_grpc(self):
         """Fetch SVID using gRPC directly, bypassing python-spiffe validation."""
         import grpc
         from cryptography import x509
         from cryptography.hazmat.primitives import serialization
-        
+
         try:
             # Import protobufs from generated directory
             import sys
             import os
             import importlib.util
-            
+
             # Get absolute path to script directory
             script_file = os.path.abspath(__file__)
             script_dir = os.path.dirname(script_file)
             workload_pb2_path = os.path.join(script_dir, "generated", "spiffe", "workload", "workload_pb2.py")
             workload_pb2_grpc_path = os.path.join(script_dir, "generated", "spiffe", "workload", "workload_pb2_grpc.py")
-            
+
             if not os.path.exists(workload_pb2_path) or not os.path.exists(workload_pb2_grpc_path):
                 raise ImportError(f"Protobuf files not found: {workload_pb2_path}")
-            
+
             # Load modules directly from file paths to avoid namespace conflicts
             spec_pb2 = importlib.util.spec_from_file_location("workload_pb2", workload_pb2_path)
             spec_grpc = importlib.util.spec_from_file_location("workload_pb2_grpc", workload_pb2_grpc_path)
-            
+
             workload_pb2 = importlib.util.module_from_spec(spec_pb2)
             workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
-            
+
             # Load the modules
             spec_pb2.loader.exec_module(workload_pb2)
             spec_grpc.loader.exec_module(workload_pb2_grpc)
-            
+
             # Create gRPC channel to Unix socket
             abs_socket_path = self.socket_path.replace('unix://', '')
             channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
             stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
-            
+
             # Create request
             request = workload_pb2.X509SVIDRequest()
             grpc_metadata = [('workload.spiffe.io', 'true')]
-            
+
             # Fetch X509 SVID (streaming RPC)
             response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=10)
             response = next(response_stream)
-            
+
             if not response.svids:
                 raise Exception("No SVIDs in response")
-            
+
             # Get first SVID
             svid_response = response.svids[0]
-            
+
             # Parse certificates from DER format (bypassing validation)
             certs = []
             for cert_der in svid_response.certificate:
                 cert = x509.load_der_x509_certificate(cert_der)
                 certs.append(cert)
-            
+
             if not certs:
                 raise Exception("No certificates in SVID")
-            
+
             # Parse private key
             key = serialization.load_der_private_key(svid_response.spiffe_key, password=None)
-            
+
             # Create a simple SVID-like object
             class SimpleSVID:
                 def __init__(self, certs, key):
@@ -341,36 +356,36 @@ class SPIREmTLSClient:
                                         from spiffe.spiffe_id import SpiffeId
                                         self.spiffe_id = SpiffeId.parse(name.value)
                                         break
-            
+
             svid = SimpleSVID(certs, key)
-            
+
             # Get bundle
             bundle_request = workload_pb2.X509BundlesRequest()
             bundle_response_stream = stub.FetchX509Bundles(bundle_request, metadata=grpc_metadata, timeout=10)
             bundle_response = next(bundle_response_stream)
-            
+
             # Parse bundle
             bundle_certs = {}
             for trust_domain, bundle_der in bundle_response.bundles.items():
                 bundle_cert = x509.load_der_x509_certificate(bundle_der)
                 bundle_certs[trust_domain] = bundle_cert
-            
+
             channel.close()
             return svid, bundle_certs
-            
+
         except Exception as e:
             self.log(f"  ✗ gRPC fetch failed: {e}")
             import traceback
             self.log(f"  Traceback: {traceback.format_exc()}")
             raise
-    
+
     def setup_tls_context_spire(self):
         """Setup TLS context with SPIRE SVID source."""
         if not HAS_SPIFFE:
             raise Exception("SPIRE mode requires spiffe library. Install with: pip install spiffe")
-        
+
         socket_path_with_scheme = f"unix://{self.socket_path}"
-        
+
         try:
             # Create X509Source which handles automatic renewal
             # Note: Some versions of python-spiffe may validate intermediate certificates strictly
@@ -408,7 +423,7 @@ class SPIREmTLSClient:
                         self.log(f"  ✓ Using gRPC directly (bypasses CA flag validation)")
                 else:
                     raise
-            
+
             # Get initial SVID
             # Handle X509Source (.svid property), DefaultX509Source (.get_x509_svid() method), or direct gRPC
             if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
@@ -423,10 +438,10 @@ class SPIREmTLSClient:
                 svid = self.source.get_x509_svid()
             else:
                 raise Exception("X509Source does not provide expected SVID interface")
-            
+
             if not svid:
                 raise Exception("Failed to get SVID from SPIRE Agent")
-            
+
             self.log(f"Got initial SVID: {svid.spiffe_id}")
             # Handle both X509Source (.leaf) and DefaultX509Source (.cert) structures
             leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
@@ -435,10 +450,10 @@ class SPIREmTLSClient:
             self.log(f"  Certificate Expires: {expiry}")
             self.log("  Monitoring for automatic SVID renewal...")
             self.last_svid_serial = leaf_cert.serial_number
-            
+
             # Save initial SVID
             self._save_svid(svid)
-            
+
             # Get trust bundle for peer certificate verification
             trust_domain = svid.spiffe_id.trust_domain
             bundle = None
@@ -450,11 +465,11 @@ class SPIREmTLSClient:
                     except Exception:
                         pass  # Ignore errors during cleanup
                     self.bundle_path = None
-                
+
                 # Wait a moment for bundle to be available
                 import time
                 time.sleep(0.5)
-                
+
                 # Handle X509Source, DefaultX509Source, or direct gRPC bundle methods
                 if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
                     # Get bundle from gRPC response
@@ -481,11 +496,11 @@ class SPIREmTLSClient:
                         bundle_pem = b""
                         for cert in x509_authorities:
                             bundle_pem += cert.public_bytes(serialization.Encoding.PEM)
-                        
+
                         with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as bundle_file:
                             bundle_file.write(bundle_pem)
                             self.bundle_path = bundle_file.name  # Store as instance variable
-                        
+
                         self.log(f"  ✓ Loaded trust bundle with {len(x509_authorities)} CA certificate(s)")
                         self.log(f"  Bundle file: {self.bundle_path}")
                     else:
@@ -496,17 +511,17 @@ class SPIREmTLSClient:
                 self.log(f"  ⚠ Warning: Could not load trust bundle: {e}")
                 import traceback
                 self.log(f"  Traceback: {traceback.format_exc()}")
-            
+
             # Create TLS context
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             context.check_hostname = False
-            
+
             # Load trust bundle for peer verification
             if self.bundle_path:
                 try:
                     context.load_verify_locations(self.bundle_path)
                     self.log(f"  ✓ SPIRE trust bundle loaded into SSL context")
-                    
+
                     # Also load additional CA cert if provided (for mixed mode: SPIRE client + standard cert server)
                     if self.ca_cert_path:
                         expanded_ca_path = os.path.expanduser(self.ca_cert_path)
@@ -517,7 +532,7 @@ class SPIREmTLSClient:
                         else:
                             self.log(f"  ⚠ CA certificate path not found: {expanded_ca_path}")
                             self.log(f"  ⚠ Server verification may fail for standard cert servers")
-                    
+
                     context.verify_mode = ssl.CERT_REQUIRED  # Verify server certificate using trust bundle
                 except Exception as e:
                     self.log(f"  ⚠ Error loading bundle into SSL context: {e}")
@@ -531,11 +546,11 @@ class SPIREmTLSClient:
                 else:
                     self.log(f"  ⚠ No bundle path available, using CERT_NONE (no peer verification)")
                     context.verify_mode = ssl.CERT_NONE  # Don't verify if no bundle
-            
+
             # Load certificate chain (leaf + intermediates)
             # The Unified Identity extension is in the intermediate certificate (agent SVID)
             from cryptography.hazmat.primitives import serialization
-            
+
             # Handle different svid object structures (X509Source vs DefaultX509Source)
             if hasattr(svid, 'leaf'):
                 # X509Source returns svid with .leaf property
@@ -547,7 +562,7 @@ class SPIREmTLSClient:
                 private_key = svid.private_key
             else:
                 raise Exception("SVID object does not have expected certificate structure")
-            
+
             # SPIRE X509Source provides the full chain via the underlying workload API
             # The chain includes: workload SVID (leaf) + agent SVID (intermediate)
             # Check if svid has a chain attribute or if we need to get it from the source
@@ -581,13 +596,13 @@ class SPIREmTLSClient:
                 # The WASM filter will check what's available in the chain
                 self.log(f"  ⚠ Could not extract intermediate certificates: {e}")
                 self.log(f"  ℹ Note: Unified Identity extension should be in intermediate cert")
-            
+
             key_pem = private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
             )
-            
+
             import tempfile
             cert_path = None
             try:
@@ -595,7 +610,7 @@ class SPIREmTLSClient:
                     cert_file.write(cert_pem)
                     cert_file.write(key_pem)
                     cert_path = cert_file.name
-                
+
                 context.load_cert_chain(cert_path)
             finally:
                 # Always clean up temporary cert file, even if load_cert_chain fails
@@ -604,15 +619,15 @@ class SPIREmTLSClient:
                         os.unlink(cert_path)
                     except Exception:
                         pass  # Ignore errors during cleanup
-            
+
             return context
-            
+
         except Exception as e:
             self.log(f"Error setting up TLS context: {e}")
             import traceback
             traceback.print_exc()
             raise
-    
+
     def _detect_peer_cert_type(self, tls_socket):
         """Detect if peer certificate is SPIRE-issued or standard."""
         try:
@@ -621,12 +636,12 @@ class SPIREmTLSClient:
             if not cert_der:
                 # Try alternative method
                 cert_der = tls_socket.getpeercert(binary_form=True)
-            
+
             if cert_der:
                 from cryptography import x509
                 from cryptography.hazmat.backends import default_backend
                 cert = x509.load_der_x509_certificate(cert_der, default_backend())
-                
+
                 # Check for SPIFFE ID in SAN
                 for ext in cert.extensions:
                     if ext.oid._name == 'subjectAltName':
@@ -634,17 +649,17 @@ class SPIREmTLSClient:
                             if hasattr(name, 'value') and isinstance(name.value, str):
                                 if name.value.startswith('spiffe://'):
                                     return 'SPIRE'
-            
+
             return 'standard'
         except Exception as e:
             self.log(f"  ⚠ Could not detect peer cert type: {e}")
             return None
-    
+
     def check_renewal(self):
         """Check if SVID was renewed (SPIRE mode only)."""
         if not self.use_spire:
             return False  # No renewal in standard cert mode
-        
+
         try:
             new_svid = self.source.svid
             if new_svid and self.last_svid_serial:
@@ -676,26 +691,26 @@ class SPIREmTLSClient:
             if self.running:
                 self.log(f"Error checking renewal: {e}")
         return False
-    
+
     def check_svid_expired(self):
         """Check if current SVID is expired or about to expire (SPIRE mode only)."""
         if not self.use_spire or not self.source:
             return False
-        
+
         try:
             svid = self.source.svid
             if not svid:
                 return False
-            
+
             # Get expiration time (handle both naive and timezone-aware datetimes)
             leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
             expiry = leaf_cert.not_valid_after_utc if hasattr(leaf_cert, 'not_valid_after_utc') else leaf_cert.not_valid_after
             if expiry.tzinfo is None:
                 # Naive datetime - assume UTC
                 expiry = expiry.replace(tzinfo=timezone.utc)
-            
+
             now = datetime.now(timezone.utc)
-            
+
             # Check if expired or expires within next 10 seconds (more buffer for proactive refresh)
             time_until_expiry = (expiry - now).total_seconds()
             if expiry <= now:
@@ -710,14 +725,14 @@ class SPIREmTLSClient:
             if self.running:
                 self.log(f"Error checking SVID expiration: {e}")
         return False
-    
+
     def connect_and_communicate(self, context, interval=2):
         """Connect to server and send periodic messages."""
         self.log(f"Connecting to {self.server_host}:{self.server_port}...")
-        
+
         # Track if we just reconnected due to renewal to avoid immediate re-detection
         just_reconnected_due_to_renewal = False
-        
+
         while self.running:
             try:
                 # Check if we just reconnected due to renewal (from inner loop break)
@@ -725,7 +740,7 @@ class SPIREmTLSClient:
                 # We preserve _reconnect_due_to_renewal for connection logging below
                 if self._reconnect_due_to_renewal:
                     just_reconnected_due_to_renewal = True
-                
+
                 # If we just reconnected due to renewal, update serial and skip renewal check
                 # to prevent infinite reconnect loops
                 if just_reconnected_due_to_renewal:
@@ -765,7 +780,7 @@ class SPIREmTLSClient:
                                 self.last_svid_serial = current_svid.leaf.serial_number
                         except Exception:
                             pass
-                    
+
                     # Check for renewal before connecting
                     if self.check_renewal():
                         # DEMO: Show TLS context recreation
@@ -798,14 +813,14 @@ class SPIREmTLSClient:
                         # No renewal - use existing context or create new one if needed
                         if context is None:
                             context = self.setup_tls_context()
-                
+
                 # Create socket
                 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                
+
                 # Wrap with TLS and connect
                 tls_socket = context.wrap_socket(client_socket, server_hostname=self.server_host)
                 tls_socket.connect((self.server_host, self.server_port))
-                
+
                 # Detect and log server certificate type (only once per connection session)
                 if not hasattr(self, '_server_cert_logged'):
                     server_cert_type = self._detect_peer_cert_type(tls_socket)
@@ -823,12 +838,12 @@ class SPIREmTLSClient:
                         else:
                             self.log(f"  ℹ Server certificate type: {server_cert_type} (matches client mode)")
                     self._server_cert_logged = True
-                
+
                 # Log connection appropriately
                 # Check renewal flag BEFORE logging, then reset it immediately
                 was_renewal_reconnect = self._reconnect_due_to_renewal
                 self._reconnect_due_to_renewal = False  # Always reset flag first to prevent persistence
-                
+
                 if not self._first_connection_logged:
                     self.log("✓ Connected to server")
                     self._first_connection_logged = True
@@ -836,15 +851,15 @@ class SPIREmTLSClient:
                     # Log reconnection when it was due to certificate renewal (important event)
                     self.log("  ✓ Reconnected to server (certificate renewal)")
                 # All other reconnections (normal connection closures) are silent for stability
-                
+
                 # Send periodic messages
                 message_num = 0
                 last_response_received = False  # Track if last request got a response
                 connection_active = True  # Track if connection is active and ready for messages
-                
+
                 # Wait a brief moment after connection to ensure it's stable before sending traffic
                 time.sleep(0.1)
-                
+
                 # Update last_svid_serial immediately after reconnection to avoid detecting
                 # the renewal we just handled (or a renewal that happened during reconnect)
                 # This is critical to prevent infinite reconnect loops
@@ -868,11 +883,11 @@ class SPIREmTLSClient:
                         # Ignore errors - will be caught on next renewal check
                         # Don't block the connection loop if source access fails
                         pass
-                
+
                 # Skip renewal checks for the first 20 messages after reconnect to ensure
                 # we send traffic even if a renewal happened during reconnect
                 messages_since_reconnect = 0
-                
+
                 while self.running:
                     try:
                         # Only send messages if connection is active
@@ -880,12 +895,12 @@ class SPIREmTLSClient:
                             # Connection is not active - wait and reconnect
                             time.sleep(0.5)
                             break  # Exit inner loop to reconnect
-                        
+
                         # Increment message counter first (before sending)
                         message_num += 1
                         messages_since_reconnect += 1
                         self.message_count += 1
-                        
+
                         # Check for renewal periodically (but not on every iteration to avoid blocking)
                         # Skip renewal checks for first 20 messages after reconnect to ensure traffic flows
                         # even if a renewal happened during the reconnect process
@@ -935,7 +950,7 @@ class SPIREmTLSClient:
                                 except:
                                     pass
                                 break  # Exit inner loop to reconnect
-                        
+
                         # Send HTTP request
                         message = f"HELLO #{self.message_count}"
                         http_request = (
@@ -954,7 +969,7 @@ class SPIREmTLSClient:
                             # Connection is not active - mark as inactive, then reconnect
                             connection_active = False
                             break  # Exit inner loop to reconnect
-                        
+
                         self.log(f"📤 Sending HTTP request: {message}")
                         try:
                             tls_socket.sendall(http_request.encode('utf-8'))
@@ -974,7 +989,7 @@ class SPIREmTLSClient:
                             except:
                                 pass
                             break  # Reconnect
-                        
+
                         # Receive HTTP response
                         response_received = False
                         try:
@@ -993,14 +1008,14 @@ class SPIREmTLSClient:
                                     headers_end = response_data.find(b"\r\n\r\n")
                                     headers = response_data[:headers_end].decode('utf-8', errors='replace')
                                     body_start = headers_end + 4
-                                    
+
                                     # Check for Connection header to see if server wants to close
                                     connection_header = None
                                     for line in headers.split('\r\n'):
                                         if line.lower().startswith('connection:'):
                                             connection_header = line.split(':', 1)[1].strip().lower()
                                             break
-                                    
+
                                     # Check for Content-Length
                                     content_length = 0
                                     for line in headers.split('\r\n'):
@@ -1010,7 +1025,7 @@ class SPIREmTLSClient:
                                                 break
                                             except:
                                                 pass
-                                    
+
                                     if content_length > 0:
                                         body_received = len(response_data) - body_start
                                         if body_received >= content_length:
@@ -1020,11 +1035,11 @@ class SPIREmTLSClient:
                                         # No Content-Length, assume response is complete
                                         response_received = True
                                         break
-                                    
+
                                     # If server sent Connection: close, mark for reconnection
                                     if connection_header == 'close':
                                         connection_closed_by_server = True
-                            
+
                             if response_data:
                                 response_text = response_data.decode('utf-8', errors='replace')
                                 # Extract body from HTTP response
@@ -1034,7 +1049,7 @@ class SPIREmTLSClient:
                                 else:
                                     self.log(f"📥 Received: {response_text[:200]}")
                                 last_response_received = True  # Successfully received response
-                            
+
                             # If server closed connection, break to reconnect silently
                             # This is normal HTTP behavior - no logging needed
                             if connection_closed_by_server:
@@ -1075,15 +1090,15 @@ class SPIREmTLSClient:
                                     self.log(f"Connection closed before response: {e}")
                             # Otherwise, normal closure after successful response - silent reconnect
                             raise  # Reconnect (silently if response was received)
-                        
+
                         # Wait before next message
                         time.sleep(interval)
-                        
+
                     except (ssl.SSLError, ConnectionError, BrokenPipeError) as e:
                         # Reconnection due to error
                         err_str = str(e)
                         is_eof_error = "EOF" in err_str or "eof" in err_str.lower()
-                        
+
                         # Only log if we didn't receive a response (actual error)
                         # If we got a response, the error is during cleanup - silent reconnect
                         if not last_response_received:
@@ -1095,7 +1110,7 @@ class SPIREmTLSClient:
                                 or "unknown ca" in err_str.lower()
                             )
                             is_new_renewal = self.renewal_count > self.last_logged_renewal_id
-                            
+
                             if is_renewal_error and is_new_renewal:
                                 # Only log once per renewal cycle
                                 self.last_logged_renewal_id = self.renewal_count
@@ -1136,12 +1151,12 @@ class SPIREmTLSClient:
                         except:
                             pass
                         break  # Reconnect (error already logged)
-                
+
                 try:
                     tls_socket.close()
                 except:
                     pass
-                
+
             except (ConnectionRefusedError, OSError) as e:
                 self.log(f"Connection failed: {e}")
                 self.log("Waiting before retry...")
@@ -1149,7 +1164,7 @@ class SPIREmTLSClient:
             except Exception as e:
                 self.log(f"Error connecting: {e}")
                 time.sleep(5)
-    
+
     def run(self):
         """Run the mTLS client."""
         self.log("")
@@ -1164,14 +1179,14 @@ class SPIREmTLSClient:
             self.log("╚════════════════════════════════════════════════════════════════╝")
         self.log(f"Server: {self.server_host}:{self.server_port}")
         self.log("")
-        
+
         try:
             # Setup TLS context with SPIRE SVID
             context = self.setup_tls_context()
-            
+
             # Connect and communicate
             self.connect_and_communicate(context)
-            
+
         except KeyboardInterrupt:
             self.log("Interrupted by user")
         except Exception as e:
@@ -1197,7 +1212,7 @@ def main():
     server_host = os.environ.get('SERVER_HOST', 'localhost')
     server_port = int(os.environ.get('SERVER_PORT', '9443'))
     log_file = os.environ.get('CLIENT_LOG', '/tmp/mtls-client-app.log')
-    
+
     # Certificate mode configuration
     use_spire_env = os.environ.get('CLIENT_USE_SPIRE', '').lower()
     if use_spire_env == 'true' or use_spire_env == '1':
@@ -1206,7 +1221,7 @@ def main():
         use_spire = False
     else:
         use_spire = None  # Auto-detect
-    
+
     # Standard cert paths (optional) - expand ~ in paths
     client_cert_path = os.environ.get('CLIENT_CERT_PATH')
     if client_cert_path:
@@ -1217,7 +1232,7 @@ def main():
     ca_cert_path = os.environ.get('CA_CERT_PATH')
     if ca_cert_path:
         ca_cert_path = os.path.expanduser(ca_cert_path)
-    
+
     client = SPIREmTLSClient(
         socket_path,
         server_host,
@@ -1232,4 +1247,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

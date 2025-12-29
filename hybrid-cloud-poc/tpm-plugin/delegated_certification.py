@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Unified-Identity: Hardware Integration & Delegated Certification
 
@@ -337,14 +352,14 @@ class DelegatedCertificationClient:
         """
         import ssl
         import os
-        
+
         # Try to find the verifier's client certificate
         # The verifier's client cert is in the Keylime cv_ca directory
         keylime_dir = os.getenv("KEYLIME_DIR", "/home/mw/AegisSovereignAI/hybrid-cloud-poc/keylime")
         client_cert_path = os.path.join(keylime_dir, "cv_ca", "client-cert.crt")
         client_key_path = os.path.join(keylime_dir, "cv_ca", "client-private.pem")
         ca_cert_path = os.path.join(keylime_dir, "cv_ca", "cacert.crt")
-        
+
         # Also try alternative paths
         if not os.path.exists(client_cert_path):
             # Try relative to current directory
@@ -356,7 +371,7 @@ class DelegatedCertificationClient:
                 client_cert_path = alt_path
                 client_key_path = alt_path.replace("client-cert.crt", "client-private.pem")
                 ca_cert_path = alt_path.replace("client-cert.crt", "cacert.crt")
-        
+
         if not os.path.exists(client_cert_path) or not os.path.exists(client_key_path):
             logger.debug(
                 "Unified-Identity: Client certificate not found at %s or key at %s",
@@ -364,18 +379,18 @@ class DelegatedCertificationClient:
                 client_key_path,
             )
             return None
-        
+
         try:
             context = ssl.create_default_context()
             # Agent uses self-signed certificate, so we disable hostname and cert verification
             # The security comes from mTLS (client certificate authentication)
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
-            
+
             # Load client certificate and key for mTLS authentication
             # The agent will verify this certificate against its trusted_client_ca
             context.load_cert_chain(client_cert_path, client_key_path)
-            
+
             logger.debug(
                 "Unified-Identity: Created mTLS context with client certificate: %s (agent will verify client cert)",
                 client_cert_path,
@@ -398,21 +413,21 @@ class DelegatedCertificationClient:
         import urllib.request
         import urllib.error
         import ssl
-        
+
         url = f"{self.http_endpoint}{path}"
         request_body = body or b""
-        
+
         logger.debug(
             "Unified-Identity: HTTP/HTTPS %s %s",
             method,
             url,
         )
-        
+
         try:
             req = urllib.request.Request(url, data=request_body, method=method)
             req.add_header("Content-Type", "application/json")
             req.add_header("Content-Length", str(len(request_body)))
-            
+
             # For HTTPS (mTLS), use client certificate for authentication
             if url.startswith("https://"):
                 ssl_context = self._create_mtls_context()

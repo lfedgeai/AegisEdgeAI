@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Unified-Identity - Setup: SPIRE API & Policy Staging (Stubbed Keylime)
 Python script to fetch Sovereign SVID with AttestedClaims from SPIRE Agent Workload API.
@@ -25,7 +40,7 @@ except ImportError:
 def fetch_from_workload_api():
     """
     Fetch SVID from SPIRE Agent Workload API using spiffe library.
-    
+
     This properly attests the Python process itself (not a subprocess).
     The agent automatically:
     1. Attests the calling process (extracts UID, etc.)
@@ -34,17 +49,17 @@ def fetch_from_workload_api():
     4. Returns SVID to the workload
     """
     socket_path = "/tmp/spire-agent/public/api.sock"
-    
+
     if not os.path.exists(socket_path):
         print(f"Error: SPIRE Agent socket not found at {socket_path}")
         print("Make sure SPIRE Agent is running")
         return None, None
-    
+
     print("Connecting to SPIRE Agent Workload API...")
     print("  Socket: /tmp/spire-agent/public/api.sock")
     print("  (This Python process will be attested by the agent)")
     print()
-    
+
     try:
         # X509Source requires unix:// scheme for socket path
         socket_path_with_scheme = f"unix://{socket_path}"
@@ -55,19 +70,19 @@ def fetch_from_workload_api():
             if not svid:
                 print("Error: No SVID available from Workload API")
                 return None, None
-            
+
             # X509Svid has a 'leaf' property which is a cryptography.x509.Certificate
             # Convert it to PEM format
             if not svid.leaf:
                 print("Error: No certificate in SVID")
                 return None, None
-            
+
             cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM).decode('utf-8')
-            
+
             print(f"✓ SVID fetched successfully")
             print(f"  SPIFFE ID: {svid.spiffe_id}")
             print()
-            
+
             # Unified-Identity - Setup: AttestedClaims are now passed through by the agent
             # The agent receives AttestedClaims from the server and includes them in the Workload API response.
             # However, the Python spiffe library may not yet expose AttestedClaims directly.
@@ -96,10 +111,10 @@ def fetch_from_workload_api():
                         "memory_mb": 8192
                     }
                 }
-            
+
             # Store results before exiting context manager
             result = (cert_pem, claims_json)
-        
+
         # Context manager exit may show harmless CANCELLED error - ignore it
         return result
     except Exception as e:
@@ -127,19 +142,19 @@ def main():
     print("Architecture:")
     print("  Python App → SPIRE Agent (Workload API) → SPIRE Server")
     print()
-    
+
     output_dir = Path("/tmp/svid-dump")
     output_dir.mkdir(exist_ok=True)
-    
+
     # Fetch SVID from Workload API (standard way for workloads)
     print("Fetching SVID from SPIRE Agent Workload API...")
     cert_pem, claims_json = fetch_from_workload_api()
-    
+
     if cert_pem:
         cert_file = output_dir / "svid.pem"
         cert_file.write_text(cert_pem)
         print(f"✓ SVID certificate saved to: {cert_file}")
-        
+
         # Save AttestedClaims if available
         if claims_json:
             claims_file = output_dir / "attested_claims.json"
@@ -150,7 +165,7 @@ def main():
             print(json.dumps(claims_json, indent=2))
         else:
             print("(Note: AttestedClaims not available)")
-        
+
         print()
         print("=" * 70)
         print("SVID fetch complete!")

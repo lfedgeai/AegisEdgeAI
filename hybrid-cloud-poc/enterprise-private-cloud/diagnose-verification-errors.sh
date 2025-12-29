@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Diagnose verification service errors
 # Usage: ./diagnose-verification-errors.sh
 
@@ -54,7 +69,7 @@ if command -v curl >/dev/null 2>&1; then
         -d '{"sensor_id": "12d1:1433"}' 2>&1)
     HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
     BODY=$(echo "$RESPONSE" | grep -v "HTTP_STATUS:")
-    
+
     if [ "$HTTP_STATUS" = "200" ]; then
         echo "   ✓ Service responded with HTTP 200"
         echo "   Response: $BODY"
@@ -78,4 +93,3 @@ echo ""
 echo "=========================================="
 echo "Diagnosis complete"
 echo "=========================================="
-

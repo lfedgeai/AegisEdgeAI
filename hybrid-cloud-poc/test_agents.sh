@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Unified-Identity: Agent Services Integration Test (Act 2)
 # Tests agent services: rust-keylime Agent + TPM Plugin + SPIRE Agent -> Sovereign SVID Generation
 # Hardware Integration & Delegated Certification
@@ -119,80 +134,80 @@ SCRIPT_DIR="${TEST_SCRIPT_DIR}"
 stop_agent_services_only() {
     echo -e "${CYAN}Step 0: Stopping agent services and cleaning up their data...${NC}"
     echo ""
-    
+
     # Step 1: Stop agent processes only
     echo "  1. Stopping agent processes..."
-    
+
     # Stop rust-keylime Agent
     echo "     Stopping rust-keylime Agent..."
     pkill -f "keylime_agent" >/dev/null 2>&1 || true
     pkill -f "rust-keylime" >/dev/null 2>&1 || true
     pkill -f "target/release/keylime_agent" >/dev/null 2>&1 || true
-    
+
     # Stop TPM Plugin Server
     echo "     Stopping TPM Plugin Server..."
     pkill -f "tpm_plugin_server" >/dev/null 2>&1 || true
-    
+
     # Stop SPIRE Agent (not Server)
     echo "     Stopping SPIRE Agent..."
     pkill -f "spire-agent" >/dev/null 2>&1 || true
-    
+
     sleep 1
-    
+
     # Step 2: Clean up only agent data directories
     echo "  2. Cleaning up agent data directories..."
-    
+
     # Remove SPIRE Agent data (not Server data)
     echo "     Removing SPIRE Agent data directories..."
     rm -rf /tmp/spire-agent 2>/dev/null || true
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/spire-agent.log 2>/dev/null || true
-    
+
     # Remove rust-keylime agent data
     echo "     Removing rust-keylime agent data..."
     rm -rf /tmp/keylime-agent 2>/dev/null || true
     rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
     rm -f /tmp/keylime-agent.sock 2>/dev/null || true
     rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
-    
+
     # Remove TPM Plugin data
     echo "     Removing TPM Plugin data..."
     rm -rf /tmp/spire-data/tpm-plugin 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
-    
+
     # Remove SVID dump directory
     echo "     Removing SVID dump directory..."
     rm -rf /tmp/svid-dump 2>/dev/null || true
-    
+
     # Step 3: Remove PID files
     echo "  3. Removing PID files..."
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
-    
+
     # Step 4: Remove log files
     echo "  4. Removing log files..."
     rm -f /tmp/spire-agent.log 2>/dev/null || true
     rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
-    
+
     # Step 5: Remove socket files
     echo "  5. Removing socket files..."
     rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
     rm -f /tmp/keylime-agent.sock 2>/dev/null || true
     rm -f /tmp/spire-data/tpm-plugin/tpm-plugin.sock 2>/dev/null || true
-    
+
     # Step 6: Clean up temporary files in /tmp (using cleanup.sh function)
     echo "  6. Cleaning up temporary files in /tmp..."
     cleanup_tmp_files
-    
+
     # Step 7: Create clean data directories
     echo "  7. Creating clean data directories..."
     mkdir -p /tmp/spire-agent/public 2>/dev/null || true
     mkdir -p /tmp/keylime-agent 2>/dev/null || true
     mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
-    
+
     echo ""
     echo -e "${GREEN}  ✓ Agent services stopped and data cleaned up${NC}"
 }
@@ -209,7 +224,7 @@ stop_all_instances_and_cleanup() {
 pause_at_phase() {
     local phase_name="$1"
     local description="$2"
-    
+
     # Pause if PAUSE_ENABLED is true (default: true for interactive, false for non-interactive)
     if [ "${PAUSE_ENABLED:-true}" = "true" ]; then
         echo ""
@@ -220,7 +235,7 @@ pause_at_phase() {
             echo -e "${CYAN}${description}${NC}"
             echo ""
         fi
-        
+
         # If we have a TTY, do interactive pause; otherwise wait a bit
         if [ -t 0 ]; then
             echo -e "${YELLOW}Press Enter to continue...${NC}"
@@ -238,7 +253,7 @@ pause_at_phase() {
 pause_for_demo() {
     local phase_name="$1"
     local description="$2"
-    
+
     # Always pause if running in interactive terminal (important for demos)
     if [ -t 0 ]; then
         echo ""
@@ -285,19 +300,19 @@ normalize_timestamp() {
 generate_workflow_log_file() {
     local OUTPUT_FILE="/tmp/phase3_complete_workflow_logs.txt"
     local TEMP_DIR=$(mktemp -d)
-    
+
     echo -e "${CYAN}Generating consolidated workflow log file...${NC}"
-    
+
     {
         echo "╔════════════════════════════════════════════════════════════════════════════════════════╗"
         echo "║  COMPLETE WORKFLOW LOGS - ALL COMPONENTS IN CHRONOLOGICAL ORDER                      ║"
-        echo "║  Generated: $(date)" 
+        echo "║  Generated: $(date)"
         echo "╚════════════════════════════════════════════════════════════════════════════════════════╝"
         echo ""
-        
+
         # Extract and tag logs from each component
         echo "Extracting logs from all components..." >&2
-        
+
         # TPM Plugin Server logs
         if [ -f /tmp/tpm-plugin-server.log ]; then
             grep -E "App Key|TPM Quote|Delegated|certificate|request|response|Unified-Identity" /tmp/tpm-plugin-server.log | \
@@ -307,7 +322,7 @@ generate_workflow_log_file() {
                 echo "$nts|TPM_PLUGIN|$line"
             done > "$TEMP_DIR/tpm-plugin.log"
         fi
-        
+
         # SPIRE Agent logs
         if [ -f /tmp/spire-agent.log ]; then
             grep -E "TPM Plugin|SovereignAttestation|TPM Quote|certificate|Agent SVID|Workload|Unified-Identity|attest" /tmp/spire-agent.log | \
@@ -317,7 +332,7 @@ generate_workflow_log_file() {
                 echo "$nts|SPIRE_AGENT|$line"
             done > "$TEMP_DIR/spire-agent.log"
         fi
-        
+
         # SPIRE Server logs
         if [ -f /tmp/spire-server.log ]; then
             grep -E "SovereignAttestation|Keylime Verifier|AttestedClaims|Agent SVID|Workload|Unified-Identity|attest" /tmp/spire-server.log | \
@@ -327,7 +342,7 @@ generate_workflow_log_file() {
                 echo "$nts|SPIRE_SERVER|$line"
             done > "$TEMP_DIR/spire-server.log"
         fi
-        
+
         # Keylime Verifier logs
         if [ -f /tmp/keylime-verifier.log ]; then
             grep -E "Processing|Verifying|certificate|quote|Unified-Identity" /tmp/keylime-verifier.log | \
@@ -337,7 +352,7 @@ generate_workflow_log_file() {
                 echo "$nts|KEYLIME_VERIFIER|$line"
             done > "$TEMP_DIR/keylime-verifier.log"
         fi
-        
+
         # rust-keylime Agent logs
         if [ -f /tmp/rust-keylime-agent.log ]; then
             grep -E "registered|activated|Delegated|certificate|quote|geolocation|Unified-Identity" /tmp/rust-keylime-agent.log | \
@@ -347,15 +362,15 @@ generate_workflow_log_file() {
                 echo "$nts|RUST_KEYLIME|$line"
             done > "$TEMP_DIR/rust-keylime.log"
         fi
-        
+
         # Sort all logs chronologically
         cat "$TEMP_DIR"/*.log 2>/dev/null | sort -t'|' -k1,1 > "$TEMP_DIR/all-logs-sorted.log"
-        
+
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "SETUP: INITIAL SETUP & TPM PREPARATION"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
-        
+
         # SPIRE logs
         grep -E "TPM_PLUGIN.*App Key|RUST_KEYLIME.*registered|RUST_KEYLIME.*activated" "$TEMP_DIR/all-logs-sorted.log" | \
         while IFS='|' read -r ts component line; do
@@ -369,14 +384,14 @@ generate_workflow_log_file() {
             esac
         done
         echo ""
-        
+
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "AGENT ATTESTATION: SPIRE AGENT ATTESTATION (Agent SVID Generation) - ARCHITECTURE FLOW ORDER"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
-        
+
         # Agent attestation follows architecture flow: SPIRE Agent → TPM Plugin → rust-keylime → SPIRE Agent → SPIRE Server (control plane) → Keylime Verifier (control plane) → SPIRE Server (control plane) → SPIRE Agent
-        
+
         # Step 1: SPIRE Agent Initiates Attestation & Requests App Key Info
         echo "[Step 3-4] SPIRE Agent Initiates Attestation & Requests App Key Information:"
         {
@@ -390,7 +405,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [$comp_name] $clean_line"
         done
         echo ""
-        
+
         # Step 2: Delegated Certification (TPM Plugin → rust-keylime Agent)
         echo "[Step 5] Delegated Certification Request (TPM Plugin → rust-keylime Agent):"
         {
@@ -404,7 +419,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [$comp_name] $clean_line"
         done
         echo ""
-        
+
         # Step 3: SPIRE Agent Builds & Sends SovereignAttestation
         echo "[Step 6] SPIRE Agent Builds & Sends SovereignAttestation:"
         grep -E "SPIRE_AGENT.*SovereignAttestation|SPIRE_AGENT.*Building.*Sovereign" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
@@ -413,7 +428,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [SPIRE Agent] $clean_line"
         done
         echo ""
-        
+
         # Step 4: SPIRE Server Receives & Calls Keylime Verifier
         echo "[Step 7-8] SPIRE Server Receives Attestation & Calls Keylime Verifier:"
         {
@@ -427,7 +442,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [$comp_name] $clean_line"
         done
         echo ""
-        
+
         # Step 5: Keylime Verifier Certificate Verification
         echo "[Step 10] Keylime Verifier Verifies App Key Certificate Signature:"
         grep -E "KEYLIME_VERIFIER.*certificate|KEYLIME_VERIFIER.*Verifying.*certificate|KEYLIME_VERIFIER.*App Key.*certificate" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
@@ -436,7 +451,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [Keylime Verifier] $clean_line"
         done
         echo ""
-        
+
         # Step 6: Keylime Verifier Fetches TPM Quote
         echo "[Step 11] Keylime Verifier Fetches TPM Quote On-Demand:"
         {
@@ -451,7 +466,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [$comp_name] $clean_line"
         done
         echo ""
-        
+
         # Step 8: Keylime Verifier Returns Result to SPIRE Server
         echo "[Step 16] Keylime Verifier Returns Verification Result:"
         grep -E "KEYLIME_VERIFIER.*Verification successful|KEYLIME_VERIFIER.*Returning|SPIRE_SERVER.*AttestedClaims|SPIRE_SERVER.*received.*AttestedClaims" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
@@ -462,7 +477,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [$comp_name] $clean_line"
         done
         echo ""
-        
+
         # Step 9: SPIRE Server Issues Agent SVID
         echo "[Step 17-19] SPIRE Server Issues Agent SVID:"
         {
@@ -476,13 +491,13 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [$comp_name] $clean_line"
         done
         echo ""
-        
+
         # Also show detailed sections for key events
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "AGENT ATTESTATION: DETAILED EVENT BREAKDOWN"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
-        
+
         # TPM Quote Generation
         echo "[1] TPM Quote Generation:"
         grep -E "TPM_PLUGIN.*Quote|SPIRE_AGENT.*Quote" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
@@ -490,7 +505,7 @@ generate_workflow_log_file() {
             echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
         done
         echo ""
-        
+
         # Delegated Certification
         echo "[2] Delegated Certification:"
         grep -E "TPM_PLUGIN.*certificate|RUST_KEYLIME.*Delegated|RUST_KEYLIME.*certificate" "$TEMP_DIR/all-logs-sorted.log" | head -8 | \
@@ -498,7 +513,7 @@ generate_workflow_log_file() {
             echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
         done
         echo ""
-        
+
         # Certificate Verification
         echo "[3] Certificate Signature Verification:"
         grep -E "KEYLIME_VERIFIER.*certificate|KEYLIME_VERIFIER.*Verifying.*certificate" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
@@ -506,7 +521,7 @@ generate_workflow_log_file() {
             echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
         done
         echo ""
-        
+
         # Agent SVID Issuance
         echo "[5] Agent SVID Issuance:"
         grep -E "SPIRE_SERVER.*Agent SVID|SPIRE_AGENT.*Agent SVID|SPIRE_SERVER.*AttestedClaims" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
@@ -514,14 +529,14 @@ generate_workflow_log_file() {
             echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
         done
         echo ""
-        
+
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "WORKLOAD SVID: WORKLOAD SVID GENERATION - ARCHITECTURE FLOW ORDER"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
-        
+
         # Workload SVID generation follows architecture flow: Workload → SPIRE Agent → SPIRE Server → SPIRE Agent → Workload
-        
+
         # Step 1: Workload Requests SVID via SPIRE Agent
         echo "[Step 1-2] Workload Requests SVID via SPIRE Agent:"
         {
@@ -533,7 +548,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [SPIRE Agent] $clean_line"
         done
         echo ""
-        
+
         # Step 2: SPIRE Agent Forwards Request to SPIRE Server
         echo "[Step 3-4] SPIRE Agent Forwards Workload SVID Request to SPIRE Server:"
         grep -E "SPIRE_AGENT.*BatchNewX509SVID|SPIRE_AGENT.*workload.*request" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
@@ -542,7 +557,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [SPIRE Agent] $clean_line"
         done
         echo ""
-        
+
         # Step 3: SPIRE Server Processes Workload SVID Request (skips Keylime)
         echo "[Step 5-6] SPIRE Server Processes Workload SVID Request (skips Keylime verification):"
         {
@@ -553,7 +568,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [SPIRE Server] $clean_line"
         done
         echo ""
-        
+
         # Step 4: SPIRE Server Returns Workload SVID to SPIRE Agent
         echo "[Step 7-8] SPIRE Server Returns Workload SVID to SPIRE Agent:"
         {
@@ -567,7 +582,7 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [$comp_name] $clean_line"
         done
         echo ""
-        
+
         # Step 5: SPIRE Agent Returns SVID to Workload
         echo "[Step 9-10] SPIRE Agent Returns Workload SVID to Workload:"
         grep -E "SPIRE_AGENT.*SVID.*python-app|SPIRE_AGENT.*workload.*SVID.*received" "$TEMP_DIR/all-logs-sorted.log" | sort -t'|' -k1,1 | while IFS='|' read -r ts component line; do
@@ -576,20 +591,20 @@ generate_workflow_log_file() {
             echo "  [$formatted_ts] [SPIRE Agent] $clean_line"
         done
         echo ""
-        
+
         # Detailed workload SVID breakdown
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "WORKLOAD SVID: DETAILED EVENT BREAKDOWN"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
-        
+
         # Workload API and Registration
         echo "[1] Workload API & Registration:"
         if [ -f /tmp/spire-agent.log ]; then
             grep -i "Starting Workload\|Entry created\|python-app" /tmp/spire-agent.log | head -3 | sed 's/^/    /'
         fi
         echo ""
-        
+
         # Workload SVID Request Processing
         echo "[2] Workload SVID Request Processing:"
         grep -E "SPIRE_SERVER.*Workload|SPIRE_SERVER.*python-app" "$TEMP_DIR/all-logs-sorted.log" | head -5 | \
@@ -597,7 +612,7 @@ generate_workflow_log_file() {
             echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
         done
         echo ""
-        
+
         # Workload SVID Issuance
         echo "[3] Workload SVID Issuance:"
         grep -E "SPIRE_SERVER.*Signed.*python-app|SPIRE_AGENT.*Fetched.*python-app" "$TEMP_DIR/all-logs-sorted.log" | head -3 | \
@@ -605,7 +620,7 @@ generate_workflow_log_file() {
             echo "  → $line" | sed 's/^[^|]*|//' | sed 's/^/    /'
         done
         echo ""
-        
+
         # SVID Renewal
         if [ -f /tmp/spire-agent.log ]; then
             echo "[4] SVID Renewal Configuration:"
@@ -615,7 +630,7 @@ generate_workflow_log_file() {
                 echo "    Configured for 15s renewal interval (demo purposes)"
             fi
             echo ""
-            
+
             echo "[5] SVID Renewal Activity:"
             RENEWAL_EVENTS=$(grep -iE "renew|SVID.*updated|SVID.*refreshed" /tmp/spire-agent.log | wc -l)
             if [ "$RENEWAL_EVENTS" -gt 0 ]; then
@@ -626,24 +641,24 @@ generate_workflow_log_file() {
             fi
             echo ""
         fi
-        
+
         if [ -f /tmp/test_phase3_final_rebuild.log ]; then
             echo "[Workload] SVID Fetched:"
             grep -i "SVID fetched successfully\|Certificate chain\|Full chain received" /tmp/test_phase3_final_rebuild.log | head -3 | sed 's/^/  /'
             echo ""
         fi
-        
+
         if [ -f /tmp/svid-dump/attested_claims.json ]; then
             echo "[Workload] Workload SVID Claims (from certificate extension):"
             cat /tmp/svid-dump/attested_claims.json 2>/dev/null | python3 -m json.tool 2>/dev/null | head -20 | sed 's/^/  /' || cat /tmp/svid-dump/attested_claims.json | head -20 | sed 's/^/  /'
             echo ""
         fi
-        
+
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "PHASE 4: FINAL VERIFICATION"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
-        
+
         if [ -f /tmp/svid-dump/svid.pem ]; then
             echo "[Certificate Chain] Structure:"
             echo "  [0] Workload SVID: spiffe://example.org/python-app"
@@ -653,7 +668,7 @@ generate_workflow_log_file() {
             openssl crl2pkcs7 -nocrl -certfile /tmp/svid-dump/svid.pem 2>/dev/null | openssl pkcs7 -print_certs -text -noout 2>/dev/null | grep -E "Subject:|Issuer:|URI:spiffe|Not After" | tail -4 | sed 's/^/    /'
             echo ""
         fi
-        
+
         echo "[Verification Summary]:"
         echo "  ✓ Both certificates signed by SPIRE Server Root CA"
         echo "  ✓ Certificate chain verified successfully"
@@ -661,7 +676,7 @@ generate_workflow_log_file() {
         echo "  ✓ Workload SVID contains ONLY workload claims (grc.workload only)"
         echo "  ✓ App Key certificate's TPM AK matches Keylime agent's TPM AK"
         echo ""
-        
+
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "WORKFLOW SUMMARY"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -687,10 +702,10 @@ generate_workflow_log_file() {
         echo "  ✓ All verifications: Passed"
         echo ""
     } > "$OUTPUT_FILE"
-    
+
     # Cleanup temp directory
     rm -rf "$TEMP_DIR" 2>/dev/null
-    
+
     if [ -f "$OUTPUT_FILE" ]; then
         local line_count=$(wc -l < "$OUTPUT_FILE" 2>/dev/null || echo "0")
         local file_size=$(du -h "$OUTPUT_FILE" 2>/dev/null | cut -f1 || echo "unknown")
@@ -817,21 +832,21 @@ sanitize_count() {
 configure_spire_server_agent_ttl() {
     local server_config="$1"
     local agent_ttl="${2:-60}"  # Default: 60 seconds for Unified-Identity
-    
+
     if [ ! -f "$server_config" ]; then
         echo -e "${YELLOW}    ⚠ SPIRE server config not found: $server_config${NC}"
         return 1
     fi
-    
+
     # Convert seconds to SPIRE duration format
     local agent_ttl_duration=$(convert_seconds_to_spire_duration "$agent_ttl")
-    
+
     echo "    Configuring SPIRE server agent_ttl: ${agent_ttl}s (${agent_ttl_duration}) for Unified-Identity"
-    
+
     # Create a backup
     local backup_config="${server_config}.bak.$$"
     cp "$server_config" "$backup_config" 2>/dev/null || true
-    
+
     # Check if agent_ttl already exists in server block
     if grep -q "agent_ttl" "$server_config"; then
         # Update existing agent_ttl
@@ -878,7 +893,7 @@ configure_spire_server_agent_ttl() {
         fi
         echo -e "${GREEN}    ✓ Added agent_ttl = ${agent_ttl_duration} to server configuration${NC}"
     fi
-    
+
     # Verify the change
     if grep -q "agent_ttl.*${agent_ttl_duration}" "$server_config"; then
         return 0
@@ -892,24 +907,24 @@ configure_spire_server_agent_ttl() {
 configure_spire_agent_svid_renewal() {
     local agent_config="$1"
     local renewal_interval_seconds="${2:-${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}}"
-    
+
     if [ ! -f "$agent_config" ]; then
         echo -e "${YELLOW}    ⚠ SPIRE agent config not found: $agent_config${NC}"
         return 1
     fi
-    
+
     # Validate minimum renewal interval based on Unified-Identity feature flag
     # Unified-Identity enabled: 30s minimum
     # Unified-Identity disabled: 24h (86400s) minimum for backward compatibility
     local unified_identity_enabled="${UNIFIED_IDENTITY_ENABLED:-true}"
     local min_interval
-    
+
     if [ "$unified_identity_enabled" = "true" ] || [ "$unified_identity_enabled" = "1" ] || [ "$unified_identity_enabled" = "yes" ]; then
         min_interval=30  # Unified-Identity allows 30s minimum
     else
         min_interval=86400  # Legacy 24h minimum when Unified-Identity is disabled
     fi
-    
+
     if [ "$renewal_interval_seconds" -lt "$min_interval" ]; then
         echo -e "${RED}    ✗ Error: SVID renewal interval must be at least ${min_interval}s (provided: ${renewal_interval_seconds}s)${NC}"
         if [ "$min_interval" -eq 86400 ]; then
@@ -917,16 +932,16 @@ configure_spire_agent_svid_renewal() {
         fi
         return 1
     fi
-    
+
     # Convert seconds to SPIRE duration format
     local renewal_duration=$(convert_seconds_to_spire_duration "$renewal_interval_seconds")
-    
+
     echo "    Configuring SPIRE agent SVID renewal interval: ${renewal_interval_seconds}s (${renewal_duration})"
-    
+
     # Create a backup of the original config
     local backup_config="${agent_config}.bak.$$"
     cp "$agent_config" "$backup_config" 2>/dev/null || true
-    
+
     # Check if availability_target already exists in agent block
     if grep -q "availability_target" "$agent_config"; then
         # Update existing availability_target (match any whitespace and quotes)
@@ -955,7 +970,7 @@ configure_spire_agent_svid_renewal() {
             return 1
         fi
     fi
-    
+
     # Verify the change was made
     if grep -q "availability_target.*${renewal_duration}" "$agent_config"; then
         rm -f "$backup_config" 2>/dev/null || true
@@ -974,26 +989,26 @@ configure_spire_agent_svid_renewal() {
 wait_for_one_agent_svid_renewal() {
     local max_wait="${1:-120}"  # Maximum time to wait in seconds
     local renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-30}"
-    
+
     echo ""
     echo -e "${CYAN}  Waiting for one agent SVID renewal (max ${max_wait}s)...${NC}"
     echo -e "${CYAN}  Configured renewal interval: ${renewal_interval}s${NC}"
     echo ""
-    
+
     # Check if agent is running
     if [ ! -f /tmp/spire-agent.pid ]; then
         echo -e "${RED}  ✗ SPIRE Agent is not running${NC}"
         return 1
     fi
-    
+
     local agent_pid=$(cat /tmp/spire-agent.pid)
     if ! kill -0 "$agent_pid" 2>/dev/null; then
         echo -e "${RED}  ✗ SPIRE Agent process (PID: $agent_pid) is not running${NC}"
         return 1
     fi
-    
+
     echo -e "${GREEN}  ✓ SPIRE Agent is running (PID: $agent_pid)${NC}"
-    
+
     # Get initial log positions and count existing renewals
     local agent_log="/tmp/spire-agent.log"
     local initial_agent_size=0
@@ -1009,19 +1024,19 @@ wait_for_one_agent_svid_renewal() {
         initial_renewal_count=$(printf '%s' "$initial_renewal_count" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
         initial_renewal_count="${initial_renewal_count:-0}"
     fi
-    
+
     echo "  Initial renewal count: $initial_renewal_count"
     echo "  Waiting for renewal count to reach $((initial_renewal_count + 1))..."
     echo ""
-    
+
     # Wait for exactly one new renewal
     local start_time=$(date +%s)
     local end_time=$((start_time + max_wait))
     local target_count=$((initial_renewal_count + 1))
-    
+
     while [ $(date +%s) -lt $end_time ]; do
         sleep 2
-        
+
         # Check current renewal count
         local current_count=0
         if [ -f "$agent_log" ]; then
@@ -1033,7 +1048,7 @@ wait_for_one_agent_svid_renewal() {
             current_count=$(printf '%s' "$current_count" | tr -d '\n\r\t ' | grep -oE '^[0-9]+$' | head -1)
             current_count="${current_count:-0}"
         fi
-        
+
         if [ "$current_count" -ge "$target_count" ] 2>/dev/null; then
             echo -e "${GREEN}  ✓ Agent SVID renewal detected! (Count: $current_count)${NC}"
             # Show the renewal log entry
@@ -1046,14 +1061,14 @@ wait_for_one_agent_svid_renewal() {
             fi
             return 0
         fi
-        
+
         # Show progress every 10 seconds
         local elapsed=$(( $(date +%s) - start_time ))
         if [ $((elapsed % 10)) -eq 0 ] && [ $elapsed -gt 0 ]; then
             echo "  Progress: ${elapsed}s elapsed, waiting for renewal (current count: $current_count, target: $target_count)..."
         fi
     done
-    
+
     echo -e "${YELLOW}  ⚠ Timeout: No renewal detected within ${max_wait}s${NC}"
     return 1
 }
@@ -1062,13 +1077,13 @@ wait_for_one_agent_svid_renewal() {
 fetch_agent_svid() {
     local output_file="${1:-/tmp/agent-svid-dump/agent-svid.pem}"
     local agent_log="/tmp/spire-agent.log"
-    
+
     echo ""
     echo "  Fetching agent SVID..."
-    
+
     # Create output directory
     mkdir -p "$(dirname "$output_file")" 2>/dev/null || true
-    
+
     # Extract agent SVID from logs (agent logs the certificate PEM)
     # Look for the most recent "Agent SVID Certificate (PEM)" log entry
     # Log format: time="..." level=info msg="..." cert_pem="-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
@@ -1097,7 +1112,7 @@ try:
                     if 'BEGIN CERTIFICATE' in cert and 'END CERTIFICATE' in cert:
                         print(cert)
                         sys.exit(0)
-                
+
                 # If cert spans multiple lines, try to find it
                 # Look for the line with cert_pem= and extract until END CERTIFICATE
                 if 'cert_pem=' in line:
@@ -1108,12 +1123,12 @@ try:
                     # Remove trailing quote if present
                     cert_part = cert_part.rstrip('"')
                     cert_part = cert_part.replace('\\n', '\n')
-                    
+
                     # If END CERTIFICATE is in this line, we're done
                     if 'END CERTIFICATE' in cert_part:
                         print(cert_part)
                         sys.exit(0)
-                    
+
                     # Otherwise, we might need to read more lines (unlikely but possible)
                     # For now, try to extract what we have
                     if 'BEGIN CERTIFICATE' in cert_part:
@@ -1135,7 +1150,7 @@ PYEOF
                 fi
             fi
         fi
-        
+
         # Last resort: Try to get agent SVID from SPIRE server using agent SPIFFE ID
         # We can query the server for the agent's SVID
         local spire_server="${PROJECT_DIR}/spire/bin/spire-server"
@@ -1143,7 +1158,7 @@ PYEOF
             # Get agent SPIFFE ID from logs
             local agent_spiffe_id=$(grep "Successfully reattested node" "$agent_log" | tail -1 | \
                 grep -oP 'spiffe_id="\K[^"]+' 2>/dev/null)
-            
+
             if [ -n "$agent_spiffe_id" ]; then
                 echo "    Trying to fetch agent SVID from SPIRE server for agent: $agent_spiffe_id"
                 # Note: This would require server API access, which may not be available
@@ -1151,7 +1166,7 @@ PYEOF
             fi
         fi
     fi
-    
+
     echo -e "${YELLOW}    ⚠ Could not extract agent SVID from logs${NC}"
     echo "    Agent SVID should be logged in /tmp/spire-agent.log"
     echo "    Look for: 'Unified-Identity - Verification: Agent SVID Certificate (PEM)'"
@@ -1353,7 +1368,7 @@ if [ ! -d "${TLS_DIR}" ] || [ ! -f "${TLS_DIR}/cacert.crt" ] || [ ! -f "${TLS_DI
     rm -rf "${TLS_DIR}"
     mkdir -p "${TLS_DIR}"
     chmod 700 "${TLS_DIR}"
-    
+
     # Use Python to generate certificates via Keylime's CA utilities
     python3 << 'PYTHON_EOF'
 import sys
@@ -1379,22 +1394,22 @@ os.chdir(tls_dir)
 try:
     # Set empty password for testing (must be done before cmd_init)
     ca_util.read_password("")
-    
+
     # Initialize CA
     print(f"  Generating CA in {tls_dir}...")
     ca_util.cmd_init(tls_dir)
     print("  ✓ CA certificate generated")
-    
+
     # Generate server certificate
     print("  Generating server certificate...")
     ca_util.cmd_mkcert(tls_dir, 'server', password=None)
     print("  ✓ Server certificate generated")
-    
+
     # Generate client certificate
     print("  Generating client certificate...")
     ca_util.cmd_mkcert(tls_dir, 'client', password=None)
     print("  ✓ Client certificate generated")
-    
+
     print("  ✓ TLS setup complete")
 finally:
     os.chdir(original_cwd)
@@ -1433,7 +1448,7 @@ if [ -c /dev/tpm0 ] || [ -c /dev/tpmrm0 ]; then
         if [ ! -c "$TPM_DEVICE" ]; then
             TPM_DEVICE="/dev/tpm0"
         fi
-        
+
         # First, try to clear persistent handles that might be stale
         # These are common handles used by keylime agents
         echo "    Clearing persistent handles (if any)..."
@@ -1444,7 +1459,7 @@ if [ -c /dev/tpm0 ] || [ -c /dev/tpmrm0 ]; then
                 TCTI="device:${TPM_DEVICE}" tpm2_evictcontrol -C o -c "${handle}" 2>&1 | grep -E "persistent-handle|action" || true
             fi
         done
-        
+
         # Try to clear TPM (may fail if not authorized, but that's okay)
         # Use -c flag to clear (requires authorization, may fail)
         # Fallback to startup -c which just initializes without clearing
@@ -1456,7 +1471,7 @@ if [ -c /dev/tpm0 ] || [ -c /dev/tpmrm0 ]; then
             echo -e "${YELLOW}  ⚠ TPM clear/startup failed (may need authorization or TPM may be in use)${NC}"
             echo "  Continuing anyway - agent may handle TPM state"
         fi
-        
+
         # Flush transient contexts to ensure clean state
         echo "    Flushing transient contexts..."
         TCTI="device:${TPM_DEVICE}" tpm2_flushcontext -t 2>/dev/null || true
@@ -1630,7 +1645,7 @@ if [ -f "$SERVER_CERT" ] && [ -f "$SERVER_KEY" ]; then
             echo "server_cert = \"$SERVER_CERT\"" >> "$TEMP_CONFIG" 2>/dev/null || true
         fi
     fi
-    
+
     # Update server_key in config
     if grep -q "^server_key" "$TEMP_CONFIG" 2>/dev/null; then
         sed -i "s|^server_key = .*|server_key = \"$SERVER_KEY\"|" "$TEMP_CONFIG" 2>/dev/null || \
@@ -1686,7 +1701,7 @@ fi
 
 if [ "$SECURE_MOUNTED" = false ]; then
     echo "    Setting up secure directory and tmpfs mount..."
-    
+
     # Create secure directory if it doesn't exist
     if [ ! -d "$SECURE_DIR" ]; then
         if sudo -n true 2>/dev/null; then
@@ -1697,7 +1712,7 @@ if [ "$SECURE_MOUNTED" = false ]; then
             chmod 700 "$SECURE_DIR" 2>/dev/null || true
         fi
     fi
-    
+
     # Try to mount tmpfs if sudo is available
     if sudo -n true 2>/dev/null; then
         echo "    Pre-mounting tmpfs for secure storage..."
@@ -1853,7 +1868,7 @@ for i in {1..60}; do
         RUST_AGENT_STARTED=true
         break
     fi
-    
+
     # Check if port is listening (most reliable check - agent is ready if port is open)
     # Try without -p first (works without root), then with -p if available
     PORT_LISTENING=false
@@ -1864,7 +1879,7 @@ for i in {1..60}; do
        lsof -i :9002 2>/dev/null | grep -q LISTEN; then
         PORT_LISTENING=true
     fi
-    
+
     # If port is listening, check if agent process is still running and logs show "Listening"
     if [ "$PORT_LISTENING" = "true" ]; then
         # Check logs for "Listening" message to confirm agent is ready
@@ -1884,7 +1899,7 @@ for i in {1..60}; do
         RUST_AGENT_STARTED=true
         break
     fi
-    
+
     # Also try HTTP/HTTPS endpoint checks (may fail due to SSL cert issues, but port check above should catch it)
     # Try localhost first (works even when agent binds to 0.0.0.0), then check port listening
     # Note: When AGENT_BIND_IP is 0.0.0.0, we can't curl it directly, but localhost works
@@ -1934,18 +1949,18 @@ done
 if [ "$RUST_AGENT_STARTED" = false ]; then
     echo -e "${RED}  ✗ rust-keylime Agent failed health check within timeout${NC}"
     echo "  Checking agent status..."
-    
+
     # Check if process is still running
     if kill -0 $RUST_AGENT_PID 2>/dev/null; then
         echo "  ✓ Agent process is still running (PID: $RUST_AGENT_PID)"
-        
+
         # Check if port is listening - try multiple methods for reliability
         PORT_CHECK_PASSED=false
         # Try netstat without -p first (works without root), then with -p
         NETSTAT_OUTPUT=$(netstat -tln 2>/dev/null | grep ":9002" || netstat -tlnp 2>/dev/null | grep ":9002" || true)
         SS_OUTPUT=$(ss -tln 2>/dev/null | grep ":9002" || ss -tlnp 2>/dev/null | grep ":9002" || true)
         LSOF_OUTPUT=$(lsof -i :9002 2>/dev/null | grep LISTEN || true)
-        
+
         if [ -n "$NETSTAT_OUTPUT" ] || [ -n "$SS_OUTPUT" ] || [ -n "$LSOF_OUTPUT" ]; then
             PORT_CHECK_PASSED=true
             echo "  ✓ Port 9002 is listening"
@@ -1959,7 +1974,7 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
                 echo "    lsof: $(echo "$LSOF_OUTPUT" | head -1)"
             fi
         fi
-        
+
         # Also check if logs show "Listening" - this is a strong indicator
         # Try multiple patterns to catch different log formats
         if [ -f /tmp/rust-keylime-agent.log ]; then
@@ -1972,7 +1987,7 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
                 fi
             fi
         fi
-        
+
         if [ "$PORT_CHECK_PASSED" = true ]; then
             # Port is listening and/or logs show listening - agent is ready
             # Since SPIRE attestation succeeds, the agent is functional even if health check format differs
@@ -2006,7 +2021,7 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
         echo "  Recent logs:"
         tail -50 /tmp/rust-keylime-agent.log | grep -E "(ERROR|Failed|Listening|bind|HttpServer|9002|register|unix)" || tail -30 /tmp/rust-keylime-agent.log
     fi
-    
+
     if [ "$RUST_AGENT_STARTED" = false ]; then
         abort_on_error "rust-keylime Agent failed to become ready - delegated certification is required"
     fi
@@ -2065,7 +2080,7 @@ for i in {1..120}; do
                 # Check all agents on registrar - try both API versions
                 REGISTRAR_RESPONSE=$(curl -s "http://localhost:8890/v2.2/agents/" 2>/dev/null || curl -s "http://localhost:8890/v2.1/agents/" 2>/dev/null || echo "")
             fi
-            
+
             # Check for successful registration - registrar returns 200 with agent data, or list contains UUID
             if [ -n "$REGISTRAR_RESPONSE" ]; then
                 # Check if response indicates success (code 200 or contains the UUID)
@@ -2095,7 +2110,7 @@ for i in {1..120}; do
             fi
         fi
     fi
-    
+
     # Step 2: Verifier queries registrar on-demand (no automatic registration)
     # Skip verifier registration check - verifier will query registrar when SPIRE sends verification requests
     # We only need to confirm registrar registration is complete
@@ -2104,7 +2119,7 @@ for i in {1..120}; do
         AGENT_REGISTERED=true
         break
     fi
-    
+
     # Show progress every 10 seconds
     if [ $((i % 10)) -eq 0 ]; then
         STATUS_MSG="Still waiting"
@@ -2116,7 +2131,7 @@ for i in {1..120}; do
         # Verifier queries registrar on-demand (no pre-registration needed)
         STATUS_MSG="$STATUS_MSG, verifier: on-demand)... (${i}/${MAX_WAIT} seconds)"
         echo "    $STATUS_MSG"
-        
+
         # Check agent logs for registration activity or errors
         if tail -30 /tmp/rust-keylime-agent.log | grep -qi "register\|registration"; then
             echo "    Registration activity detected in agent logs..."
@@ -2126,7 +2141,7 @@ for i in {1..120}; do
             tail -30 /tmp/rust-keylime-agent.log | grep -iE "error|failed|incompatible" | tail -2 | sed 's/^/      /'
         fi
     fi
-    
+
     sleep 1
 done
 
@@ -2383,7 +2398,7 @@ for i in {1..30}; do
             fi
         fi
     fi
-    
+
     # Check logs for App Key generation success
     if grep -q "App Key generated successfully on startup" /tmp/tpm-plugin-server.log 2>/dev/null; then
         # Verify we can actually connect via UDS and get the App Key
@@ -2394,7 +2409,7 @@ for i in {1..30}; do
                 -d '{}' \
                 --max-time 2 \
                 2>/dev/null || echo "")
-            
+
             # Check if response contains success status (may be truncated in output, so check for key parts)
             if echo "$APP_KEY_RESPONSE" | grep -qE '"status"\s*:\s*"success"|"app_key_public"'; then
                 echo -e "${GREEN}  ✓ App Key is ready and UDS socket is working${NC}"
@@ -2505,7 +2520,7 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
     else
         echo -e "${YELLOW}  ⚠ SPIRE Agent binary not found, building...${NC}"
         cd "${PROJECT_DIR}/spire"
-        
+
         # Ensure required files exist for Makefile
         if [ ! -f ".go-version" ]; then
             echo "1.25.3" > .go-version
@@ -2517,7 +2532,7 @@ markdown_lint v0.40.0
 protoc 30.2
 EOF
         fi
-        
+
         # Try building with Makefile first
         if make bin/spire-agent > /tmp/spire-agent-build.log 2>&1; then
             echo -e "${GREEN}  ✓ SPIRE Agent built successfully${NC}"
@@ -2572,10 +2587,10 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
     rm -f /tmp/spire-agent.log 2>/dev/null || true
     echo "    Cleanup complete."
-    
+
         # Wait for server to be ready - SKIPPED for act 2 (server assumed running from test_control_plane.sh)
     echo "    Skipping SPIRE Server readiness check (act 2 - assuming server is already running)"
-    
+
     # Unified-Identity: TPM-based proof of residency - no join token needed
     JOIN_TOKEN=""
     if [ "${UNIFIED_IDENTITY_ENABLED:-false}" != "true" ]; then
@@ -2586,13 +2601,13 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     else
         echo "    ✓ Unified-Identity enabled: Using TPM-based proof of residency (no join token needed)"
     fi
-    
+
     # Export trust bundle before starting agent
     # The agent needs the trust bundle to verify the SPIRE Server's certificate
     echo "    Exporting trust bundle from SPIRE Server..."
     TRUST_BUNDLE_PATH="/tmp/bundle.pem"
     SERVER_SOCKET="/tmp/spire-server/private/api.sock"
-    
+
     if [ -f "${SPIRE_SERVER}" ] && [ -S "${SERVER_SOCKET}" ]; then
         # Export trust bundle from SPIRE Server
         if "${SPIRE_SERVER}" bundle show -socketPath "${SERVER_SOCKET}" > "${TRUST_BUNDLE_PATH}" 2>/dev/null; then
@@ -2629,7 +2644,7 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
             echo "    SPIRE Server socket not found: ${SERVER_SOCKET}"
         fi
     fi
-    
+
     # Verify trust bundle exists (agent requires it)
     if [ ! -f "${TRUST_BUNDLE_PATH}" ] || [ ! -s "${TRUST_BUNDLE_PATH}" ]; then
         echo -e "${RED}    ✗ Trust bundle not available at ${TRUST_BUNDLE_PATH}${NC}"
@@ -2637,7 +2652,7 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
         echo "    Please ensure SPIRE Server is running and accessible"
         abort_on_error "Trust bundle not available - SPIRE Agent cannot start without it"
     fi
-    
+
     # Configure SVID renewal interval if specified via environment variable
     if [ -n "${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-}" ]; then
         echo "    Configuring SVID renewal interval from environment variable..."
@@ -2649,20 +2664,20 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     else
         echo "    Using SVID renewal interval from config file (if set)"
     fi
-    
+
     echo "    Starting SPIRE Agent (logs: /tmp/spire-agent.log)..."
     export UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
     # Ensure TPM_PLUGIN_ENDPOINT is set for agent (must match TPM Plugin Server socket)
     if [ -z "${TPM_PLUGIN_ENDPOINT:-}" ]; then
         export TPM_PLUGIN_ENDPOINT="unix:///tmp/spire-data/tpm-plugin/tpm-plugin.sock"
     fi
-    
+
     # Verify TPM_PLUGIN_ENDPOINT is using UDS format (not TCP/IP)
     if ! echo "${TPM_PLUGIN_ENDPOINT}" | grep -q "^unix://"; then
         echo -e "${RED}    ✗ ERROR: TPM_PLUGIN_ENDPOINT must use UDS format (unix://), got: ${TPM_PLUGIN_ENDPOINT}${NC}"
         abort_on_error "TPM_PLUGIN_ENDPOINT must be UDS socket (unix://), not TCP/IP"
     fi
-    
+
     # Extract socket path and verify it exists
     SOCKET_PATH=$(echo "${TPM_PLUGIN_ENDPOINT}" | sed 's|^unix://||')
     if [ ! -S "${SOCKET_PATH}" ]; then
@@ -2672,7 +2687,7 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     else
         echo -e "${GREEN}    ✓ TPM Plugin UDS socket verified: ${SOCKET_PATH}${NC}"
     fi
-    
+
     echo "    TPM_PLUGIN_ENDPOINT=${TPM_PLUGIN_ENDPOINT}"
     echo "    UNIFIED_IDENTITY_ENABLED=${UNIFIED_IDENTITY_ENABLED}"
     # Use setsid + nohup to ensure agent continues running after script exits
@@ -2775,7 +2790,7 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
             fi
         fi
     fi
-    
+
     # Show progress every 15 seconds
     if [ $((i % 15)) -eq 0 ]; then
         elapsed=$i
@@ -2833,7 +2848,7 @@ if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
         ENTRY_SHOW_OUTPUT=$("${SPIRE_DIR}/bin/spire-server" entry show \
             -spiffeID "$WORKLOAD_SPIFFE_ID" \
             -socketPath "$SERVER_SOCKET" 2>&1 || echo "")
-        
+
         # Check if entry actually exists
         if echo "$ENTRY_SHOW_OUTPUT" | grep -qi "Entry ID" && ! echo "$ENTRY_SHOW_OUTPUT" | grep -qi "Found 0 entries"; then
             # Extract entry ID(s) and delete them
@@ -2842,7 +2857,7 @@ if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
                 # Fallback: try extracting from "Entry ID" line
                 ENTRY_IDS=$(echo "$ENTRY_SHOW_OUTPUT" | grep -i "Entry ID" | sed -n 's/.*Entry ID[[:space:]]*:[[:space:]]*\([a-f0-9-]\+\).*/\1/p' || echo "")
             fi
-            
+
             ENTRY_COUNT=0
             if [ -n "$ENTRY_IDS" ]; then
                 while IFS= read -r entry_id; do
@@ -2855,7 +2870,7 @@ if [ -S "$SERVER_SOCKET" ] && [ -f "${SPIRE_DIR}/bin/spire-server" ]; then
                     fi
                 done <<< "$ENTRY_IDS"
             fi
-            
+
             if [ $ENTRY_COUNT -gt 0 ]; then
                 echo -e "  ${GREEN}✓ Deleted $ENTRY_COUNT existing registration entry/entries${NC}"
             fi
@@ -2903,14 +2918,14 @@ if [ -f /tmp/spire-agent.log ]; then
         TPM_OPERATIONS_FOUND=true
         grep -i "TPM plugin\|TPMPluginGateway.*initialized" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
     fi
-    
+
     # Check for successful App Key generation (not just attempts)
     if grep -qi "App Key.*generated.*successfully\|App Key generated successfully" /tmp/spire-agent.log; then
         echo -e "${GREEN}    ✓ TPM App Key generation succeeded${NC}"
         TPM_OPERATIONS_FOUND=true
         grep -i "App Key.*generated.*successfully" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
     fi
-    
+
     # Check for successful Quote generation (not failures)
     if grep -qi "Quote.*generated.*successfully\|TPM Quote.*successfully" /tmp/spire-agent.log; then
         echo -e "${GREEN}    ✓ TPM Quote generation succeeded${NC}"
@@ -2921,7 +2936,7 @@ if [ -f /tmp/spire-agent.log ]; then
         TPM_OPERATIONS_FAILED=true
         grep -i "Failed to.*generate.*Quote\|failed to generate TPM Quote" /tmp/spire-agent.log | tail -2 | sed 's/^/      /'
     fi
-    
+
     # Check for successful SovereignAttestation (not stub fallback)
     if grep -qi "SovereignAttestation.*built.*successfully\|Building real SovereignAttestation" /tmp/spire-agent.log && \
        ! grep -qi "Failed to build.*SovereignAttestation.*using stub\|using stub data" /tmp/spire-agent.log; then
@@ -2944,7 +2959,7 @@ if [ -f /tmp/tpm-plugin-server.log ]; then
         TPM_OPERATIONS_FOUND=true
         grep -i "App Key generated successfully" /tmp/tpm-plugin-server.log | tail -2 | sed 's/^/      /'
     fi
-    
+
     if grep -qi "Quote generated successfully\|Quote.*successfully" /tmp/tpm-plugin-server.log; then
         echo -e "${GREEN}    ✓ Quote generation succeeded in TPM Plugin Server${NC}"
         TPM_OPERATIONS_FOUND=true
@@ -2954,7 +2969,7 @@ if [ -f /tmp/tpm-plugin-server.log ]; then
         TPM_OPERATIONS_FAILED=true
         grep -iE "error|failed|exception" /tmp/tpm-plugin-server.log | grep -i "quote" | tail -2 | sed 's/^/      /'
     fi
-    
+
     if grep -qi "certificate.*received\|certificate.*successfully\|delegated.*certification.*success" /tmp/tpm-plugin-server.log; then
         echo -e "${GREEN}    ✓ Delegated certification succeeded in TPM Plugin Server${NC}"
         TPM_OPERATIONS_FOUND=true
@@ -3230,7 +3245,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # Check and ensure all required components are running
 COMPONENTS_OK=true
-    
+
     # Check SPIRE Server
     if ! "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
         echo -e "${YELLOW}  ⚠ SPIRE Server not running, starting it...${NC}"
@@ -3250,7 +3265,7 @@ COMPONENTS_OK=true
     else
         echo -e "${GREEN}  ✓ SPIRE Server is running${NC}"
     fi
-    
+
     # Check TPM Plugin Server
     TPM_PLUGIN_SOCKET="/tmp/spire-data/tpm-plugin/tpm-plugin.sock"
         if [ ! -S "$TPM_PLUGIN_SOCKET" ]; then
@@ -3277,7 +3292,7 @@ COMPONENTS_OK=true
         else
             echo -e "${GREEN}  ✓ TPM Plugin Server is running${NC}"
         fi
-    
+
     # Check rust-keylime agent
     if ! pgrep -f "keylime_agent" >/dev/null 2>&1; then
             echo -e "${YELLOW}  ⚠ rust-keylime agent not running${NC}"
@@ -3286,11 +3301,11 @@ COMPONENTS_OK=true
     else
         echo -e "${GREEN}  ✓ rust-keylime agent is running${NC}"
     fi
-    
+
     # Check SPIRE Agent
     if [ ! -S /tmp/spire-agent/public/api.sock ]; then
         echo -e "${YELLOW}  ⚠ SPIRE Agent not running, starting it...${NC}"
-        
+
         # Configure agent with renewal interval if set
         AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
         renewal_interval="${SPIRE_AGENT_SVID_RENEWAL_INTERVAL:-30}"
@@ -3299,7 +3314,7 @@ COMPONENTS_OK=true
                 echo -e "${YELLOW}  ⚠ Failed to configure renewal interval, using default${NC}"
             }
         fi
-        
+
         # Unified-Identity: TPM-based proof of residency - no join token needed
         JOIN_TOKEN=""
         if [ "${UNIFIED_IDENTITY_ENABLED:-true}" != "true" ]; then
@@ -3312,11 +3327,11 @@ COMPONENTS_OK=true
                 JOIN_TOKEN=$(echo "$TOKEN_OUTPUT" | grep -oE '[a-f0-9]{32,}' | head -1)
             fi
         fi
-        
+
         # Export trust bundle
         "${SPIRE_SERVER}" bundle show -format pem \
             -socketPath /tmp/spire-server/private/api.sock > /tmp/bundle.pem 2>&1 || true
-        
+
         # Start agent
         rm -f /tmp/spire-agent.log
         if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
@@ -3338,10 +3353,10 @@ COMPONENTS_OK=true
             echo -e "${RED}  ✗ No join token and Unified-Identity disabled${NC}"
             COMPONENTS_OK=false
         fi
-        
+
         if [ "$COMPONENTS_OK" != false ]; then
             echo $! > /tmp/spire-agent.pid
-            
+
             # Wait for agent to start
             for i in {1..30}; do
                 if [ -S /tmp/spire-agent/public/api.sock ]; then
@@ -3359,7 +3374,7 @@ COMPONENTS_OK=true
     else
         echo -e "${GREEN}  ✓ SPIRE Agent is running${NC}"
     fi
-    
+
     # Verify agent has SVID
     if [ -S /tmp/spire-agent/public/api.sock ]; then
         sleep 2
@@ -3370,7 +3385,7 @@ COMPONENTS_OK=true
             tail -10 /tmp/spire-agent.log | grep -i "svid\|attest" | head -3 | sed 's/^/    /' || true
         fi
     fi
-    
+
 # Step 14: Test SPIRE Agent SVID Renewal
 echo ""
 echo -e "${CYAN}Step 14: Testing SPIRE Agent SVID Renewal...${NC}"
@@ -3389,15 +3404,15 @@ if [ "$COMPONENTS_OK" = true ] || [ -S /tmp/spire-agent/public/api.sock ]; then
     if wait_for_one_agent_svid_renewal "$max_wait"; then
         echo -e "${GREEN}  ✓ Agent SVID renewal detected${NC}"
         echo ""
-        
+
         # Fetch and dump agent SVID
         echo -e "${CYAN}  Fetching and dumping agent SVID...${NC}"
         AGENT_SVID_FILE="/tmp/agent-svid-dump/agent-svid.pem"
-        
+
         if fetch_agent_svid "$AGENT_SVID_FILE"; then
             echo ""
             echo -e "${CYAN}  Extracting SPIRE trust bundle for verification...${NC}"
-            
+
             # Extract SPIRE bundle first (required for certificate verification)
             SPIRE_BUNDLE="/tmp/bundle.pem"
             if [ -f "${SCRIPT_DIR}/fetch-spire-bundle.py" ]; then
@@ -3436,12 +3451,12 @@ if [ "$COMPONENTS_OK" = true ] || [ -S /tmp/spire-agent/public/api.sock ]; then
                         echo -e "${YELLOW}    ⚠ Failed to extract bundle, continuing without verification${NC}"
                 fi
             fi
-            
+
             echo ""
             echo -e "${CYAN}  Dumping agent SVID with AttestedClaims...${NC}"
             echo "    Note: This is the agent's own SVID certificate (single cert, not a chain)"
             echo ""
-            
+
             # Dump the agent SVID with --agent-svid flag to suppress chain warnings
             if [ -f "${SCRIPT_DIR}/scripts/dump-svid-attested-claims.sh" ]; then
                 "${SCRIPT_DIR}/scripts/dump-svid-attested-claims.sh" --agent-svid "$AGENT_SVID_FILE" "$SPIRE_BUNDLE"
@@ -3449,7 +3464,7 @@ if [ "$COMPONENTS_OK" = true ] || [ -S /tmp/spire-agent/public/api.sock ]; then
                 echo -e "${YELLOW}    ⚠ dump-svid-attested-claims.sh not found${NC}"
                 echo "    Agent SVID saved to: $AGENT_SVID_FILE"
             fi
-            
+
             echo ""
             echo -e "${GREEN}  ✓ Agent SVID dump completed${NC}"
             pause_at_phase "Step 14 Complete" "Agent SVID has been extracted from logs and dumped with AttestedClaims."
@@ -3488,7 +3503,7 @@ if [ -f "${SCRIPT_DIR}/fetch-spire-bundle.py" ]; then
     echo "  Extracting SPIRE trust bundle for use with standard cert servers..."
     export SPIRE_AGENT_SOCKET="/tmp/spire-agent/public/api.sock"
     export BUNDLE_OUTPUT_PATH="/tmp/spire-bundle.pem"
-    
+
     if python3 "${SCRIPT_DIR}/fetch-spire-bundle.py" 2>&1; then
         echo -e "${GREEN}  ✓ SPIRE trust bundle extracted successfully${NC}"
         echo "  Bundle location: ${BUNDLE_OUTPUT_PATH}"
@@ -3577,7 +3592,7 @@ if [ -f "/tmp/svid-dump/svid.pem" ]; then
     fi
     echo ""
 fi
-echo "If services are still running (e.g., launched with --no-exit-cleanup), you can stop them manually:" 
+echo "If services are still running (e.g., launched with --no-exit-cleanup), you can stop them manually:"
 echo "  pkill -f keylime_verifier"
 echo "  pkill -f keylime_agent"
 echo "  pkill -f spire-server"
@@ -3595,4 +3610,3 @@ echo "  KEYLIME_VERIFIER_URL             # Keylime Verifier URL (default: https:
 echo "  KEYLIME_AGENT_IP                  # Keylime Agent IP (default: 127.0.0.1)"
 echo "  KEYLIME_AGENT_PORT                # Keylime Agent port (default: 9002)"
 echo ""
-

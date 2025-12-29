@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Fetch SPIRE Trust Bundle (CA Certificate)
 Extracts the SPIRE CA certificate bundle for use with standard cert servers.
@@ -21,7 +36,7 @@ def main():
     # - A full endpoint URI (e.g., unix:///tmp/spire-agent/public/api.sock or tcp://10.0.0.5:8081)
     raw_socket = os.environ.get('SPIRE_AGENT_SOCKET', '/tmp/spire-agent/public/api.sock')
     output_path = os.environ.get('BUNDLE_OUTPUT_PATH', '/tmp/spire-bundle.pem')
-    
+
     # If the value already contains a scheme (://), use it as-is.
     # Otherwise, assume a Unix domain socket path and prefix with unix://
     if "://" in raw_socket:
@@ -32,49 +47,49 @@ def main():
     print(f"Fetching SPIRE trust bundle from: {socket_path_with_scheme}")
     print(f"Output path: {output_path}")
     print("")
-    
+
     try:
         # Create X509Source to access bundle
         source = X509Source(socket_path=socket_path_with_scheme)
-        
+
         # Get SVID to determine trust domain
         svid = source.svid
         if not svid:
             print("Error: Failed to get SVID from SPIRE Agent")
             print("Make sure SPIRE Agent is running and accessible")
             sys.exit(1)
-        
+
         trust_domain = svid.spiffe_id.trust_domain
         print(f"Trust domain: {trust_domain}")
         print(f"SPIFFE ID: {svid.spiffe_id}")
         print("")
-        
+
         # Get trust bundle
         bundle = source.get_bundle_for_trust_domain(trust_domain)
         if not bundle:
             print("Error: Failed to get trust bundle from SPIRE Agent")
             sys.exit(1)
-        
+
         # Extract CA certificates
         from cryptography.hazmat.primitives import serialization
         x509_authorities = bundle.x509_authorities
         if not x509_authorities or len(x509_authorities) == 0:
             print("Error: Trust bundle has no X509 authorities")
             sys.exit(1)
-        
+
         # Write bundle to file
         bundle_pem = b""
         for cert in x509_authorities:
             bundle_pem += cert.public_bytes(serialization.Encoding.PEM)
-        
+
         # Create output directory if needed
         output_dir = os.path.dirname(output_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, mode=0o755, exist_ok=True)
-        
+
         with open(output_path, 'wb') as f:
             f.write(bundle_pem)
-        
+
         print(f"✓ Successfully extracted SPIRE trust bundle")
         print(f"  Bundle file: {output_path}")
         print(f"  Number of CA certificates: {len(x509_authorities)}")
@@ -85,9 +100,9 @@ def main():
         print("For the server (standard cert mode):")
         print(f"  export CA_CERT_PATH=\"{output_path}\"  # To verify SPIRE client certs")
         print("")
-        
+
         source.close()
-        
+
     except Exception as e:
         print(f"Error: {e}")
         import traceback
@@ -96,4 +111,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

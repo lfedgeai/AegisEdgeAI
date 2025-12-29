@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Test script for enterprise on-prem
 # Sets up: Envoy proxy, mTLS server, mobile location service, WASM filter
 
@@ -62,7 +77,7 @@ NC=''
 trap 'tput sgr0 2>/dev/null || true' EXIT
 
 # Check if running as root or with sudo
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo -e "${YELLOW}Warning: Not running as root. Some operations may require sudo.${NC}"
 fi
 
@@ -113,19 +128,19 @@ fi
 # Cleanup function - stops all services and frees up ports (only for test machine)
 cleanup_existing_services() {
     echo -e "\n${YELLOW}Cleaning up existing services and ports...${NC}"
-    
+
     # Temporarily disable exit on error for cleanup
     set +e
-    
+
     # Stop Envoy
     printf '  Stopping Envoy...\n'
     sudo pkill -f "envoy.*envoy.yaml" >/dev/null 2>&1
     sudo pkill -f "^envoy " >/dev/null 2>&1
-    
+
     # Stop mTLS server
     printf '  Stopping mTLS server...\n'
     pkill -f "mtls-server-app.py" >/dev/null 2>&1
-    
+
     # Stop mobile location service (only if we started it)
     # Note: Control plane uses /tmp/mobile-sensor-microservice.log
     # On-prem uses /tmp/mobile-sensor.log - we only kill processes using our log file
@@ -140,7 +155,7 @@ cleanup_existing_services() {
     fi
     # Also try to kill by pattern matching our specific command (on-prem style)
     pkill -f "service.py.*--port.*9050.*--host.*0.0.0.0.*mobile-sensor.log" >/dev/null 2>&1 || true
-    
+
     # Free up ports using fuser (if available)
     printf '  Freeing up ports...\n'
     for port in 9050 9443 8080; do
@@ -166,10 +181,10 @@ cleanup_existing_services() {
             fi
         fi
     done
-    
+
     # Wait a moment for processes to terminate
     sleep 2
-    
+
     # Clean up log files and old temporary files
     printf '  Cleaning up log files and old temporary files...\n'
     # Remove all log files
@@ -188,10 +203,10 @@ cleanup_existing_services() {
     sudo mkdir -p /opt/envoy/logs >/dev/null 2>&1
     sudo touch /opt/envoy/logs/envoy.log >/dev/null 2>&1
     sudo chmod 666 /opt/envoy/logs/envoy.log >/dev/null 2>&1
-    
+
     # Re-enable exit on error
     set -e
-    
+
     echo -e "${GREEN}  ✓ Cleanup complete${NC}"
 }
 
@@ -199,17 +214,17 @@ cleanup_existing_services() {
 pause_at_phase() {
     local phase_name="$1"
     local description="$2"
-    
+
     # Check if pauses are disabled - use explicit comparison
     # PAUSE_ENABLED can be: "false", "0", "no", or unset/empty (which means enabled for interactive)
     local pause_enabled_val="${PAUSE_ENABLED:-}"
-    
+
     # If explicitly set to false/0/no, skip pause
     if [ "$pause_enabled_val" = "false" ] || [ "$pause_enabled_val" = "0" ] || [ "$pause_enabled_val" = "no" ]; then
         # Pauses disabled, skip silently
         return 0
     fi
-    
+
     # Only pause if:
     # 1. Running in interactive terminal (tty check)
     # 2. PAUSE_ENABLED is not explicitly set to false
@@ -333,7 +348,7 @@ if command -v apt-get &> /dev/null; then
     if [ -f /etc/apt/trusted.gpg.d/getenvoy.gpg ]; then
         sudo rm -f /etc/apt/trusted.gpg.d/getenvoy.gpg
     fi
-    
+
     sudo apt-get update || true
     sudo apt-get install -y \
         python3 python3-pip python3-venv \
@@ -438,7 +453,7 @@ if [ ! -f /opt/envoy/certs/envoy-cert.pem ] || [ ! -f /opt/envoy/certs/envoy-key
         -out /opt/envoy/certs/envoy-cert.pem \
         -days 365 -nodes \
         -subj "/CN=envoy-proxy.${CURRENT_IP}/O=Enterprise On-Prem/C=US" 2>/dev/null
-    
+
     if [ -f /opt/envoy/certs/envoy-cert.pem ] && [ -f /opt/envoy/certs/envoy-key.pem ]; then
         sudo chmod 644 /opt/envoy/certs/envoy-cert.pem
         sudo chmod 600 /opt/envoy/certs/envoy-key.pem
@@ -828,15 +843,15 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Ensure clean output
     printf '\n'
     printf 'Starting all services in the background...\n'
-    
+
     # Temporarily disable exit on error for service startup
     set +e
-    
+
     # Set CAMARA_BYPASS default to true (can be overridden via environment variable)
     export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
     # DEMO_MODE defaults to true when CAMARA_BYPASS is enabled (suppresses bypass log messages)
     export DEMO_MODE="${DEMO_MODE:-true}"
-    
+
     # Set CAMARA_BASIC_AUTH for mobile location service (only if bypass is disabled)
     if [ "$CAMARA_BYPASS" != "true" ]; then
         # secrets-management: Prefer passing file path over reading content
@@ -851,13 +866,13 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
                 break
             fi
         done
-        
+
         if [ -n "$CAMARA_AUTH_FILE" ] && [ -f "$CAMARA_AUTH_FILE" ]; then
             printf '  [OK] Found CAMARA secret file: %s\n' "$CAMARA_AUTH_FILE"
             # Secure mode: Export path only
             export CAMARA_BASIC_AUTH_FILE="$CAMARA_AUTH_FILE"
             chmod 600 "$CAMARA_AUTH_FILE" 2>/dev/null || true
-            
+
             # Export empty value for the env var to prevent confusion, service will use file
             export CAMARA_BASIC_AUTH=""
         else
@@ -880,7 +895,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             printf '%s\n' "CAMARA_BASIC_AUTH=$CAMARA_BASIC_AUTH" | sudo tee /etc/mobile-sensor-service.env >/dev/null 2>&1
             printf '  [OK] Mobile sensor service environment configured (Env-based)\n'
         fi
-        
+
         printf '  [INFO] Service will obtain auth_req_id from /bc-authorize during initialization\n'
     else
         printf '  [OK] CAMARA_BYPASS=true (CAMARA API calls will be skipped)\n'
@@ -888,7 +903,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 
     # Start Mobile Location Service
     printf '  Starting Mobile Location Service (port 9050)...\n'
-    
+
     # Check if mobile sensor service is already running (e.g., started by test_control_plane.sh)
     MOBILE_SERVICE_RUNNING=false
     if command -v ss >/dev/null 2>&1; then
@@ -904,7 +919,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             MOBILE_SERVICE_RUNNING=true
         fi
     fi
-    
+
     if [ "$MOBILE_SERVICE_RUNNING" = "true" ]; then
         printf '    [INFO] Mobile Location Service already running on port 9050 (likely started by control plane)\n'
         printf '    [INFO] Skipping startup - using existing service\n'
@@ -912,7 +927,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         cd "$REPO_ROOT/mobile-sensor-microservice" 2>/dev/null
         if [ -d ".venv" ] && [ -f "service.py" ]; then
             source .venv/bin/activate
-        
+
         # Clean up existing database - service will create fresh one on startup with IMEI/IMSI values
         MOBILE_SENSOR_DB="${MOBILE_SENSOR_DB:-sensor_mapping.db}"
         # Check common database locations and delete if found
@@ -941,7 +956,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         else
             printf '  [INFO] No existing database found - service will create new one on startup\n'
         fi
-        
+
         # Default to bypass mode (can be overridden by setting CAMARA_BYPASS=false and providing CAMARA_BASIC_AUTH)
         export CAMARA_BYPASS="${CAMARA_BYPASS:-true}"
         # DEMO_MODE defaults to true when CAMARA_BYPASS is enabled (suppresses bypass log messages)
@@ -1006,20 +1021,20 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
             printf '    [WARN] Using spire-bundle.pem only (Envoy cert not available)\n'
         fi
-        
+
         # Ensure certificate directory exists
         mkdir -p ~/.mtls-demo 2>/dev/null || true
-        
+
         # Always clean up old certificates to ensure fresh generation on every start
         # This prevents key mismatch errors from old/stale certificates
         printf '    Cleaning up old certificates to ensure fresh generation...\n'
         rm -f ~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-key.pem 2>/dev/null || true
-        
+
         # Start the server (it will auto-generate fresh certificates)
         MAX_RETRIES=2
         RETRY_COUNT=0
         MTLS_STARTED=false
-        
+
         while [ $RETRY_COUNT -le $MAX_RETRIES ] && [ "$MTLS_STARTED" = "false" ]; do
             if [ $RETRY_COUNT -gt 0 ]; then
                 printf '    Retrying mTLS Server startup (attempt %d/%d)...\n' "$((RETRY_COUNT + 1))" "$((MAX_RETRIES + 1))"
@@ -1028,10 +1043,10 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
                 rm -f ~/.mtls-demo/server-cert.pem ~/.mtls-demo/server-key.pem 2>/dev/null || true
                 sleep 1
             fi
-            
+
             python3 mtls-server-app.py > /tmp/mtls-server.log 2>&1 &
             MTLS_PID=$!
-            
+
             # Wait for server to start and verify it's listening
             for i in {1..15}; do
                 sleep 1
@@ -1078,14 +1093,14 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
                     fi
                 fi
             done
-            
+
             if [ "$MTLS_STARTED" = "true" ]; then
                 break
             fi
-            
+
             RETRY_COUNT=$((RETRY_COUNT + 1))
         done
-        
+
         if [ "$MTLS_STARTED" = "false" ]; then
             printf '    [WARN] mTLS Server failed to start after %d attempts - check /tmp/mtls-server.log\n' "$((MAX_RETRIES + 1))"
             if [ -f /tmp/mtls-server.log ]; then
@@ -1115,7 +1130,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             sleep 1
             printf '    Restarted Envoy to pick up new backend certificate\n'
         fi
-        
+
         sudo mkdir -p /opt/envoy/logs 2>/dev/null
         sudo touch /opt/envoy/logs/envoy.log 2>/dev/null
         sudo chmod 666 /opt/envoy/logs/envoy.log 2>/dev/null
@@ -1210,7 +1225,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     printf 'Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!\n'
     # Reset terminal colors before exit (ignore errors)
     [ -t 1 ] && tput sgr0 2>/dev/null || true
-    
+
     # Exit successfully if services are running
     if [ $SERVICES_OK -eq 3 ]; then
         exit 0
@@ -1249,4 +1264,3 @@ else
     [ -t 1 ] && tput sgr0 2>/dev/null || true
     exit 0
 fi
-

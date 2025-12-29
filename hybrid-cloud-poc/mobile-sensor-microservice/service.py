@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Mobile Location Verification Microservice
 
@@ -129,7 +144,7 @@ class SensorDatabase:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sensor_id ON sensor_map(sensor_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sensor_imei ON sensor_map(sensor_imei)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sensor_imsi ON sensor_map(sensor_imsi)")
-            
+
             # Seed default data
             conn.execute(
                 "INSERT OR REPLACE INTO sensor_map VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -164,12 +179,12 @@ class CamaraClient:
         self._access_token: Optional[str] = None
         self._token_expires_at: Optional[float] = None
         self._token_lock = threading.Lock()
-        
+
         self._verify_cache_ttl = _get_verify_location_cache_ttl()
         self._verify_cache_result: Optional[bool] = None
         self._verify_cache_timestamp: Optional[float] = None
         self._verify_cache_lock = threading.Lock()
-        
+
         self.auth_req_id = auth_req_id or self._load_auth_req_id_from_file()
         if self.auth_req_id:
             self._save_auth_req_id_to_file(self.auth_req_id)
@@ -198,7 +213,7 @@ class CamaraClient:
     def authorize(self, msisdn: str) -> str:
         if self.auth_req_id:
             return self.auth_req_id
-        
+
         payload = {"login_hint": f"tel:{msisdn}", "scope": self.scope}
         resp = requests.post(f"{CAMARA_BASE}{AUTHORIZE_PATH}", headers=self._headers("application/x-www-form-urlencoded"), data=payload, timeout=30)
         resp.raise_for_status()
@@ -211,10 +226,10 @@ class CamaraClient:
         with self._token_lock:
             if self._access_token and self._token_expires_at and time.time() < (self._token_expires_at - 60):
                 return self._access_token
-            
+
             if not self.auth_req_id:
                 raise RuntimeError("auth_req_id missing")
-            
+
             resp = requests.post(f"{CAMARA_BASE}{TOKEN_PATH}", headers=self._headers("application/x-www-form-urlencoded"), data={"grant_type": "urn:openid:params:grant-type:ciba", "auth_req_id": self.auth_req_id}, timeout=30)
             resp.raise_for_status()
             data = resp.json()
@@ -234,12 +249,12 @@ class CamaraClient:
         resp = requests.post(f"{CAMARA_BASE}{VERIFY_PATH}", headers=self._bearer_headers(token), json=payload, timeout=30)
         resp.raise_for_status()
         result = bool(resp.json().get("verificationResult"))
-        
+
         if self._verify_cache_ttl > 0:
             with self._verify_cache_lock:
                 self._verify_cache_result = result
                 self._verify_cache_timestamp = time.time()
-                
+
         return result
 
 
@@ -264,21 +279,21 @@ class CamaraVerifier(LocationVerifier):
             if not _demo_mode_enabled():
                 LOG.info("CAMARA_BYPASS enabled: automatically approving")
             return True
-        
+
         if not self.client:
             LOG.error("CamaraVerifier not initialized")
             return False
-            
+
         msisdn = sensor_data.get("msisdn")
         lat, lon = sensor_data.get("latitude"), sensor_data.get("longitude")
         acc = sensor_data.get("accuracy", 1000.0)
-        
+
         if not msisdn or lat is None or lon is None:
             LOG.error("Missing verification data: msisdn=%s, loc=(%s, %s)", msisdn, lat, lon)
             return False
 
         camara_msisdn = msisdn[4:] if msisdn.startswith("tel:") else (msisdn[1:] if msisdn.startswith("+") else msisdn)
-        
+
         try:
             token = self.client.get_access_token()
             return self.client.verify_location(camara_msisdn, lat, lon, acc, token, skip_cache=skip_cache)
@@ -291,13 +306,13 @@ def create_app(db_path: Path) -> Flask:
     app = Flask(__name__)
     database = SensorDatabase(db_path)
     bypass = _camara_bypass_enabled()
-    
+
     camara_client = None
     auth = os.getenv("CAMARA_BASIC_AUTH")
     auth_file = os.getenv("CAMARA_BASIC_AUTH_FILE")
     if auth_file and os.path.exists(auth_file):
         auth = Path(auth_file).read_text().strip()
-    
+
     if auth and not bypass:
         try:
             camara_client = CamaraClient(auth)
@@ -312,18 +327,18 @@ def create_app(db_path: Path) -> Flask:
     def verify():
         payload = request.get_json(force=True) or {}
         LOG.info("Request: %s", payload)
-        
+
         # Healthcheck or empty request
         if not payload or "sensor_id" not in payload:
             payload = {"sensor_id": DEFAULT_SENSOR_ID, "sensor_type": "mobile"}
 
         sensor_id = payload.get("sensor_id")
         sensor_type = payload.get("sensor_type", "mobile")
-        
+
         # SVID-based flow (DB-less)
         msisdn = payload.get("msisdn")
         lat, lon = payload.get("latitude"), payload.get("longitude")
-        
+
         if msisdn and lat is not None and lon is not None:
             LOG.info("DB-LESS flow: using data from SVID claims")
             sensor = {
@@ -374,7 +389,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9050)
     args = parser.parse_args()
-    
+
     db_path = Path(os.getenv("MOBILE_SENSOR_DB", "sensor_mapping.db"))
     app = create_app(db_path)
     LOG.info("Mobile Sensor Sidecar (Pure Mobile) listening on %s:%s", args.host, args.port)

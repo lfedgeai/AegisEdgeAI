@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Unified-Identity: Cleanup Script
 # Stops all services and cleans up all data directories, logs, and temporary files
 # Use this script to reset the environment after running tests or deployments
@@ -68,15 +83,15 @@ stop_all_instances_and_cleanup() {
         echo -e "${CYAN}Stopping all existing instances and cleaning up all data...${NC}"
         echo ""
     fi
-    
+
     # Step 1: Stop all processes
     echo "  1. Stopping all processes..."
-    
+
     # Stop SPIRE processes
     echo "     Stopping SPIRE Server and Agent..."
     pkill -f "spire-server" >/dev/null 2>&1 || true
     pkill -f "spire-agent" >/dev/null 2>&1 || true
-    
+
     # Stop Keylime processes
     echo "     Stopping Keylime Verifier and Registrar..."
     pkill -f "keylime_verifier" >/dev/null 2>&1 || true
@@ -84,13 +99,13 @@ stop_all_instances_and_cleanup() {
     pkill -f "keylime_registrar" >/dev/null 2>&1 || true
     pkill -f "keylime\.cmd\.registrar" >/dev/null 2>&1 || true
     pkill -f "python.*keylime" >/dev/null 2>&1 || true
-    
+
     # Stop rust-keylime Agent
     echo "     Stopping rust-keylime Agent..."
     pkill -f "keylime_agent" >/dev/null 2>&1 || true
     pkill -f "rust-keylime" >/dev/null 2>&1 || true
     pkill -f "target/release/keylime_agent" >/dev/null 2>&1 || true
-    
+
     # Stop TPM Plugin Server
     echo "     Stopping TPM Plugin Server..."
     pkill -f "tpm_plugin_server" >/dev/null 2>&1 || true
@@ -106,7 +121,7 @@ stop_all_instances_and_cleanup() {
 
     # Wait a moment for processes to stop before unmounting
     sleep 1
-    
+
     # Unmount tmpfs secure directory if mounted (try multiple methods)
     SECURE_DIR="/tmp/keylime-agent/secure"
     KEYLIME_AGENT_DIR="/tmp/keylime-agent"
@@ -123,7 +138,7 @@ stop_all_instances_and_cleanup() {
             echo -e "${GREEN}     ✓ tmpfs unmounted successfully${NC}"
         fi
     fi
-    
+
     # Also check for any other tmpfs mounts in keylime-agent directory
     if mount | grep -q "$KEYLIME_AGENT_DIR"; then
         echo "     Unmounting any remaining mounts in keylime-agent directory..."
@@ -132,11 +147,11 @@ stop_all_instances_and_cleanup() {
             sudo umount -l "$mount_point" 2>/dev/null || true
         done
     fi
-    
+
     # Stop TPM resource manager and any software TPM emulators
     pkill -f "tpm2-abrmd" >/dev/null 2>&1 || true
     pkill -f "swtpm" >/dev/null 2>&1 || true
-    
+
     # Clear and initialize TPM state
     echo "     Clearing and initializing TPM state..."
     if [ -c /dev/tpm0 ] || [ -c /dev/tpmrm0 ]; then
@@ -153,7 +168,7 @@ stop_all_instances_and_cleanup() {
                 fi
             fi
         fi
-        
+
         if command -v tpm2_clear >/dev/null 2>&1 && command -v tpm2_startup >/dev/null 2>&1; then
             # Use tpmrm0 if available (resource manager), otherwise tpm0
             TPM_DEVICE="/dev/tpmrm0"
@@ -187,7 +202,7 @@ stop_all_instances_and_cleanup() {
             fi
         fi
     fi
-    
+
     # Kill processes using ports
     if command -v lsof >/dev/null 2>&1; then
         echo "     Freeing up ports..."
@@ -208,10 +223,10 @@ stop_all_instances_and_cleanup() {
         fuser -k 8891/tcp >/dev/null 2>&1 || true
         fuser -k 9050/tcp >/dev/null 2>&1 || true
     fi
-    
+
     # Wait for processes to fully stop
     sleep 2
-    
+
     # Force kill any remaining processes
     RUNNING_COUNT=0
     if pgrep -f "spire-server|spire-agent|keylime|tpm_plugin|service.py.*--port" >/dev/null 2>&1; then
@@ -226,17 +241,17 @@ stop_all_instances_and_cleanup() {
             sleep 1
         fi
     fi
-    
+
     # Step 2: Clean up all data directories and databases
     echo "  2. Cleaning up all data directories and databases..."
-    
+
     # Clean up SPIRE data directories
     echo "     Removing SPIRE data directories..."
     sudo rm -rf /opt/spire/data 2>/dev/null || true
     rm -rf /tmp/spire-server 2>/dev/null || true
     rm -rf /tmp/spire-agent 2>/dev/null || true
     rm -rf /tmp/spire-data 2>/dev/null || true
-    
+
     # Clean up Keylime databases and persistent data
     echo "     Removing Keylime databases and persistent data..."
     if [ -n "${KEYLIME_DIR:-}" ] && [ -d "${KEYLIME_DIR}" ]; then
@@ -253,7 +268,7 @@ stop_all_instances_and_cleanup() {
     rm -rf "$HOME/.local/share/keylime" 2>/dev/null || true
     # Clean up any Keylime data in /var/lib/keylime (if accessible)
     sudo rm -rf /var/lib/keylime 2>/dev/null || true
-    
+
     # Clean up TPM data
     echo "     Removing TPM data..."
     rm -rf /tmp/phase3-demo-tpm 2>/dev/null || true
@@ -283,18 +298,18 @@ stop_all_instances_and_cleanup() {
     else
         rm -rf /tmp/keylime-agent 2>/dev/null || true
     fi
-    
+
     # Clean up SVID dump directory
     echo "     Removing SVID dump directory..."
     rm -rf /tmp/svid-dump 2>/dev/null || true
-    
+
     # Clean up TLS certificates
     if [ -n "${KEYLIME_DIR:-}" ] && [ -d "${KEYLIME_DIR}" ]; then
         echo "     Removing TLS certificates..."
         rm -rf "${KEYLIME_DIR}/cv_ca" 2>/dev/null || true
         rm -rf "${KEYLIME_DIR}/reg_ca" 2>/dev/null || true
     fi
-    
+
     # Step 3: Clean up all PID files
     echo "  3. Removing PID files..."
     rm -f /tmp/keylime-verifier.pid 2>/dev/null || true
@@ -304,7 +319,7 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/spire-server.pid 2>/dev/null || true
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
-    
+
     # Step 4: Clean up all log files and temporary files (relevant to test_agents.sh only)
     echo "  4. Removing log files and temporary files..."
     # SPIRE log files
@@ -340,14 +355,14 @@ stop_all_instances_and_cleanup() {
     find /tmp -name "*.pyc" -type f 2>/dev/null | xargs rm -f 2>/dev/null || true
     find /tmp -name "__pycache__" -type d 2>/dev/null | xargs rm -rf 2>/dev/null || true
     find /tmp -name "*.tmp" -type f 2>/dev/null | grep -E "(keylime|spire|tpm|mobile)" | xargs rm -f 2>/dev/null || true
-    
+
     # Call shared /tmp cleanup function
     cleanup_tmp_files
-    
+
     # Clean up unified_identity test log directories
     echo "     Removing old unified_identity test logs..."
     rm -rf /tmp/unified_identity_test_* 2>/dev/null || true
-    
+
     # Step 5: Clean up sockets
     echo "  5. Removing socket files..."
     rm -f /tmp/spire-server/private/api.sock 2>/dev/null || true
@@ -361,7 +376,7 @@ stop_all_instances_and_cleanup() {
     find /tmp -name "*.sock" -type s 2>/dev/null | grep -E "(keylime|spire|tpm)" | xargs rm -f 2>/dev/null || true
     rm -rf /tmp/spire-server 2>/dev/null || true
     rm -rf /tmp/spire-agent 2>/dev/null || true
-    
+
     # Step 6: Recreate clean data directories (optional - comment out if you don't want this)
     echo "  6. Creating clean data directories..."
     sudo mkdir -p /opt/spire/data/server /opt/spire/data/agent 2>/dev/null || true
@@ -371,14 +386,14 @@ stop_all_instances_and_cleanup() {
     mkdir -p /tmp/spire-data/server /tmp/spire-data/agent 2>/dev/null || true
     mkdir -p /tmp/rust-keylime-data 2>/dev/null || true
     mkdir -p ~/.keylime/run 2>/dev/null || true
-    
+
     # Ensure keylime-agent directory is clean and ready (but don't mount tmpfs yet)
     mkdir -p /tmp/keylime-agent 2>/dev/null || true
     # Remove secure subdirectory if it exists (will be recreated and mounted by agent)
     if [ -d "/tmp/keylime-agent/secure" ] && ! mountpoint -q "/tmp/keylime-agent/secure" 2>/dev/null; then
         rm -rf /tmp/keylime-agent/secure 2>/dev/null || true
     fi
-    
+
     # Final verification
     echo ""
     if ! pgrep -f "spire-server|spire-agent|keylime|tpm_plugin|service.py.*--port" >/dev/null 2>&1; then
@@ -445,4 +460,3 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     echo ""
 fi
 # If script is sourced, functions are available but cleanup doesn't run automatically
-

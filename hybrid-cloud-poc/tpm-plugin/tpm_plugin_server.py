@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Unified-Identity - Verification: Hardware Integration & Delegated Certification
 
@@ -32,12 +47,12 @@ logger = logging.getLogger(__name__)
 
 class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
     """HTTP request handler for TPM Plugin API"""
-    
+
     def __init__(self, *args, work_dir: str = None, plugin: TPMPlugin = None, **kwargs):
         self.work_dir = work_dir or "/tmp/spire-data/tpm-plugin"
         self.plugin = plugin  # Store plugin instance with app key already generated
         super().__init__(*args, **kwargs)
-    
+
     def address_string(self):
         """Override to handle UDS addresses properly"""
         # For UDS, client_address might be empty or a string
@@ -47,17 +62,17 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             return self.client_address
         else:
             return "uds-client"
-    
+
     def log_message(self, format, *args):
         """Override to use our logger"""
         logger.info("%s - %s", self.address_string(), format % args)
-    
+
     def do_POST(self):
         """Handle POST requests"""
         if not is_unified_identity_enabled():
             self.send_error(403, "Unified-Identity - Verification: Feature flag disabled")
             return
-        
+
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length)
@@ -65,10 +80,10 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError) as e:
             self.send_error(400, f"Invalid JSON: {e}")
             return
-        
+
         # Route to appropriate handler
         path = urlparse(self.path).path
-        
+
         if path == "/get-app-key":
             self.handle_get_app_key(request_data)
         elif path == "/request-certificate":
@@ -79,7 +94,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             self.handle_verify_signature(request_data)
         else:
             self.send_error(404, f"Unknown endpoint: {path}")
-    
+
     def handle_get_app_key(self, request_data: dict):
         """Handle /get-app-key endpoint - returns App Key public key and context"""
         try:
@@ -87,34 +102,34 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             if plugin is None:
                 self.send_error(500, "Unified-Identity - Verification: Plugin not initialized")
                 return
-            
+
             app_key_public = plugin.get_app_key_public()
-            
+
             if not app_key_public:
                 self.send_error(500, "Unified-Identity - Verification: App Key not generated")
                 return
-            
+
             response = {
                 "status": "success",
                 "app_key_public": app_key_public
             }
-            
+
             self.send_json_response(200, response)
         except Exception as e:
             logger.error("Unified-Identity - Verification: Error getting App Key: %s", e)
             self.send_error(500, f"Internal error: {e}")
-    
+
     def handle_request_certificate(self, request_data: dict):
         """Handle /request-certificate endpoint"""
         try:
             app_key_public = request_data.get("app_key_public")
             challenge_nonce = request_data.get("challenge_nonce")
             endpoint = request_data.get("endpoint")
-            
+
             if not app_key_public or not challenge_nonce:
                 self.send_error(400, "Unified-Identity - Verification: app_key_public and challenge_nonce are required")
                 return
-            
+
             app_key_context_path = None
             plugin = self.plugin
             if plugin is not None:
@@ -122,23 +137,23 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
             if not app_key_context_path:
                 self.send_error(500, "Unified-Identity - Verification: App Key context unavailable")
                 return
-            
+
             # Unified-Identity - Verification: Use HTTPS endpoint (agent requires HTTPS/mTLS)
             if not endpoint or endpoint == "unix:///tmp/keylime-agent.sock":
                 endpoint = "https://127.0.0.1:9002"
                 logger.info("Unified-Identity - Verification: Using default HTTPS endpoint (agent requires HTTPS/mTLS): %s", endpoint)
-            
+
             client = DelegatedCertificationClient(endpoint=endpoint)
             success, cert_b64, agent_uuid, error = client.request_certificate(
                 app_key_public=app_key_public,
                 app_key_context_path=app_key_context_path,
                 challenge_nonce=challenge_nonce
             )
-            
+
             if not success:
                 self.send_error(500, f"Unified-Identity - Verification: Failed to request certificate: {error}")
                 return
-            
+
             response = {
                 "status": "success",
                 "app_key_certificate": cert_b64
@@ -148,59 +163,59 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
                 logger.info("Unified-Identity - Verification: Including agent_uuid in response: %s", agent_uuid)
             else:
                 logger.warning("Unified-Identity - Verification: agent_uuid is empty/None, not including in response")
-            
+
             self.send_json_response(200, response)
         except Exception as e:
             logger.error("Unified-Identity - Verification: Error requesting certificate: %s", e)
             self.send_error(500, f"Internal error: {e}")
-    
+
     def handle_sign_data(self, request_data: dict):
         """Handle /sign-data endpoint - signs data using TPM App Key"""
         try:
             import base64
-            
+
             data_b64 = request_data.get("data")
             hash_alg = request_data.get("hash_alg", "sha256")
             is_digest = request_data.get("is_digest", False)  # Default to False for backward compatibility
             scheme = request_data.get("scheme", "rsassa")  # "rsassa" (PKCS#1 v1.5) or "rsapss" (RSA-PSS)
             salt_length = request_data.get("salt_length", -1)  # Salt length for RSA-PSS (-1 for default)
-            
+
             if not data_b64:
                 self.send_error(400, "Unified-Identity - Verification: data is required")
                 return
-            
+
             # Decode base64 data
             try:
                 data = base64.b64decode(data_b64)
             except Exception as e:
                 self.send_error(400, f"Unified-Identity - Verification: Invalid base64 data: {e}")
                 return
-            
+
             plugin = self.plugin
             if plugin is None:
                 self.send_error(500, "Unified-Identity - Verification: Plugin not initialized")
                 return
-            
+
             # Sign the data using TPM App Key with the specified scheme
             success, signature_bytes, error = plugin.sign_data(data, hash_alg, is_digest, scheme, salt_length)
-            
+
             if not success:
                 self.send_error(500, f"Unified-Identity - Verification: Failed to sign data: {error}")
                 return
-            
+
             # Encode signature as base64
             signature_b64 = base64.b64encode(signature_bytes).decode('utf-8')
-            
+
             response = {
                 "status": "success",
                 "signature": signature_b64
             }
-            
+
             self.send_json_response(200, response)
         except Exception as e:
             logger.error("Unified-Identity - Verification: Error signing data: %s", e)
             self.send_error(500, f"Internal error: {e}")
-    
+
     def handle_verify_signature(self, request_data: dict):
         """Handle /verify-signature endpoint - verifies signature using TPM App Key"""
         try:
@@ -252,7 +267,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error("Unified-Identity - Verification: Error verifying signature: %s", e)
             self.send_error(500, f"Internal error: {e}")
-    
+
     def send_json_response(self, status_code: int, data: dict):
         """Send JSON response"""
         self.send_response(status_code)
@@ -261,7 +276,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
         response_body = json.dumps(data).encode('utf-8')
         self.wfile.write(response_body)
         self.wfile.flush()  # Ensure response is sent immediately
-    
+
     def do_GET(self):
         """Handle GET requests (health check)"""
         if self.path == "/health":
@@ -272,7 +287,7 @@ class TPMPluginHTTPHandler(BaseHTTPRequestHandler):
 
 class UnixHTTPServer(HTTPServer):
     """HTTP Server that works with UNIX domain sockets"""
-    
+
     def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
         # If server_address is a string, treat it as a UDS path
         if isinstance(server_address, str):
@@ -280,10 +295,10 @@ class UnixHTTPServer(HTTPServer):
             # Remove socket file if it exists
             if os.path.exists(self.socket_path):
                 os.unlink(self.socket_path)
-            
+
             # Create a dummy address for HTTPServer (but don't let it bind/activate)
             HTTPServer.__init__(self, ("localhost", 0), RequestHandlerClass, bind_and_activate=False)
-            
+
             # Manually set up UDS socket
             if bind_and_activate:
                 self.server_bind()
@@ -291,7 +306,7 @@ class UnixHTTPServer(HTTPServer):
         else:
             self.socket_path = None
             HTTPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
-    
+
     def server_bind(self):
         if self.socket_path:
             # Create UDS socket
@@ -305,7 +320,7 @@ class UnixHTTPServer(HTTPServer):
             logger.info("Unified-Identity - Verification: UDS socket bound and listening: %s", self.socket_path)
         else:
             HTTPServer.server_bind(self)
-    
+
     def server_activate(self):
         """Override to handle UDS sockets - socket is already listening from server_bind()"""
         if self.socket_path:
@@ -318,7 +333,7 @@ class UnixHTTPServer(HTTPServer):
         else:
             # For regular TCP sockets, use default behavior
             HTTPServer.server_activate(self)
-    
+
     def get_request(self):
         """Override to handle UDS connections properly"""
         if self.socket_path:
@@ -330,7 +345,7 @@ class UnixHTTPServer(HTTPServer):
         else:
             # For TCP, use default behavior
             return HTTPServer.get_request(self)
-    
+
     def server_close(self):
         HTTPServer.server_close(self)
         if self.socket_path and os.path.exists(self.socket_path):
@@ -348,7 +363,7 @@ def create_handler_class(work_dir: str, plugin: TPMPlugin):
 def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = None, work_dir: str = None):
     """
     Run the TPM Plugin UDS server
-    
+
     Args:
         socket_path: UNIX domain socket path (e.g., /tmp/spire-data/tpm-plugin/tpm-plugin.sock)
         http_port: Deprecated - not supported for security reasons. Use UDS only.
@@ -357,27 +372,27 @@ def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = Non
     if not is_unified_identity_enabled():
         logger.error("Unified-Identity - Verification: Feature flag disabled, server will not start")
         sys.exit(1)
-    
+
     if work_dir is None:
         work_dir = os.getenv("TPM_PLUGIN_WORK_DIR", "/tmp/spire-data/tpm-plugin")
-    
+
     # Ensure work directory exists
     os.makedirs(work_dir, mode=0o755, exist_ok=True)
-    
+
     # Generate App Key on startup (Step 3: Automatic on Startup)
     logger.info("Unified-Identity - Verification: Generating App Key on startup...")
     plugin = TPMPlugin(work_dir=work_dir)
     success, app_key_public, app_key_ctx = plugin.generate_app_key(force=False)
-    
+
     if not success:
         logger.error("Unified-Identity - Verification: Failed to generate App Key on startup")
         sys.exit(1)
-    
+
     logger.info("Unified-Identity - Verification: App Key generated successfully on startup")
     logger.info("Unified-Identity - Verification: App Key context: %s", app_key_ctx)
-    
+
     HandlerClass = create_handler_class(work_dir, plugin)
-    
+
     if socket_path:
         # Use UNIX domain socket
         socket_path = os.path.abspath(socket_path)
@@ -398,7 +413,7 @@ def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = Non
         # server_bind() is called automatically by __init__ with bind_and_activate=True
         # This creates the socket, binds it, and calls listen()
         # server_activate() is also called automatically, which we've overridden for UDS
-    
+
     try:
         logger.info("Unified-Identity - Verification: TPM Plugin server started")
         server.serve_forever()
@@ -409,13 +424,13 @@ def run_server(socket_path: Optional[str] = None, http_port: Optional[int] = Non
 
 if __name__ == "__main__":
     import argparse
-    
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         stream=sys.stderr
     )
-    
+
     parser = argparse.ArgumentParser(
         description="Unified-Identity - Verification: TPM Plugin HTTP/UDS Server"
     )
@@ -434,12 +449,11 @@ if __name__ == "__main__":
         type=str,
         help="Working directory for TPM operations (default: /tmp/spire-data/tpm-plugin)"
     )
-    
+
     args = parser.parse_args()
-    
+
     run_server(
         socket_path=args.socket_path,
         http_port=args.http_port,
         work_dir=args.work_dir
     )
-

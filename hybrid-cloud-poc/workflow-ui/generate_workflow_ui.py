@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Generate an interactive HTML UI for visualizing end-to-end workflow logs.
 """
@@ -53,7 +68,7 @@ def parse_timestamp(ts_str):
     """Parse timestamp string to datetime object."""
     # Clean up timestamp string
     ts_str = ts_str.strip()
-    
+
     # Try various timestamp formats
     formats = [
         '%Y-%m-%dT%H:%M:%S.%f%z',      # ISO with microseconds and timezone
@@ -64,7 +79,7 @@ def parse_timestamp(ts_str):
         '%Y-%m-%d %H:%M:%S.%f',        # Alternative with dot
         '%Y-%m-%d %H:%M:%S',           # Simple format
     ]
-    
+
     # Handle timezone offset manually if present
     tz_match = re.search(r'([+-]\d{4})$', ts_str)
     tz_offset = None
@@ -76,7 +91,7 @@ def parse_timestamp(ts_str):
         minutes = int(tz_str[3:5])
         sign = -1 if tz_str[0] == '-' else 1
         tz_offset = timezone(timedelta(hours=sign*hours, minutes=sign*minutes))
-    
+
     for fmt in formats:
         try:
             dt = datetime.strptime(ts_str, fmt)
@@ -85,7 +100,7 @@ def parse_timestamp(ts_str):
             return dt
         except ValueError:
             continue
-    
+
     # If all fail, return current time
     return datetime.now()
 
@@ -101,7 +116,7 @@ def extract_logs_from_files():
         'RUST_KEYLIME': '/tmp/rust-keylime-agent.log',
         'MOBILE_SENSOR': '/tmp/mobile-sensor-microservice.log',
     }
-    
+
     # Patterns for extracting relevant log lines
     patterns = {
         'TPM_PLUGIN': r'App Key|TPM Quote|Delegated|certificate|request|response|Unified-Identity',
@@ -111,19 +126,19 @@ def extract_logs_from_files():
         'RUST_KEYLIME': r'registered|activated|Delegated|certificate|quote|geolocation|Unified-Identity',
         'MOBILE_SENSOR': r'verify|CAMARA|sensor|verification|request|response',
     }
-    
+
     for component, log_file in log_files.items():
         if not Path(log_file).exists():
             continue
-        
+
         pattern = patterns.get(component, '.*')
-        
+
         with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
                 if re.search(pattern, line, re.IGNORECASE):
                     # Extract timestamp (various formats)
                     timestamp = None
-                    
+
                     # Try ISO format first (SPIRE logs)
                     ts_match = re.search(r'(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:[+-]\d{4})?)', line)
                     if ts_match:
@@ -139,31 +154,31 @@ def extract_logs_from_files():
                             # Rust logs might not have timestamps in the line, use file mtime or current time
                             # For now, use a relative timestamp based on line number
                             timestamp = datetime.now()
-                    
+
                     logs.append({
                         'timestamp': timestamp,
                         'component': component,
                         'message': line.strip(),
                         'raw': line
                     })
-    
+
     # Sort by timestamp
     logs.sort(key=lambda x: x['timestamp'])
-    
+
     return logs
 
 
 def categorize_logs(logs):
     """Categorize logs into phases."""
     phases = {phase: [] for phase in PHASE_DEFINITIONS.keys()}
-    
+
     for log in logs:
         component = log['component']
         message = log['message']
-        
+
         # Determine phase based on component and keywords
         assigned = False
-        
+
         for phase_name, phase_def in PHASE_DEFINITIONS.items():
             if component in phase_def['components']:
                 # Check if message matches phase keywords
@@ -171,7 +186,7 @@ def categorize_logs(logs):
                     phases[phase_name].append(log)
                     assigned = True
                     break
-        
+
         # If not assigned, try to assign based on message content
         if not assigned:
             if 'Workload' in message or 'python-app' in message or 'BatchNewX509SVID' in message:
@@ -180,13 +195,13 @@ def categorize_logs(logs):
                 phases['Attestation'].append(log)
             elif 'App Key' in message or 'registered' in message or 'activated' in message:
                 phases['Setup'].append(log)
-    
+
     return phases
 
 
 def generate_html(phases, all_logs):
     """Generate HTML visualization."""
-    
+
     # Calculate timeline bounds
     if all_logs:
         start_time = min(log['timestamp'] for log in all_logs)
@@ -196,7 +211,7 @@ def generate_html(phases, all_logs):
         start_time = datetime.now()
         end_time = datetime.now()
         duration = 1
-    
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -209,14 +224,14 @@ def generate_html(phases, all_logs):
             padding: 0;
             box-sizing: border-box;
         }}
-        
+
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 20px;
             color: #333;
         }}
-        
+
         .container {{
             max-width: 1400px;
             margin: 0 auto;
@@ -225,24 +240,24 @@ def generate_html(phases, all_logs):
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             overflow: hidden;
         }}
-        
+
         .header {{
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 30px;
             text-align: center;
         }}
-        
+
         .header h1 {{
             font-size: 2.5em;
             margin-bottom: 10px;
         }}
-        
+
         .header p {{
             font-size: 1.1em;
             opacity: 0.9;
         }}
-        
+
         .stats {{
             display: flex;
             justify-content: space-around;
@@ -250,33 +265,33 @@ def generate_html(phases, all_logs):
             background: #f8f9fa;
             border-bottom: 2px solid #e9ecef;
         }}
-        
+
         .stat {{
             text-align: center;
         }}
-        
+
         .stat-value {{
             font-size: 2em;
             font-weight: bold;
             color: #667eea;
         }}
-        
+
         .stat-label {{
             color: #666;
             margin-top: 5px;
         }}
-        
+
         .phases {{
             padding: 20px;
         }}
-        
+
         .phase {{
             margin-bottom: 40px;
             border: 2px solid #e9ecef;
             border-radius: 8px;
             overflow: hidden;
         }}
-        
+
         .phase-header {{
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -287,34 +302,34 @@ def generate_html(phases, all_logs):
             align-items: center;
             transition: background 0.3s;
         }}
-        
+
         .phase-header:hover {{
             background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
         }}
-        
+
         .phase-header h2 {{
             font-size: 1.5em;
         }}
-        
+
         .phase-toggle {{
             font-size: 1.2em;
             transition: transform 0.3s;
         }}
-        
+
         .phase-content {{
             padding: 20px;
             display: none;
         }}
-        
+
         .phase-content.active {{
             display: block;
         }}
-        
+
         .timeline {{
             position: relative;
             padding: 20px 0;
         }}
-        
+
         .timeline-line {{
             position: absolute;
             left: 50px;
@@ -323,14 +338,14 @@ def generate_html(phases, all_logs):
             width: 3px;
             background: linear-gradient(to bottom, #667eea, #764ba2);
         }}
-        
+
         .log-entry {{
             position: relative;
             margin-bottom: 20px;
             padding-left: 80px;
             animation: fadeIn 0.5s ease-in;
         }}
-        
+
         @keyframes fadeIn {{
             from {{
                 opacity: 0;
@@ -341,7 +356,7 @@ def generate_html(phases, all_logs):
                 transform: translateX(0);
             }}
         }}
-        
+
         .log-dot {{
             position: absolute;
             left: 42px;
@@ -352,7 +367,7 @@ def generate_html(phases, all_logs):
             border: 3px solid white;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }}
-        
+
         .log-card {{
             background: white;
             border-left: 4px solid;
@@ -361,19 +376,19 @@ def generate_html(phases, all_logs):
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             transition: transform 0.2s, box-shadow 0.2s;
         }}
-        
+
         .log-card:hover {{
             transform: translateX(5px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }}
-        
+
         .log-header {{
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
         }}
-        
+
         .log-component {{
             font-weight: bold;
             font-size: 1.1em;
@@ -382,12 +397,12 @@ def generate_html(phases, all_logs):
             color: white;
             display: inline-block;
         }}
-        
+
         .log-time {{
             color: #666;
             font-size: 0.9em;
         }}
-        
+
         .log-message {{
             color: #333;
             line-height: 1.6;
@@ -395,7 +410,7 @@ def generate_html(phases, all_logs):
             font-size: 0.9em;
             word-wrap: break-word;
         }}
-        
+
         .flow-arrow {{
             text-align: center;
             color: #667eea;
@@ -403,19 +418,19 @@ def generate_html(phases, all_logs):
             margin: 10px 0;
             font-weight: bold;
         }}
-        
+
         .component-filter {{
             padding: 20px;
             background: #f8f9fa;
             border-bottom: 2px solid #e9ecef;
         }}
-        
+
         .filter-buttons {{
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
         }}
-        
+
         .filter-btn {{
             padding: 8px 16px;
             border: 2px solid #667eea;
@@ -425,12 +440,12 @@ def generate_html(phases, all_logs):
             cursor: pointer;
             transition: all 0.3s;
         }}
-        
+
         .filter-btn:hover {{
             background: #667eea;
             color: white;
         }}
-        
+
         .filter-btn.active {{
             background: #667eea;
             color: white;
@@ -444,7 +459,7 @@ def generate_html(phases, all_logs):
             <p>End-to-End Workflow Visualization</p>
             <p style="margin-top: 10px; font-size: 0.9em;">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </div>
-        
+
         <div class="stats">
             <div class="stat">
                 <div class="stat-value">{len(all_logs)}</div>
@@ -459,27 +474,27 @@ def generate_html(phases, all_logs):
                 <div class="stat-label">Total Duration</div>
             </div>
         </div>
-        
+
         <div class="component-filter">
             <h3 style="margin-bottom: 10px;">Filter by Component:</h3>
             <div class="filter-buttons">
                 <button class="filter-btn active" data-component="all">All Components</button>
 """
-    
+
     # Add filter buttons for each component
     for comp_id, comp_name in COMPONENT_NAMES.items():
         html += f'                <button class="filter-btn" data-component="{comp_id}">{comp_name}</button>\n'
-    
+
     html += """            </div>
         </div>
-        
+
         <div class="phases">
 """
-    
+
     # Generate phase sections
     for phase_name, phase_def in PHASE_DEFINITIONS.items():
         phase_logs = phases.get(phase_name, [])
-        
+
         html += f"""            <div class="phase" data-phase="{phase_name}">
                 <div class="phase-header" onclick="togglePhase('{phase_name}')">
                     <h2>{phase_name}: {phase_def['name']}</h2>
@@ -489,26 +504,26 @@ def generate_html(phases, all_logs):
                     <div class="timeline">
                         <div class="timeline-line"></div>
 """
-        
+
         if phase_logs:
             prev_component = None
             for log in phase_logs:
                 component = log['component']
                 timestamp = log['timestamp']
                 message = log['message']
-                
+
                 # Clean up message (remove excessive whitespace, truncate if too long)
                 clean_msg = ' '.join(message.split())
                 if len(clean_msg) > 200:
                     clean_msg = clean_msg[:200] + '...'
-                
+
                 color = COMPONENT_COLORS.get(component, '#666')
                 comp_name = COMPONENT_NAMES.get(component, component)
-                
+
                 # Add flow arrow if component changed
                 if prev_component and prev_component != component:
                     html += '                        <div class="flow-arrow">↓</div>\n'
-                
+
                 html += f"""                        <div class="log-entry" data-component="{component}">
                             <div class="log-dot" style="background-color: {color};"></div>
                             <div class="log-card" style="border-left-color: {color};">
@@ -523,21 +538,21 @@ def generate_html(phases, all_logs):
                 prev_component = component
         else:
             html += '                        <p style="padding: 20px; color: #666;">No logs found for this phase.</p>\n'
-        
+
         html += """                    </div>
                 </div>
             </div>
 """
-    
+
     html += """        </div>
     </div>
-    
+
     <script>
         // Toggle phase visibility
         function togglePhase(phaseName) {
             const content = document.getElementById('content-' + phaseName);
             const toggle = document.getElementById('toggle-' + phaseName);
-            
+
             if (content.classList.contains('active')) {
                 content.classList.remove('active');
                 toggle.textContent = '▶';
@@ -546,7 +561,7 @@ def generate_html(phases, all_logs):
                 toggle.textContent = '▼';
             }
         }
-        
+
         // Expand all phases by default
         document.addEventListener('DOMContentLoaded', function() {
             const phases = ['Setup', 'Attestation', 'Verification'];
@@ -559,16 +574,16 @@ def generate_html(phases, all_logs):
                 }
             });
         });
-        
+
         // Component filtering
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 const component = this.dataset.component;
-                
+
                 // Update active button
                 document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                
+
                 // Filter log entries
                 document.querySelectorAll('.log-entry').forEach(entry => {
                     if (component === 'all' || entry.dataset.component === component) {
@@ -583,40 +598,39 @@ def generate_html(phases, all_logs):
 </body>
 </html>
 """
-    
+
     return html
 
 
 def main():
     """Main function."""
     print("Generating workflow visualization...")
-    
+
     # Extract logs
     print("  Extracting logs from component files...")
     all_logs = extract_logs_from_files()
     print(f"  Found {len(all_logs)} log entries")
-    
+
     # Categorize into phases
     print("  Categorizing logs into phases...")
     phases = categorize_logs(all_logs)
     for phase_name, phase_logs in phases.items():
         print(f"    {phase_name}: {len(phase_logs)} entries")
-    
+
     # Generate HTML
     print("  Generating HTML visualization...")
     html = generate_html(phases, all_logs)
-    
+
     # Write to file
     output_file = '/tmp/workflow_visualization.html'
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(html)
-    
+
     print(f"\n✓ Workflow visualization generated: {output_file}")
     print(f"  Open in browser: file://{output_file}")
-    
+
     return 0
 
 
 if __name__ == '__main__':
     sys.exit(main())
-

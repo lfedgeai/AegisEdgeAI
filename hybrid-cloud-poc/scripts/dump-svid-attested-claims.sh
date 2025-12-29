@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Unified-Identity - Verification: Dump SVID Certificate and certificate chain
 # Shows the AttestedClaims extension embedded in the workload SVID and
 # highlights the agent SVID that is now included in the chain for policy enforcement
@@ -98,19 +113,19 @@ def classify_cert(index, cert, spiffe_id, root_certs=None):
         for root_cert in root_certs:
             if cert.subject == root_cert.subject and cert.issuer == root_cert.issuer:
                 return "SPIRE Server Root CA"
-    
+
     # First certificate is always the workload SVID (leaf)
     if index == 0:
         return "Workload SVID (Application Certificate)"
-    
+
     # SPIRE Agent SVID has specific SPIFFE ID pattern
     if spiffe_id and "/spire/agent/" in spiffe_id:
         return "SPIRE Agent SVID (Issuer of Workload SVID)"
-    
+
     # Other SPIFFE identities
     if spiffe_id:
         return f"SPIFFE Identity ({spiffe_id})"
-    
+
     # Check if it's a CA certificate
     try:
         from cryptography.x509.oid import ExtensionOID
@@ -119,14 +134,14 @@ def classify_cert(index, cert, spiffe_id, root_certs=None):
             return "Intermediate CA Certificate"
     except:
         pass
-    
+
     return "Certificate"
 
 def verify_cert_signature(cert, signer_cert):
     """Verify that cert is signed by signer_cert."""
     try:
         signer_pubkey = signer_cert.public_key()
-        
+
         if isinstance(signer_pubkey, ec.EllipticCurvePublicKey):
             # ECDSA signature verification
             assert cert.signature_hash_algorithm is not None
@@ -155,29 +170,29 @@ def verify_cert_chain(certs, root_certs):
     """Verify certificate chain against root CA certificates."""
     if not root_certs:
         return False, "No root CA certificates provided"
-    
+
     if not certs:
         return False, "No certificates in chain"
-    
+
     # Verify the chain: each cert should be signed by the next one
     # The last cert in the chain should be signed by a root CA
     verification_messages = []
-    
+
     # First, verify intermediate chain links (if multiple certs)
     # In SPIRE, both workload and agent SVIDs may be signed by the server directly
     # So we need to check signatures, not just issuer/subject matching
     for i in range(len(certs) - 1):
         cert = certs[i]
         next_cert = certs[i + 1]
-        
+
         # In SPIRE architecture:
         # - Workload SVID (cert[0]) is signed by Agent SVID (cert[1]) OR directly by Server
         # - Agent SVID (cert[1]) is signed by Server
         # Both may have the same issuer (the server), so we verify signatures instead
-        
+
         # Try to verify signature against next cert (agent SVID)
         signature_verified = verify_cert_signature(cert, next_cert)
-        
+
         # If signature doesn't verify against next cert, it might be signed by server directly
         # This is acceptable in SPIRE's model
         if signature_verified:
@@ -189,15 +204,15 @@ def verify_cert_chain(certs, root_certs):
             else:
                 # In SPIRE, both certs may have same issuer (server), which is fine
                 verification_messages.append(f"Certificate [{i}] issuer: {cert.issuer.rfc4514_string()[:50]}... (may be signed by server)")
-    
+
     # Verify the certificate chain against root CA
     # In SPIRE, we need to verify that certificates can be verified against root CA
     # Strategy: Check if any cert in chain can be verified against root CA
-    
+
     verified_against_root = False
     root_subject = None
     verification_detail = None
-    
+
     # Helper function to compare issuer/subject (handles different formats)
     def issuer_matches(issuer, subject):
         """Check if issuer matches subject, handling different string representations."""
@@ -224,7 +239,7 @@ def verify_cert_chain(certs, root_certs):
         except Exception:
             pass
         return False
-    
+
     # Helper function to check Authority Key Identifier match
     def aki_matches_ski(cert, root_cert):
         """Check if cert's Authority Key Identifier matches root's Subject Key Identifier."""
@@ -237,7 +252,7 @@ def verify_cert_chain(certs, root_certs):
         except Exception:
             pass
         return False
-    
+
     # Try to verify each certificate in the chain against root CAs
     # Start with the last cert (agent SVID if present) as it's closest to root
     for cert_idx in range(len(certs) - 1, -1, -1):
@@ -245,10 +260,10 @@ def verify_cert_chain(certs, root_certs):
         for root_idx, root_cert in enumerate(root_certs):
             # Strategy 1: Check if issuer matches root CA subject (using flexible matching)
             issuer_match = issuer_matches(cert.issuer, root_cert.subject)
-            
+
             # Strategy 2: Check if Authority Key Identifier matches Subject Key Identifier
             aki_match = aki_matches_ski(cert, root_cert)
-            
+
             if issuer_match or aki_match:
                 # Try signature verification
                 sig_verified = verify_cert_signature(cert, root_cert)
@@ -257,7 +272,7 @@ def verify_cert_chain(certs, root_certs):
                     match_reason.append("issuer matches")
                 if aki_match:
                     match_reason.append("AKI matches SKI")
-                
+
                 if sig_verified:
                     verified_against_root = True
                     root_subject = root_cert.subject.rfc4514_string()
@@ -284,7 +299,7 @@ def verify_cert_chain(certs, root_certs):
                     break
         if verified_against_root:
             break
-    
+
     if verified_against_root:
         if verification_messages:
             detail = f"{'; '.join(verification_messages)}"
@@ -423,7 +438,7 @@ if bundle_path.exists():
 for idx, cert in enumerate(certs):
     spiffe_id = extract_spiffe_id(cert)
     role = classify_cert(idx, cert, spiffe_id, root_certs_list if root_certs_list else None)
-    
+
     # Enhanced role display with icons - prioritize agent SVID detection
     if "SPIRE Agent SVID" in role or (spiffe_id and "/spire/agent/" in spiffe_id):
         icon = "🔸"
@@ -437,7 +452,7 @@ for idx, cert in enumerate(certs):
     else:
         icon = "📄"
         role_desc = role
-    
+
     print(f"{icon} [{idx}] {role_desc}")
     print(f"     Role: {role}")
     print(f"     Subject: {cert.subject.rfc4514_string()}")
@@ -445,7 +460,7 @@ for idx, cert in enumerate(certs):
         print(f"     SPIFFE ID: {spiffe_id}")
     else:
         print("     SPIFFE ID: (none)")
-    
+
     # Show who signed this certificate (signing relationship)
     # In SPIRE, both workload and agent SVIDs are typically signed by the server
     # The chain order is: Workload SVID (leaf) → Agent SVID → Server Root CA
@@ -473,7 +488,7 @@ for idx, cert in enumerate(certs):
             print(f"     Issuer: {cert.issuer.rfc4514_string()}")
             if root_certs_list:
                 print(f"     ⚠ Note: Issuer does not match SPIRE Server Root CA from bundle")
-    
+
     # Validity period
     try:
         expires = cert.not_valid_after_utc
@@ -481,13 +496,13 @@ for idx, cert in enumerate(certs):
         expires = cert.not_valid_after
         if expires.tzinfo is None:
             expires = expires.replace(tzinfo=timezone.utc)
-    
+
     now = datetime.now(timezone.utc)
     if expires < now:
         print(f"     Expires: {expires.isoformat()} ⚠ EXPIRED")
     else:
         print(f"     Expires: {expires.isoformat()}")
-    
+
     # Public key info
     pubkey = cert.public_key()
     if isinstance(pubkey, ec.EllipticCurvePublicKey):
@@ -497,7 +512,7 @@ for idx, cert in enumerate(certs):
         print(f"     Public Key: RSA ({pubkey.key_size} bits)")
     else:
         print(f"     Public Key: {type(pubkey).__name__}")
-    
+
     # Check for AttestedClaims extension
     for ext in cert.extensions:
         if ext.oid.dotted_string == "1.3.6.1.4.1.99999.1":
@@ -511,7 +526,7 @@ for idx, cert in enumerate(certs):
             except Exception as exc:
                 print(f"     ⚠ Failed to decode AttestedClaims: {exc}")
             break
-    
+
     print("")
 
 # Display AttestedClaims details
@@ -562,14 +577,14 @@ if bundle_path.exists():
             except Exception as exc:
                 print(f"⚠ Warning: Failed to parse root CA certificate: {exc}")
                 continue
-        
+
         if root_certs:
             print(f"Loaded {len(root_certs)} root CA certificate(s) from SPIRE bundle")
             # Debug: Show root CA subject for comparison
             for idx, root_cert in enumerate(root_certs):
                 print(f"  Root CA [{idx}] Subject: {root_cert.subject.rfc4514_string()}")
             print("")
-            
+
             # Verify certificate chain
             verified, message = verify_cert_chain(certs, root_certs)
             verification_result = verified
@@ -621,16 +636,16 @@ try:
     for idx, block in enumerate(blocks):
         cert_file = Path(temp_dir) / f"cert_{idx}.pem"
         cert_file.write_bytes(block)
-    
+
     # Display each certificate with OpenSSL for full details
     for idx in range(len(certs)):
         cert_file = Path(temp_dir) / f"cert_{idx}.pem"
         if not cert_file.exists():
             continue
-        
+
         spiffe_id = extract_spiffe_id(certs[idx])
         role = classify_cert(idx, certs[idx], spiffe_id, root_certs_list if root_certs_list else None)
-        
+
         # Use same classification as summary - ensure agent SVID is correctly identified
         if "SPIRE Agent SVID" in role or (spiffe_id and "/spire/agent/" in spiffe_id):
             icon = "🔸"
@@ -644,13 +659,13 @@ try:
         else:
             icon = "📄"
             title = role
-        
+
         if idx > 0:
             print("")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print(f"{icon} CERTIFICATE [{idx}]: {title}")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        
+
         print("")
         # Use OpenSSL to display full certificate details
         import subprocess
