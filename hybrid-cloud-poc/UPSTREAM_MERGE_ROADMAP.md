@@ -126,8 +126,10 @@ Actions:
 2. ✅ Integrated into pre-commit hooks (.pre-commit-config.yaml)
    - Hook: "Check Apache 2.0 License Headers"
    - Runs on all commits
-3. ⏳ CI/CD integration pending (Task 0c)
-   - Will be added to GitHub Actions workflow
+3. ✅ CI/CD integration complete (Task 0c)
+   - Added license header check job to `.github/workflows/ci.yml`
+   - Job: "Check Apache 2.0 License Headers" runs on ubuntu-latest
+   - Fails CI if any source files are missing license headers
 
 Results:
 - Added headers to 58 files that were missing them
