@@ -271,11 +271,17 @@ Benefit: Future-proofed schema for heterogeneous sensor attestation.
 
 | Component | Upstream Destination | Rationale |
 |-----------|---------------------|-----------|
-| SPIRE NodeAttestor plugin | `spiffe/spire` | Standard plugin architecture |
-| SPIRE CredentialComposer | `spiffe/spire` | Standard plugin architecture |
+| **SPIRE Modifications (9 Go files):** | | |
+| SPIRE NodeAttestor plugin (`pkg/agent/plugin/nodeattestor/unifiedidentity/`) | `spiffe/spire` | Standard plugin architecture |
+| SPIRE CredentialComposer (`pkg/server/plugin/credentialcomposer/unifiedidentity/`) | `spiffe/spire` | Standard plugin architecture |
+| SPIRE Keylime Client (`pkg/server/keylime/`) | `spiffe/spire` | Supporting library for Keylime integration |
+| SPIRE Unified Identity (`pkg/server/unifiedidentity/`) | `spiffe/spire` | Supporting library for claims processing |
+| SPIRE TPM Plugin (`pkg/agent/tpmplugin/`) | `spiffe/spire` | TPM integration for App Key signing |
+| **Keylime Modifications:** | | |
 | Keylime Delegated Certification | `keylime/rust-keylime` | New API extension |
 | Keylime Geolocation API | `keylime/rust-keylime` | New API extension |
 | Keylime Verifier extensions | `keylime/keylime` | Python verifier changes |
+| **Standalone Components:** | | |
 | **Envoy WASM Plugin** | **Standalone (LF AI)** | Too specialized for Envoy core |
 | **Mobile Sensor Microservice** | **Standalone (LF AI)** | CAMARA integration wrapper |
 
