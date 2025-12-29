@@ -2,9 +2,9 @@ name: Unified Identity CI
 
 on:
     push:
-        branches: ["main", "develop", "feat/**"]
+        branches: ["main", "develop", "hybrid-cloud-poc", "feat/**"]
     pull_request:
-        branches: ["main", "develop"]
+        branches: ["main", "develop", "hybrid-cloud-poc"]
     workflow_dispatch:
 
 jobs:
