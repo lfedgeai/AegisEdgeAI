@@ -15,7 +15,7 @@ This document provides a complete guide for demonstrating automatic SVID renewal
 
 ```bash
 # Navigate to project directory
-cd /home/mw/AegisSovereignAI/hybrid-cloud-poc
+cd .
 
 # Start SPIRE Server
 SPIRE_SERVER="./spire/bin/spire-server"
@@ -398,7 +398,7 @@ Client 2 connected from ('127.0.0.1', 54322)
 export SPIRE_AGENT_SVID_RENEWAL_INTERVAL=30
 
 # Run complete test (starts everything and monitors renewal)
-cd /home/mw/AegisSovereignAI/hybrid-cloud-poc
+cd .
 ./test_agents.sh --test-renewal --no-pause
 ```
 
@@ -411,7 +411,7 @@ Follow Steps 1-7 above, then:
 # Terminal 1: Server logs
 tail -f /tmp/mtls-server-app.log
 
-# Terminal 2: Client logs  
+# Terminal 2: Client logs
 tail -f /tmp/mtls-client-app.log
 
 # Terminal 3: Agent renewal activity
@@ -540,4 +540,3 @@ This demo shows:
 - ✅ **Zero Downtime**: Brief blips don't disrupt service (new connections work immediately)
 
 The renewal blip is a natural part of certificate rotation and demonstrates that the system handles it automatically without manual intervention.
-

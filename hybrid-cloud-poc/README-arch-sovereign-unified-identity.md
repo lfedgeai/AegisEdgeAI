@@ -1,3 +1,4 @@
+<!-- Version: 0.1.0 | Last Updated: 2025-12-29 -->
 # Sovereign Unified Identity Architecture - End-to-End Flow
 
 ## 🚀 Open Source Upstreaming-Ready Design
@@ -76,28 +77,28 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 
 ### Legend:
 
-**[1]** Agent Registration: EK, AK, UUID, IP, Port, mTLS Cert  
-**[2]** App Key Generation: TPM App Key created and persisted  
-**[3]** App Key Request: Agent requests App Key public key and context  
-**[4]** Delegated Certification Request: TPM Plugin forwards to rust-keylime agent  
-**[5]** Certificate Response: TPM2_Certify result (AK-signed App Key certificate)  
-**[6]** Build Attestation: Assemble SovereignAttestation (App Key, Cert, Nonce, UUID)  
-**[7]** Send Attestation: SPIRE Agent sends SovereignAttestation to SPIRE Server (Server receives and extracts)  
-**[8]** Verify App Key Cert: Verifier verifies App Key certificate signature using TPM AK  
-**[9]** Lookup Agent: Verifier queries Registrar for agent info (IP, Port, AK, mTLS Cert)  
-**[10]** Verify AK Registration: Verifier verifies TPM AK is registered with registrar/verifier (PoC security check - only registered AKs can attest)  
-**[11]** Quote Request: Verifier requests fresh TPM quote with challenge nonce  
-**[12]** Geolocation Detection: Agent detects mobile sensor, binds to PCR 15 with nonce  
-**[13]** Geolocation Extraction: Verifier fetches geolocation via mTLS, validates nonce and PCR index*  
-**[14]** Quote Response: Agent returns TPM quote and nonce-bound geolocation data  
-**[15]** Verification Result: Verifier returns BroaderClaims (geolocation, TPM attestation) → SPIRE Server  
-**[16]** Agent SVID: Server issues agent SVID with BroaderClaims embedded → SPIRE Agent  
-**[17]** Workload Request: Workload connects to Agent Workload API  
-**[18]** Workload API: Workload requests SVID via Agent Workload API  
-**[19]** Forward Request: Agent forwards workload SVID request to Server  
+**[1]** Agent Registration: EK, AK, UUID, IP, Port, mTLS Cert
+**[2]** App Key Generation: TPM App Key created and persisted
+**[3]** App Key Request: Agent requests App Key public key and context
+**[4]** Delegated Certification Request: TPM Plugin forwards to rust-keylime agent
+**[5]** Certificate Response: TPM2_Certify result (AK-signed App Key certificate)
+**[6]** Build Attestation: Assemble SovereignAttestation (App Key, Cert, Nonce, UUID)
+**[7]** Send Attestation: SPIRE Agent sends SovereignAttestation to SPIRE Server (Server receives and extracts)
+**[8]** Verify App Key Cert: Verifier verifies App Key certificate signature using TPM AK
+**[9]** Lookup Agent: Verifier queries Registrar for agent info (IP, Port, AK, mTLS Cert)
+**[10]** Verify AK Registration: Verifier verifies TPM AK is registered with registrar/verifier (PoC security check - only registered AKs can attest)
+**[11]** Quote Request: Verifier requests fresh TPM quote with challenge nonce
+**[12]** Geolocation Detection: Agent detects mobile sensor, binds to PCR 15 with nonce
+**[13]** Geolocation Extraction: Verifier fetches geolocation via mTLS, validates nonce and PCR index*
+**[14]** Quote Response: Agent returns TPM quote and nonce-bound geolocation data
+**[15]** Verification Result: Verifier returns BroaderClaims (geolocation, TPM attestation) → SPIRE Server
+**[16]** Agent SVID: Server issues agent SVID with BroaderClaims embedded → SPIRE Agent
+**[17]** Workload Request: Workload connects to Agent Workload API
+**[18]** Workload API: Workload requests SVID via Agent Workload API
+**[19]** Forward Request: Agent forwards workload SVID request to Server
 **[20]** Spire Server Issues Workload SVID: Server issues workload SVID (inherits agent claims, no Keylime call) to spire agent
-**[21]** Spire Agent Returns SVID: Agent returns workload SVID to workload  
-**[22]** Workload Receives SVID: Workload receives workload SVID from SPIRE Agent  
+**[21]** Spire Agent Returns SVID: Agent returns workload SVID to workload
+**[22]** Workload Receives SVID: Workload receives workload SVID from SPIRE Agent
 
 ### Key Components:
 
@@ -165,7 +166,7 @@ SPIRE Agent (Go) → mTLS to SPIRE Server
       ↓ (crypto.Signer interface)
 TPMSigner.Sign() called for TLS handshake
       ↓ (gRPC/HTTP call)
-TPM Plugin Server (Python) 
+TPM Plugin Server (Python)
       ↓ (tpm2_sign)
 TPM Hardware
 ```
@@ -550,7 +551,7 @@ After workloads receive their SPIRE SVIDs, they can use these certificates to ac
    - Verifies SPIRE certificate chain using SPIRE CA bundle
    - Extracts certificate chain for WASM filter processing
 
-- **WASM Filter Extracts Sensor Information**: 
+- **WASM Filter Extracts Sensor Information**:
   - Parses the certificate chain.
   - Extracts Unified Identity extension (OID `1.3.6.1.4.1.99999.2`) from Agent SVID (intermediate certificate).
   - Extracts sensor metadata: `sensor_id`, `sensor_type`, `sensor_imei`, `sensor_imsi`, `sensor_msisdn`.
@@ -1374,70 +1375,10 @@ The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks requ
 - ✅ Geolocation attestation with TPM binding
 - ✅ **Full TLS certificate validation** (Task 7 Complete - No `InsecureSkipVerify`)
 
-**Production Gaps** (See [`PILLAR2_STATUS.md`](PILLAR2_STATUS.md) for details):
-- ✅ CAMARA API keys use file-based secret management (`CAMARA_BASIC_AUTH_FILE`)
-- ⚠️ Some code paths modify core SPIRE/Keylime files (needs plugin extraction)
-
-**TLS Certificate Validation (Task 7 - COMPLETE)**:
-1. ✅ rust-keylime agent uses CA-signed certificates
-2. ✅ Certificate generation includes comprehensive SANs:
-   - Always: CN name + DNS:localhost + IP:127.0.0.1
-   - Multi-machine: IPs from CONTROL_PLANE_HOST and AGENTS_HOST
-3. ✅ Keylime Verifier enforces certificate validation
-4. ✅ Supports single-machine tests and multi-machine deployments
-
-**Recommended for Production**:
-1. Complete Task 1 enhancements (✅ Done)
-2. Implement proper secret management for CAMARA keys (✅ Done)
-3. Extract SPIRE modifications to standalone plugins (Tasks 4 & 5)
-
-### Next Steps
-
-**For Upstream Contribution:**
-
-1. **SPIRE Plugins (Independent Contribution)**
-   - Submit `unified_identity` NodeAttestor plugin
-   - Submit `credential_composer` plugin
-   - Submit TPM Plugin Server as external plugin reference implementation
-   - All gated by `unified_identity_enabled` feature flag
-   - Zero impact on existing SPIRE deployments
-
-2. **Keylime API Extensions (Independent Contribution)**
-   - Submit delegated certification API (`/v2.2/agent/certify_appkey`)
-   - Submit attested geolocation API (`/v2.2/agent/attested_geolocation`)
-   - Submit unified verification API (`/v2.2/verify/sovereignattestation`)
-   - All optional - gated by `unified_identity_enabled` config flag
-   - Backward compatible with existing Keylime deployments
-
-3. **Feature Flag Implementation**
-   - **SPIRE**: Feature flag in agent/server config enables plugin loading
-   - **Keylime**: Config flag (`unified_identity_enabled = false` by default)
-   - **Guarantee**: When disabled, systems behave identically to upstream
-   - **Safe Rollout**: Operators can enable per-environment
-
-4. **Documentation & Examples**
-   - Integration guide for enabling Unified Identity
-   - Performance benchmarks (TPM signing overhead)
-   - Security considerations for production
-   - Example deployments (single-machine, multi-machine, Kubernetes)
-
-**Upstreaming Benefits:**
-- ✅ No breaking changes to either project
-- ✅ Clean plugin boundaries
-- ✅ Feature-flagged for safe adoption
-- ✅ Each component independently testable
-- ✅ Backward compatible with all existing deployments
-
-**For Production Deployment:**
-1. ✅ Test infrastructure ready
-2. ✅ Delegated certification hardened
-3. ✅ Address security gaps (Secret management for CAMARA keys)
-4. 🔄 Monitor performance at scale
-
-**For Continued Development:**
-- Implement additional sensor types (GNSS, industrial IoT)
-- Add policy enforcement for geolocation claims
-- Enhance mobile sensor verification with additional CAMARA APIs
+**Production Gaps & Roadmap Status**:
+For a comprehensive view of production readiness, identified security gaps, and the detailed upstreaming strategy, please refer to the project roadmap:
+👉 **[`UPSTREAM_MERGE_ROADMAP.md`](UPSTREAM_MERGE_ROADMAP.md)**
 
 ---
 
+---

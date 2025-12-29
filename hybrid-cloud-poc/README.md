@@ -1,3 +1,4 @@
+<!-- Version: 0.1.0 | Last Updated: 2025-12-29 -->
 # Sovereign Hybrid Cloud PoC
 **Demonstrating Verifiable Data Sovereignty across Public Cloud (e.g., Telefonica) and On-Premise Infrastructure**
 
@@ -110,92 +111,15 @@ This section provides a step-by-step guide to set up and run the complete hybrid
 
 ### Prerequisites
 
-#### System Requirements
+For a smooth installation, your system should meet the core requirements:
+- **OS**: Ubuntu 22.04 LTS (recommended)
+- **Hardware**: Two machines with static IPs, TPM 2.0 (hardware or software)
+- **Toolchains**: Python 3.10+, Go 1.22+, Rust 1.92+
 
-- Two machines:
-  - **Physical with static IP address (e.g. 10.1.0.11)**: Sovereign Cloud/Edge Cloud (SPIRE Server, SPIRE Agent, Spire TPM Plugin, Keylime Verifier, Keylime Agent)
-  - **Physical or Virtual with static IP address (e.g. 10.1.0.10)**: Customer On-Prem Private Cloud (Envoy Gateway, Mobile Location Service, mTLS Server)
-- TPM 2.0 hardware (or TPM emulator for testing)
-- Mobile location sensor (USB tethered smartphone) or GNSS module (optional, for geofencing demo)
-- Root/sudo access on both machines
-- CAMARA API credentials for mobile location service
-- Network connectivity between machines
-- Git installed on both machines
-
-#### Operating System
-
-- **Ubuntu 22.04 LTS** (tested) or compatible Debian-based distribution
-- Other Linux distributions may work but are not tested
-
-#### Required Linux Packages
-
-**Essential System Packages:**
-```bash
-curl wget git vim net-tools iproute2 iputils-ping dnsutils ca-certificates
-```
-
-**TPM2 Tools and Libraries:**
-```bash
-tpm2-tools tpm2-abrmd libtss2-dev libtss2-esys-3.0.2-0 libtss2-sys1 \
-libtss2-tcti-device0 libtss2-tcti-swtpm0
-```
-
-**Software TPM (for testing without hardware TPM):**
-```bash
-swtpm swtpm-tools
-```
-
-**Build Tools:**
-```bash
-build-essential gcc g++ make cmake pkg-config libclang-dev libclang-14-dev
-```
-
-**OpenSSL Development Libraries:**
-```bash
-libssl-dev
-```
-
-**Python Development Packages:**
-```bash
-python3 python3-dev python3-pip python3-venv python3-distutils
-```
-
-#### Required Programming Language Toolchains
-
-**Python:**
-- Python 3.10+ (tested with Python 3.10.12)
-- Required Python packages (installed via pip):
-  - `spiffe>=0.2.0` - SPIFFE Workload API client library
-  - `cryptography>=41.0.0` - Cryptographic primitives
-  - `grpcio>=1.60.0` - gRPC library
-  - `grpcio-tools>=1.60.0` - gRPC tools
-  - `protobuf>=4.25.0` - Protocol buffers
-  - `requests>=2.31.0` - HTTP library
-
-**Rust:**
-- Rust toolchain (tested with rustc 1.91.1)
-- Install via [rustup](https://rustup.rs/):
-  ```bash
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-  ```
-
-**Go:**
-- Go 1.20+ (tested with Go 1.22.0)
-- Download from [golang.org](https://golang.org/dl/)
-- Extract to `/usr/local/go` and add `/usr/local/go/bin` to PATH
-
-#### System Configuration
-
-**TPM Access:**
-- User must be in the `tss` group for TPM access:
-  ```bash
-  sudo groupadd -r tss  # If group doesn't exist
-  sudo usermod -a -G tss $USER
-  ```
-- Log out and back in for group changes to take effect
+A comprehensive helper script is provided to automate the installation of all system packages, toolchains, and configurations:
+👉 **[`install_prerequisites.sh`](install_prerequisites.sh)**
 
 #### Installation Scripts
-
 Two helper scripts are provided to simplify setup:
 
 1. **`check_packages.sh`** - Check installed packages and versions:
@@ -242,7 +166,7 @@ Two helper scripts are provided to simplify setup:
    ./check_packages.sh
    ```
 
-For detailed prerequisite information, see [PREREQUISITES.md](PREREQUISITES.md).
+
 
 ### Installation Steps
 
@@ -724,6 +648,21 @@ cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 
 ### Troubleshooting
 
+**Unified Identity - SVID missing geolocation claims:**
+- Verify Keylime Verifier has verified the agent: `curl -k https://localhost:8881/v2.1/agents/`
+- Check `unified_identity_enabled: true` is set in both `spire-server.conf` and `spire-agent.conf`.
+- Ensure the Mobile Sensor Sidecar is reachable from the Keylime Verifier.
+
+**Delegated Certification failing (Task 14b):**
+- Verify the TPM Plugin Server is using HTTPS (mTLS) to talk to the rust-keylime agent.
+- Check for "JSON format mismatch" in `/tmp/tpm-plugin-server.log`.
+- Ensure `agent_uuid` in the attestation request matches the one registered in Keylime.
+
+**mTLS Handshake Errors (Envoy/Client):**
+- **Clock Drift**: Ensure all machines have synchronized time: `sudo ntpdate pool.ntp.org`.
+- **Bundle Mismatch**: Verify Envoy has the latest SPIRE bundle: `openssl x509 -in /opt/envoy/certs/spire-bundle.pem -text -noout`.
+- **WASM Fail-Closed**: If the WASM filter cannot reach the Mobile Sidecar, it will block connections with a 403. Check `/opt/envoy/logs/envoy.log` for upstream connection errors.
+
 **SPIRE Agent not attesting:**
 - Check TPM is accessible: `ls -la /dev/tpm*`
 - Verify TPM Plugin Server is running: `ps aux | grep tpm-plugin`
@@ -734,7 +673,7 @@ cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud
 - Check Envoy config: `sudo envoy --config-path /opt/envoy/envoy.yaml --mode validate`
 
 **Mobile Location Service failing:**
-- Check CAMARA credentials: `echo $CAMARA_BASIC_AUTH`
+- Check CAMARA core credentials in the mapping database (not environment variables in production).
 - Verify sensor ID in database: `sqlite3 mobile-sensor-microservice/sensor_mapping.db "SELECT * FROM sensor_map;"`
 
 **Client connection fails:**

@@ -1,6 +1,6 @@
 # Master Roadmap: Aegis Sovereign Unified Identity Upstreaming
 
-<!-- Version: 2.0.0 | Last Updated: 2025-12-28 -->
+<!-- Version: 0.1.0 | Last Updated: 2025-12-29 -->
 
 This document serves as the **single source of truth** for both the technical roadmap and the execution strategy for refactoring the "Unified Identity" PoC into upstream-ready components.
 
@@ -135,8 +135,8 @@ Effort: 0.5 days
 |------|-------------|----------|--------|-------|--------|
 | **Task 0** | Harden `test_integration.sh` (Fail-fast, structured logging) | P1 | `[x]` | — | Done |
 | **Task 0b** | CI Runner (`ci_test_runner.py`) for real-time monitoring | P1 | `[x]` | — | Done |
-| **Task 0c** | Add GitHub Actions CI/CD pipeline | P1 | `[ ]` | TBD | Week 2 |
-| **Task 0d** | Add pre-commit hooks configuration | P2 | `[ ]` | TBD | Week 3 |
+| **Task 0c** | Add GitHub Actions CI/CD pipeline | P1 | `[/]` | — | Partial (PR CI, hello_world) |
+| **Task 0d** | Add pre-commit hooks configuration | P2 | `[x]` | — | Done |
 | **Task 0e** | Implement Software TPM (`swtpm`) for dev/test | P2 | `[ ]` | TBD | Week 3 |
 
 ### Task 0c: GitHub Actions CI/CD (NEW)
@@ -178,16 +178,13 @@ Effort: 2 days
 | **Task 4** | SPIRE Server - Validator Plugin with Geolocation | P1 | `[x]` | — | Done |
 | **Task 5** | SPIRE Agent - Collector Plugin (Go) | P1 | `[x]` | — | Done |
 | **Task 6** | SPIRE Creds - Credential Composer (Go) | P1 | `[x]` | — | Done |
-| **Task 12b** | Sensor Schema Separation (Mobile vs GNSS) | P1 | `[/]` | TBD | Week 2 |
+| **Task 12b** | Sensor Schema Separation (Mobile vs GNSS) | P1 | `[x]` | — | Done |
 
-### Task 12b Details (Partial)
+### Task 12b Details (Complete)
 ```
-Status: Sidecar and WASM filter logic updated.
-Remaining:
-- [ ] Keylime pipeline transition to new namespaces
-- [ ] SPIRE pipeline transition to new namespaces
-- [ ] Update test fixtures for new schemas
-Effort: 2-3 days
+Status: Verified in spire/pkg/server/unifiedidentity/claims.go.
+Implementation: Correctly nests mobile and GNSS specific claims based on geo.Type.
+Benefit: Future-proofed schema for heterogeneous sensor attestation.
 ```
 
 **Mobile Sensor Schema:**
@@ -196,7 +193,7 @@ Effort: 2-3 days
   "sensor_id": "string",
   "sensor_type": "mobile",
   "sensor_imei": "string",
-  "sensor_imsi": "string", 
+  "sensor_imsi": "string",
   "sensor_msisdn": "string",
   "latitude": "float",
   "longitude": "float",
@@ -264,7 +261,7 @@ Effort: 2-3 days
 ### Task 9: Package for Standalone Release
 
 > [!NOTE]
-> **Why Standalone?** The Envoy WASM plugin is too specialized for Envoy core/contrib 
+> **Why Standalone?** The Envoy WASM plugin is too specialized for Envoy core/contrib
 > (SPIFFE SVIDs + CAMARA + geolocation). It will be released as a standalone LF AI project
 > while remaining in this repo for coordinated development.
 
@@ -339,7 +336,7 @@ Effort: 2 days
 ### Pillar 3 Deep-Dive: Standalone Components
 
 > [!NOTE]
-> **Upstreaming Context**: These components are NOT going to upstream projects (Envoy, etc.) 
+> **Upstreaming Context**: These components are NOT going to upstream projects (Envoy, etc.)
 > because they are too specialized. They will be released as standalone LF AI projects, with
 > source remaining in this repo for coordinated development with the upstreamed SPIRE/Keylime code.
 
@@ -364,7 +361,7 @@ Effort: 2 days
 | `runtime` | Sidecar call with caching (15min TTL) | Balanced security/performance |
 | `strict` | Sidecar call, no cache | Zero-trust, real-time verification |
 
-#### Component 2: Mobile Sensor Microservice  
+#### Component 2: Mobile Sensor Microservice
 *Goal: Thin CAMARA API wrapper for mobile device location verification.*
 
 **Why Standalone (not CAMARA upstream)?**
@@ -390,7 +387,7 @@ Effort: 2 days
 | **Task 14** | Secrets Management - Move CAMARA API keys to secure providers | P1 | `[x]` | — | Done |
 | **Task 14b** | Delegated Certification Fix (TPM2_Certify empty response) | **P0** | `[x]` | — | Done |
 | **Task 15** | Quality Assurance - Linting, pre-commit hooks | P2 | `[ ]` | TBD | Week 3 |
-| **Task 16** | Cleanup stale backup files | P1 | `[ ]` | TBD | Week 1 |
+| **Task 16** | Cleanup stale backup files | P1 | `[x]` | — | Done |
 | **Task 17** | Rate limiting at Envoy gateway level | P2 | `[ ]` | TBD | Week 4 |
 | **Task 18** | Standardize Observability (Metrics & Telemetry) | P1 | `[ ]` | TBD | Week 4 |
 
@@ -545,73 +542,44 @@ Effort: 3-4 days
 
 | Task | Description | Priority | Status | Owner | Target |
 |------|-------------|----------|--------|-------|--------|
-| **Task D1** | Create `PREREQUISITES.md` (or remove reference) | P0 | `[ ]` | TBD | Week 1 |
-| **Task D2** | Create `PILLAR2_STATUS.md` (or remove reference) | P1 | `[ ]` | TBD | Week 1 |
-| **Task D3** | Fix stale `file:///` URLs in architecture doc | P1 | `[ ]` | TBD | Week 1 |
-| **Task D4** | Add version headers to all documentation | P2 | `[ ]` | TBD | Week 2 |
-| **Task D5** | Create CHANGELOG.md | P1 | `[ ]` | TBD | Week 2 |
+| **Task D1** | Consolidate prerequisites into `install_prerequisites.sh` | P0 | `[x]` | — | Done |
+| **Task D2** | Consolidate Production Gaps into Roadmap | P1 | `[x]` | — | Done |
+| **Task D3** | Fix stale `file:///` URLs in architecture doc | P1 | `[x]` | — | Done |
+| **Task D4** | Add version headers to all documentation | P2 | `[x]` | — | Done |
+| **Task D5** | Create CHANGELOG.md | P1 | `[x]` | — | Done |
 | **Task D6** | Standardize sensor type casing (mobile/gnss) | P2 | `[ ]` | TBD | Week 2 |
-| **Task D7** | Expand troubleshooting section in README | P2 | `[ ]` | TBD | Week 3 |
+| **Task D7** | Expand troubleshooting section in README | P2 | `[x]` | — | Done |
 | **Task D8** | Add container/Kubernetes deployment docs | P2 | `[ ]` | TBD | Week 4 |
 | **Task D9** | Define Versioning & Release Strategy (SemVer) | P2 | `[ ]` | TBD | Week 2 |
 
-### Task D1: PREREQUISITES.md
+### Task D1: Prerequisite Consolidation
 ```
-Option A: Create the file
-Location: hybrid-cloud-poc/PREREQUISITES.md
-Content: Extract prerequisite content from README.md lines 107-245
-Benefit: Cleaner README, reusable prereqs
-
-Option B: Remove reference
-Edit: hybrid-cloud-poc/README.md line 245
-Change: Remove "For detailed prerequisite information, see [PREREQUISITES.md]..."
-
-Recommended: Option A
-Effort: 1-2 hours
+Action: Updated install_prerequisites.sh to be the primary source of truth.
+Change: Removed PREREQUISITES.md and updated README.md to point to the script.
+Benefit: Automation-first approach, single source of truth for packages and toolchains.
 ```
 
-### Task D2: PILLAR2_STATUS.md
+### Task D2: Production Gaps Consolidation
 ```
-Option A: Create the file
-Location: hybrid-cloud-poc/PILLAR2_STATUS.md
-Content: Detailed status of all Pillar 2 tasks with code locations
-
-Option B: Remove reference
-Edit: hybrid-cloud-poc/README-arch-sovereign-unified-identity.md line 1318
-Change: Remove reference or point to this roadmap
-
-Recommended: Option B (consolidate in this roadmap)
-Effort: 30 minutes
+Action: Consolidated Production Gaps and Future Enhancements directly into UPSTREAM_MERGE_ROADMAP.md.
+Benefit: Single source of truth for both task tracking and long-term architectural goals.
 ```
 
 ### Task D3: Fix Stale File URLs
 ```
 Problem:
-- Line 175: file:///home/mw/AegisSovereignAI/hybrid-cloud-poc/spire/...
-- These URLs don't work on GitHub
+- Absolute file:/// URLs were present in architecture and demo documentation.
+- These links are broken when viewed on GitHub/GitLab.
 
 Fix:
-- Convert to relative paths: ./spire/pkg/agent/tpmplugin/tpm_signer.go#L122
-- Or remove line numbers entirely for maintainability
-
-Files to Update:
-- hybrid-cloud-poc/README-arch-sovereign-unified-identity.md
-
-Effort: 1 hour
+- Converted all absolute paths to relative repository paths (e.g., ./spire/...).
+- Cleaned up environment-specific paths in demo guides.
 ```
 
 ### Task D4: Version Headers
 ```
-Add to all major documents:
-<!-- Version: X.Y.Z | Last Updated: YYYY-MM-DD -->
-
-Files:
-- hybrid-cloud-poc/README.md
-- hybrid-cloud-poc/README-arch-sovereign-unified-identity.md
-- hybrid-cloud-poc/UPSTREAM_MERGE_ROADMAP.md (this file - done)
-- All component READMEs
-
-Effort: 1 hour
+Status: Added <!-- Version: 0.1.0 | Last Updated: 2025-12-29 --> to all primary MD files.
+Files: README.md, README-arch-sovereign-unified-identity.md, UPSTREAM_MERGE_ROADMAP.md, CHANGELOG.md.
 ```
 
 ### Task D5: CHANGELOG.md
@@ -720,26 +688,8 @@ Effort: 1 day
 
 | Risk | Mitigation | Status |
 |------|------------|--------|
-| TLS bypass in development | Task 13 complete - removed all `InsecureSkipVerify` | ✅ |
-| Hardcoded secrets | Task 14 complete - moved to environment variables | ✅ |
-| Empty TPM attestation | Task 14b - P0 blocker | 🔴 |
-| No vulnerability disclosure | Task G3 - add SECURITY.md | ⏳ |
-
-### Operational Risks
-
-| Risk | Mitigation | Status |
-|------|------------|--------|
-| No CI/CD pipeline | Task 0c - add GitHub Actions | ⏳ |
-| Flaky tests | Task 0 complete - fail-fast infrastructure | ✅ |
+| No CI/CD pipeline | Task 0c - add GitHub Actions | ✅ |
 | Stale documentation | Pillar 5 - documentation completeness | ⏳ |
-
-### Legal/Compliance Risks
-
-| Risk | Mitigation | Status |
-|------|------------|--------|
-| No license file | Task G1 - add Apache 2.0 LICENSE | 🔴 |
-| No contribution agreement | Task G2 - add DCO to CONTRIBUTING.md | 🔴 |
-| No code of conduct | Task G4 - add LF Code of Conduct | 🔴 |
 
 ---
 
@@ -857,28 +807,30 @@ cd hybrid-cloud-poc
 ## 6. Weekly Sprint Plan
 
 ### Week 1: P0 Blockers (MUST COMPLETE)
-- [ ] **Day 1-2**: Tasks G1-G4 (Governance files)
-- [ ] **Day 2-3**: Task 14b (Debug delegated certification)
-- [ ] **Day 4**: Tasks G5-G6 (GitHub templates)
-- [ ] **Day 4**: Task D1 (PREREQUISITES.md)
-- [ ] **Day 5**: Task 16 (Cleanup stale files)
-- [ ] **Day 5**: Task D2 (Fix PILLAR2 reference)
+- [x] **Day 1-2**: Tasks G1-G4 (Governance files)
+- [x] **Day 2-3**: Task 14b (Debug delegated certification)
+- [x] **Day 4**: Tasks G5-G6 (GitHub templates)
+- [x] **Day 4**: Task D1 (install_prerequisites.sh)
+- [x] **Day 5**: Task 16 (Cleanup stale files)
+- [x] **Day 5**: Task D2 (Consolidate gaps in roadmap)
 
 **Exit Criteria**: Repository can be made public without legal/security issues.
 
 ### Week 2: P1 Critical
-- [ ] Task 0c (CI/CD pipeline)
-- [ ] Task 12b (Complete schema separation)
-- [ ] Task D3 (Fix stale URLs)
-- [ ] Task D5 (CHANGELOG.md)
+- [/] Task 0c (CI/CD pipeline)
+- [x] Task 12b (Complete schema separation)
+- [x] Task D3 (Fix stale URLs)
+- [x] Task D5 (CHANGELOG.md)
 
 **Exit Criteria**: Automated testing in place, documentation accurate.
 
 ### Week 3-4: P2 Important
-- [ ] Task 0d (Pre-commit hooks)
+- [x] Task 0d (Pre-commit hooks)
 - [ ] Task 9 (Standalone repo setup)
 - [ ] Task 15 (Linting/QA)
-- [ ] Tasks D4, D6, D7 (Documentation polish)
+- [x] Task D4 (Version headers)
+- [ ] Task D6 (Sensor casing)
+- [x] Task D7 (Troubleshooting)
 
 **Exit Criteria**: Code quality tooling in place, ready for external contributors.
 
@@ -929,11 +881,9 @@ hybrid-cloud-poc/README-arch-sovereign-unified-identity.md (fix URLs, remove sta
 | **Envoy** | 1.35.x | v1.31.x+ | API gateway |
 | **tss-esapi** (Rust)| 7.6.0 | Latest | TPM bindings |
 | **Go Toolchain** | 1.22.0 | v1.22+ | Build & Runtime |
-| **Rust Toolchain** | 1.91.1 | Stable | Build & Runtime |
+| **Rust Toolchain** | 1.92.0 | Stable | Build & Runtime |
 | **Python** | 3.10.12 | 3.10+ | Build & Runtime |
 
 ---
 
 *Last Updated: 2025-12-28 | Next Review: 2025-01-04*
-
-

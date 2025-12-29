@@ -259,7 +259,7 @@ export CA_CERT_PATH="/tmp/spire-bundle.pem"
 python3 mtls-server-app.py
 ```
 
-**Note:** 
+**Note:**
 - **Without `CA_CERT_PATH`**: Server accepts any client certificate (permissive mode)
 - **With `CA_CERT_PATH` pointing to SPIRE bundle**: Server strictly verifies SPIRE-issued client certificates
 - To extract the SPIRE bundle, run: `cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py` (creates `/tmp/spire-bundle.pem` by default)
@@ -277,7 +277,7 @@ Listening on port: 9443
   ℹ For strict verification, provide CA_CERT_PATH with SPIRE CA
 
 Setting up TLS context with standard certificates...
-  Using existing certificates: /home/mw/.mtls-demo/server-cert.pem, /home/mw/.mtls-demo/server-key.pem
+  Using existing certificates: ~/.mtls-demo/server-cert.pem, ~/.mtls-demo/server-key.pem
   ⚠ No CA certificate provided
   ℹ Mixed mode: Accepting client certificates (including SPIRE-issued)
   ℹ Note: For strict verification, provide CA_CERT_PATH with SPIRE CA
@@ -302,7 +302,7 @@ Listening on port: 9443
   ✓ Client verification: Strict (using SPIRE CA bundle)
 
 Setting up TLS context with standard certificates...
-  Using existing certificates: /home/mw/.mtls-demo/server-cert.pem, /home/mw/.mtls-demo/server-key.pem
+  Using existing certificates: ~/.mtls-demo/server-cert.pem, ~/.mtls-demo/server-key.pem
   ✓ CA certificate loaded for client verification: /tmp/spire-bundle.pem
   ✓ Standard TLS context configured
 
@@ -332,7 +332,7 @@ export CLIENT_LOG="/tmp/mtls-client-app.log"
 export CA_CERT_PATH="~/.mtls-demo/server-cert.pem"
 
 # Alternative: Use absolute path
-# export CA_CERT_PATH="/home/mw/.mtls-demo/server-cert.pem"
+# export CA_CERT_PATH="~/.mtls-demo/server-cert.pem"
 
 # Run the client
 python3 mtls-client-app.py
@@ -403,7 +403,7 @@ Server: localhost:9443
 
   Mode: SPIRE (automatic SVID renewal enabled)
   Can connect to: SPIRE and standard certificate servers
-  ✓ Server CA provided: /home/mw/.mtls-demo/server-cert.pem (for standard cert servers)
+  ✓ Server CA provided: ~/.mtls-demo/server-cert.pem (for standard cert servers)
 
 Got initial SVID: spiffe://example.org/mtls-client
   Initial Certificate Serial: 1234567890
@@ -411,7 +411,7 @@ Got initial SVID: spiffe://example.org/mtls-client
   Monitoring for automatic SVID renewal...
   ✓ Loaded trust bundle with 4 CA certificate(s)
   ✓ SPIRE trust bundle loaded into SSL context
-  ✓ Additional CA certificate loaded: /home/mw/.mtls-demo/server-cert.pem
+  ✓ Additional CA certificate loaded: ~/.mtls-demo/server-cert.pem
   ℹ Mixed mode: SPIRE client can verify standard cert servers
 
 Connecting to localhost:9443...
@@ -433,7 +433,7 @@ You should see:
 1. **If client fails with `CERTIFICATE_VERIFY_FAILED`:**
    - Ensure `CA_CERT_PATH` points to the server's certificate file
    - Check that the path is correct: `ls -la ~/.mtls-demo/server-cert.pem`
-   - Use absolute path if `~` expansion doesn't work: `/home/mw/.mtls-demo/server-cert.pem`
+   - Use absolute path if `~` expansion doesn't work: `~/.mtls-demo/server-cert.pem`
 
 2. **If server shows `TLSV1_ALERT_UNKNOWN_CA`:**
    - This is normal initially - the server accepts SPIRE client certs without strict verification
@@ -763,7 +763,7 @@ The test validates:
 
 - **Socket not found**: Make sure SPIRE Agent is running (check `/tmp/spire-agent/public/api.sock`)
 - **Permission denied**: Check socket permissions (`ls -la /tmp/spire-agent/public/api.sock`)
-- **No AttestedClaims**: 
+- **No AttestedClaims**:
   - Ensure `Unified-Identity` feature flag is enabled
   - Verify agent SVID was issued with AttestedClaims (check agent logs)
   - Ensure Keylime Verifier is running and agent attestation succeeded

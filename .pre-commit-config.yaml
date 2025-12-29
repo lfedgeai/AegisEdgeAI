@@ -1,0 +1,48 @@
+# Aegis Sovereign Unified Identity: Pre-commit Hooks Configuration
+# To use:
+# 1. Install pre-commit: pip install pre-commit
+# 2. Install hooks: pre-commit install
+# 3. Run on all files: pre-commit run --all-files
+
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+    -   id: detect-private-key
+    -   id: check-merge-conflict
+
+-   repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+    -   id: black
+        name: "black (python formatter)"
+        files: ^(keylime/|mobile-sensor-microservice/|tpm-plugin/|workflow-ui/)
+        language_version: python3
+
+-   repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+    -   id: flake8
+        name: "flake8 (python linter)"
+        files: ^(keylime/|mobile-sensor-microservice/|tpm-plugin/|workflow-ui/)
+        args: [--max-line-length=120, --extend-ignore=E203]
+
+-   repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+    -   id: go-fmt
+        name: "go fmt"
+    -   id: go-vet
+        name: "go vet"
+
+-   repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+    -   id: fmt
+        name: "rustfmt"
+    -   id: cargo-check
+        name: "cargo check"
