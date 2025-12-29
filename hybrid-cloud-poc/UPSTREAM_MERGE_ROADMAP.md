@@ -192,6 +192,12 @@ Effort: 2 days
 > - **SPIRE Agent**: TPM plugin integration, unified identity node attestor plugin
 > - **Files Modified**: 9 Go files in `hybrid-cloud-poc/spire/pkg/` (see Task 15 for linting details)
 > - **Upstreaming Target**: All modifications are plugin-based and ready for PRs to `spiffe/spire`
+>
+> **Keylime Modifications**: We have modified both rust-keylime agent and Python keylime verifier:
+> - **rust-keylime Agent**: Delegated certification endpoint, attested geolocation API, TPM quote extensions
+> - **Python Keylime Verifier**: App key verification, geolocation database integration, MSISDN support, fact provider extensions
+> - **Files Modified**: Multiple Rust files in `rust-keylime/keylime-agent/src/` and Python files in `keylime/keylime/` (see details below)
+> - **Upstreaming Target**: Feature PRs to `keylime/rust-keylime` and `keylime/keylime`
 
 | Task | Description | Priority | Status | Owner | Target |
 |------|-------------|----------|--------|-------|--------|
