@@ -186,6 +186,13 @@ Effort: 2 days
 
 *Goal: Execute architectural changes through modular plugins and protocol extensions.*
 
+> [!NOTE]
+> **SPIRE Modifications**: We have modified SPIRE with custom plugins and supporting code:
+> - **SPIRE Server**: Keylime client integration, unified identity claims handling, credential composer plugin
+> - **SPIRE Agent**: TPM plugin integration, unified identity node attestor plugin
+> - **Files Modified**: 9 Go files in `hybrid-cloud-poc/spire/pkg/` (see Task 15 for linting details)
+> - **Upstreaming Target**: All modifications are plugin-based and ready for PRs to `spiffe/spire`
+
 | Task | Description | Priority | Status | Owner | Target |
 |------|-------------|----------|--------|-------|--------|
 | **Task 1** | Keylime Agent - Delegated Certifier Endpoint (Rust) | P1 | `[x]` | — | Done |
@@ -198,6 +205,23 @@ Effort: 2 days
 | **Task 5** | SPIRE Agent - Collector Plugin (Go) | P1 | `[x]` | — | Done |
 | **Task 6** | SPIRE Creds - Credential Composer (Go) | P1 | `[x]` | — | Done |
 | **Task 12b** | Sensor Schema Separation (Mobile vs GNSS) | P1 | `[x]` | — | Done |
+
+### SPIRE Modifications Summary
+
+**SPIRE Server (`pkg/server/`):**
+- `keylime/client.go` - Keylime Verifier API client for geolocation and attestation verification
+- `keylime/client_test.go` - Unit tests for Keylime client
+- `unifiedidentity/claims.go` - Unified identity claims processing and schema handling
+- `unifiedidentity/context.go` - Unified identity context management
+- `plugin/credentialcomposer/unifiedidentity/plugin.go` - Credential composer plugin for embedding unified identity claims in SVIDs
+- `plugin/credentialcomposer/unifiedidentity/plugin_test.go` - Unit tests for credential composer plugin
+
+**SPIRE Agent (`pkg/agent/`):**
+- `tpmplugin/tpm_plugin_gateway.go` - TPM plugin gateway for external TPM operations
+- `tpmplugin/tpm_signer.go` - TPM-based signing for mTLS using App Keys
+- `plugin/nodeattestor/unifiedidentity/unifiedidentity.go` - Unified identity node attestor plugin
+
+**Total**: 9 Go files modified/added in SPIRE
 
 ### Task 12b Details (Complete)
 ```
