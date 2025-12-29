@@ -21,7 +21,7 @@ jobs:
             - name: Check License Headers
               run: |
                   cd hybrid-cloud-poc
-                  python3 scripts/add_license_headers.py --check --root hybrid-cloud-poc
+                  python3 scripts/add_license_headers.py --check --root .
               continue-on-error: false
 
     integration-test:
