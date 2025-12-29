@@ -229,6 +229,30 @@ Effort: 2 days
 
 **Total**: 9 Go files modified/added in SPIRE
 
+### Keylime Modifications Summary
+
+**rust-keylime Agent (`rust-keylime/keylime-agent/src/`):**
+- `delegated_certification_handler.rs` - `/v2.2/delegated_certification/certify_app_key` endpoint for TPM App Key certification
+- `geolocation_handler.rs` - `/v2.2/agent/attested_geolocation` endpoint for nonce-bound geolocation attestation
+- `quotes_handler.rs` - Extended TPM quote handling for unified identity
+- `agent_handler.rs` - Agent handler extensions for unified identity flows
+- `api.rs` - API routing for new endpoints
+- `main.rs` - Main entry point with new endpoint registration
+- `keylime/src/quote.rs` - TPM quote processing extensions
+- `keylime/src/tpm.rs` - TPM operations for App Key and geolocation
+
+**Python Keylime Verifier (`keylime/keylime/`):**
+- `app_key_verification.py` - App Key certificate verification logic
+- `cloud_verifier_tornado.py` - Verifier API extensions for geolocation and App Key verification
+- `cloud_verifier_common.py` - Common verifier utilities for unified identity
+- `fact_provider.py` - Fact provider for geolocation and sensor data
+- `db/verifier_db.py` - Database schema extensions for geolocation and MSISDN
+- `migrations/versions/9876543210ab_add_geolocation_column.py` - Database migration for geolocation support
+- `models/registrar/registrar_agent.py` - Registrar model extensions
+- `config.py` - Configuration for unified identity features
+
+**Total**: ~8 Rust files in rust-keylime, ~8 Python files in keylime verifier
+
 ### Task 12b Details (Complete)
 ```
 Status: Verified in spire/pkg/server/unifiedidentity/claims.go.
