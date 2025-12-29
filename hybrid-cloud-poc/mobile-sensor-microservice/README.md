@@ -15,7 +15,7 @@ This standalone microservice implements the flow described in the Sovereign Unif
 Before starting the microservice make sure the Python dependencies are installed (Flask is required for the HTTP server and `requests` is used for the CAMARA APIs):
 
 ```bash
-cd /home/mw/AegisSovereignAI/hybrid-cloud-poc      # repo root
+cd .      # repo root
 python3 -m venv .venv                         # optional but recommended
 source .venv/bin/activate
 pip install -r mobile-sensor-microservice/requirements.txt
@@ -48,7 +48,7 @@ To use the CAMARA API, you need valid credentials from Telefonica Open Gateway:
    # Format: Base64(client_id:client_secret)
    echo -n "your_client_id:your_client_secret" | base64
    # Output: e.g., "eW91cl9jbGllbnRfaWQ6eW91cl9jbGllbnRfc2VjcmV0"
-   
+
    # Set environment variable:
    export CAMARA_BASIC_AUTH="Basic eW91cl9jbGllbnRfaWQ6eW91cl9jbGllbnRfc2VjcmV0"
    ```
@@ -88,7 +88,7 @@ The service implements intelligent caching for CAMARA `verify_location` API call
 - **Default TTL**: 15 minutes (900 seconds), configurable via `CAMARA_VERIFY_CACHE_TTL_SECONDS`
 - **Behavior**: The actual CAMARA API is called at most once per TTL period
 - **Cache hits**: Subsequent calls within the TTL return the cached result without making API calls
-- **Benefits**: 
+- **Benefits**:
   - Reduces CAMARA API calls significantly
   - Improves response time for cached requests
   - Reduces API rate limiting issues
@@ -176,4 +176,3 @@ cd mobile-sensor-microservice
 ```
 
 See **[TEST_RESULTS.md](TEST_RESULTS.md)** for detailed test results.
-

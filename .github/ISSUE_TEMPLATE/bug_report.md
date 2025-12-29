@@ -1,37 +1,24 @@
----
-name: Bug Report
-about: Report a bug or unexpected behavior
-title: '[BUG] '
-labels: bug
-assignees: ''
----
+# Bug Report
 
-## Bug Description
-A clear and concise description of the bug.
+**Description:**
+A clear and concise description of what the bug is.
 
-## Steps to Reproduce
-1. 
-2. 
-3. 
+**Steps to Reproduce:**
+1. Go to '...'
+2. Click on '....'
+3. See error
 
-## Expected Behavior
-What you expected to happen.
+**Expected Behavior:**
+A clear and concise description of what you expected to happen.
 
-## Actual Behavior
+**Actual Behavior:**
 What actually happened.
 
-## Environment
-- **OS**: [e.g., Ubuntu 22.04]
-- **Go Version**: [e.g., 1.22.0]
-- **Rust Version**: [e.g., 1.75.0]
-- **Python Version**: [e.g., 3.10]
-- **TPM**: [Hardware TPM / swtpm]
-- **Component**: [SPIRE / Keylime / WASM Plugin / Mobile Sidecar]
+**Screenshots/Logs:**
+If applicable, add screenshots or log snippets to help explain your problem.
 
-## Logs
-```
-Paste relevant log output here
-```
-
-## Additional Context
-Any other context about the problem.
+**Environment:**
+- OS:
+- Architecture:
+- TPM Version (if applicable):
+- Project Version:

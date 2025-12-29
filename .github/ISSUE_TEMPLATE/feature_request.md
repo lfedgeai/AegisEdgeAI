@@ -1,32 +1,13 @@
----
-name: Feature Request
-about: Suggest a new feature or enhancement
-title: '[FEATURE] '
-labels: enhancement
-assignees: ''
----
+# Feature Request
 
-## Problem Statement
-A clear description of the problem this feature would solve.
+**Is your feature request related to a problem? Please describe.**
+A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
 
-## Proposed Solution
-Describe the solution you'd like.
+**Describe the solution you'd like**
+A clear and concise description of what you want to happen.
 
-## Alternatives Considered
-Any alternative solutions or features you've considered.
+**Describe alternatives you've considered**
+A clear and concise description of any alternative solutions or features you've considered.
 
-## Use Case
-Describe the use case for this feature.
-
-## Upstream Impact
-Does this feature affect upstream contributions to SPIRE, Keylime, or other projects?
-
-- [ ] SPIRE plugins
-- [ ] Keylime agent (Rust)
-- [ ] Keylime verifier (Python)
-- [ ] Envoy WASM plugin
-- [ ] Mobile Sensor Microservice
-- [ ] Other: 
-
-## Additional Context
-Any other context, mockups, or examples.
+**Additional context**
+Add any other context or screenshots about the feature request here.

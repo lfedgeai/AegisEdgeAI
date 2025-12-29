@@ -24,13 +24,11 @@ jobs:
             - name: Install Python Dependencies
               run: |
                   python3 -m pip install --upgrade pip
-                  python3 -m pip install -r hybrid-cloud-poc/keylime/requirements.txt
+                  python3 -m pip install -r keylime/requirements.txt
 
             - name: Run Integration Tests
               shell: bash
               run: |
-                  cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
                   # --no-color ensures clean logs in GitHub Actions
-                  # Explicitly targeting 10.1.0.10 (mwserver12) for single-machine setup
                   python3 ./hello_world_test_runner.py
