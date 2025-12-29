@@ -39,13 +39,13 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 
 | Pillar | Total | Complete | In Progress | Blocked | Not Started |
 |--------|-------|----------|-------------|---------|-------------|
-| Pillar 0 | 7 | 6 | 0 | 0 | 1 |
+| Pillar 0 | 7 | 7 | 0 | 0 | 0 |
 | Pillar 1 | 5 | 3 | 1 | 0 | 1 |
 | Pillar 2 | 10 | 10 | 0 | 0 | 0 |
 | Pillar 3 | 6 | 3 | 0 | 0 | 3 |
 | Pillar 4 | 7 | 4 | 0 | 0 | 3 |
 | Pillar 5 | 9 | 6 | 0 | 0 | 3 |
-| **Total** | **44** | **32** | **1** | **0** | **11** |
+| **Total** | **44** | **33** | **1** | **0** | **10** |
 
 ---
 
@@ -59,7 +59,7 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 | Task | Description | Priority | Status | Owner | Target |
 |------|-------------|----------|--------|-------|--------|
 | **Task G1** | Add top-level `LICENSE` file (Apache 2.0 recommended) | P0 | `[x]` | — | Done |
-| **Task G1b** | Automate Source File License Header checks | P2 | `[ ]` | TBD | Week 3 |
+| **Task G1b** | Automate Source File License Header checks | P2 | `[x]` | — | Done |
 | **Task G2** | Add `CONTRIBUTING.md` with DCO/CLA requirements | P0 | `[x]` | — | Done |
 | **Task G3** | Add `SECURITY.md` with vulnerability reporting process | P0 | `[x]` | — | Done |
 | **Task G4** | Add `CODE_OF_CONDUCT.md` (LF standard recommended) | P0 | `[x]` | — | Done |
@@ -114,15 +114,34 @@ Files:
 Dependencies: None
 ```
 
-### Task G1b: License Header Automation (NEW)
+### Task G1b: License Header Automation (COMPLETE)
 ```
 Goal: Ensure all source files contain the Apache 2.0 header.
+Status: ✅ Complete
 Actions:
-1. Create a script to audit all .go, .rs, .py, and .sh files.
-2. Integrate into CI/CD as a blocking gate.
-3. Integrate into pre-commit hooks.
+1. ✅ Created script: hybrid-cloud-poc/scripts/add_license_headers.py
+   - Audits all .go, .rs, .py, and .sh files
+   - Only adds headers if they don't already exist (checks for existing Copyright/Apache patterns)
+   - Excludes vendor directories, generated files, and upstream repos
+2. ✅ Integrated into pre-commit hooks (.pre-commit-config.yaml)
+   - Hook: "Check Apache 2.0 License Headers"
+   - Runs on all commits
+3. ✅ CI/CD integration complete (Task 0c)
+   - Added license header check job to `.github/workflows/ci.yml`
+   - Job: "Check Apache 2.0 License Headers" runs on ubuntu-latest
+   - Fails CI if any source files are missing license headers
+   - Runs in parallel with integration tests for fast feedback
+   - Path fixed: Uses `--root .` after `cd hybrid-cloud-poc` step
+
+Results:
+- Added headers to 58 files that were missing them
+- Verified existing headers (e.g., rust-keylime files with SPDX headers) were not modified
+- Pre-commit hook passes: "Check Apache 2.0 License Headers...Passed"
+- CI workflow tested and verified: All 62 source files have headers
+- Script location: `hybrid-cloud-poc/scripts/add_license_headers.py`
+
 Dependencies: Task G1
-Effort: 0.5 days
+Effort: 0.5 days (actual: 0.5 days)
 ```
 
 ---

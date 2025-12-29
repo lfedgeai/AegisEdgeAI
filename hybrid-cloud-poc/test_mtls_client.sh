@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Simple test script for mTLS client
 # Cleans up log files, sets up environment, and starts client in foreground
 
@@ -48,12 +63,12 @@ if [ -z "${SERVER_HOST:-}" ]; then
     # Detect current host IP address (excluding localhost/127.0.0.1)
     # Try hostname -I first (usually fastest and most reliable)
     CURRENT_HOST_IP=$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i!~/^127\./) {print $i; exit}}')
-    
+
     # Fallback to ip addr show if hostname -I didn't work or only returned 127.x.x.x
     if [ -z "$CURRENT_HOST_IP" ] || [[ "$CURRENT_HOST_IP" =~ ^127\. ]]; then
         CURRENT_HOST_IP=$(ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -vE '^127\.' | head -1)
     fi
-    
+
     if [ -z "$CURRENT_HOST_IP" ] || [[ "$CURRENT_HOST_IP" =~ ^127\. ]]; then
         echo "Error: Could not detect non-localhost IP address. Please set SERVER_HOST environment variable."
         exit 1
@@ -212,20 +227,20 @@ if [ "$EXPECT_SUCCESS" = true ]; then
         echo -e "${GREEN}✓ TEST PASSED: HTTP request succeeded as expected (got SERVER ACK: HELLO)${NC}"
         exit 0
     fi
-    
+
     # Also check for 200 OK status as fallback
     echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ TEST PASSED: HTTP request succeeded as expected (200 OK)${NC}"
         exit 0
     fi
-    
+
     echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"
     if [ $? -eq 0 ]; then
         echo -e "${YELLOW}⚠ TEST FAILED: Expected success (SERVER ACK: HELLO) but got 'Geo Claim Missing'${NC}"
         exit 1
     fi
-    
+
     echo -e "${YELLOW}⚠ TEST FAILED: Expected success (SERVER ACK: HELLO) but got different response${NC}"
     exit 1
 else
@@ -235,7 +250,7 @@ else
         echo -e "${GREEN}✓ TEST PASSED: Got 'Geo Claim Missing' as expected${NC}"
         exit 0
     fi
-    
+
     # Also check for 403 status code
     echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 403\|HTTP/1.0 403\|403 Forbidden"
     if [ $? -eq 0 ]; then
@@ -248,22 +263,21 @@ else
             exit 1
         fi
     fi
-    
+
     # Check if we got SERVER ACK: HELLO (success) when we expected failure
     echo "$HTTP_RESPONSE" | grep -qiE "SERVER ACK: HELLO"
     if [ $? -eq 0 ]; then
         echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but request succeeded (got SERVER ACK: HELLO)${NC}"
         exit 1
     fi
-    
+
     echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
     if [ $? -eq 0 ]; then
         echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but request succeeded (200 OK)${NC}"
         exit 1
     fi
-    
+
     echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but got different response${NC}"
     exit 1
 fi
 set -e
-

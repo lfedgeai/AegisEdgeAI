@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Unified-Identity - Verification: Hardware Integration & Delegated Certification
 
@@ -29,7 +44,7 @@ def is_unified_identity_enabled() -> bool:
         env_flag = os.getenv("UNIFIED_IDENTITY_ENABLED", "false").lower()
         if env_flag in ("true", "1", "yes"):
             return True
-        
+
         # Check config file if available
         config_path = os.getenv("SPIRE_AGENT_CONFIG", "/opt/spire/conf/agent/agent.conf")
         if os.path.exists(config_path):
@@ -48,18 +63,18 @@ def is_unified_identity_enabled() -> bool:
 class TPMPlugin:
     """
     TPM Plugin for generating App Keys and TPM Quotes.
-    
+
     This plugin handles:
     - App Key generation in TPM
     - TPM Quote generation with challenge nonce
     - Integration with Keylime Agent for delegated certification
     """
-    
-    def __init__(self, work_dir: Optional[str] = None, ak_handle: str = "0x8101000A", 
+
+    def __init__(self, work_dir: Optional[str] = None, ak_handle: str = "0x8101000A",
                  app_handle: str = "0x8101000B"):
         """
         Initialize TPM Plugin.
-        
+
         Args:
             work_dir: Working directory for TPM context files (default: temp dir)
             ak_handle: Persistent handle for Attestation Key
@@ -68,29 +83,29 @@ class TPMPlugin:
         # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         if not is_unified_identity_enabled():
             logger.warning("Unified-Identity - Verification: Feature flag disabled, TPM plugin will not function")
-        
+
         self.work_dir = Path(work_dir) if work_dir else Path(tempfile.mkdtemp(prefix="tpm-plugin-"))
         self.work_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.ak_handle = ak_handle
         self.app_handle = app_handle
         self.hash_alg = "sha256"
-        
+
         # TPM device detection
         self.tpm_device = self._detect_tpm_device()
-        
+
         # Store app key information (generated on startup)
         self._app_key_public = None
         self._app_key_context = None
-        
+
         logger.info("Unified-Identity - Verification: TPM Plugin initialized")
         logger.info("Unified-Identity - Verification: Work directory: %s", self.work_dir)
         logger.info("Unified-Identity - Verification: TPM device: %s", self.tpm_device)
-    
+
     def _detect_tpm_device(self) -> str:
         """
         Detect available TPM device.
-        
+
         Returns:
             TPM device path or swtpm connection string
         """
@@ -106,24 +121,24 @@ class TPMPlugin:
             swtpm_port = os.getenv("SWTPM_PORT", "2321")
             logger.info("Unified-Identity - Verification: Using swtpm on port %s", swtpm_port)
             return f"swtpm:host=127.0.0.1,port={swtpm_port}"
-    
+
     def _run_tpm_command(self, cmd: list, check: bool = True) -> Tuple[bool, str, str]:
         """
         Run a TPM command using tpm2-tools.
-        
+
         Args:
             cmd: Command and arguments
             check: Whether to raise exception on failure
-            
+
         Returns:
             Tuple of (success, stdout, stderr)
         """
         # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         env = os.environ.copy()
         env["TPM2TOOLS_TCTI"] = self.tpm_device
-        
+
         logger.debug("Unified-Identity - Verification: Running TPM command: %s", " ".join(cmd))
-        
+
         try:
             result = subprocess.run(
                 cmd,
@@ -139,7 +154,7 @@ class TPMPlugin:
         except FileNotFoundError:
             logger.error("Unified-Identity - Verification: tpm2-tools not found. Please install tpm2-tools.")
             return (False, "", "tpm2-tools not found")
-    
+
     def _normalize_pcr_selection(self, pcr_list: Union[str, list]) -> str:
         """Normalize PCR selection input for tpm2_quote."""
         # Unified-Identity - Verification: Hardware Integration & Delegated Certification
@@ -165,10 +180,10 @@ class TPMPlugin:
     def generate_app_key(self, force: bool = False) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Generate or retrieve an App Key in the TPM.
-        
+
         Args:
             force: Force regeneration even if key exists
-            
+
         Returns:
             Tuple of (success, app_key_public_pem, app_key_context_path)
         """
@@ -176,12 +191,12 @@ class TPMPlugin:
         if not is_unified_identity_enabled():
             logger.error("Unified-Identity - Verification: Feature flag disabled, cannot generate App Key")
             return (False, None, None)
-        
+
         logger.info("Unified-Identity - Verification: Generating App Key at handle %s", self.app_handle)
-        
+
         app_ctx_path = self.work_dir / "app.ctx"
         app_pub_path = self.work_dir / "app_pub.pem"
-        
+
         # Check if App Key already exists
         if not force:
             success, _, _ = self._run_tpm_command(
@@ -207,10 +222,10 @@ class TPMPlugin:
                     return (True, app_key_public, self._app_key_context)
                 else:
                     logger.warning("Unified-Identity - Verification: Failed to export existing App Key public key")
-        
+
         # Flush contexts
         self._run_tpm_command(["tpm2", "flushcontext", "-t"], check=False)
-        
+
         # Create primary key
         primary_ctx = self.work_dir / "primary.ctx"
         logger.debug("Unified-Identity - Verification: Creating primary key")
@@ -220,22 +235,22 @@ class TPMPlugin:
         if not success:
             logger.error("Unified-Identity - Verification: Failed to create primary key")
             return (False, None, None)
-        
+
         # Create App Key under primary
         app_pub_file = self.work_dir / "app.pub"
         app_priv_file = self.work_dir / "app.priv"
         logger.debug("Unified-Identity - Verification: Creating App Key")
         success, _, _ = self._run_tpm_command(
-            ["tpm2_create", "-C", str(primary_ctx), "-G", "rsa", 
+            ["tpm2_create", "-C", str(primary_ctx), "-G", "rsa",
              "-u", str(app_pub_file), "-r", str(app_priv_file)]
         )
         if not success:
             logger.error("Unified-Identity - Verification: Failed to create App Key")
             return (False, None, None)
-        
+
         # Flush transients before loading
         self._run_tpm_command(["tpm2", "flushcontext", "-t"], check=False)
-        
+
         # Load App Key
         logger.debug("Unified-Identity - Verification: Loading App Key")
         success, _, _ = self._run_tpm_command(
@@ -245,7 +260,7 @@ class TPMPlugin:
         if not success:
             logger.error("Unified-Identity - Verification: Failed to load App Key")
             return (False, None, None)
-        
+
         # Persist App Key
         logger.debug("Unified-Identity - Verification: Persisting App Key at handle %s", self.app_handle)
         success, _, _ = self._run_tpm_command(
@@ -254,7 +269,7 @@ class TPMPlugin:
         if not success:
             logger.error("Unified-Identity - Verification: Failed to persist App Key")
             return (False, None, None)
-        
+
         # After persistence, we can use the handle directly, but keep context file for delegated certification
         # The context file is still needed for operations that require loading the key
         # Export public key using persistent handle (more reliable after persistence)
@@ -271,13 +286,13 @@ class TPMPlugin:
             if not success:
                 logger.error("Unified-Identity - Verification: Failed to export App Key public key")
                 return (False, None, None)
-        
+
         with open(app_pub_path, 'r') as f:
             app_key_public = f.read().strip()
-        
+
         # Store for later retrieval
         self._app_key_public = app_key_public
-        
+
         # After persistence, the context file may not exist anymore
         # The rust-keylime agent can handle both context files and persistent handles
         # If context file exists, use it; otherwise, use the persistent handle
@@ -289,20 +304,20 @@ class TPMPlugin:
             # rust-keylime agent's load_app_key_from_context will handle the handle format
             self._app_key_context = self.app_handle
             logger.debug("Unified-Identity - Verification: Context file not found, using persistent handle %s for delegated certification", self.app_handle)
-        
+
         logger.info("Unified-Identity - Verification: App Key generated and persisted successfully")
         return (True, app_key_public, self._app_key_context)
-    
+
     def get_app_key_public(self) -> Optional[str]:
         """
         Get the stored App Key public key.
-        
+
         Returns:
             PEM-encoded public key or None if not generated
         """
         if self._app_key_public:
             return self._app_key_public
-        
+
         # Try to read from file if not in memory
         app_pub_path = self.work_dir / "app_pub.pem"
         if app_pub_path.exists():
@@ -312,13 +327,13 @@ class TPMPlugin:
                 return self._app_key_public
             except Exception as e:
                 logger.warning("Unified-Identity - Verification: Failed to read app key public: %s", e)
-        
+
         return None
-    
+
     def get_app_key_context(self) -> Optional[str]:
         """
         Get the stored App Key context path or persistent handle.
-        
+
         Returns:
             Path to app key context file, or persistent handle (0x8101000B) if context file doesn't exist.
             The rust-keylime agent can handle both formats.
@@ -336,21 +351,21 @@ class TPMPlugin:
                     return self._app_key_context
                 # If it's a string but file doesn't exist, assume it's a handle or use default handle
                 if isinstance(self._app_key_context, str):
-                    logger.warning("Unified-Identity - Verification: _app_key_context is set but file doesn't exist: %s, using handle %s", 
+                    logger.warning("Unified-Identity - Verification: _app_key_context is set but file doesn't exist: %s, using handle %s",
                                  self._app_key_context, self.app_handle)
                     self._app_key_context = self.app_handle
                     return self.app_handle
         except Exception as e:
             logger.error("Unified-Identity - Verification: Exception in get_app_key_context(): %s", e, exc_info=True)
             # Fall through to check handle
-        
+
         # Check if context file exists
         app_ctx_path = self.work_dir / "app.ctx"
         if app_ctx_path.exists():
             self._app_key_context = str(app_ctx_path)
             logger.debug("Unified-Identity - Verification: Found context file, returning: %s", self._app_key_context)
             return self._app_key_context
-        
+
         # If context file doesn't exist but key was persisted, use handle
         # Check if key exists at persistent handle
         logger.debug("Unified-Identity - Verification: Checking if App Key exists at persistent handle %s", self.app_handle)
@@ -366,25 +381,25 @@ class TPMPlugin:
                 self._app_key_context = self.app_handle
                 return self.app_handle
             else:
-                logger.warning("Unified-Identity - Verification: App Key not found at persistent handle %s (exit code: %d)", 
+                logger.warning("Unified-Identity - Verification: App Key not found at persistent handle %s (exit code: %d)",
                              self.app_handle, result.returncode)
         except Exception as e:
             logger.warning("Unified-Identity - Verification: Could not verify persistent handle: %s", e)
-        
+
         logger.warning("Unified-Identity - Verification: get_app_key_context() returning None - no context file or handle found")
         return None
-    
+
     def sign_data(self, data: bytes, hash_alg: str = "sha256", is_digest: bool = False, scheme: str = "rsassa", salt_length: int = -1) -> Tuple[bool, Optional[bytes], Optional[str]]:
         """
         Sign data using the TPM App Key.
-        
+
         Args:
             data: Data to sign (raw data or digest, depending on is_digest)
             hash_alg: Hash algorithm to use (default: sha256)
             is_digest: If True, data is already a digest and should not be hashed again
             scheme: Signature scheme to use - "rsassa" for PKCS#1 v1.5 (default) or "rsapss" for RSA-PSS
             salt_length: Salt length for RSA-PSS (-1 for default, which is hash length)
-            
+
         Returns:
             Tuple of (success, signature_bytes, error_message)
         """
@@ -392,24 +407,24 @@ class TPMPlugin:
         if not is_unified_identity_enabled():
             logger.error("Unified-Identity - Verification: Feature flag disabled, cannot sign data")
             return (False, None, "Feature flag disabled")
-        
+
         app_key_context = self.get_app_key_context()
         if not app_key_context:
             logger.error("Unified-Identity - Verification: App Key context unavailable for signing")
             return (False, None, "App Key context unavailable")
-        
+
         logger.debug("Unified-Identity - Verification: Signing data using App Key at context %s (is_digest=%s)", app_key_context, is_digest)
-        
+
         # Create temporary files for data, hash, and signature
         data_file = self.work_dir / "sign_data.tmp"
         hash_file = self.work_dir / "sign_data.hash"
         sig_file = self.work_dir / "sign_data.sig"
-        
+
         try:
             # Write data to file (for debugging, but we'll use hash_file for signing)
             with open(data_file, 'wb') as f:
                 f.write(data)
-            
+
             # Determine if we need to hash the data
             if is_digest:
                 # Data is already a digest, use it directly
@@ -423,11 +438,11 @@ class TPMPlugin:
                 hash_obj.update(data)
                 digest_bytes = hash_obj.digest()
                 logger.debug("Unified-Identity - Verification: Hashed data to digest (length: %d)", len(digest_bytes))
-            
+
             # Write digest to file
             with open(hash_file, 'wb') as f:
                 f.write(digest_bytes)
-            
+
             # Sign the hash using the App Key
             # Reference: sign_app_message.sh uses: tpm2_sign -c "$KEY_CTX" -g sha256 --scheme rsassa -d "$DIGEST" -f plain -o "$SIGNATURE"
             # For RSA keys, tpm2_sign supports:
@@ -436,9 +451,9 @@ class TPMPlugin:
             # For RSA-PSS, salt length is typically set to the hash length (e.g., 32 for SHA256)
             # If salt_length is -1, use default (hash length for RSA-PSS, ignored for RSASSA)
             scheme_arg = scheme  # "rsassa" or "rsapss"
-            tpm_cmd = ["tpm2_sign", "-c", app_key_context, "-g", hash_alg, "--scheme", scheme_arg, 
+            tpm_cmd = ["tpm2_sign", "-c", app_key_context, "-g", hash_alg, "--scheme", scheme_arg,
                       "-d", str(hash_file), "-f", "plain", "-o", str(sig_file)]
-            
+
             # For RSA-PSS, add salt length if specified (some TPM implementations require it)
             if scheme == "rsapss" and salt_length >= 0:
                 # tpm2_sign doesn't directly support salt length parameter in the command line
@@ -447,26 +462,26 @@ class TPMPlugin:
                 # For SHA384, salt length is 48 bytes (384 bits / 8)
                 # For SHA512, salt length is 64 bytes (512 bits / 8)
                 # TPM 2.0 typically uses salt length equal to hash length (PSS standard)
-                logger.debug("Unified-Identity - Verification: RSA-PSS signing with scheme=%s, hash_alg=%s, salt_length=%d", 
+                logger.debug("Unified-Identity - Verification: RSA-PSS signing with scheme=%s, hash_alg=%s, salt_length=%d",
                             scheme_arg, hash_alg, salt_length)
             else:
                 logger.debug("Unified-Identity - Verification: Signing with scheme=%s, hash_alg=%s", scheme_arg, hash_alg)
-            
+
             success, stdout, stderr = self._run_tpm_command(tpm_cmd)
             if not success:
                 logger.error("Unified-Identity - Verification: Failed to sign data: %s", stderr)
                 return (False, None, f"Failed to sign data: {stderr}")
-            
+
             # Read the signature file
             if not sig_file.exists():
                 logger.error("Unified-Identity - Verification: Signature file not created")
                 return (False, None, "Signature file not created")
-            
+
             with open(sig_file, 'rb') as f:
                 signature_bytes = f.read()
-            
+
             logger.debug("Unified-Identity - Verification: Raw signature from tpm2_sign, length: %d bytes", len(signature_bytes))
-            
+
             # Check if signature has a TPM header (6 bytes: sig_alg + hash_alg + sig_size)
             # tpm2_sign -f plain should return raw bytes, but some versions might include header
             # For RSA signatures, the header format is:
@@ -479,10 +494,10 @@ class TPMPlugin:
                     sig_alg = struct.unpack('>H', signature_bytes[0:2])[0]
                     hash_alg = struct.unpack('>H', signature_bytes[2:4])[0]
                     sig_size = struct.unpack('>H', signature_bytes[4:6])[0]
-                    
-                    logger.debug("Unified-Identity - Verification: Signature header check: sig_alg=0x%04x, hash_alg=0x%04x, sig_size=%d, total_len=%d", 
+
+                    logger.debug("Unified-Identity - Verification: Signature header check: sig_alg=0x%04x, hash_alg=0x%04x, sig_size=%d, total_len=%d",
                                 sig_alg, hash_alg, sig_size, len(signature_bytes))
-                    
+
                     # Check if this looks like a TPM signature header
                     # 0x0014 = TPM_ALG_RSASSA, 0x000B = TPM_ALG_SHA256
                     if sig_alg == 0x0014 and hash_alg == 0x000B and sig_size > 0:
@@ -496,11 +511,11 @@ class TPMPlugin:
                     # If it doesn't match the expected header format, assume it's already raw
                 except Exception as e:
                     logger.debug("Unified-Identity - Verification: Could not parse signature header (assuming raw): %s", e)
-            
+
             # Log first few bytes for debugging
             if len(signature_bytes) >= 16:
                 logger.debug("Unified-Identity - Verification: Signature first 16 bytes (hex): %s", signature_bytes[:16].hex())
-            
+
             # Verify the signature using Python's cryptography library (same method Go uses)
             # This helps catch format issues early before Go tries to verify
             try:
@@ -508,12 +523,12 @@ class TPMPlugin:
                 from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
                 from cryptography.hazmat.backends import default_backend
                 from cryptography.hazmat.primitives import serialization, hashes
-                
+
                 # Get the App Key public key
                 app_key_public_pem = self.get_app_key_public()
                 if app_key_public_pem:
                     public_key = serialization.load_pem_public_key(app_key_public_pem.encode(), backend=default_backend())
-                    
+
                     # Verify using the same method Go uses: VerifyPKCS1v15
                     # Go's checkSignature does: rsa.VerifyPKCS1v15(pub, hashType, signed, signature)
                     # where 'signed' is the original data (not digest), and it hashes internally
@@ -523,7 +538,7 @@ class TPMPlugin:
                         hash_alg_obj = hashes.SHA384()
                     elif hash_alg == "sha512":
                         hash_alg_obj = hashes.SHA512()
-                    
+
                     # Verify signature against digest (what we signed)
                     # Use the same padding scheme as was used for signing
                     if scheme == "rsapss":
@@ -560,24 +575,24 @@ class TPMPlugin:
                 logger.error("Unified-Identity - Verification: This signature will likely fail Go's verification too")
                 # Continue anyway - let Go's verification provide the final error message
                 # But log the issue for debugging
-            
+
             logger.debug("Unified-Identity - Verification: Data signed successfully, final signature length: %d", len(signature_bytes))
             return (True, signature_bytes, None)
-            
+
         except Exception as e:
             logger.error("Unified-Identity - Verification: Exception during signing: %s", e, exc_info=True)
             return (False, None, f"Exception during signing: {str(e)}")
-    
+
     def verify_signature(self, data: bytes, signature: bytes, hash_alg: str = "sha256", is_digest: bool = False) -> Tuple[bool, Optional[str]]:
         """
         Verify a signature using the TPM App Key public key.
-        
+
         Args:
             data: Data that was signed (raw data or digest, depending on is_digest)
             signature: Signature bytes to verify
             hash_alg: Hash algorithm used (default: sha256)
             is_digest: If True, data is already a digest and should not be hashed again
-            
+
         Returns:
             Tuple of (success, error_message)
         """
@@ -585,24 +600,24 @@ class TPMPlugin:
         if not is_unified_identity_enabled():
             logger.error("Unified-Identity - Verification: Feature flag disabled, cannot verify signature")
             return (False, "Feature flag disabled")
-        
+
         try:
             from cryptography.hazmat.primitives.asymmetric import rsa, padding
             from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
             from cryptography.hazmat.backends import default_backend
             from cryptography.hazmat.primitives import serialization, hashes
             import hashlib
-            
+
             # Get the App Key public key
             app_key_public_pem = self.get_app_key_public()
             if not app_key_public_pem:
                 return (False, "App Key public key unavailable")
-            
+
             public_key = serialization.load_pem_public_key(app_key_public_pem.encode(), backend=default_backend())
-            
+
             if not isinstance(public_key, rsa.RSAPublicKey):
                 return (False, "App Key is not RSA")
-            
+
             # Determine if we need to hash the data
             if is_digest:
                 # Data is already a digest, use it directly
@@ -614,14 +629,14 @@ class TPMPlugin:
                 hash_obj.update(data)
                 digest_bytes = hash_obj.digest()
                 logger.debug("Unified-Identity - Verification: Hashed data to digest (length: %d)", len(digest_bytes))
-            
+
             # Get hash algorithm object
             hash_alg_obj = hashes.SHA256()
             if hash_alg == "sha384":
                 hash_alg_obj = hashes.SHA384()
             elif hash_alg == "sha512":
                 hash_alg_obj = hashes.SHA512()
-            
+
             # Verify signature against digest (what we signed)
             # Try PKCS#1 v1.5 first (most common), then RSA-PSS if that fails
             # This allows verification of signatures created with either scheme
@@ -655,7 +670,7 @@ class TPMPlugin:
                 except Exception as pss_err:
                     logger.error("Unified-Identity - Verification: TPM plugin verification FAILED (both PKCS#1 v1.5 and RSA-PSS): PKCS#1 v1.5 error: %s, RSA-PSS error: %s", pkcs_err, pss_err)
                     return (False, f"Verification failed: {str(pss_err)}")
-                
+
         except Exception as e:
             logger.error("Unified-Identity - Verification: Exception during verification: %s", e, exc_info=True)
             return (False, f"Exception during verification: {str(e)}")
@@ -665,16 +680,15 @@ class TPMPlugin:
 def create_tpm_plugin(work_dir: Optional[str] = None) -> Optional[TPMPlugin]:
     """
     Factory function to create a TPM Plugin instance.
-    
+
     Args:
         work_dir: Working directory for TPM context files
-        
+
     Returns:
         TPMPlugin instance or None if feature flag is disabled
     """
     if not is_unified_identity_enabled():
         logger.warning("Unified-Identity - Verification: Feature flag disabled, TPM plugin not created")
         return None
-    
-    return TPMPlugin(work_dir=work_dir)
 
+    return TPMPlugin(work_dir=work_dir)

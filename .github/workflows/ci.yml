@@ -8,6 +8,22 @@ on:
     workflow_dispatch:
 
 jobs:
+    license-headers:
+        name: Check Apache 2.0 License Headers
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+
+            - name: Check License Headers
+              run: |
+                  cd hybrid-cloud-poc
+                  python3 scripts/add_license_headers.py --check --root .
+              continue-on-error: false
+
     integration-test:
         name: Hybrid Cloud PoC Integration Test
         runs-on: self-hosted

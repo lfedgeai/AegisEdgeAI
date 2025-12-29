@@ -1,3 +1,17 @@
+// Copyright 2025 AegisSovereignAI Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use serde::{Deserialize, Serialize};
@@ -73,7 +87,7 @@ impl Default for PluginConfig {
 impl PluginConfig {
     fn from_json(json_str: &str) -> Self {
         let mut config = PluginConfig::default();
-        
+
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
             // Parse verification_mode
             if let Some(mode_str) = json.get("verification_mode").and_then(|v| v.as_str()) {
@@ -89,13 +103,13 @@ impl PluginConfig {
                     }
                 };
             }
-            
+
             // Parse sidecar_endpoint
             if let Some(endpoint) = json.get("sidecar_endpoint").and_then(|v| v.as_str()) {
                 config.sidecar_endpoint = endpoint.to_string();
             }
         }
-        
+
         config
     }
 }
@@ -177,7 +191,7 @@ impl Context for SensorVerificationFilter {
         let status_code = self.get_http_call_response_header(":status")
             .and_then(|s| s.parse::<u16>().ok())
             .unwrap_or(0);
-        
+
         // Get response body
         let body_result = self.get_http_call_response_body(0, body_size);
         let body = match body_result {
@@ -193,9 +207,9 @@ impl Context for SensorVerificationFilter {
             }
         };
         let body_str = String::from_utf8_lossy(&body);
-        
+
         proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Mobile location service response: status={}, body={}", status_code, body_str));
-        
+
         // Check if status code indicates error
         if status_code >= 400 {
             let error_msg = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body_str) {
@@ -215,14 +229,14 @@ impl Context for SensorVerificationFilter {
             );
             return;
         }
-        
+
         // Parse response (expecting 200 OK with verification_result)
         match serde_json::from_str::<VerifyResponse>(&body_str) {
             Ok(response) => {
                 let sensor_id = self.sensor_id.clone().unwrap_or_default();
                 let sensor_imei = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("none");
                 let sensor_imsi = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("none");
-                
+
                 // Check if response has an error field
                 if let Some(error) = &response.error {
                     proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Mobile location service returned error: {} for sensor_id: {}, sensor_imei: {}, sensor_imsi: {}", error, sensor_id, sensor_imei, sensor_imsi));
@@ -233,12 +247,12 @@ impl Context for SensorVerificationFilter {
                     );
                     return;
                 }
-                
+
                 // Get verification result
                 let verified = response.verification_result.unwrap_or(false);
-                
+
                 proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Verification result for sensor_id: {}, sensor_imei: {}, sensor_imsi: {} - result: {}", sensor_id, sensor_imei, sensor_imsi, verified));
-                
+
                 if verified {
                     // Verification successful - resume request
                     proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Sensor verification successful for sensor_id: {} - resuming request", sensor_id));
@@ -301,7 +315,7 @@ impl HttpContext for SensorVerificationFilter {
                         cert_str.trim_end_matches('"')
                     })
                 };
-                
+
                 chain_str.map(|cert_str| {
                     // URL-decode the certificate (Envoy URL-encodes it: %20=space, %0A=newline, etc.)
                     let url_decoded = cert_str
@@ -314,7 +328,7 @@ impl HttpContext for SensorVerificationFilter {
                         .replace("%22", "\"")
                         .replace("%3B", ";")
                         .replace("%3A", ":");
-                    
+
                     url_decoded.as_bytes().to_vec()
                 })
             });
@@ -355,13 +369,13 @@ impl HttpContext for SensorVerificationFilter {
         self.sensor_latitude = sensor_info.latitude;
         self.sensor_longitude = sensor_info.longitude;
         self.sensor_accuracy = sensor_info.accuracy;
-        
+
         let sensor_id = sensor_info.sensor_id;
         let sensor_type_str = self.sensor_type.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
         let imei_str = self.sensor_imei.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
         let imsi_str = self.sensor_imsi.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
         let msisdn_str = self.sensor_msisdn.as_ref().map(|s| s.as_str()).unwrap_or("(not present)");
-        
+
         // Log sensor information with type
         if sensor_type_str == "mobile" {
             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
@@ -375,7 +389,7 @@ impl HttpContext for SensorVerificationFilter {
                 sensor_type_str, sensor_id
             ));
         }
-        
+
         // Unified-Identity: Apply policy-based verification modes (Task 7)
         // GPS/GNSS sensors are always trusted hardware - allow directly
         // Mobile sensors: apply verification_mode policy
@@ -386,14 +400,14 @@ impl HttpContext for SensorVerificationFilter {
             VerificationMode::Runtime => "runtime",
             VerificationMode::Strict => "strict",
         };
-        
+
         if sensor_type_str == "mobile" {
             let mode_str = match self.config.verification_mode {
                 VerificationMode::Trust => "trust",
                 VerificationMode::Runtime => "runtime",
                 VerificationMode::Strict => "strict",
             };
-            
+
             match self.config.verification_mode {
                 VerificationMode::Trust => {
                     // Trust mode: No sidecar call - trust attestation-time verification
@@ -406,7 +420,7 @@ impl HttpContext for SensorVerificationFilter {
                 VerificationMode::Runtime | VerificationMode::Strict => {
                     // Runtime/Strict mode: Call sidecar for CAMARA verification
                     let skip_cache = self.config.verification_mode == VerificationMode::Strict;
-                    
+
                     let verify_body = serde_json::to_string(&VerifyRequest {
                         sensor_id: sensor_id.clone(),
                         sensor_type: self.sensor_type.clone(),
@@ -420,14 +434,14 @@ impl HttpContext for SensorVerificationFilter {
                         longitude: self.sensor_longitude,
                         accuracy: self.sensor_accuracy,
                     }).unwrap_or_default();
-                    
+
                     let headers = vec![
                         (":method", "POST"),
                         (":path", "/verify"),
                         (":authority", "localhost:9050"),
                         ("content-type", "application/json"),
                     ];
-                    
+
                     match self.dispatch_http_call(
                         "mobile_location_service",
                         headers,
@@ -490,7 +504,7 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
             return None;
         }
     };
-    
+
     // Split PEM into individual certificates
     let mut cert_blocks = Vec::new();
     let parts: Vec<&str> = pem_str.split("-----BEGIN CERTIFICATE-----").collect();
@@ -499,9 +513,9 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
             cert_blocks.push(format!("-----BEGIN CERTIFICATE-----{}", part));
         }
     }
-    
+
     proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Parsed certificate chain: found {} certificate(s)", cert_blocks.len()));
-    
+
     // Try each certificate in the chain (leaf first, then intermediates)
     for (cert_idx, cert_block) in cert_blocks.iter().enumerate() {
         // Extract base64 content from PEM
@@ -531,24 +545,24 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
         // Find Unified Identity extension in this certificate
         for (ext_idx, ext) in cert.extensions().iter().enumerate() {
             let oid_str = format!("{}", ext.oid);
-            
+
             proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Extension {}: OID = {}", cert_idx, ext_idx, oid_str));
-            
+
             if oid_str == UNIFIED_IDENTITY_OID_STR || oid_str == LEGACY_OID_STR {
                 proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found Unified Identity extension (OID: {})", cert_idx, oid_str));
-                
+
                 // Parse extension value as JSON
                 let ext_value = &ext.value;
                 match std::str::from_utf8(ext_value) {
                     Ok(json_str) => {
                         proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Certificate {}: Extension value (first 500 chars): {}", cert_idx, json_str.chars().take(500).collect::<String>()));
-                        
+
                         match serde_json::from_str::<serde_json::Value>(json_str) {
                             Ok(json) => {
                                 // 3. Parse Nested grc.geolocation (Refined Schema)
                                 if let Some(geo) = json.get("grc.geolocation") {
                                     proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found grc.geolocation claim", cert_idx));
-                                    
+
                                     // Check for "mobile" nested object
                                     if let Some(mobile) = geo.get("mobile") {
                                         return Some(SensorInfo {
@@ -563,7 +577,7 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                                             accuracy: mobile.get("location_verification").and_then(|v| v.get("accuracy")).and_then(|v| v.as_f64()),
                                         });
                                     }
-                                    
+
                                     // Check for "gnss" nested object
                                     if let Some(gnss) = geo.get("gnss") {
                                         return Some(SensorInfo {
@@ -613,4 +627,3 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
     proxy_wasm::hostcalls::log(LogLevel::Warn, "=== SENSOR INFORMATION MISSING ===\n  sensor_id: MISSING\n  sensor_imei: MISSING\n  sensor_imsi: MISSING\n========================================\nNo sensor information found in certificate chain");
     None
 }
-

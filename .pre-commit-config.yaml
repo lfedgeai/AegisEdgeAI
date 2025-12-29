@@ -46,3 +46,12 @@ repos:
         name: "rustfmt"
     -   id: cargo-check
         name: "cargo check"
+
+-   repo: local
+    hooks:
+    -   id: license-headers
+        name: "Check Apache 2.0 License Headers"
+        entry: python3 hybrid-cloud-poc/scripts/add_license_headers.py --check --root hybrid-cloud-poc
+        language: system
+        pass_filenames: false
+        always_run: true

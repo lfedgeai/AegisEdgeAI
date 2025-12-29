@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Standalone test for CAMARA caching and GPS bypass features
 # Can be run independently once services are up
 
@@ -59,7 +74,7 @@ FIRST_RESPONSE=$(curl -s -X POST http://localhost:5000/verify \
 if [ -n "$FIRST_RESPONSE" ]; then
     echo -e "${GREEN}✓ First call completed${NC}"
     echo "Response: $FIRST_RESPONSE"
-    
+
     # Check logs for API call or cache miss
     echo ""
     echo "Checking logs for API call or cache miss..."
@@ -98,7 +113,7 @@ SECOND_RESPONSE=$(curl -s -X POST http://localhost:5000/verify \
 if [ -n "$SECOND_RESPONSE" ]; then
     echo -e "${GREEN}✓ Second call completed${NC}"
     echo "Response: $SECOND_RESPONSE"
-    
+
     # Check logs for cache hit
     echo ""
     echo "Checking logs for cache hit..."
@@ -179,4 +194,3 @@ echo "To test GPS bypass (requires Envoy with WASM filter running):"
 echo "  Check Envoy logs for GPS sensor bypass messages"
 echo "  sudo tail -f /opt/envoy/logs/envoy.log | grep -i gps"
 echo ""
-

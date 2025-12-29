@@ -1,4 +1,19 @@
 #!/bin/bash
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Test mTLS communication between two Python apps with automatic SVID renewal
 # This test verifies that workload SVIDs automatically renew when agent SVID renews
 
@@ -37,7 +52,7 @@ CLIENT_PID_FILE="/tmp/mtls-client-app.pid"
 cleanup() {
     echo ""
     echo -e "${YELLOW}Cleaning up...${NC}"
-    
+
     if [ -f "$SERVER_PID_FILE" ]; then
         SERVER_PID=$(cat "$SERVER_PID_FILE" 2>/dev/null || echo "")
         if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -45,7 +60,7 @@ cleanup() {
         fi
         rm -f "$SERVER_PID_FILE"
     fi
-    
+
     if [ -f "$CLIENT_PID_FILE" ]; then
         CLIENT_PID=$(cat "$CLIENT_PID_FILE" 2>/dev/null || echo "")
         if [ -n "$CLIENT_PID" ] && kill -0 "$CLIENT_PID" 2>/dev/null; then
@@ -53,7 +68,7 @@ cleanup() {
         fi
         rm -f "$CLIENT_PID_FILE"
     fi
-    
+
     # Also kill by process name
     pkill -f "mtls-server-app.py" >/dev/null 2>&1 || true
     pkill -f "mtls-client-app.py" >/dev/null 2>&1 || true
@@ -103,15 +118,15 @@ else
     # Check if entries already exist
     SERVER_ENTRY_EXISTS=false
     CLIENT_ENTRY_EXISTS=false
-    
+
     if "$SPIRE_SERVER" entry show -socketPath /tmp/spire-server/private/api.sock 2>/dev/null | grep -q "spiffe://example.org/mtls-server"; then
         SERVER_ENTRY_EXISTS=true
     fi
-    
+
     if "$SPIRE_SERVER" entry show -socketPath /tmp/spire-server/private/api.sock 2>/dev/null | grep -q "spiffe://example.org/mtls-client"; then
         CLIENT_ENTRY_EXISTS=true
     fi
-    
+
     if [ "$SERVER_ENTRY_EXISTS" = false ]; then
         echo "  Creating entry for mtls-server..."
         "$SPIRE_SERVER" entry create \
@@ -122,7 +137,7 @@ else
             -selector unix:gid:$(id -g) \
             >/dev/null 2>&1 || echo -e "${YELLOW}    ⚠ Failed to create server entry (may already exist)${NC}"
     fi
-    
+
     if [ "$CLIENT_ENTRY_EXISTS" = false ]; then
         echo "  Creating entry for mtls-client..."
         "$SPIRE_SERVER" entry create \
@@ -133,7 +148,7 @@ else
             -selector unix:gid:$(id -g) \
             >/dev/null 2>&1 || echo -e "${YELLOW}    ⚠ Failed to create client entry (may already exist)${NC}"
     fi
-    
+
     echo -e "${GREEN}✓ Registration entries ready${NC}"
 fi
 
@@ -203,7 +218,7 @@ LAST_CLIENT_RENEWAL=0
 
 while [ $(date +%s) -lt $END_TIME ]; do
     sleep 2
-    
+
     # Check server renewals
     if [ -f "$SERVER_LOG" ]; then
         NEW_SERVER_RENEWALS=$(grep -c "SVID renewed" "$SERVER_LOG" 2>/dev/null || echo "0")
@@ -215,7 +230,7 @@ while [ $(date +%s) -lt $END_TIME ]; do
             LAST_SERVER_RENEWAL=$CURRENT_TIME
         fi
     fi
-    
+
     # Check client renewals
     if [ -f "$CLIENT_LOG" ]; then
         NEW_CLIENT_RENEWALS=$(grep -c "SVID renewed" "$CLIENT_LOG" 2>/dev/null || echo "0")
@@ -227,7 +242,7 @@ while [ $(date +%s) -lt $END_TIME ]; do
             LAST_CLIENT_RENEWAL=$CURRENT_TIME
         fi
     fi
-    
+
     # Check for reconnections (renewal blips)
     if [ -f "$CLIENT_LOG" ]; then
         RECONNECTS=$(grep -c "reconnect\|Connection error\|renewal blip" "$CLIENT_LOG" 2>/dev/null || echo "0")
@@ -235,21 +250,21 @@ while [ $(date +%s) -lt $END_TIME ]; do
             echo -e "${CYAN}  ℹ Client reconnected ${RECONNECTS} time(s) (renewal blips handled)${NC}"
         fi
     fi
-    
+
     # Show progress
     ELAPSED=$(($(date +%s) - START_TIME))
     REMAINING=$((END_TIME - $(date +%s)))
     if [ $((ELAPSED % 10)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
         echo "  Progress: ${ELAPSED}s / ${TEST_DURATION}s (${REMAINING}s remaining)"
     fi
-    
+
     # Check if processes are still running
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
         echo -e "${RED}  ✗ Server process died${NC}"
         cat "$SERVER_LOG" | tail -20
         exit 1
     fi
-    
+
     if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
         echo -e "${RED}  ✗ Client process died${NC}"
         cat "$CLIENT_LOG" | tail -20
@@ -303,4 +318,3 @@ else
     echo "  This may be normal if renewal interval (${RENEWAL_INTERVAL}s) is longer than test duration (${TEST_DURATION}s)"
     exit 1
 fi
-

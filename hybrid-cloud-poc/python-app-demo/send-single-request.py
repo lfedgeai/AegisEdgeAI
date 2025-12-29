@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Send a single HTTP request via mTLS using SPIRE SVID.
 This is used for demos where we want to show a single, decodable request.
@@ -25,21 +40,21 @@ except ImportError as e:
 def get_tls_context():
     """Get TLS context with SPIRE SVID."""
     socket_path = os.environ.get('SPIRE_AGENT_SOCKET', '/tmp/spire-agent/public/api.sock')
-    
+
     if not HAS_SPIFFE:
         print("ERROR: spiffe library not available")
         sys.exit(1)
-    
+
     if not os.path.exists(socket_path):
         print(f"ERROR: SPIRE agent socket not found: {socket_path}")
         sys.exit(1)
-    
+
     # Add unix:// scheme if not present (required by X509Source)
     if not socket_path.startswith('unix://'):
         socket_path_with_scheme = f"unix://{socket_path}"
     else:
         socket_path_with_scheme = socket_path
-    
+
     # Handle CA flag validation warning (same as mtls-client-app.py)
     try:
         source = X509Source(socket_path=socket_path_with_scheme)
@@ -59,30 +74,30 @@ def get_tls_context():
                 raise Exception(f"Failed to create X509Source: {e2}")
         else:
             raise
-    
+
     # Get SVID (X509Source uses .svid property)
     svid = source.svid
     if not svid:
         print("ERROR: Failed to get SVID from SPIRE agent")
         sys.exit(1)
-    
+
     # Create SSL context
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
-    
+
     # Get trust bundle for server verification
     trust_domain = svid.spiffe_id.trust_domain
     bundle = None
     try:
         time.sleep(0.5)  # Wait a moment for bundle to be available
-        
+
         if hasattr(source, 'get_bundle_for_trust_domain'):
             bundle = source.get_bundle_for_trust_domain(trust_domain)
         elif hasattr(source, 'get_bundle'):
             bundle = source.get_bundle(trust_domain)
     except Exception as e:
         pass  # Bundle not critical for single request
-    
+
     # Load trust bundle if available
     if bundle:
         try:
@@ -92,13 +107,13 @@ def get_tls_context():
                 bundle_pem = b""
                 for cert in x509_authorities:
                     bundle_pem += cert.public_bytes(serialization.Encoding.PEM)
-                
+
                 bundle_path = None
                 try:
                     with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as bundle_file:
                         bundle_file.write(bundle_pem)
                         bundle_path = bundle_file.name
-                    
+
                     context.load_verify_locations(bundle_path)
                     context.verify_mode = ssl.CERT_REQUIRED
                 finally:
@@ -110,7 +125,7 @@ def get_tls_context():
                             pass  # Ignore errors during cleanup
         except Exception as e:
             context.verify_mode = ssl.CERT_NONE
-    
+
     # Also try to load additional CA cert if provided
     ca_cert_path = os.environ.get('CA_CERT_PATH', '~/.mtls-demo/envoy-cert.pem')
     if ca_cert_path:
@@ -121,13 +136,13 @@ def get_tls_context():
                 context.verify_mode = ssl.CERT_REQUIRED
             except Exception:
                 pass
-    
+
     # If no bundle or CA cert loaded, verify_mode is already CERT_NONE
-    
+
     # Extract certificate and key from SVID
     from cryptography.hazmat.primitives import serialization
     import tempfile
-    
+
     # Handle different svid object structures
     if hasattr(svid, 'leaf'):
         # X509Source returns svid with .leaf property
@@ -139,7 +154,7 @@ def get_tls_context():
         private_key = svid.private_key
     else:
         raise Exception("SVID object does not have expected certificate structure")
-    
+
     # Try to get certificate chain (leaf + intermediates)
     try:
         if hasattr(source, '_x509_svid') and source._x509_svid:
@@ -154,13 +169,13 @@ def get_tls_context():
                     cert_pem += cert.public_bytes(serialization.Encoding.PEM)
     except Exception:
         pass  # Chain not critical, continue with leaf only
-    
+
     key_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption()
     )
-    
+
     # Create temporary file with certificate and key
     cert_path = None
     try:
@@ -168,7 +183,7 @@ def get_tls_context():
             cert_file.write(cert_pem)
             cert_file.write(key_pem)
             cert_path = cert_file.name
-        
+
         context.load_cert_chain(cert_path)
     finally:
         # Always clean up temporary cert file, even if load_cert_chain fails
@@ -177,31 +192,31 @@ def get_tls_context():
                 os.unlink(cert_path)
             except Exception:
                 pass  # Ignore errors during cleanup
-    
+
     return context, source
 
 def send_single_request(server_host, server_port):
     """Send a single HTTP request and display the response."""
     print(f"Connecting to {server_host}:{server_port}...")
-    
+
     # Get TLS context
     try:
         context, source = get_tls_context()
     except Exception as e:
         print(f"ERROR: Failed to get TLS context: {e}")
         sys.exit(1)
-    
+
     # Create socket and wrap with TLS
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # Set socket timeout to prevent hanging
     client_socket.settimeout(10)  # 10 second timeout
     tls_socket = context.wrap_socket(client_socket, server_hostname=server_host)
-    
+
     try:
         print("  Attempting connection...")
         tls_socket.connect((server_host, server_port))
         print("✓ Connected to server")
-        
+
         # Send single HTTP request
         http_request = (
             f"GET /hello HTTP/1.1\r\n"
@@ -211,12 +226,12 @@ def send_single_request(server_host, server_port):
             f"Connection: close\r\n"
             f"\r\n"
         )
-        
+
         print(f"📤 Sending HTTP request:")
         print(http_request.replace('\r\n', '\n').replace('\r', '')[:200])
-        
+
         tls_socket.sendall(http_request.encode('utf-8'))
-        
+
         # Receive response (with timeout)
         print("📥 Waiting for response...")
         response_data = b""
@@ -252,16 +267,16 @@ def send_single_request(server_host, server_port):
             print("  (Response timeout, but may have received partial response)")
         except Exception as e:
             print(f"  (Error receiving response: {e})")
-        
+
         response = response_data.decode('utf-8', errors='ignore')
         print(f"✓ Received response:")
         print(response[:500])  # Show first 500 chars
-        
+
         # Extract status code
         if 'HTTP/1.1' in response or 'HTTP/1.0' in response:
             status_line = response.split('\n')[0]
             print(f"\nStatus: {status_line.strip()}")
-        
+
     except socket.timeout:
         print(f"ERROR: Connection timeout to {server_host}:{server_port}")
         print("  (Server may not be reachable or not responding)")
@@ -285,12 +300,11 @@ def send_single_request(server_host, server_port):
                 source.close()
             except:
                 pass
-    
+
     print("\n✓ Single request completed successfully")
 
 if __name__ == '__main__':
     server_host = os.environ.get('SERVER_HOST', '10.1.0.10')
     server_port = int(os.environ.get('SERVER_PORT', '8080'))
-    
-    send_single_request(server_host, server_port)
 
+    send_single_request(server_host, server_port)

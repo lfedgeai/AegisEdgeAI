@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Unified-Identity - Verification: Hardware Integration & Delegated Certification
 
@@ -16,13 +31,13 @@ from tpm_plugin import TPMPlugin, is_unified_identity_enabled
 # Unified-Identity - Verification: Hardware Integration & Delegated Certification
 class TestTPMPlugin(unittest.TestCase):
     """Test cases for TPM Plugin"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         self.work_dir = tempfile.mkdtemp()
         os.environ["UNIFIED_IDENTITY_ENABLED"] = "true"
-    
+
     def tearDown(self):
         """Clean up test fixtures"""
         # Unified-Identity - Verification: Hardware Integration & Delegated Certification
@@ -31,16 +46,16 @@ class TestTPMPlugin(unittest.TestCase):
             shutil.rmtree(self.work_dir)
         if "UNIFIED_IDENTITY_ENABLED" in os.environ:
             del os.environ["UNIFIED_IDENTITY_ENABLED"]
-    
+
     def test_feature_flag_check(self):
         """Test feature flag check"""
         # Unified-Identity - Verification: Hardware Integration & Delegated Certification
         os.environ["UNIFIED_IDENTITY_ENABLED"] = "true"
         self.assertTrue(is_unified_identity_enabled())
-        
+
         os.environ["UNIFIED_IDENTITY_ENABLED"] = "false"
         self.assertFalse(is_unified_identity_enabled())
-    
+
     @patch('tpm_plugin.subprocess.run')
     def test_tpm_device_detection(self, mock_run):
         """Test TPM device detection"""
@@ -49,12 +64,12 @@ class TestTPMPlugin(unittest.TestCase):
         with patch('os.path.exists', return_value=True):
             plugin = TPMPlugin(work_dir=self.work_dir)
             self.assertIn("device", plugin.tpm_device)
-        
+
         # Test swtpm fallback
         with patch('os.path.exists', return_value=False):
             plugin = TPMPlugin(work_dir=self.work_dir)
             self.assertIn("swtpm", plugin.tpm_device)
-    
+
     @patch('tpm_plugin.subprocess.run')
     def test_generate_app_key_stub(self, mock_run):
         """Test App Key generation (stubbed)"""
@@ -65,16 +80,16 @@ class TestTPMPlugin(unittest.TestCase):
         mock_result.stdout = ""
         mock_result.stderr = ""
         mock_run.return_value = mock_result
-        
+
         plugin = TPMPlugin(work_dir=self.work_dir)
-        
+
         # Mock file operations
         with patch('builtins.open', unittest.mock.mock_open(read_data="-----BEGIN PUBLIC KEY-----\nTEST\n-----END PUBLIC KEY-----")):
             with patch('pathlib.Path.exists', return_value=True):
                 success, pub_key, ctx_path = plugin.generate_app_key()
                 # In real test, would verify success, but with stubs it may fail
                 # This is expected behavior for unit tests without real TPM
-    
+
     def test_normalize_pcr_selection(self):
         """Ensure PCR selections are normalised correctly."""
         plugin = TPMPlugin(work_dir=self.work_dir)
@@ -87,4 +102,3 @@ class TestTPMPlugin(unittest.TestCase):
 # Unified-Identity - Verification: Hardware Integration & Delegated Certification
 if __name__ == "__main__":
     unittest.main()
-

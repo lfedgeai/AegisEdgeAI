@@ -1,4 +1,18 @@
 #!/bin/bash
+# Copyright 2025 AegisSovereignAI Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 
 # ==============================================================================
 # Script: get_imei_imsi_huawei_v2.sh
@@ -42,11 +56,11 @@ if [ -z "$SIM_PATH" ] || [ "$SIM_PATH" == "--" ]; then
 else
     # Extract the SIM Index from the path (e.g., '5' from '.../SIM/5')
     SIM_INDEX=$(echo "$SIM_PATH" | rev | cut -d/ -f1 | rev)
-    
+
     # Query the SIM object for the IMSI
     # Logic: Find line containing "imsi:", grab everything after colon
     IMSI=$(sudo mmcli -i "$SIM_INDEX" | grep 'imsi' | awk -F': ' '{print $2}' | awk '{print $1}')
-    
+
     if [ -z "$IMSI" ]; then
         echo "⚠️  WARNING: SIM detected but IMSI not readable (SIM might be locked/PIN required)."
         IMSI="Locked/Unreadable"
