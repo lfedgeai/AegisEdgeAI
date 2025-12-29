@@ -308,9 +308,12 @@ Benefit: Future-proofed schema for heterogeneous sensor attestation.
 | SPIRE Unified Identity (`pkg/server/unifiedidentity/`) | `spiffe/spire` | Supporting library for claims processing |
 | SPIRE TPM Plugin (`pkg/agent/tpmplugin/`) | `spiffe/spire` | TPM integration for App Key signing |
 | **Keylime Modifications:** | | |
-| Keylime Delegated Certification | `keylime/rust-keylime` | New API extension |
-| Keylime Geolocation API | `keylime/rust-keylime` | New API extension |
-| Keylime Verifier extensions | `keylime/keylime` | Python verifier changes |
+| rust-keylime Delegated Certification (`keylime-agent/src/delegated_certification_handler.rs`) | `keylime/rust-keylime` | New API extension `/v2.2/delegated_certification/certify_app_key` |
+| rust-keylime Geolocation API (`keylime-agent/src/geolocation_handler.rs`) | `keylime/rust-keylime` | New API extension `/v2.2/agent/attested_geolocation` |
+| rust-keylime TPM Extensions (`keylime/src/quote.rs`, `keylime/src/tpm.rs`) | `keylime/rust-keylime` | TPM operations for App Key and geolocation |
+| Keylime Verifier App Key Verification (`keylime/app_key_verification.py`) | `keylime/keylime` | App Key certificate verification |
+| Keylime Verifier Geolocation (`keylime/cloud_verifier_tornado.py`, `keylime/fact_provider.py`) | `keylime/keylime` | Geolocation database integration and fact provider |
+| Keylime Verifier DB Schema (`keylime/db/verifier_db.py`, migrations) | `keylime/keylime` | Database schema for geolocation and MSISDN |
 | **Standalone Components:** | | |
 | **Envoy WASM Plugin** | **Standalone (LF AI)** | Too specialized for Envoy core |
 | **Mobile Sensor Microservice** | **Standalone (LF AI)** | CAMARA integration wrapper |
