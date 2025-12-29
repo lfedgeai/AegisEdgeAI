@@ -43,9 +43,9 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 | Pillar 1 | 5 | 3 | 1 | 0 | 1 |
 | Pillar 2 | 10 | 10 | 0 | 0 | 0 |
 | Pillar 3 | 6 | 3 | 0 | 0 | 3 |
-| Pillar 4 | 7 | 4 | 0 | 0 | 3 |
+| Pillar 4 | 7 | 5 | 0 | 0 | 2 |
 | Pillar 5 | 9 | 6 | 0 | 0 | 3 |
-| **Total** | **44** | **33** | **1** | **0** | **10** |
+| **Total** | **44** | **34** | **1** | **0** | **9** |
 
 ---
 
@@ -405,10 +405,60 @@ Effort: 2 days
 | **Task 13** | TLS Verification - Remove `InsecureSkipVerify` | P0 | `[x]` | — | Done |
 | **Task 14** | Secrets Management - Move CAMARA API keys to secure providers | P1 | `[x]` | — | Done |
 | **Task 14b** | Delegated Certification Fix (TPM2_Certify empty response) | **P0** | `[x]` | — | Done |
-| **Task 15** | Quality Assurance - Linting, pre-commit hooks | P2 | `[ ]` | TBD | Week 3 |
+| **Task 15** | Quality Assurance - Linting, pre-commit hooks | P2 | `[x]` | — | Done |
 | **Task 16** | Cleanup stale backup files | P1 | `[x]` | — | Done |
 | **Task 17** | Rate limiting at Envoy gateway level | P2 | `[ ]` | TBD | Week 4 |
 | **Task 18** | Standardize Observability (Metrics & Telemetry) | P1 | `[ ]` | TBD | Week 4 |
+
+### Task 15: Quality Assurance - Linting, pre-commit hooks (COMPLETE)
+```
+Goal: Establish code quality tooling for consistent code style and early error detection.
+Status: ✅ Complete
+
+Actions:
+1. ✅ Pre-commit hooks configured (.pre-commit-config.yaml)
+   - Python: black (formatter), flake8 (linter)
+   - Go: go-fmt, go-vet (configured for custom SPIRE plugins)
+   - Rust: rustfmt, cargo-check (configured for WASM plugin)
+   - General: trailing-whitespace, end-of-file-fixer, check-yaml, detect-private-key, check-merge-conflict
+   - License headers: Apache 2.0 header check
+
+2. ✅ Exclusions configured
+   - Upstream repos (go-spiffe, rust-keylime, keylime) excluded from linting
+   - Upstream SPIRE code excluded (only our custom plugins linted)
+   - Test fixtures and build artifacts excluded
+   - Backup files (.orig, .bak) excluded
+
+3. ✅ Custom Go code linting
+   - Custom SPIRE plugins included in linting:
+     * pkg/server/keylime/ (Keylime client)
+     * pkg/server/unifiedidentity/ (Unified identity logic)
+     * pkg/agent/tpmplugin/ (TPM plugin integration)
+     * pkg/server/plugin/credentialcomposer/unifiedidentity/ (Credential composer plugin)
+     * pkg/agent/plugin/nodeattestor/unifiedidentity/ (Node attestor plugin)
+   - Custom hook created: `go-vet-custom` runs from SPIRE directory for proper module context
+
+4. ✅ Working hooks (verified)
+   - Python linting: ✅ (black, flake8)
+   - Go linting: ✅ (go-fmt, go-vet on custom SPIRE code)
+   - License headers: ✅ (all 62 files have headers)
+   - General hooks: ✅ (trailing whitespace, YAML check, private key detection, etc.)
+   - Rust hooks: ⚠️ Configured but need manual formatting (WASM plugin in subdirectory)
+
+Results:
+- Pre-commit hooks installed and working
+- All Python code follows consistent style (black)
+- All custom Go code (SPIRE plugins) follows Go standards (go-fmt, go-vet)
+- All source files have Apache 2.0 license headers
+- Upstream repos properly excluded from linting
+- Code quality tooling ready for external contributors
+
+Note: Rust hooks (rustfmt, cargo-check) are configured but require manual `cargo fmt`
+from the WASM plugin directory due to subdirectory structure.
+
+Dependencies: Task 0d (Pre-commit hooks configuration)
+Effort: 0.5 days (actual: 0.5 days)
+```
 
 ### Task 14b: Delegated Certification Fix (CRITICAL BLOCKER)
 
@@ -846,7 +896,7 @@ cd hybrid-cloud-poc
 ### Week 3-4: P2 Important
 - [x] Task 0d (Pre-commit hooks)
 - [ ] Task 9 (Standalone repo setup)
-- [ ] Task 15 (Linting/QA)
+- [x] Task 15 (Linting/QA)
 - [x] Task D4 (Version headers)
 - [ ] Task D6 (Sensor casing)
 - [x] Task D7 (Troubleshooting)
