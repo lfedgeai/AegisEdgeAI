@@ -37,15 +37,15 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 
 ### Quick Status Dashboard
 
-| Pillar | Complete | In Progress | Blocked | Not Started |
-|--------|----------|-------------|---------|-------------|
-| Pillar 0 | 6 | 0 | 0 | 0 |
-| Pillar 1 | 2 | 0 | 0 | 2 |
-| Pillar 2 | 10 | 1 | 0 | 0 |
-| Pillar 3 | 5 | 0 | 0 | 3 |
-| Pillar 4 | 3 | 0 | 0 | 2 |
-| Pillar 5 | 0 | 0 | 0 | 8 |
-| **Total** | **26** | **1** | **0** | **15** |
+| Pillar | Total | Complete | In Progress | Blocked | Not Started |
+|--------|-------|----------|-------------|---------|-------------|
+| Pillar 0 | 7 | 6 | 0 | 0 | 1 |
+| Pillar 1 | 5 | 3 | 1 | 0 | 1 |
+| Pillar 2 | 10 | 10 | 0 | 0 | 0 |
+| Pillar 3 | 6 | 3 | 0 | 0 | 3 |
+| Pillar 4 | 7 | 4 | 0 | 0 | 3 |
+| Pillar 5 | 9 | 6 | 0 | 0 | 3 |
+| **Total** | **44** | **32** | **1** | **0** | **11** |
 
 ---
 
