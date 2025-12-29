@@ -11,9 +11,6 @@ jobs:
     integration-test:
         name: Hybrid Cloud PoC Integration Test
         runs-on: self-hosted
-        defaults:
-          run:
-            working-directory: hybrid-cloud-poc
 
         steps:
             - name: Checkout Code
@@ -21,23 +18,20 @@ jobs:
               with:
                   submodules: recursive
 
-            # Using system Python (has gpg bindings pre-installed)
-            # Do NOT use actions/setup-python as it creates isolated env without gpg
-
-            - name: Debug - List Files
+            - name: Debug - Inspect File System
               run: |
-                  pwd
-                  ls -F
-                  ls -F keylime/
+                  echo "Current directory: $(pwd)"
+                  ls -R hybrid-cloud-poc/ | grep requirements.txt
 
             - name: Install Python Dependencies
               run: |
+                  cd hybrid-cloud-poc
                   python3 -m pip install --upgrade pip
                   python3 -m pip install -r keylime/requirements.txt
 
             - name: Run Integration Tests
               shell: bash
               run: |
+                  cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
-                  # --no-color ensures clean logs in GitHub Actions
                   python3 ./hello_world_test_runner.py
