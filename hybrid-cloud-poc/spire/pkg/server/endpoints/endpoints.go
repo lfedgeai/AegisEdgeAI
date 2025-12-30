@@ -31,6 +31,7 @@ import (
 	svidv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
 	trustdomainv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/trustdomain/v1"
 	"github.com/spiffe/spire/pkg/common/auth"
+	"github.com/spiffe/spire/pkg/common/fflag"
 	"github.com/spiffe/spire/pkg/common/peertracker"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	"github.com/spiffe/spire/pkg/common/tlspolicy"
@@ -438,7 +439,7 @@ func (e *Endpoints) getTLSConfig(ctx context.Context) func(*tls.ClientHelloInfo)
 		spiffeTLSConfig.MinVersion = tls.VersionTLS12
 		spiffeTLSConfig.NextProtos = []string{http2.NextProtoTLS}
 		spiffeTLSConfig.VerifyPeerCertificate = e.serverSpiffeVerificationFunc(bundleSrc)
-		
+
 		// Unified-Identity: Do NOT limit to TLS 1.2 for initial attestation
 		// Initial attestation uses standard TLS (no client cert) and should have no restrictions
 		// The server will accept TLS 1.3 for initial attestation if available
@@ -446,29 +447,30 @@ func (e *Endpoints) getTLSConfig(ctx context.Context) func(*tls.ClientHelloInfo)
 		// when we detect a client certificate is present
 		// Note: We can't limit MaxVersion here because getTLSConfig is called during ClientHello,
 		// before we know if the client will present a certificate (mTLS vs standard TLS)
-		
+
 		// Log server certificate details for debugging
 		svidState := e.SVIDObserver.State()
 		if svidState.SVID != nil && len(svidState.SVID) > 0 {
 			serverCert := svidState.SVID[0]
 			e.Log.WithFields(logrus.Fields{
-				"subject":       serverCert.Subject.String(),
-				"issuer":        serverCert.Issuer.String(),
-				"serial":        serverCert.SerialNumber.String(),
-				"sig_algorithm": serverCert.SignatureAlgorithm.String(),
+				"subject":        serverCert.Subject.String(),
+				"issuer":         serverCert.Issuer.String(),
+				"serial":         serverCert.SerialNumber.String(),
+				"sig_algorithm":  serverCert.SignatureAlgorithm.String(),
 				"public_key_alg": serverCert.PublicKeyAlgorithm.String(),
-				"has_uris":      len(serverCert.URIs) > 0,
+				"has_uris":       len(serverCert.URIs) > 0,
 			}).Debug("Unified-Identity - Verification: Server certificate details")
 		}
 
-		// Unified-Identity: Only enable PreferPKCS1v15 for mTLS connections where the client
-		// presents a certificate. For initial attestation (TLS without client cert), we don't
-		// need to limit to TLS 1.2. PreferPKCS1v15 should only be enabled when we know the
-		// client will use a TPM App Key for mTLS.
-		// Note: We can detect mTLS by checking if ClientAuth requires a certificate
+		// Unified-Identity: Enable PreferPKCS1v15 when Unified-Identity is active
+		// TPM App Keys use RSA with PKCS#1 v1.5 signatures (rsassa scheme).
+		// TLS 1.3 requires RSA-PSS, which TPM doesn't support.
+		// By enabling PreferPKCS1v15, we limit TLS to version 1.2 which supports PKCS#1 v1.5.
 		tlsPolicy := e.TLSPolicy
-		// Don't enable PreferPKCS1v15 here - it's only needed for mTLS with TPM keys
-		// The regular TLS connection for attestation doesn't need this limitation
+		if fflag.IsSet(fflag.FlagUnifiedIdentity) {
+			tlsPolicy.PreferPKCS1v15 = true
+			e.Log.Debug("Unified-Identity - Verification: Enabling PreferPKCS1v15 TLS policy (server-side) for TPM App Key mTLS")
+		}
 
 		err := tlspolicy.ApplyPolicy(spiffeTLSConfig, tlsPolicy)
 		if err != nil {
