@@ -50,4 +50,4 @@ jobs:
               run: |
                   cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
-                  python3 ./hello_world_test_runner.py
+                  python3 ./ci_test_runner.py --no-color -- --control-plane-host 10.1.0.10 --agents-host 10.1.0.10 --onprem-host 10.1.0.10
