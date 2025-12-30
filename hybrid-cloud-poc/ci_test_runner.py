@@ -48,6 +48,17 @@ class TestRunner:
         self.log_dir = None
         self.errors = []
         self.warnings = []
+        self.service_logs = {
+            'SPIRE Server': '/tmp/spire-server.log',
+            'SPIRE Agent': '/tmp/spire-agent.log',
+            'Keylime Verifier': '/tmp/keylime-verifier.log',
+            'Keylime Registrar': '/tmp/keylime-registrar.log',
+            'Keylime Agent': '/tmp/keylime-agent.log',
+            'Envoy Proxy': '/opt/envoy/logs/envoy.log',
+            'Mobile Sensor': '/tmp/mobile-sensor.log',
+            'mTLS Server': '/tmp/mtls-server.log',
+            'mTLS Client': '/tmp/remote_test_mtls_client.log'
+        }
 
         if no_color or not sys.stdout.isatty():
             Colors.disable()
@@ -160,10 +171,12 @@ class TestRunner:
                     context_end = min(len(lines), i + 6)
                     context = ''.join(lines[context_start:context_end])
 
-                    if line.strip() not in [e.strip() for e in self.errors]:
-                        self.errors.append(f"[master.log:{i+1}] {line.strip()}")
+                    if any(line.strip() == e.split('] ')[-1].strip() for e in self.errors):
+                        continue
+
+                    self.errors.append(f"[master.log:{i+1}] {line.strip()}\n{context}")
                     break
-        except Exception as e:
+        except Exception:
             pass  # Ignore parsing errors
 
     def _parse_script_log(self, log_path):
@@ -175,10 +188,37 @@ class TestRunner:
             # Look for explicit error markers
             for i, line in enumerate(lines):
                 if any(pattern in line for pattern in ['✗', 'failed', 'CRITICAL ERROR']):
-                    if line.strip() not in [e.strip() for e in self.errors]:
-                        self.errors.append(f"[{log_path.name}:{i+1}] {line.strip()}")
-        except Exception as e:
+                    if any(line.strip() == e.split('] ')[-1].strip() for e in self.errors):
+                        continue
+                    
+                    # Extract context (5 lines before and after)
+                    context_start = max(0, i - 5)
+                    context_end = min(len(lines), i + 6)
+                    context = ''.join(lines[context_start:context_end])
+                    
+                    self.errors.append(f"[{log_path.name}:{i+1}] {line.strip()}\n{context}")
+        except Exception:
             pass  # Ignore parsing errors
+
+    def dump_service_logs(self):
+        """Dump relevant service logs upon failure"""
+        print(f"\n{Colors.BOLD}{Colors.YELLOW}Collecting Diagnostic Service Logs...{Colors.NC}")
+        for service, log_path in self.service_logs.items():
+            path = Path(log_path)
+            if not path.exists():
+                continue
+
+            print(f"\n{Colors.BOLD}--- {service} Logs ({log_path}) ---{Colors.NC}")
+            try:
+                # Get last 50 lines
+                result = subprocess.run(['tail', '-n', '50', str(path)], capture_output=True, text=True)
+                if result.stdout:
+                    print(result.stdout)
+                else:
+                    print("  (Log file is empty)")
+            except Exception as e:
+                print(f"  Error reading log: {e}")
+        print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
 
     def print_summary(self):
         """Print test run summary"""
@@ -216,6 +256,9 @@ class TestRunner:
             if self.log_dir:
                 print(f"\n{Colors.YELLOW}Check logs for details:{Colors.NC}")
                 print(f"  master.log: {self.log_dir}/master.log")
+            
+            # Proactively dump service logs in the summary if they haven't been dumped yet
+            self.dump_service_logs()
         print(f"{Colors.BOLD}{'='*80}{Colors.NC}")
 
     def run(self):
