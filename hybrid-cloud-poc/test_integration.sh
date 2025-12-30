@@ -129,7 +129,7 @@ run_script() {
     # Unified-Identity - Testing: Fail-Fast & Logging
     # Run script and capture output to specific log file, while also streaming to master log (via stdout)
     # We use pipefail (set at top) to catch errors in the pipeline
-    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
+    if $run_func "cd ${SCRIPT_DIR} && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
         echo ""
         echo -e "${GREEN}✓ ${description} completed successfully${NC}"
         return 0
@@ -411,7 +411,7 @@ run_script() {
     # Unified-Identity - Testing: Fail-Fast & Logging
     # Run script and capture output to specific log file, while also streaming to master log (via stdout)
     # We use pipefail (set at top) to catch errors in the pipeline
-    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
+    if $run_func "cd ${SCRIPT_DIR} && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
         echo ""
         echo -e "${GREEN}✓ ${description} completed successfully${NC}"
         return 0
@@ -521,7 +521,7 @@ main() {
     # Pass host environment variables so test_onprem.sh knows where control plane/agents are
     # Use env command to ensure variables are passed correctly
     ONPREM_ENV_VARS="${ONPREM_ENV_VARS}CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
-    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && env ${ONPREM_ENV_VARS} ./test_onprem.sh ${ONPREM_ARGS}" 2>&1 | tee "/tmp/remote_test_onprem.log"
+    run_on_onprem "cd ${SCRIPT_DIR}/enterprise-private-cloud && env ${ONPREM_ENV_VARS} ./test_onprem.sh ${ONPREM_ARGS}" 2>&1 | tee "/tmp/remote_test_onprem.log"
     ONPREM_EXIT_CODE=$?
     set -e
 
@@ -601,7 +601,7 @@ main() {
 
     # Run test_mtls_client.sh on agents host (where client runs)
     MTLS_TEST_PASSED=false
-    if run_on_agents "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${mTLS_ENV_VARS} ./test_mtls_client.sh" 2>&1 | tee "/tmp/remote_test_mtls_client.log"; then
+    if run_on_agents "cd ${SCRIPT_DIR} && env ${mTLS_ENV_VARS} ./test_mtls_client.sh" 2>&1 | tee "/tmp/remote_test_mtls_client.log"; then
         echo ""
         echo -e "${GREEN}✓ mTLS client test completed successfully${NC}"
         MTLS_TEST_PASSED=true
@@ -692,7 +692,7 @@ cleanup_all() {
 
     # Cleanup on-prem services
     set +e
-    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh --cleanup-only" 2>&1 | tee "/tmp/remote_test_onprem_cleanup.log"
+    run_on_onprem "cd ${SCRIPT_DIR}/enterprise-private-cloud && ./test_onprem.sh --cleanup-only" 2>&1 | tee "/tmp/remote_test_onprem_cleanup.log"
     ONPREM_CLEANUP_EXIT_CODE=$?
     set -e
 

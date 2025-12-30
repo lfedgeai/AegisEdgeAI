@@ -558,11 +558,11 @@ if [ "$IS_SAME_HOST" = "true" ]; then
     # Same host - check and generate locally
     if [ ! -f /tmp/spire-bundle.pem ]; then
         echo "  Generating SPIRE bundle locally..."
-        if cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null; then
+        if cd ${REPO_ROOT} && python3 fetch-spire-bundle.py 2>/dev/null; then
             echo -e "${GREEN}  ✓ SPIRE bundle generated locally${NC}"
         elif [ -S /tmp/spire-server/private/api.sock ]; then
             # Try alternative method: use SPIRE server command directly
-            if ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null; then
+            if ${REPO_ROOT}/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null; then
                 echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
             else
                 echo -e "${YELLOW}  ⚠ Could not generate bundle locally (SPIRE server may not be ready)${NC}"
@@ -580,13 +580,13 @@ else
         echo "  Generating SPIRE bundle on ${SPIRE_CLIENT_HOST}..."
         if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
             "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-            "cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null" 2>/dev/null; then
+            "cd ${REPO_ROOT} && python3 fetch-spire-bundle.py 2>/dev/null" 2>/dev/null; then
             echo -e "${GREEN}  ✓ SPIRE bundle generated on ${SPIRE_CLIENT_HOST}${NC}"
         else
             # Try alternative method: use SPIRE server command directly
             if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
                 "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-                "test -S /tmp/spire-server/private/api.sock && ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null" 2>/dev/null; then
+                "test -S /tmp/spire-server/private/api.sock && ${REPO_ROOT}/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null" 2>/dev/null; then
                 echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
             else
                 echo -e "${YELLOW}  ⚠ Could not generate bundle on ${SPIRE_CLIENT_HOST} (SPIRE server may not be ready)${NC}"
@@ -613,7 +613,7 @@ if [ "$IS_SAME_HOST" = "true" ]; then
     else
         echo -e "${YELLOW}  ⚠ SPIRE bundle not found locally at /tmp/spire-bundle.pem${NC}"
         printf '     You can generate it:\n'
-        printf '       cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py\n'
+        printf '       cd ${REPO_ROOT} && python3 fetch-spire-bundle.py\n'
         printf '\n'
         read -p "Press Enter to continue (you can add the bundle later), or 'q' to quit: " answer
         if [ "$answer" = "q" ]; then
@@ -646,7 +646,7 @@ else
     printf '     You can manually copy it later:\n'
     printf '       scp ${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}:/tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem\n'
     printf '     Or extract it on ${SPIRE_CLIENT_HOST} first:\n'
-    printf '       cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py\n'
+    printf '       cd ${REPO_ROOT} && python3 fetch-spire-bundle.py\n'
     printf '\n'
     read -p "Press Enter to continue (you can add the bundle later), or 'q' to quit: " answer
     if [ "$answer" = "q" ]; then
