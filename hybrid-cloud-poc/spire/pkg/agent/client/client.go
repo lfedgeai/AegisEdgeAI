@@ -26,13 +26,13 @@ import (
 	entryv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/entry/v1"
 	svidv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/svid/v1"
 	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
+	"github.com/spiffe/spire/pkg/agent/catalog"
 	"github.com/spiffe/spire/pkg/agent/tpmplugin"
 	"github.com/spiffe/spire/pkg/common/bundleutil"
 	"github.com/spiffe/spire/pkg/common/fflag"
 	"github.com/spiffe/spire/pkg/common/telemetry"
 	"github.com/spiffe/spire/pkg/common/tlspolicy"
 	"github.com/spiffe/spire/proto/spire/common"
-	"github.com/spiffe/spire/pkg/agent/catalog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -58,8 +58,8 @@ const rpcTimeout = 30 * time.Second
 
 // Unified-Identity: Hardware Integration & Delegated Certification
 type X509SVID struct {
-	CertChain     []byte
-	ExpiresAt     int64
+	CertChain      []byte
+	ExpiresAt      int64
 	AttestedClaims []*types.AttestedClaims // AttestedClaims from server response
 }
 
@@ -424,8 +424,8 @@ func (c *client) RenewSVID(ctx context.Context, csr []byte) (*X509SVID, error) {
 				} else {
 					// Fallback if JSON parsing fails
 					c.c.Log.WithFields(logrus.Fields{
-						"spiffe_id":        spiffeID,
-						"claims_raw":       string(unifiedIdentityExt),
+						"spiffe_id":  spiffeID,
+						"claims_raw": string(unifiedIdentityExt),
 					}).Warn("Unified-Identity: Agent SVID claims (raw, JSON parse failed)")
 				}
 			}
@@ -453,7 +453,7 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 			EntryId: entryID,
 			Csr:     csr,
 		}
-		
+
 		// Unified-Identity: Add SovereignAttestation if feature flag is enabled
 		if fflag.IsSet(fflag.FlagUnifiedIdentity) {
 			if collector, ok := c.c.Catalog.GetCollector(); ok {
@@ -468,7 +468,7 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 				param.SovereignAttestation = BuildSovereignAttestationStub()
 			}
 		}
-		
+
 		params = append(params, param)
 	}
 
@@ -490,8 +490,8 @@ func (c *client) NewX509SVIDs(ctx context.Context, csrs map[string][]byte) (map[
 
 		// Unified-Identity: Include AttestedClaims from server response
 		svids[entryID] = &X509SVID{
-			CertChain:     certChain,
-			ExpiresAt:     result.Svid.ExpiresAt,
+			CertChain:      certChain,
+			ExpiresAt:      result.Svid.ExpiresAt,
 			AttestedClaims: result.AttestedClaims,
 		}
 	}
@@ -559,11 +559,11 @@ func (c *client) newServerGRPCClient() (*grpc.ClientConn, error) {
 	// Unified-Identity: Only apply TLS restrictions (PreferPKCS1v15) AFTER attestation is complete
 	// Initial attestation uses standard TLS (no client cert) and should have no restrictions
 	// mTLS with TPM App Key (after attestation) needs TLS 1.2 and PKCS#1 v1.5
-	
+
 	// Check if we have a certificate chain (after attestation)
 	chain, _, _ := c.c.KeysAndBundle()
 	hasCertChain := len(chain) > 0
-	
+
 	tlsPolicy := c.c.TLSPolicy
 	// Only enable PreferPKCS1v15 when we have a certificate chain (mTLS after attestation)
 	if fflag.IsSet(fflag.FlagUnifiedIdentity) && c.tpmPlugin != nil && hasCertChain {
@@ -612,7 +612,15 @@ func (c *client) newServerGRPCClient() (*grpc.ClientConn, error) {
 
 					// Replace private key with TPM signer
 					agentCert.PrivateKey = tpmSigner
-					c.c.Log.Info("Unified-Identity - Verification: Using TPM App Key for mTLS signing")
+					// Unified-Identity - Verification: Tell TLS to use PKCS#1 v1.5 signatures
+					// TPM's rsassa scheme produces PKCS#1 v1.5 signatures, not PSS
+					// Without this, TLS may request PSS signatures which TPM cannot produce
+					agentCert.SupportedSignatureAlgorithms = []tls.SignatureScheme{
+						tls.PKCS1WithSHA256,
+						tls.PKCS1WithSHA384,
+						tls.PKCS1WithSHA512,
+					}
+					c.c.Log.Info("Unified-Identity - Verification: Using TPM App Key for mTLS signing with PKCS#1 v1.5 signature algorithms")
 				}
 			}
 
@@ -942,20 +950,19 @@ func (c *client) BuildSovereignAttestation() *types.SovereignAttestation {
 	return BuildSovereignAttestationStub()
 }
 
-
 // Unified-Identity: Build stub SovereignAttestation
 // This is used as a fallback when TPM is not available or TPM plugin fails
 func BuildSovereignAttestationStub() *types.SovereignAttestation {
 	// Stub TPM quote with fixed data (base64-encoded for testing)
 	stubQuote := base64.StdEncoding.EncodeToString([]byte("stub-tpm-quote-phase3"))
-	
+
 	// Unified-Identity: Use valid PEM format for stub public key
 	// This is a valid PEM-format EC public key for testing (generated with cryptography library)
 	stubAppKeyPublic := `-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEmEfSIT6GJla8CK04AsF4bv9WyoFZ
 BKTlYihT6v7QGy4hUq/djGG4il7vHmRm8nuOUzrQy7ViZhwhjNIRJH0hDg==
 -----END PUBLIC KEY-----`
-	
+
 	return &types.SovereignAttestation{
 		TpmSignedAttestation: stubQuote,
 		AppKeyPublic:         stubAppKeyPublic,
