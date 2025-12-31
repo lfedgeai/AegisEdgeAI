@@ -2,7 +2,14 @@ name: Unified Identity CI
 
 on:
     push:
-        branches: ["main", "develop", "hybrid-cloud-poc", "feat/**", "ci-cd-clean-slate"]
+        branches:
+            [
+                "main",
+                "develop",
+                "hybrid-cloud-poc",
+                "feat/**",
+                "ci-cd-clean-slate",
+            ]
     pull_request:
         branches: ["main", "develop", "hybrid-cloud-poc"]
     workflow_dispatch:
@@ -58,6 +65,15 @@ jobs:
                   cd hybrid-cloud-poc
                   python3 -m pip install --upgrade pip
                   python3 -m pip install -r keylime/requirements.txt
+                  python3 -m pip install -r mobile-sensor-microservice/requirements.txt
+                  python3 -m pip install pytest
+
+            - name: Run Mobile Sensor Microservice Tests
+              run: |
+                  cd hybrid-cloud-poc/mobile-sensor-microservice
+                  echo "🧪 Running mobile-sensor-microservice unit tests..."
+                  python3 -m pytest tests/test_service.py -v --tb=short
+                  echo "✅ Mobile sensor microservice tests passed"
 
             - name: Run Integration Tests
               shell: bash
