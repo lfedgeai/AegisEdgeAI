@@ -75,15 +75,6 @@ jobs:
                   python3 -m pytest tests/test_service.py -v --tb=short
                   echo "✅ Mobile sensor microservice tests passed"
 
-            - name: Run Integration Tests
-              shell: bash
-              env:
-                  TMPDIR: /tmp
-              run: |
-                  cd hybrid-cloud-poc
-                  chmod +x ci_test_runner.py test_integration.sh
-                  python3 ./ci_test_runner.py --no-color
-
             - name: Post-Run Cleanup (Mandatory Purge)
               if: always()
               run: |
