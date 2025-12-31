@@ -197,7 +197,7 @@ stop_agent_services_only() {
 
     # Remove SPIRE Agent data (not Server data)
     echo "     Removing SPIRE Agent data directories..."
-    rm -rf /tmp/spire-agent 2>/dev/null || true
+    sudo rm -rf /tmp/spire-agent 2>/dev/null || true
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/spire-agent.log 2>/dev/null || true
 
@@ -2633,8 +2633,11 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     sleep 1
     # Clean up PID, socket, and log files
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
-    rm -f /tmp/spire-agent/public/api.sock 2>/dev/null || true
+    sudo rm -rf /tmp/spire-agent 2>/dev/null || true
     rm -f /tmp/spire-agent.log 2>/dev/null || true
+    # Recreate public directory with correct ownership
+    sudo mkdir -p /tmp/spire-agent/public 2>/dev/null || true
+    sudo chown -R "$(whoami):$(whoami)" /tmp/spire-agent 2>/dev/null || true
     echo "    Cleanup complete."
 
         # Wait for server to be ready - SKIPPED for act 2 (server assumed running from test_control_plane.sh)
@@ -2869,14 +2872,19 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
     echo -e "${CYAN}  Initial SPIRE Agent Attestation Status:${NC}"
     if [ -f /tmp/spire-agent.log ]; then
         echo "  Checking for attestation completion..."
-        if grep -q "Node attestation was successful\|SVID loaded" /tmp/spire-agent.log; then
-            echo -e "${GREEN}  ✓ Agent attestation completed${NC}"
+        # Unified-Identity: Attestation is ONLY complete when the socket is ready
+        if grep -q "Node attestation was successful\|SVID loaded" /tmp/spire-agent.log && [ -S /tmp/spire-agent/public/api.sock ]; then
+            echo -e "${GREEN}  ✓ Agent attestation completed and Workload API socket is ready${NC}"
             echo "  Agent SVID details:"
             grep -E "Node attestation was successful|SVID loaded|spiffe://.*agent" /tmp/spire-agent.log | tail -3 | sed 's/^/    /'
             echo "[STEP_SUCCESS] Step 7.2: SPIRE Agent Attestation - Agent attested and has SVID"
         else
-            echo -e "${YELLOW}  ⚠ Agent attestation may still be in progress...${NC}"
-            abort_on_error "SPIRE Agent attestation failed" "7.2" "SPIRE Agent Attestation"
+            echo -e "${RED}  ✗ Agent attestation failed or socket not ready${NC}"
+            if [ ! -S /tmp/spire-agent/public/api.sock ]; then
+                echo -e "${YELLOW}    ⚠ Workload API socket missing: /tmp/spire-agent/public/api.sock${NC}"
+                ls -la /tmp/spire-agent/public/ 2>/dev/null || echo "    Directory /tmp/spire-agent/public/ does not exist"
+            fi
+            abort_on_error "SPIRE Agent attestation failed or socket missing" "7.2" "SPIRE Agent Attestation"
         fi
     fi
 echo "[STEP_SUCCESS] Step 7: SPIRE Agent Setup - Agent started and attested"

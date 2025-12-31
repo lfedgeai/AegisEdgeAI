@@ -248,9 +248,9 @@ stop_all_instances_and_cleanup() {
     # Clean up SPIRE data directories
     echo "     Removing SPIRE data directories..."
     sudo rm -rf /opt/spire/data 2>/dev/null || true
-    rm -rf /tmp/spire-server 2>/dev/null || true
-    rm -rf /tmp/spire-agent 2>/dev/null || true
-    rm -rf /tmp/spire-data 2>/dev/null || true
+    sudo rm -rf /tmp/spire-server 2>/dev/null || true
+    sudo rm -rf /tmp/spire-agent 2>/dev/null || true
+    sudo rm -rf /tmp/spire-data 2>/dev/null || true
 
     # Clean up Keylime databases and persistent data
     echo "     Removing Keylime databases and persistent data..."
@@ -381,8 +381,9 @@ stop_all_instances_and_cleanup() {
     echo "  6. Creating clean data directories..."
     sudo mkdir -p /opt/spire/data/server /opt/spire/data/agent 2>/dev/null || true
     sudo chown -R "$(whoami):$(whoami)" /opt/spire/data 2>/dev/null || true
-    mkdir -p /tmp/spire-server/private 2>/dev/null || true
-    mkdir -p /tmp/spire-agent/public 2>/dev/null || true
+    sudo mkdir -p /tmp/spire-server/private 2>/dev/null || true
+    sudo mkdir -p /tmp/spire-agent/public 2>/dev/null || true
+    sudo chown -R "$(whoami):$(whoami)" /tmp/spire-server /tmp/spire-agent 2>/dev/null || true
     mkdir -p /tmp/spire-data/server /tmp/spire-data/agent 2>/dev/null || true
     mkdir -p /tmp/rust-keylime-data 2>/dev/null || true
     mkdir -p ~/.keylime/run 2>/dev/null || true
