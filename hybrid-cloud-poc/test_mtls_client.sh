@@ -17,10 +17,12 @@
 # Simple test script for mTLS client
 # Cleans up log files, sets up environment, and starts client in foreground
 
-set -e
+set -euo pipefail
+# Exit immediately on error - abort if anything goes wrong
 
 # Colors
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
@@ -30,6 +32,52 @@ cd "$SCRIPT_DIR"
 
 # Python app demo directory
 PYTHON_APP_DIR="${SCRIPT_DIR}/python-app-demo"
+
+# Helper function to abort on critical errors
+abort_on_error() {
+    local message="$1"
+    local step_num="${2:-}"
+    local step_desc="${3:-}"
+    
+    # Emit standardized failure message if step info provided
+    if [ -n "$step_num" ] && [ -n "$step_desc" ]; then
+        echo "[STEP_FAILURE] Step ${step_num}: ${step_desc} - ${message}"
+    elif [ -n "$step_desc" ]; then
+        echo "[STEP_FAILURE] ${step_desc} - ${message}"
+    fi
+    
+    echo -e "${RED}✗ CRITICAL ERROR: ${message}${NC}" >&2
+    echo -e "${RED}Aborting test execution.${NC}" >&2
+    exit 1
+}
+
+# Helper function to emit step failure and exit immediately
+step_failure() {
+    local step_num="${1:-}"
+    local step_desc="$2"
+    local details="${3:-}"
+    
+    if [ -n "$step_num" ]; then
+        if [ -n "$details" ]; then
+            echo "[STEP_FAILURE] Step ${step_num}: ${step_desc} - ${details}"
+        else
+            echo "[STEP_FAILURE] Step ${step_num}: ${step_desc}"
+        fi
+    else
+        if [ -n "$details" ]; then
+            echo "[STEP_FAILURE] ${step_desc} - ${details}"
+        else
+            echo "[STEP_FAILURE] ${step_desc}"
+        fi
+    fi
+    
+    echo -e "${RED}✗ Step failed: ${step_desc}${NC}" >&2
+    if [ -n "$details" ]; then
+        echo -e "${RED}  Reason: ${details}${NC}" >&2
+    fi
+    echo -e "${RED}Aborting test execution.${NC}" >&2
+    exit 1
+}
 
 echo "=========================================="
 echo "mTLS Client Test Script"
@@ -48,6 +96,7 @@ fi
 # Clean up log files
 rm -f /tmp/mtls-client-app.log
 echo -e "${GREEN}✓ Log files cleaned${NC}"
+echo "[STEP_SUCCESS] Step 1: Cleanup - Processes and log files cleaned"
 echo ""
 
 # Step 2: Set up environment variables
@@ -92,6 +141,7 @@ echo "  SERVER_HOST=$SERVER_HOST"
 echo "  SERVER_PORT=$SERVER_PORT"
 echo "  CA_CERT_PATH=$CA_CERT_PATH"
 echo "  CLIENT_LOG_FILE=$CLIENT_LOG_FILE"
+echo "[STEP_SUCCESS] Step 2: Environment Setup - Environment variables configured"
 echo ""
 
 # Step 3: Verify prerequisites
@@ -132,6 +182,7 @@ if [ ! -f "${SCRIPT_DIR}/get_imei_imsi_huawei.sh" ]; then
     exit 1
 fi
 echo -e "${GREEN}✓ IMEI/IMSI script found${NC}"
+echo "[STEP_SUCCESS] Step 3: Prerequisites Verification - All prerequisites verified"
 echo ""
 
 # Step 4: Execute get_imei_imsi_huawei.sh ONCE at the start and check for specific values
@@ -187,9 +238,11 @@ set -e
 if [ "$IMEI_FOUND" = true ] && [ "$IMSI_FOUND" = true ]; then
     EXPECT_SUCCESS=true
     echo -e "${GREEN}✓ Both IMEI and IMSI match - expecting HTTP request to succeed${NC}"
+    echo "[STEP_SUCCESS] Step 4: IMEI/IMSI Verification - IMEI and IMSI match expected values"
 else
     EXPECT_SUCCESS=false
     echo -e "${YELLOW}⚠ IMEI/IMSI mismatch - expecting 'Geo Claim Missing' response${NC}"
+    echo "[STEP_SUCCESS] Step 4: IMEI/IMSI Verification - IMEI/IMSI mismatch detected (expected behavior)"
 fi
 echo ""
 
@@ -225,6 +278,7 @@ if [ "$EXPECT_SUCCESS" = true ]; then
     echo "$HTTP_RESPONSE" | grep -qiE "SERVER ACK: HELLO"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ TEST PASSED: HTTP request succeeded as expected (got SERVER ACK: HELLO)${NC}"
+        echo "[STEP_SUCCESS] Step 5: HTTP Request and Validation - Request succeeded as expected"
         exit 0
     fi
 
@@ -232,16 +286,19 @@ if [ "$EXPECT_SUCCESS" = true ]; then
     echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ TEST PASSED: HTTP request succeeded as expected (200 OK)${NC}"
+        echo "[STEP_SUCCESS] Step 5: HTTP Request and Validation - Request succeeded as expected"
         exit 0
     fi
 
     echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"
     if [ $? -eq 0 ]; then
         echo -e "${YELLOW}⚠ TEST FAILED: Expected success (SERVER ACK: HELLO) but got 'Geo Claim Missing'${NC}"
+        step_failure "5" "HTTP Request and Validation" "Expected success but got 'Geo Claim Missing'"
         exit 1
     fi
 
     echo -e "${YELLOW}⚠ TEST FAILED: Expected success (SERVER ACK: HELLO) but got different response${NC}"
+    step_failure "5" "HTTP Request and Validation" "Expected success but got different response"
     exit 1
 else
     # Expect "Geo Claim Missing" (typically 403 Forbidden)
@@ -257,9 +314,11 @@ else
         # Check if response body contains Geo Claim Missing (might be in body)
         if echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"; then
             echo -e "${GREEN}✓ TEST PASSED: Got 403 with 'Geo Claim Missing' as expected${NC}"
+            echo "[STEP_SUCCESS] Step 5: HTTP Request and Validation - Got expected 'Geo Claim Missing' response"
             exit 0
         else
             echo -e "${YELLOW}⚠ TEST PARTIAL: Got 403 but 'Geo Claim Missing' text not found in response${NC}"
+            step_failure "5" "HTTP Request and Validation" "Got 403 but 'Geo Claim Missing' text not found"
             exit 1
         fi
     fi

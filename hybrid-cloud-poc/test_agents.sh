@@ -89,7 +89,45 @@ fi
 # Helper function to abort on critical errors
 abort_on_error() {
     local message="$1"
+    local step_num="${2:-}"
+    local step_desc="${3:-}"
+    
+    # Emit standardized failure message if step info provided
+    if [ -n "$step_num" ] && [ -n "$step_desc" ]; then
+        echo "[STEP_FAILURE] Step ${step_num}: ${step_desc} - ${message}"
+    elif [ -n "$step_desc" ]; then
+        echo "[STEP_FAILURE] ${step_desc} - ${message}"
+    fi
+    
     echo -e "${RED}✗ CRITICAL ERROR: ${message}${NC}" >&2
+    echo -e "${RED}Aborting test execution.${NC}" >&2
+    exit 1
+}
+
+# Helper function to emit step failure and exit immediately
+step_failure() {
+    local step_num="${1:-}"
+    local step_desc="$2"
+    local details="${3:-}"
+    
+    if [ -n "$step_num" ]; then
+        if [ -n "$details" ]; then
+            echo "[STEP_FAILURE] Step ${step_num}: ${step_desc} - ${details}"
+        else
+            echo "[STEP_FAILURE] Step ${step_num}: ${step_desc}"
+        fi
+    else
+        if [ -n "$details" ]; then
+            echo "[STEP_FAILURE] ${step_desc} - ${details}"
+        else
+            echo "[STEP_FAILURE] ${step_desc}"
+        fi
+    fi
+    
+    echo -e "${RED}✗ Step failed: ${step_desc}${NC}" >&2
+    if [ -n "$details" ]; then
+        echo -e "${RED}  Reason: ${details}${NC}" >&2
+    fi
     echo -e "${RED}Aborting test execution.${NC}" >&2
     exit 1
 }
@@ -2023,9 +2061,11 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
     fi
 
     if [ "$RUST_AGENT_STARTED" = false ]; then
-        abort_on_error "rust-keylime Agent failed to become ready - delegated certification is required"
+        abort_on_error "rust-keylime Agent failed to become ready - delegated certification is required" "4.1" "rust-keylime Agent Startup"
     fi
+    echo "[STEP_SUCCESS] Step 4.1: rust-keylime Agent Startup - Agent started and ready"
 fi
+echo "[STEP_SUCCESS] Step 4: rust-keylime Agent Setup - Agent running and ready for registration"
 
 pause_at_phase "Step 4 Complete" "rust-keylime Agent is running. Ready for registration and attestation."
 
@@ -2170,7 +2210,7 @@ elif [ "$AGENT_REGISTERED" = false ]; then
     echo "  Agent logs:"
     tail -50 /tmp/rust-keylime-agent.log | grep -E "(register|registration|geolocation|error|failed|incompatible)" | tail -10 || tail -20 /tmp/rust-keylime-agent.log
     echo ""
-    abort_on_error "Agent registration failed - cannot proceed without registered agent"
+    abort_on_error "Agent registration failed - cannot proceed without registered agent" "5.1" "Agent Registration Verification"
     echo "  Troubleshooting:"
     echo "    1. Check if agent UUID matches: ${RUST_AGENT_UUID:-'(unknown)'}"
     echo "    2. Verify registrar is accessible: curl http://${CONTROL_PLANE_HOST_IP}:8890/v2.1/agents/"
@@ -2180,6 +2220,7 @@ elif [ "$AGENT_REGISTERED" = false ]; then
 fi
 
 echo -e "${GREEN}  ✓ Agent registration verified${NC}"
+echo "[STEP_SUCCESS] Step 5.1: Agent Registration Verification - Agent registered with Keylime Registrar"
 
 # Small delay to ensure registrar has fully processed agent registration
 echo "  Waiting for registrar to fully process agent registration..."
@@ -2327,7 +2368,7 @@ for i in {1..60}; do
     if ! kill -0 $TPM_PLUGIN_SERVER_PID 2>/dev/null; then
         echo -e "${RED}  ✗ TPM Plugin Server process died${NC}"
         tail -20 /tmp/tpm-plugin-server.log
-        abort_on_error "TPM Plugin Server process died"
+        abort_on_error "TPM Plugin Server process died" "6.1" "TPM Plugin Server Startup"
     fi
     # Check logs for socket binding confirmation
     if grep -q "UDS socket bound and listening" /tmp/tpm-plugin-server.log 2>/dev/null; then
@@ -2371,7 +2412,7 @@ if [ "$TPM_SERVER_STARTED" = false ]; then
     else
         echo -e "${RED}  ✗ TPM Plugin Server failed to start${NC}"
         tail -20 /tmp/tpm-plugin-server.log
-        abort_on_error "TPM Plugin Server failed to start"
+        abort_on_error "TPM Plugin Server failed to start" "6.1" "TPM Plugin Server Startup"
     fi
 fi
 
@@ -2413,6 +2454,7 @@ for i in {1..30}; do
             # Check if response contains success status (may be truncated in output, so check for key parts)
             if echo "$APP_KEY_RESPONSE" | grep -qE '"status"\s*:\s*"success"|"app_key_public"'; then
                 echo -e "${GREEN}  ✓ App Key is ready and UDS socket is working${NC}"
+                echo "[STEP_SUCCESS] Step 6.2: App Key Verification - App Key ready and UDS socket working"
                 APP_KEY_READY=true
                 break
             elif [ -n "$APP_KEY_RESPONSE" ]; then
@@ -2454,7 +2496,14 @@ if [ "$APP_KEY_READY" = false ]; then
     tail -15 /tmp/tpm-plugin-server.log | grep -E "App Key|UDS|socket|error|Error|started" || tail -10 /tmp/tpm-plugin-server.log
     echo ""
     echo "  Verifying TPM_PLUGIN_ENDPOINT: ${TPM_PLUGIN_ENDPOINT}"
+    abort_on_error "TPM App Key readiness not confirmed - TPM operations cannot proceed" "6.2" "App Key Verification"
 fi
+echo "[STEP_SUCCESS] Step 6: TPM Plugin Server Setup - Server running and ready for SPIRE"
+
+if [ "$TPM_SERVER_STARTED" = true ]; then
+    echo "[STEP_SUCCESS] Step 6.1: TPM Plugin Server Startup - Server started and ready"
+fi
+echo "[STEP_SUCCESS] Step 6: TPM Plugin Server Setup - Server running and ready for SPIRE"
 
 pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE to use TPM operations."
 
@@ -2780,11 +2829,11 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
                         echo "      Error details:"
                         echo "$ERROR_MSG" | sed 's/^/        /'
                         echo ""
-                        abort_on_error "SPIRE Agent attestation failed due to CAMARA API rate limiting (429). See message above for resolution options."
+                        abort_on_error "SPIRE Agent attestation failed due to CAMARA API rate limiting (429). See message above for resolution options." "7.2" "SPIRE Agent Attestation"
                     else
                         echo -e "${RED}    ✗ Attestation request received but verification failed${NC}"
                         echo "$ERROR_MSG" | sed 's/^/      /'
-                        abort_on_error "SPIRE Agent attestation verification failed"
+                        abort_on_error "SPIRE Agent attestation verification failed" "7.2" "SPIRE Agent Attestation"
                     fi
                 fi
             fi
@@ -2824,10 +2873,13 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
             echo -e "${GREEN}  ✓ Agent attestation completed${NC}"
             echo "  Agent SVID details:"
             grep -E "Node attestation was successful|SVID loaded|spiffe://.*agent" /tmp/spire-agent.log | tail -3 | sed 's/^/    /'
+            echo "[STEP_SUCCESS] Step 7.2: SPIRE Agent Attestation - Agent attested and has SVID"
         else
             echo -e "${YELLOW}  ⚠ Agent attestation may still be in progress...${NC}"
+            abort_on_error "SPIRE Agent attestation failed" "7.2" "SPIRE Agent Attestation"
         fi
     fi
+echo "[STEP_SUCCESS] Step 7: SPIRE Agent Setup - Agent started and attested"
 
 pause_at_phase "Step 7 Complete" "SPIRE Agent has completed attestation. Ready for workload registration."
 
@@ -2883,13 +2935,15 @@ if [ -f "./create-registration-entry.sh" ]; then
     ./create-registration-entry.sh
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}  ✓ Registration entry created${NC}"
+        echo "[STEP_SUCCESS] Step 8.1: Registration Entry Creation - Entry created successfully"
         # Wait for entry to propagate to agent (agent syncs with server periodically)
         echo "  Waiting 10s for registration entry to propagate to agent..."
         sleep 10
     else
         echo -e "${RED}  ✗ Registration entry creation failed${NC}"
-        abort_on_error "Registration entry creation failed - workload SVID cannot be issued"
+        abort_on_error "Registration entry creation failed - workload SVID cannot be issued" "8.1" "Registration Entry Creation"
     fi
+echo "[STEP_SUCCESS] Step 8: Workload Registration Entry - Entry created and propagated"
 else
     echo -e "${YELLOW}  ⚠ Registration entry script not found, skipping...${NC}"
 fi
@@ -3022,6 +3076,7 @@ if [ "$TPM_OPERATIONS_FAILED" = true ]; then
 elif [ "$TPM_OPERATIONS_FOUND" = true ]; then
     echo ""
     echo -e "${GREEN}  ✓ TPM operations verified successfully in agent attestation flow${NC}"
+    echo "[STEP_SUCCESS] Step 9: TPM Operations Verification - TPM operations verified successfully"
     echo "  The SPIRE agent successfully used TPM operations during attestation:"
     echo "    • App Key was generated via TPM Plugin"
     echo "    • TPM Quote was generated with nonce"
@@ -3055,8 +3110,10 @@ if [ -f "${SCRIPT_DIR}/scripts/demo.sh" ]; then
         DEMO_EXIT=$?
         if [ $DEMO_EXIT -ne 0 ]; then
             echo -e "${YELLOW}  ⚠ Sovereign SVID generation had issues${NC}"
+            abort_on_error "Sovereign SVID generation failed - unified identity test cannot complete" "10" "Sovereign SVID Generation"
         fi
     }
+    echo "[STEP_SUCCESS] Step 10: Sovereign SVID Generation - SVID generated successfully"
 else
     echo -e "${YELLOW}  ⚠ demo.sh not found, falling back to direct execution${NC}"
     cd "${PROJECT_DIR}/python-app-demo"
@@ -3064,11 +3121,14 @@ else
         python3 fetch-sovereign-svid-grpc.py
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}  ✓ Sovereign SVID generated successfully${NC}"
+            echo "[STEP_SUCCESS] Step 10: Sovereign SVID Generation - SVID generated successfully"
         else
             echo -e "${YELLOW}  ⚠ Sovereign SVID generation had issues${NC}"
+            abort_on_error "Sovereign SVID generation failed - unified identity test cannot complete" "10" "Sovereign SVID Generation"
         fi
     else
         echo -e "${YELLOW}  ⚠ fetch-sovereign-svid-grpc.py not found${NC}"
+        abort_on_error "Sovereign SVID generation script not found - unified identity test cannot complete" "10" "Sovereign SVID Generation"
     fi
 fi
 
@@ -3096,6 +3156,7 @@ echo "  Integration: Validated via Sovereign SVID generation and log checks"
 echo "  Additional scripted helpers have been retired"
 
 echo -e "${GREEN}  ✓ All tests completed${NC}"
+echo "[STEP_SUCCESS] Step 11: Test Execution - All tests completed"
 
 pause_at_phase "Step 11 Complete" "All unit tests passed. E2E scenario verified through SVID generation workflow."
 
@@ -3234,6 +3295,7 @@ fi
 echo -e "${GREEN}  ✓ All tests passed${NC}"
 echo ""
 echo -e "${GREEN}Integration test completed successfully!${NC}"
+echo "[STEP_SUCCESS] Step 12: Integration Verification - All components verified and working together"
 echo ""
 
 pause_at_phase "Step 12 Complete" "Integration verification complete. All components are working together successfully."
@@ -3403,6 +3465,7 @@ if [ "$COMPONENTS_OK" = true ] || [ -S /tmp/spire-agent/public/api.sock ]; then
     # Wait for exactly one renewal
     if wait_for_one_agent_svid_renewal "$max_wait"; then
         echo -e "${GREEN}  ✓ Agent SVID renewal detected${NC}"
+        echo "[STEP_SUCCESS] Step 14: Agent SVID Renewal Test - Renewal detected and SVID dumped"
         echo ""
 
         # Fetch and dump agent SVID
@@ -3530,6 +3593,7 @@ else
     echo "  rust-keylime Agent: PID $(cat /tmp/rust-keylime-agent.pid 2>/dev/null || echo 'N/A') (port 9002)"
     echo "  SPIRE Server: PID $(cat /tmp/spire-server.pid 2>/dev/null || echo 'N/A')"
     echo "  SPIRE Agent: PID $(cat /tmp/spire-agent.pid 2>/dev/null || echo 'N/A')"
+    echo "[STEP_SUCCESS] Agent Services Setup - All agent services started and tested successfully"
     echo ""
     echo -e "${CYAN}SPIRE Agent SVID Renewal:${NC}"
     echo "  Configured for ${SPIRE_AGENT_SVID_RENEWAL_INTERVAL}s intervals (demo purposes)"

@@ -17,7 +17,8 @@
 # Test script for enterprise on-prem
 # Sets up: Envoy proxy, mTLS server, mobile location service, WASM filter
 
-set -e
+set -euo pipefail
+# Exit immediately on error - abort if anything goes wrong
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONPREM_DIR="$SCRIPT_DIR"
@@ -124,6 +125,52 @@ if [ "$IS_TEST_MACHINE" = "false" ]; then
         fi
     fi
 fi
+
+# Helper function to abort on critical errors
+abort_on_error() {
+    local message="$1"
+    local step_num="${2:-}"
+    local step_desc="${3:-}"
+    
+    # Emit standardized failure message if step info provided
+    if [ -n "$step_num" ] && [ -n "$step_desc" ]; then
+        echo "[STEP_FAILURE] Step ${step_num}: ${step_desc} - ${message}"
+    elif [ -n "$step_desc" ]; then
+        echo "[STEP_FAILURE] ${step_desc} - ${message}"
+    fi
+    
+    printf '%s✗ CRITICAL ERROR: %s%s\n' "${RED}" "${message}" "${NC}" >&2
+    printf '%sAborting test execution.%s\n' "${RED}" "${NC}" >&2
+    exit 1
+}
+
+# Helper function to emit step failure and exit immediately
+step_failure() {
+    local step_num="${1:-}"
+    local step_desc="$2"
+    local details="${3:-}"
+    
+    if [ -n "$step_num" ]; then
+        if [ -n "$details" ]; then
+            echo "[STEP_FAILURE] Step ${step_num}: ${step_desc} - ${details}"
+        else
+            echo "[STEP_FAILURE] Step ${step_num}: ${step_desc}"
+        fi
+    else
+        if [ -n "$details" ]; then
+            echo "[STEP_FAILURE] ${step_desc} - ${details}"
+        else
+            echo "[STEP_FAILURE] ${step_desc}"
+        fi
+    fi
+    
+    printf '%s✗ Step failed: %s%s\n' "${RED}" "${step_desc}" "${NC}" >&2
+    if [ -n "$details" ]; then
+        printf '%s  Reason: %s%s\n' "${RED}" "${details}" "${NC}" >&2
+    fi
+    printf '%sAborting test execution.%s\n' "${RED}" "${NC}" >&2
+    exit 1
+}
 
 # Cleanup function - stops all services and frees up ports (only for test machine)
 cleanup_existing_services() {
@@ -360,6 +407,7 @@ elif command -v yum &> /dev/null; then
         curl wget \
         docker docker-compose || true
 fi
+echo "[STEP_SUCCESS] Step 1.1: System Dependencies Installation - Dependencies installed"
 
 # Install Envoy
 if ! command -v envoy &> /dev/null; then
@@ -398,6 +446,7 @@ echo -e "\n${GREEN}[2/7] Creating directories...${NC}"
 sudo mkdir -p /opt/envoy/{certs,plugins,logs}
 sudo mkdir -p /opt/mobile-sensor-service
 sudo mkdir -p /opt/mtls-server
+echo "[STEP_SUCCESS] Step 2.1: Directory Creation - All directories created"
 
 # Build and install WASM filter for sensor verification (if needed)
 WASM_FILTER="/opt/envoy/plugins/sensor_verification_wasm.wasm"
@@ -462,10 +511,12 @@ if [ ! -f /opt/envoy/certs/envoy-cert.pem ] || [ ! -f /opt/envoy/certs/envoy-key
         printf '     Key: /opt/envoy/certs/envoy-key.pem\n'
     else
         echo -e "${RED}  ✗ Failed to generate Envoy certificates${NC}"
+        step_failure "3.1" "Envoy Certificate Generation" "Failed to generate certificates"
         exit 1
     fi
 else
     echo -e "${GREEN}  ✓ Envoy certificates already exist${NC}"
+    echo "[STEP_SUCCESS] Step 3.1: Envoy Certificate Generation - Certificates already exist"
 fi
 
 # Copy Envoy certificate to client machine (control plane/agents host) so client can verify Envoy
@@ -712,6 +763,8 @@ fi
 
 if [ $MISSING_CERTS -eq 0 ]; then
     echo -e "${GREEN}  ✓ All Envoy certificates in place${NC}"
+    echo "[STEP_SUCCESS] Step 3.2: Certificate Verification - All certificates verified"
+echo "[STEP_SUCCESS] Step 3: Certificate Setup - Certificate setup completed"
     printf '     - Envoy cert/key: For Envoy'\''s own TLS connections\n'
     printf '     - SPIRE bundle: For verifying SPIRE clients\n'
     printf '     - Backend server cert: For verifying backend server\n'
@@ -732,7 +785,9 @@ if [ ! -d ".venv" ]; then
 fi
 source .venv/bin/activate
 pip install -q -r requirements.txt
-echo -e "${GREEN}  ✓ Mobile location service dependencies installed${NC}"
+    echo -e "${GREEN}  ✓ Mobile location service dependencies installed${NC}"
+    echo "[STEP_SUCCESS] Step 4.1: Mobile Location Service Dependencies - Dependencies installed"
+echo "[STEP_SUCCESS] Step 4: Mobile Location Service Setup - Service setup completed"
 
 # Detect Mobile Sidecar source changes (Python)
 if [ -f /tmp/mobile-sensor.log ]; then
@@ -757,6 +812,8 @@ pip3 install -q cryptography spiffe grpcio grpcio-tools protobuf 2>/dev/null || 
     pip3 install -q --user cryptography spiffe grpcio grpcio-tools protobuf 2>/dev/null || true
 }
 echo -e "${GREEN}  ✓ mTLS server dependencies installed${NC}"
+echo "[STEP_SUCCESS] Step 5.1: mTLS Server Dependencies - Dependencies installed"
+echo "[STEP_SUCCESS] Step 5: mTLS Server Dependencies Setup - Dependencies setup completed"
 
 # 6. Build WASM filter (sensor ID extraction is done in WASM, no separate service needed)
 if [ "$NO_BUILD" != "true" ]; then
@@ -766,6 +823,7 @@ if [ "$NO_BUILD" != "true" ]; then
         if bash build.sh > /tmp/wasm-build.log 2>&1; then
             echo -e "${GREEN}  ✓ WASM filter built and installed${NC}"
             printf '  Sensor ID extraction is done directly in WASM filter - no separate service needed\n'
+            echo "[STEP_SUCCESS] Step 6.1: WASM Filter Build - Filter built and installed"
         else
             echo -e "${YELLOW}  ⚠ WASM filter build failed - check /tmp/wasm-build.log${NC}"
             echo -e "${YELLOW}  Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
@@ -790,18 +848,21 @@ echo -e "\n${GREEN}[7/7] Setting up Envoy proxy...${NC}"
 # Copy Envoy configuration
 if [ ! -f "$ONPREM_DIR/envoy/envoy.yaml" ]; then
     echo -e "${RED}  ✗ Envoy configuration file not found: $ONPREM_DIR/envoy/envoy.yaml${NC}"
+    step_failure "7.1" "Envoy Configuration Copy" "Configuration file not found"
     exit 1
 fi
 
 sudo cp "$ONPREM_DIR/envoy/envoy.yaml" /opt/envoy/envoy.yaml
 sudo chmod 644 /opt/envoy/envoy.yaml
 echo -e "${GREEN}  ✓ Envoy configuration copied to /opt/envoy/envoy.yaml${NC}"
+echo "[STEP_SUCCESS] Step 7.1: Envoy Configuration Copy - Configuration copied"
 
 # Validate Envoy configuration if envoy command is available
 if command -v envoy &> /dev/null; then
     printf '  Validating Envoy configuration...\n'
     if sudo envoy --config-path /opt/envoy/envoy.yaml --mode validate &>/dev/null; then
         echo -e "${GREEN}  ✓ Envoy configuration is valid${NC}"
+        echo "[STEP_SUCCESS] Step 7.2: Envoy Configuration Validation - Configuration is valid"
     else
         echo -e "${YELLOW}  ⚠ Envoy configuration validation failed${NC}"
         printf '     Run manually to see errors: sudo envoy --config-path /opt/envoy/envoy.yaml --mode validate\n'
@@ -1153,65 +1214,85 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Re-enable exit on error
     set -e
 
-    # Verify services are running
+    # Verify services are running with retry mechanism
     printf '\n'
-    printf 'Verifying services...\n'
-    sleep 1
+    printf 'Verifying services (waiting up to 60s for services to bind to ports)...\n'
+    
+    # Helper function to check if a port is listening
+    check_port() {
+        local port=$1
+        if command -v ss &> /dev/null; then
+            ss -tln 2>/dev/null | grep -q ":${port}"
+        elif command -v netstat &> /dev/null; then
+            netstat -tln 2>/dev/null | grep -q ":${port}"
+        else
+            # Fallback: try to connect to the port
+            timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null
+        fi
+    }
 
     # Temporarily disable exit on error for verification
     set +e
 
+    MAX_WAIT=60
+    WAIT_INTERVAL=2
+    ELAPSED=0
     SERVICES_OK=0
-    if command -v ss &> /dev/null; then
-        if sudo ss -tlnp 2>/dev/null | grep -q ':9050'; then
-            printf '  [OK] Mobile Location Service listening on port 9050\n'
+    
+    while [ $ELAPSED -lt $MAX_WAIT ] && [ $SERVICES_OK -lt 3 ]; do
+        SERVICES_OK=0
+        
+        # Check Mobile Location Service (port 9050)
+        if check_port 9050; then
+            if [ $ELAPSED -eq 0 ] || [ $SERVICES_OK -eq 0 ]; then
+                printf '  [OK] Mobile Location Service listening on port 9050\n'
+            fi
             SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] Mobile Location Service not listening on port 9050\n'
         fi
-        if sudo ss -tlnp 2>/dev/null | grep -q ':9443'; then
-            printf '  [OK] mTLS Server listening on port 9443\n'
+        
+        # Check mTLS Server (port 9443)
+        if check_port 9443; then
+            if [ $ELAPSED -eq 0 ] || [ $SERVICES_OK -eq 1 ]; then
+                printf '  [OK] mTLS Server listening on port 9443\n'
+            fi
             SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] mTLS Server not listening on port 9443\n'
         fi
-        if sudo ss -tlnp 2>/dev/null | grep -q ':8080'; then
-            printf '  [OK] Envoy listening on port 8080\n'
+        
+        # Check Envoy (port 8080)
+        if check_port 8080; then
+            if [ $ELAPSED -eq 0 ] || [ $SERVICES_OK -eq 2 ]; then
+                printf '  [OK] Envoy listening on port 8080\n'
+            fi
             SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] Envoy not listening on port 8080\n'
         fi
-    elif command -v netstat &> /dev/null; then
-        if sudo netstat -tlnp 2>/dev/null | grep -q ':9050'; then
-            printf '  [OK] Mobile Location Service listening on port 9050\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] Mobile Location Service not listening on port 9050\n'
+        
+        if [ $SERVICES_OK -eq 3 ]; then
+            break
         fi
-        if sudo netstat -tlnp 2>/dev/null | grep -q ':9443'; then
-            printf '  [OK] mTLS Server listening on port 9443\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] mTLS Server not listening on port 9443\n'
+        
+        # Show progress every 10 seconds
+        if [ $((ELAPSED % 10)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+            printf '  Still waiting for services... (%d/%d services ready, %ds elapsed)\n' "$SERVICES_OK" "3" "$ELAPSED"
         fi
-        if sudo netstat -tlnp 2>/dev/null | grep -q ':8080'; then
-            printf '  [OK] Envoy listening on port 8080\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] Envoy not listening on port 8080\n'
-        fi
-    else
-        printf '  [WARN] Cannot verify ports (ss/netstat not available)\n'
-    fi
+        
+        sleep $WAIT_INTERVAL
+        ELAPSED=$((ELAPSED + WAIT_INTERVAL))
+    done
 
     printf '\n'
     if [ $SERVICES_OK -eq 3 ]; then
         printf '[SUCCESS] All services are running!\n'
+        echo "[STEP_SUCCESS] Step 7.3: Service Verification - All services verified and running"
+        echo "[STEP_SUCCESS] Step 7: Envoy Proxy Setup - Envoy proxy setup completed"
+        echo "[STEP_SUCCESS] On-Prem Services Setup - All services started successfully"
     else
-        printf '[WARN] Some services may not be running. Check logs:\n'
+        printf '[ERROR] Some services failed to start after %ds. Only %d/3 services running.\n' "$MAX_WAIT" "$SERVICES_OK"
+        printf '  Check logs:\n'
         printf '  - Mobile Location Service: tail -f /tmp/mobile-sensor.log\n'
         printf '  - mTLS Server: tail -f /tmp/mtls-server.log\n'
         printf '  - Envoy: tail -f /opt/envoy/logs/envoy.log\n'
+        step_failure "7.3" "Service Verification" "Some services failed to start (only ${SERVICES_OK}/3 services running after ${MAX_WAIT}s)"
+        exit 1
     fi
 
     printf '\n'

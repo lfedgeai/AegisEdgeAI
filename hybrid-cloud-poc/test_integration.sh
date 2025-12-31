@@ -126,20 +126,39 @@ run_script() {
     # Prepare environment variables to pass to sub-scripts
     local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
 
+    # Ensure log directory exists before writing
+    mkdir -p "${LOG_DIR}"
+
     # Unified-Identity - Testing: Fail-Fast & Logging
     # Run script and capture output to specific log file, while also streaming to master log (via stdout)
     # We use pipefail (set at top) to catch errors in the pipeline
     if $run_func "cd ${SCRIPT_DIR} && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
         echo ""
         echo -e "${GREEN}✓ ${description} completed successfully${NC}"
+        # Standardized success message for CI parsing
+        echo "[STEP_SUCCESS] ${description}"
         return 0
     else
         # Unified-Identity - Testing: Fail-Fast
         # Immediate error reporting
         echo ""
         echo -e "${RED}✗ ${description} failed${NC}"
-        echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
-        tail -n 20 "${log_file}" | sed 's/^/    /'
+        # Extract failure reason from last error in log (if log file exists)
+        local failure_reason="Script exited with non-zero status code"
+        if [ -f "${log_file}" ]; then
+            failure_reason=$(tail -n 50 "${log_file}" 2>/dev/null | grep -iE "(error|failed|fatal|critical|✗)" | tail -1 | sed 's/^[[:space:]]*//' | cut -c1-200 || echo "Script exited with non-zero status code")
+            if [ -z "$failure_reason" ]; then
+                failure_reason="Script exited with non-zero status code"
+            fi
+        fi
+        # Standardized failure message for CI parsing
+        echo "[STEP_FAILURE] ${description} - ${failure_reason}"
+        if [ -f "${log_file}" ]; then
+            echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
+            tail -n 20 "${log_file}" 2>/dev/null | sed 's/^/    /' || echo "    (log file could not be read)"
+        else
+            echo -e "${YELLOW}Log file not available: ${log_file}${NC}"
+        fi
         return 1
     fi
 }
@@ -199,6 +218,7 @@ wait_for_services() {
 
         if [ "$all_ready" = true ]; then
             echo -e "${GREEN}  ✓ All services are ready${NC}"
+            echo "[STEP_SUCCESS] Service readiness check - All services are ready"
             return 0
         fi
 
@@ -408,20 +428,39 @@ run_script() {
     # Prepare environment variables to pass to sub-scripts
     local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
 
+    # Ensure log directory exists before writing
+    mkdir -p "${LOG_DIR}"
+
     # Unified-Identity - Testing: Fail-Fast & Logging
     # Run script and capture output to specific log file, while also streaming to master log (via stdout)
     # We use pipefail (set at top) to catch errors in the pipeline
     if $run_func "cd ${SCRIPT_DIR} && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
         echo ""
         echo -e "${GREEN}✓ ${description} completed successfully${NC}"
+        # Standardized success message for CI parsing
+        echo "[STEP_SUCCESS] ${description}"
         return 0
     else
         # Unified-Identity - Testing: Fail-Fast
         # Immediate error reporting
         echo ""
         echo -e "${RED}✗ ${description} failed${NC}"
-        echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
-        tail -n 20 "${log_file}" | sed 's/^/    /'
+        # Extract failure reason from last error in log (if log file exists)
+        local failure_reason="Script exited with non-zero status code"
+        if [ -f "${log_file}" ]; then
+            failure_reason=$(tail -n 50 "${log_file}" 2>/dev/null | grep -iE "(error|failed|fatal|critical|✗)" | tail -1 | sed 's/^[[:space:]]*//' | cut -c1-200 || echo "Script exited with non-zero status code")
+            if [ -z "$failure_reason" ]; then
+                failure_reason="Script exited with non-zero status code"
+            fi
+        fi
+        # Standardized failure message for CI parsing
+        echo "[STEP_FAILURE] ${description} - ${failure_reason}"
+        if [ -f "${log_file}" ]; then
+            echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
+            tail -n 20 "${log_file}" 2>/dev/null | sed 's/^/    /' || echo "    (log file could not be read)"
+        else
+            echo -e "${YELLOW}Log file not available: ${log_file}${NC}"
+        fi
         return 1
     fi
 }
@@ -473,6 +512,7 @@ main() {
         echo -e "${GREEN}  ✓ Running on on-prem host (${ONPREM_HOST}) - no SSH needed${NC}"
     fi
     echo ""
+    echo "[STEP_SUCCESS] SSH Connectivity Check - All hosts accessible"
 
     # Step 1: Start Control Plane on 10.1.0.11
     CONTROL_PLANE_ARGS="--no-pause"

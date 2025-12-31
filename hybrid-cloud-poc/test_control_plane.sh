@@ -57,7 +57,45 @@ fi
 # Helper function to abort on critical errors
 abort_on_error() {
     local message="$1"
+    local step_num="${2:-}"
+    local step_desc="${3:-}"
+    
+    # Emit standardized failure message if step info provided
+    if [ -n "$step_num" ] && [ -n "$step_desc" ]; then
+        echo "[STEP_FAILURE] Step ${step_num}: ${step_desc} - ${message}"
+    elif [ -n "$step_desc" ]; then
+        echo "[STEP_FAILURE] ${step_desc} - ${message}"
+    fi
+    
     echo -e "${RED}✗ CRITICAL ERROR: ${message}${NC}" >&2
+    echo -e "${RED}Aborting test execution.${NC}" >&2
+    exit 1
+}
+
+# Helper function to emit step failure and exit immediately
+step_failure() {
+    local step_num="${1:-}"
+    local step_desc="$2"
+    local details="${3:-}"
+    
+    if [ -n "$step_num" ]; then
+        if [ -n "$details" ]; then
+            echo "[STEP_FAILURE] Step ${step_num}: ${step_desc} - ${details}"
+        else
+            echo "[STEP_FAILURE] Step ${step_num}: ${step_desc}"
+        fi
+    else
+        if [ -n "$details" ]; then
+            echo "[STEP_FAILURE] ${step_desc} - ${details}"
+        else
+            echo "[STEP_FAILURE] ${step_desc}"
+        fi
+    fi
+    
+    echo -e "${RED}✗ Step failed: ${step_desc}${NC}" >&2
+    if [ -n "$details" ]; then
+        echo -e "${RED}  Reason: ${details}${NC}" >&2
+    fi
     echo -e "${RED}Aborting test execution.${NC}" >&2
     exit 1
 }
@@ -1343,11 +1381,14 @@ finally:
 PYTHON_EOF
 
     if [ $? -ne 0 ]; then
-        abort_on_error "Failed to generate TLS certificates"
+        abort_on_error "Failed to generate TLS certificates" "1.1" "TLS Certificate Generation"
     fi
+    echo "[STEP_SUCCESS] Step 1.1: TLS Certificate Generation - Certificates generated successfully"
 else
     echo -e "${GREEN}  ✓ TLS certificates already exist${NC}"
+    echo "[STEP_SUCCESS] Step 1.1: TLS Certificate Generation - Certificates already exist"
 fi
+echo "[STEP_SUCCESS] Step 1: Keylime Environment Setup - TLS certificates ready"
 
 pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
 
@@ -1449,7 +1490,7 @@ for i in {1..90}; do
         echo -e "${RED}  ✗ Keylime Verifier process died${NC}"
         echo "  Logs:"
         tail -50 /tmp/keylime-verifier.log
-        abort_on_error "Keylime Verifier process died"
+        abort_on_error "Keylime Verifier process died" "2.1" "Keylime Verifier Startup"
     fi
     # Show progress every 10 seconds
     if [ $((i % 10)) -eq 0 ]; then
@@ -1462,8 +1503,9 @@ if [ "$VERIFIER_STARTED" = false ]; then
     echo -e "${RED}  ✗ Keylime Verifier failed to become ready within timeout${NC}"
     echo "  Logs:"
     tail -50 /tmp/keylime-verifier.log | grep -E "(ERROR|Starting|port|TLS)" || tail -30 /tmp/keylime-verifier.log
-    abort_on_error "Keylime Verifier failed to become ready"
+    abort_on_error "Keylime Verifier failed to become ready" "2.1" "Keylime Verifier Startup"
 fi
+echo "[STEP_SUCCESS] Step 2.1: Keylime Verifier Startup - Verifier started and ready"
 
 # Verify unified_identity feature flag is enabled
 echo ""
@@ -1481,9 +1523,11 @@ print(app_key_verification.is_unified_identity_enabled())
 
 if [ "$FEATURE_ENABLED" = "True" ]; then
     echo -e "${GREEN}  ✓ unified_identity feature flag is ENABLED${NC}"
+    echo "[STEP_SUCCESS] Step 2.2: Unified-Identity Feature Verification - Feature flag enabled"
 else
-    abort_on_error "unified_identity feature flag is DISABLED (expected: True, got: $FEATURE_ENABLED)"
+    abort_on_error "unified_identity feature flag is DISABLED (expected: True, got: $FEATURE_ENABLED)" "2.2" "Unified-Identity Feature Verification"
 fi
+echo "[STEP_SUCCESS] Step 2: Keylime Verifier Setup - Verifier running with unified_identity enabled"
 
 pause_at_phase "Step 2 Complete" "Keylime Verifier is running and ready. unified_identity feature is enabled."
 
@@ -1583,8 +1627,10 @@ if [ "$REGISTRAR_STARTED" = false ]; then
     echo -e "${RED}  ✗ Keylime Registrar failed to become ready within timeout${NC}"
     echo "  Logs:"
     tail -50 /tmp/keylime-registrar.log | grep -E "(ERROR|Starting|port|TLS)" || tail -30 /tmp/keylime-registrar.log
-    abort_on_error "Keylime Registrar failed to become ready"
+    abort_on_error "Keylime Registrar failed to become ready" "3.1" "Keylime Registrar Startup"
 fi
+echo "[STEP_SUCCESS] Step 3.1: Keylime Registrar Startup - Registrar started and ready"
+echo "[STEP_SUCCESS] Step 3: Keylime Registrar Setup - Registrar running and ready for agent registration"
 
 pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent registration."
 
@@ -1788,10 +1834,13 @@ echo "  Waiting for SPIRE Server to be ready..."
 for i in {1..30}; do
     if "${SPIRE_SERVER}" healthcheck -socketPath /tmp/spire-server/private/api.sock >/dev/null 2>&1; then
         echo -e "${GREEN}  ✓ SPIRE Server is ready${NC}"
+        echo "[STEP_SUCCESS] Step 4.2: SPIRE Server Startup - Server started and ready"
         break
     fi
     if [ $i -eq 30 ]; then
         echo -e "${YELLOW}  ⚠ SPIRE Server may not be fully ready yet${NC}"
+        echo "[STEP_FAILURE] Step 4.2: SPIRE Server Startup - Server may not be fully ready (timeout)"
+        abort_on_error "SPIRE Server failed to become ready within timeout" "4.2" "SPIRE Server Startup"
     fi
     sleep 1
 done
@@ -2020,6 +2069,7 @@ echo -e "${GREEN}Control plane services started successfully:${NC}"
 echo "  ✓ SPIRE Server"
 echo "  ✓ Keylime Verifier"
 echo "  ✓ Keylime Registrar"
+echo "[STEP_SUCCESS] Control Plane Services Setup - All services started successfully"
 echo ""
 echo -e "${YELLOW}Note: Agent services (SPIRE Agent, TPM Plugin, rust-keylime Agent) are managed by test_agents.sh${NC}"
 exit 0
