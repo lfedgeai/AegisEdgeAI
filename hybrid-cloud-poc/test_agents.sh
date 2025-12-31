@@ -2757,7 +2757,6 @@ AGENT_CONFIG="${PROJECT_DIR}/python-app-demo/spire-agent.conf"
     disown $SPIRE_AGENT_PID 2>/dev/null || true
     echo $SPIRE_AGENT_PID > /tmp/spire-agent.pid
     sleep 3
-    fi
 
 # Wait for SPIRE Server to be ready - SKIPPED for act 2
 echo "  Skipping SPIRE Server readiness check (act 2 - non-control plane only)"
@@ -2767,81 +2766,83 @@ echo "  Assuming SPIRE Server is already running and ready"
 echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
     ATTESTATION_COMPLETE=false
     for i in {1..90}; do
-    # Check if agent has its SVID by checking for Workload API socket
-    # The socket is created as soon as the agent has its SVID and is ready
-    if [ -S /tmp/spire-agent/public/api.sock ] 2>/dev/null; then
-        # Verify agent is also listed on server (server running from test_control_plane.sh)
-        if [ -n "${SPIRE_SERVER:-}" ] && [ -f "${SPIRE_SERVER}" ]; then
-            AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
-            if echo "$AGENT_LIST" | grep -q "spiffe://"; then
-            # If we can't check server, just check socket existence
-            echo -e "${GREEN}  ✓ SPIRE Agent Workload API socket is ready isolated check${NC}"
-            ATTESTATION_COMPLETE=true
-            # Don't break immediately, allow the loop to confirm state if needed or just proceed
-            break
-        fi
-    else
-        # Still wait if socket not ready, even if server lists the agent
-        : 
-    fi
-    # Check if attestation request was received (Unified-Identity or join token)
-    # Note: Server logs may be from test_control_plane.sh
-    if [ $i -eq 1 ] || [ $((i % 15)) -eq 0 ]; then
-        if [ -f /tmp/spire-server.log ]; then
-            # Check if server received attestation request with SovereignAttestation (Unified-Identity)
-            if grep -q "Received.*SovereignAttestation.*agent bootstrap request\|Derived agent ID from TPM evidence" /tmp/spire-server.log 2>/dev/null; then
-                if [ $i -eq 1 ]; then
-                    if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
-                        echo "    ℹ TPM-based attestation request received (checking attestation result)..."
-                    else
-                        echo "    ℹ Join token was successfully used (checking attestation result)..."
-                    fi
+        # Check if agent has its SVID by checking for Workload API socket
+        if [ -S /tmp/spire-agent/public/api.sock ] 2>/dev/null; then
+            # Verify agent is also listed on server (server running from test_control_plane.sh)
+            if [ -n "${SPIRE_SERVER:-}" ] && [ -f "${SPIRE_SERVER}" ]; then
+                AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
+                if echo "$AGENT_LIST" | grep -q "spiffe://"; then
+                    echo -e "${GREEN}  ✓ SPIRE Agent is attested and Workload API socket is ready${NC}"
+                    # Show agent details
+                    echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
+                    ATTESTATION_COMPLETE=true
+                    break
                 fi
-                # Check if attestation failed due to Keylime verification
-                if grep -q "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log 2>/dev/null; then
-                    ERROR_MSG=$(grep "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log | tail -1)
-                    # Check if it's a CAMARA rate limiting issue (429)
-                    if echo "$ERROR_MSG" | grep -q "status_code.*429\|rate.*limit"; then
-                        echo -e "${RED}    ✗ Attestation failed due to CAMARA API rate limiting (429)${NC}"
-                        echo ""
-                        echo -e "${YELLOW}    CAMARA API Rate Limiting Detected:${NC}"
-                        echo "      The CAMARA API has rate limits that prevent too many requests."
-                        echo "      This is a limitation of the external CAMARA sandbox service."
-                        echo ""
-                        echo -e "${CYAN}    Options to resolve:${NC}"
-                        echo "      1. Wait a few minutes and retry the test"
-                        echo "      2. Set CAMARA_BYPASS=true to skip CAMARA API calls for testing:"
-                        echo "         export CAMARA_BYPASS=true"
-                        echo "         ./test_agents.sh"
-                        echo ""
-                        echo "      Error details:"
-                        echo "$ERROR_MSG" | sed 's/^/        /'
-                        echo ""
-                        abort_on_error "SPIRE Agent attestation failed due to CAMARA API rate limiting (429). See message above for resolution options." "7.2" "SPIRE Agent Attestation"
-                    else
-                        echo -e "${RED}    ✗ Attestation request received but verification failed${NC}"
-                        echo "$ERROR_MSG" | sed 's/^/      /'
-                        abort_on_error "SPIRE Agent attestation verification failed" "7.2" "SPIRE Agent Attestation"
-                    fi
-                fi
+            else
+                # If we cannot check server, just check socket existence
+                echo -e "${GREEN}  ✓ SPIRE Agent Workload API socket is ready (isolated check)${NC}"
+                ATTESTATION_COMPLETE=true
+                break
             fi
         fi
-    fi
 
-    # Show progress every 15 seconds
-    if [ $((i % 15)) -eq 0 ]; then
-        elapsed=$i
-        remaining=$((90 - i))
-        echo "    Still waiting for attestation... (${elapsed}s elapsed, ${remaining}s remaining)"
-        # Check logs for errors
-        if [ -f /tmp/spire-agent.log ]; then
-            if tail -20 /tmp/spire-agent.log | grep -q "ERROR\|Failed"; then
-                echo "    Recent errors in agent log:"
-                tail -20 /tmp/spire-agent.log | grep -E "ERROR|Failed" | tail -3
+        # Check if attestation request was received (Unified-Identity or join token)
+        if [ $i -eq 1 ] || [ $((i % 15)) -eq 0 ]; then
+            if [ -f /tmp/spire-server.log ]; then
+                # Check if server received attestation request with SovereignAttestation (Unified-Identity)
+                if grep -q "Received.*SovereignAttestation.*agent bootstrap request\|Derived agent ID from TPM evidence" /tmp/spire-server.log 2>/dev/null; then
+                    if [ $i -eq 1 ]; then
+                        if [ "${UNIFIED_IDENTITY_ENABLED:-true}" = "true" ]; then
+                            echo "    ℹ TPM-based attestation request received (checking attestation result)..."
+                        else
+                            echo "    ℹ Join token was successfully used (checking attestation result)..."
+                        fi
+                    fi
+                    # Check if attestation failed due to Keylime verification
+                    if grep -q "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log 2>/dev/null; then
+                        ERROR_MSG=$(grep "Failed to process sovereign attestation\|keylime verification failed" /tmp/spire-server.log | tail -1)
+                        # Check if it's a CAMARA rate limiting issue (429)
+                        if echo "$ERROR_MSG" | grep -q "status_code.*429\|rate.*limit"; then
+                            echo -e "${RED}    ✗ Attestation failed due to CAMARA API rate limiting (429)${NC}"
+                            echo ""
+                            echo -e "${YELLOW}    CAMARA API Rate Limiting Detected:${NC}"
+                            echo "      The CAMARA API has rate limits that prevent too many requests."
+                            echo "      This is a limitation of the external CAMARA sandbox service."
+                            echo ""
+                            echo -e "${CYAN}    Options to resolve:${NC}"
+                            echo "      1. Wait a few minutes and retry the test"
+                            echo "      2. Set CAMARA_BYPASS=true to skip CAMARA API calls for testing:"
+                            echo "         export CAMARA_BYPASS=true"
+                            echo "         ./test_agents.sh"
+                            echo ""
+                            echo "      Error details:"
+                            echo "$ERROR_MSG" | sed 's/^/        /'
+                            echo ""
+                            abort_on_error "SPIRE Agent attestation failed due to CAMARA API rate limiting (429). See message above for resolution options." "7.2" "SPIRE Agent Attestation"
+                        else
+                            echo -e "${RED}    ✗ Attestation request received but verification failed${NC}"
+                            echo "$ERROR_MSG" | sed 's/^/      /'
+                            abort_on_error "SPIRE Agent attestation verification failed" "7.2" "SPIRE Agent Attestation"
+                        fi
+                    fi
+                fi
             fi
         fi
-    fi
-    sleep 1
+
+        # Show progress every 15 seconds
+        if [ $((i % 15)) -eq 0 ]; then
+            elapsed=$i
+            remaining=$((90 - i))
+            echo "    Still waiting for attestation... (${elapsed}s elapsed, ${remaining}s remaining)"
+            # Check logs for errors
+            if [ -f /tmp/spire-agent.log ]; then
+                if tail -20 /tmp/spire-agent.log | grep -q "ERROR\|Failed"; then
+                    echo "    Recent errors in agent log:"
+                    tail -20 /tmp/spire-agent.log | grep -E "ERROR|Failed" | tail -3
+                fi
+            fi
+        fi
+        sleep 1
     done
 
     if [ "$ATTESTATION_COMPLETE" = false ]; then
