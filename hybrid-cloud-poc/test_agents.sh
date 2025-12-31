@@ -2879,6 +2879,7 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
             abort_on_error "SPIRE Agent attestation failed or socket missing" "7.2" "SPIRE Agent Attestation"
         fi
     fi
+    fi
 echo "[STEP_SUCCESS] Step 7: SPIRE Agent Setup - Agent started and attested"
 
 pause_at_phase "Step 7 Complete" "SPIRE Agent has completed attestation. Ready for workload registration."
