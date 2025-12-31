@@ -53,8 +53,6 @@ jobs:
                   find /tmp -maxdepth 1 -name "ci-workspace-*" -mmin +60 -exec rm -rf {} \; 2>/dev/null || true
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
-                  # Clean runner _work directory from previous runs
-                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI || true
                   echo "✅ Pre-cleanup complete"
 
             - name: Create Isolated Workspace
@@ -63,24 +61,23 @@ jobs:
                   mkdir -p $CI_WORKSPACE
                   echo "Workspace created: $CI_WORKSPACE"
 
-            - name: Checkout Code (Fresh Clone to Isolated Directory)
+            - name: Checkout Code (Fresh Clone)
               uses: actions/checkout@v4
               with:
                   submodules: recursive
                   clean: true
-                  path: repo
 
             - name: Copy to Isolated Workspace
               run: |
                   echo "📋 Copying repository to isolated workspace..."
-                  cp -r repo/* $CI_WORKSPACE/
+                  cp -r ${{ github.workspace }}/* $CI_WORKSPACE/
                   echo "Files in isolated workspace:"
                   ls -la $CI_WORKSPACE/ | head -10
 
             - name: Install Python Dependencies
               timeout-minutes: 5
+              working-directory: ${{ env.CI_WORKSPACE }}/hybrid-cloud-poc
               run: |
-                  cd $CI_WORKSPACE/hybrid-cloud-poc
                   python3 -m pip install --upgrade pip
                   python3 -m pip install -r keylime/requirements.txt
                   python3 -m pip install -r mobile-sensor-microservice/requirements.txt
@@ -88,8 +85,8 @@ jobs:
 
             - name: Run Mobile Sensor Microservice Tests
               timeout-minutes: 5
+              working-directory: ${{ env.CI_WORKSPACE }}/hybrid-cloud-poc/mobile-sensor-microservice
               run: |
-                  cd $CI_WORKSPACE/hybrid-cloud-poc/mobile-sensor-microservice
                   echo "🧪 Running mobile-sensor-microservice unit tests..."
                   python3 -m pytest tests/test_service.py -v --tb=short
                   echo "✅ Mobile sensor microservice tests passed"
@@ -109,8 +106,8 @@ jobs:
                   # Remove temp files
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
-                  # CRITICAL: Remove the runner _work directory (cloned repo)
-                  echo "Removing runner _work directory..."
-                  rm -rf ${{ github.workspace }} || true
-                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI || true
+                  # Clean the github workspace contents (but not the directory itself)
+                  echo "Cleaning workspace contents..."
+                  rm -rf ${{ github.workspace }}/* || true
+                  rm -rf ${{ github.workspace }}/.* 2>/dev/null || true
                   echo "✅ Post-cleanup complete - ALL workspaces purged"
