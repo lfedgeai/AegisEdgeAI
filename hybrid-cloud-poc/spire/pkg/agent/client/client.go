@@ -560,20 +560,13 @@ func (c *client) newServerGRPCClient() (*grpc.ClientConn, error) {
 	// Initial attestation uses standard TLS (no client cert) and should have no restrictions
 	// mTLS with TPM App Key (after attestation) needs TLS 1.2 and PKCS#1 v1.5
 
-	// Check if we have a certificate chain (after attestation)
-	chain, _, _ := c.c.KeysAndBundle()
-	hasCertChain := len(chain) > 0
-
 	tlsPolicy := c.c.TLSPolicy
-	// Only enable PreferPKCS1v15 when we have a certificate chain (mTLS after attestation)
-	if fflag.IsSet(fflag.FlagUnifiedIdentity) && c.tpmPlugin != nil && hasCertChain {
-		// We have a certificate chain, so this is mTLS (after attestation)
-		// Enable PreferPKCS1v15 to limit TLS to 1.2 and prefer PKCS#1 v1.5 signatures
+	// Enable PreferPKCS1v15 whenever Unified-Identity is active.
+	// This ensures that all connections use TLS 1.2 and PKCS#1 v1.5,
+	// which is required for the TPM App Key mTLS (even if not yet used).
+	if fflag.IsSet(fflag.FlagUnifiedIdentity) && c.tpmPlugin != nil {
 		tlsPolicy.PreferPKCS1v15 = true
-		c.c.Log.Info("Unified-Identity - Verification: Enabling PreferPKCS1v15 TLS policy for TPM App Key mTLS (after attestation)")
-	} else if !hasCertChain {
-		// No certificate chain yet - this is initial attestation (standard TLS, no restrictions)
-		c.c.Log.Debug("Unified-Identity - Verification: Initial attestation (no cert chain), using standard TLS without restrictions")
+		c.c.Log.Info("Unified-Identity - Verification: Enabling PreferPKCS1v15 TLS policy for SPIRE Server connections")
 	}
 
 	return NewServerGRPCClient(ServerClientConfig{
