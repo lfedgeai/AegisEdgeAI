@@ -2774,30 +2774,15 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
         if [ -n "${SPIRE_SERVER:-}" ] && [ -f "${SPIRE_SERVER}" ]; then
             AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
             if echo "$AGENT_LIST" | grep -q "spiffe://"; then
-                echo -e "${GREEN}  ✓ SPIRE Agent is attested and has SVID${NC}"
-                # Show agent details
-                echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
-                ATTESTATION_COMPLETE=true
-                break
-            fi
-        else
             # If we can't check server, just check socket existence
-            echo -e "${GREEN}  ✓ SPIRE Agent Workload API socket is ready${NC}"
+            echo -e "${GREEN}  ✓ SPIRE Agent Workload API socket is ready isolated check${NC}"
             ATTESTATION_COMPLETE=true
+            # Don't break immediately, allow the loop to confirm state if needed or just proceed
             break
         fi
     else
-        # Fallback: Check if agent is attested on server (even if socket not ready yet)
-        if [ -n "${SPIRE_SERVER:-}" ] && [ -f "${SPIRE_SERVER}" ]; then
-            AGENT_LIST=$("${SPIRE_SERVER}" agent list -socketPath /tmp/spire-server/private/api.sock 2>&1 || echo "")
-            if echo "$AGENT_LIST" | grep -q "spiffe://"; then
-                echo -e "${GREEN}  ✓ SPIRE Agent is attested${NC}"
-                # Show agent details
-                echo "$AGENT_LIST" | grep "spiffe://" | head -1 | sed 's/^/    /'
-                ATTESTATION_COMPLETE=true
-                break
-            fi
-        fi
+        # Still wait if socket not ready, even if server lists the agent
+        : 
     fi
     # Check if attestation request was received (Unified-Identity or join token)
     # Note: Server logs may be from test_control_plane.sh
@@ -2883,6 +2868,12 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
             if [ ! -S /tmp/spire-agent/public/api.sock ]; then
                 echo -e "${YELLOW}    ⚠ Workload API socket missing: /tmp/spire-agent/public/api.sock${NC}"
                 ls -la /tmp/spire-agent/public/ 2>/dev/null || echo "    Directory /tmp/spire-agent/public/ does not exist"
+                
+                echo -e "${CYAN}    --- SPIRE Agent Log (last 50 lines) ---${NC}"
+                tail -n 50 /tmp/spire-agent.log 2>/dev/null | sed 's/^/      /'
+                
+                echo -e "${CYAN}    --- SPIRE Server Log (last 50 lines) ---${NC}"
+                tail -n 50 /tmp/spire-server.log 2>/dev/null | sed 's/^/      /'
             fi
             abort_on_error "SPIRE Agent attestation failed or socket missing" "7.2" "SPIRE Agent Attestation"
         fi

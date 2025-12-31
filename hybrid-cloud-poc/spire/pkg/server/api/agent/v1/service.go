@@ -542,7 +542,6 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 	}
 	rpccontext.AuditRPC(ctx)
 
-
 	resp := &agentv1.RenewAgentResponse{
 		Svid: &types.X509SVID{
 			Id:        api.ProtoFromID(callerID),
@@ -561,7 +560,6 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 
 	return resp, nil
 }
-
 
 // PostStatus post agent status
 func (s *Service) PostStatus(context.Context, *agentv1.PostStatusRequest) (*agentv1.PostStatusResponse, error) {
@@ -686,7 +684,7 @@ func (s *Service) getSelectorsFromAgentID(ctx context.Context, agentID string) (
 func (s *Service) deriveAgentIDFromTPM(ctx context.Context, log logrus.FieldLogger, sovereignAttestation *types.SovereignAttestation) (string, error) {
 	// Prefer keylime_agent_uuid if available (stable identifier from Keylime registrar)
 	if sovereignAttestation.KeylimeAgentUuid != "" {
-		agentPath := fmt.Sprintf("/spire/agent/unified_identity/%s", sovereignAttestation.KeylimeAgentUuid)
+		agentPath := fmt.Sprintf("/unified_identity/%s", sovereignAttestation.KeylimeAgentUuid)
 		agentID, err := idutil.AgentID(s.td, agentPath)
 		if err != nil {
 			return "", fmt.Errorf("failed to create agent ID from keylime_agent_uuid: %w", err)
@@ -699,7 +697,7 @@ func (s *Service) deriveAgentIDFromTPM(ctx context.Context, log logrus.FieldLogg
 		// Hash the App Key public key to create a stable identifier
 		hash := sha256.Sum256([]byte(sovereignAttestation.AppKeyPublic))
 		fingerprint := hex.EncodeToString(hash[:])[:16] // Use first 16 chars for readability
-		agentPath := fmt.Sprintf("/spire/agent/unified_identity/appkey-%s", fingerprint)
+		agentPath := fmt.Sprintf("/unified_identity/appkey-%s", fingerprint)
 		agentID, err := idutil.AgentID(s.td, agentPath)
 		if err != nil {
 			return "", fmt.Errorf("failed to create agent ID from App Key: %w", err)
