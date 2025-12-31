@@ -2,7 +2,7 @@ name: Unified Identity CI
 
 on:
     push:
-        branches: ["main", "develop", "hybrid-cloud-poc", "feat/**"]
+        branches: ["main", "develop", "hybrid-cloud-poc", "feat/**", "ci-cd-clean-slate"]
     pull_request:
         branches: ["main", "develop", "hybrid-cloud-poc"]
     workflow_dispatch:
@@ -29,15 +29,29 @@ jobs:
         runs-on: self-hosted
 
         steps:
-            - name: Checkout Code
+            - name: Pre-Run Environment Cleanup
+              run: |
+                  echo "🧹 Cleaning orphan processes to prevent state poisoning..."
+                  pkill -9 -f "envoy" || true
+                  pkill -9 -f "Runner.Listener" || true
+                  pkill -9 -f "spire-server" || true
+                  pkill -9 -f "spire-agent" || true
+                  pkill -9 -f "tpm_plugin" || true
+                  rm -rf /tmp/unified_identity_test_* || true
+                  rm -rf /tmp/spire-* || true
+                  echo "✅ Pre-cleanup complete"
+
+            - name: Checkout Code (Fresh Clone)
               uses: actions/checkout@v4
               with:
                   submodules: recursive
+                  clean: true
 
             - name: Debug - Inspect File System
               run: |
                   echo "Current directory: $(pwd)"
-                  ls -R hybrid-cloud-poc/ | grep requirements.txt
+                  echo "Workspace: ${{ github.workspace }}"
+                  ls -la hybrid-cloud-poc/ | head -20
 
             - name: Install Python Dependencies
               run: |
@@ -47,7 +61,22 @@ jobs:
 
             - name: Run Integration Tests
               shell: bash
+              env:
+                  TMPDIR: /tmp
               run: |
                   cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
-                  python3 ./hello_world_test_runner.py
+                  python3 ./ci_test_runner.py --no-color
+
+            - name: Post-Run Cleanup (Mandatory Purge)
+              if: always()
+              run: |
+                  echo "🗑️ Purging workspace to prevent state poisoning..."
+                  pkill -9 -f "spire-server" || true
+                  pkill -9 -f "spire-agent" || true
+                  pkill -9 -f "tpm_plugin" || true
+                  pkill -9 -f "envoy" || true
+                  rm -rf /tmp/unified_identity_test_* || true
+                  rm -rf /tmp/spire-* || true
+                  rm -rf ${{ github.workspace }}/* || true
+                  echo "✅ Post-cleanup complete - workspace purged"
