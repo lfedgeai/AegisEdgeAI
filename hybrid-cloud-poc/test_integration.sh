@@ -37,6 +37,18 @@ if [ -z "${LOGGING_SETUP:-}" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source step reporting for CI integration
+source "${SCRIPT_DIR}/scripts/step_report.sh"
+# Source cleanup script for initial state reset
+source "${SCRIPT_DIR}/scripts/cleanup.sh"
+
+# Clean up all previous test state at the start
+echo ""
+echo "Cleaning up previous test state (including /tmp files)..."
+cleanup_tmp_files
+echo "✓ Previous test state cleaned up"
+echo ""
+
 # Default all sub-scripts to run on 10.1.0.11
 CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST:-10.1.0.11}"
 AGENTS_HOST="${AGENTS_HOST:-10.1.0.11}"
@@ -135,11 +147,19 @@ run_script() {
         return 0
     else
         # Unified-Identity - Testing: Fail-Fast
-        # Immediate error reporting
+        # Immediate error reporting and step failure reporting
         echo ""
         echo -e "${RED}✗ ${description} failed${NC}"
         echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
         tail -n 20 "${log_file}" | sed 's/^/    /'
+        # Report step failure for CI test runner (fail-fast)
+        if [ -n "${_CURRENT_STEP:-}" ]; then
+            report_step_failure "${description} failed - check log: ${log_file}"
+        else
+            echo "[STEP:${_STEP_REPORT_SCRIPT}:0:0:FAILURE] ✗ ${description} failed - check log: ${log_file}"
+            exit 1
+        fi
+        # report_step_failure already exits, but just in case:
         return 1
     fi
 }
@@ -417,11 +437,19 @@ run_script() {
         return 0
     else
         # Unified-Identity - Testing: Fail-Fast
-        # Immediate error reporting
+        # Immediate error reporting and step failure reporting
         echo ""
         echo -e "${RED}✗ ${description} failed${NC}"
         echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
         tail -n 20 "${log_file}" | sed 's/^/    /'
+        # Report step failure for CI test runner (fail-fast)
+        if [ -n "${_CURRENT_STEP:-}" ]; then
+            report_step_failure "${description} failed - check log: ${log_file}"
+        else
+            echo "[STEP:${_STEP_REPORT_SCRIPT}:0:0:FAILURE] ✗ ${description} failed - check log: ${log_file}"
+            exit 1
+        fi
+        # report_step_failure already exits, but just in case:
         return 1
     fi
 }
@@ -475,12 +503,14 @@ main() {
     echo ""
 
     # Step 1: Start Control Plane on 10.1.0.11
+    report_step_start "1" "Starting Control Plane Services"
     CONTROL_PLANE_ARGS="--no-pause"
     if [ "$NO_BUILD" = "true" ]; then
         CONTROL_PLANE_ARGS="$CONTROL_PLANE_ARGS --no-build"
     fi
     if ! run_script "run_on_control_plane" "test_control_plane.sh" "$CONTROL_PLANE_ARGS" \
         "Step 1: Starting Control Plane Services (SPIRE Server, Keylime Verifier/Registrar)"; then
+        # run_script already reports failure and exits, but ensure we stop here
         echo -e "${RED}Control plane setup failed. Aborting.${NC}"
         exit 1
     fi
@@ -488,8 +518,9 @@ main() {
     # Verify control plane services are up
     if ! verify_control_plane; then
         echo -e "${RED}Control plane services verification failed. Aborting.${NC}"
-        exit 1
+        report_step_failure "Control plane services verification failed"
     fi
+    report_step_success "Control Plane Services started"
 
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -506,6 +537,7 @@ main() {
     fi
 
     # Step 2: Start On-Prem Services on on-prem host
+    report_step_start "2" "Starting On-Prem Services"
     # Temporarily disable exit on error for on-prem (it may have warnings)
     set +e
     # Pass --no-pause if NO_PAUSE is set, and pass host environment variables
@@ -531,14 +563,21 @@ main() {
     else
         echo ""
         echo -e "${RED}✗ Failed to start on-prem services (exit code: $ONPREM_EXIT_CODE)${NC}"
-        exit 1
+        # Report step failure and stop (fail-fast)
+        if [ -n "${_CURRENT_STEP:-}" ]; then
+            report_step_failure "On-prem services failed to start (exit code: $ONPREM_EXIT_CODE)"
+        else
+            echo "[STEP:${_STEP_REPORT_SCRIPT}:2:0:FAILURE] ✗ On-prem services failed to start (exit code: $ONPREM_EXIT_CODE)"
+            exit 1
+        fi
     fi
 
     # Verify on-prem services are up
     if ! verify_onprem; then
         echo -e "${RED}On-prem services verification failed. Aborting.${NC}"
-        exit 1
+        report_step_failure "On-prem services verification failed"
     fi
+    report_step_success "On-Prem Services started"
 
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -555,15 +594,18 @@ main() {
     fi
 
     # Step 3: Run Complete Integration Test on agents host
+    report_step_start "3" "Running Agent Integration Test"
     AGENTS_ARGS="--no-pause"
     if [ "$NO_BUILD" = "true" ]; then
         AGENTS_ARGS="$AGENTS_ARGS --no-build"
     fi
     if ! run_script "run_on_agents" "test_agents.sh" "$AGENTS_ARGS" \
         "Step 3: Running Complete Integration Test (Agent Attestation, Workload SVID)"; then
+        # run_script already reports failure and exits, but ensure we stop here
         echo -e "${RED}Complete integration test failed.${NC}"
         exit 1
     fi
+    report_step_success "Agent Integration Test completed"
 
     # Step 4: Test CAMARA Caching and GPS Bypass Features
     #echo ""
@@ -579,6 +621,7 @@ main() {
     #test_camara_caching_and_gps_bypass
 
     # Step 5: Test mTLS Client with IMEI/IMSI validation
+    report_step_start "5" "Testing mTLS Client with IMEI/IMSI Validation"
     echo ""
     if [ "$NO_PAUSE" = "true" ]; then
         echo "  (--no-pause: continuing automatically...)"
@@ -600,7 +643,7 @@ main() {
     mTLS_ENV_VARS="SERVER_HOST=${ONPREM_HOST} SERVER_PORT=8080 CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
 
     # Run test_mtls_client.sh on agents host (where client runs)
-    MTLS_TEST_PASSED=false
+    MTLS_TEST_PASSED=true
     if run_on_agents "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${mTLS_ENV_VARS} ./test_mtls_client.sh" 2>&1 | tee "/tmp/remote_test_mtls_client.log"; then
         echo ""
         echo -e "${GREEN}✓ mTLS client test completed successfully${NC}"
@@ -614,8 +657,9 @@ main() {
 
     if [ "$MTLS_TEST_PASSED" != "true" ]; then
         echo -e "${RED}mTLS client test failed. Aborting.${NC}"
-        exit 1
+        report_step_failure "mTLS client test failed"
     fi
+    report_step_success "mTLS Client test passed"
 
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

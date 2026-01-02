@@ -26,6 +26,8 @@ set -euo pipefail
 export UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source step reporting for CI integration
+source "${SCRIPT_DIR}/scripts/step_report.sh"
 # All components are now consolidated in the root directory
 PROJECT_DIR="${SCRIPT_DIR}"
 KEYLIME_DIR="${SCRIPT_DIR}/keylime"
@@ -55,10 +57,19 @@ if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
 fi
 
 # Helper function to abort on critical errors
+# Reports step failure before exiting (fail-fast)
 abort_on_error() {
     local message="$1"
+    local step_desc="${2:-Critical error}"
     echo -e "${RED}✗ CRITICAL ERROR: ${message}${NC}" >&2
-    echo -e "${RED}Aborting test execution.${NC}" >&2
+    # Report step failure for CI test runner
+    if [ -n "${_CURRENT_STEP:-}" ]; then
+        report_step_failure "${step_desc}: ${message}"
+    else
+        echo "[STEP:${_STEP_REPORT_SCRIPT}:0:0:FAILURE] ✗ ${step_desc}: ${message}"
+        exit 1
+    fi
+    # report_step_failure already exits, but just in case:
     exit 1
 }
 
@@ -87,6 +98,8 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 source "${SCRIPT_DIR}/scripts/cleanup.sh"
 # Restore SCRIPT_DIR after sourcing (cleanup.sh may have changed it)
 SCRIPT_DIR="${TEST_SCRIPT_DIR}"
+# Source step reporting for CI integration (after SCRIPT_DIR is restored)
+source "${SCRIPT_DIR}/scripts/step_report.sh"
 
 # Wrap the cleanup function to add "Step 0:" prefix for consistency with test script output
 # Save original function before we override it by copying it with a different name
@@ -132,24 +145,70 @@ stop_control_plane_services_only() {
     rm -f /tmp/spire-server.log 2>/dev/null || true
     # Also clean up the data directory in the SPIRE folder
     rm -rf "${SPIRE_DIR}/.data" 2>/dev/null || true
+    # Clean up the configured data directory (from spire-server.conf: /opt/spire/data/server)
+    # This is where the actual database (datastore.sqlite3) is stored
+    if [ -d "/opt/spire/data/server" ] || [ -f "/opt/spire/data/server/datastore.sqlite3" ]; then
+        echo "     Removing SPIRE Server database: /opt/spire/data/server"
+        # Ensure server is stopped to release database lock
+        pkill -f "spire-server" >/dev/null 2>&1 || true
+        sleep 1
+        rm -rf /opt/spire/data/server 2>/dev/null || true
+        # Also try removing just the database files if directory removal fails
+        rm -f /opt/spire/data/server/datastore.sqlite3* 2>/dev/null || true
+    fi
     # Also clean up any SQLite database files that might be in the data directory
     find /tmp -name "*.db" -path "*/spire-server/*" -delete 2>/dev/null || true
     find /tmp -name "*.sqlite" -path "*/spire-server/*" -delete 2>/dev/null || true
+    # Clean up any SQLite database files in /opt/spire (including -shm and -wal files)
+    find /opt/spire -name "*.sqlite3*" -o -name "*.db" 2>/dev/null | while read -r db_file; do
+        if [ -f "$db_file" ]; then
+            rm -f "$db_file" 2>/dev/null || true
+        fi
+    done
 
     # Remove Keylime databases and persistent data
     echo "     Removing Keylime databases and persistent data..."
+    # Stop Keylime services first to release database locks
+    pkill -f "keylime_verifier" >/dev/null 2>&1 || true
+    pkill -f "keylime\.cmd\.verifier" >/dev/null 2>&1 || true
+    pkill -f "keylime_registrar" >/dev/null 2>&1 || true
+    pkill -f "keylime\.cmd\.registrar" >/dev/null 2>&1 || true
+    sleep 1
+    # Remove registrar database (reg_data.sqlite) - explicit removal
+    # The registrar database is at /tmp/keylime/reg_data.sqlite
+    rm -f /tmp/keylime/reg_data.sqlite* 2>/dev/null || true
+    # Remove entire /tmp/keylime directory (contains registrar database and other data)
     rm -rf /tmp/keylime 2>/dev/null || true
+    # Remove verifier database files
     rm -f /tmp/keylime-verifier.pid 2>/dev/null || true
     rm -f /tmp/keylime-registrar.pid 2>/dev/null || true
     rm -f /tmp/keylime-verifier.log 2>/dev/null || true
     rm -f /tmp/keylime-registrar.log 2>/dev/null || true
-
-    # Remove local Keylime database if running in test mode
+    # Remove local Keylime database if running in test mode (cv_data.sqlite, verifier.db, verifier.sqlite)
     rm -f "${KEYLIME_DIR}/cv_data.sqlite" 2>/dev/null || true
+    rm -f "${KEYLIME_DIR}/verifier.db" 2>/dev/null || true
+    rm -f "${KEYLIME_DIR}/verifier.sqlite" 2>/dev/null || true
+    # Also clean up any SQLite database files in Keylime directory
+    find "${KEYLIME_DIR}" -maxdepth 1 -name "*.sqlite*" -o -name "*.db" 2>/dev/null | while read -r db_file; do
+        if [ -f "$db_file" ]; then
+            rm -f "$db_file" 2>/dev/null || true
+        fi
+    done
 
     # Remove TLS certificates (needed for Keylime)
     echo "     Removing TLS certificates..."
     rm -rf "${KEYLIME_DIR}/cv_ca" 2>/dev/null || true
+    rm -rf "${KEYLIME_DIR}/reg_ca" 2>/dev/null || true
+    
+    # Clean up other relevant directories
+    echo "     Cleaning up other relevant directories..."
+    # Clean up user home directories
+    rm -rf "$HOME/.keylime" 2>/dev/null || true
+    rm -rf "$HOME/.local/share/keylime" 2>/dev/null || true
+    # Clean up /var/lib if accessible
+    sudo rm -rf /var/lib/keylime 2>/dev/null || true
+    # Clean up /var/run if accessible
+    sudo rm -rf /var/run/keylime 2>/dev/null || true
 
     # Step 3: Remove PID files
     echo "  3. Removing PID files..."
@@ -168,8 +227,12 @@ stop_control_plane_services_only() {
     rm -f /tmp/spire-server/private/api.sock 2>/dev/null || true
     rm -f /tmp/spire-server/public/api.sock 2>/dev/null || true
 
-    # Step 6: Create clean data directories
-    echo "  6. Creating clean data directories..."
+    # Step 6: Clean up temporary files in /tmp (using cleanup.sh function)
+    echo "  6. Cleaning up temporary files in /tmp..."
+    cleanup_tmp_files
+
+    # Step 7: Create clean data directories
+    echo "  7. Creating clean data directories..."
     mkdir -p /tmp/spire-server/private 2>/dev/null || true
     mkdir -p /tmp/spire-server/public 2>/dev/null || true
     mkdir -p /tmp/keylime 2>/dev/null || true
@@ -1234,6 +1297,7 @@ else
 fi
 
 # Step 1: Setup Keylime environment with TLS certificates
+report_step_start "1" "Setting up Keylime environment with TLS certificates"
 echo -e "${CYAN}Step 1: Setting up Keylime environment with TLS certificates...${NC}"
 echo ""
 
@@ -1349,6 +1413,7 @@ else
     echo -e "${GREEN}  ✓ TLS certificates already exist${NC}"
 fi
 
+report_step_success "Keylime environment with TLS certificates set up"
 pause_at_phase "Step 1 Complete" "TLS certificates have been generated. Keylime environment is ready."
 
 
@@ -1397,6 +1462,7 @@ stop_control_plane_services() {
 }
 
 # Step 2: Start Keylime Verifier with unified_identity enabled
+report_step_start "2" "Starting Keylime Verifier with unified_identity enabled"
 echo ""
 echo -e "${CYAN}Step 2: Starting Keylime Verifier with unified_identity enabled...${NC}"
 cd "${KEYLIME_DIR}"
@@ -1485,9 +1551,11 @@ else
     abort_on_error "unified_identity feature flag is DISABLED (expected: True, got: $FEATURE_ENABLED)"
 fi
 
+report_step_success "Keylime Verifier running with unified_identity enabled"
 pause_at_phase "Step 2 Complete" "Keylime Verifier is running and ready. unified_identity feature is enabled."
 
 # Step 3: Start Keylime Registrar (required for rust-keylime agent registration)
+report_step_start "3" "Starting Keylime Registrar for agent registration"
 echo ""
 echo -e "${CYAN}Step 3: Starting Keylime Registrar (required for agent registration)...${NC}"
 cd "${KEYLIME_DIR}"
@@ -1586,6 +1654,7 @@ if [ "$REGISTRAR_STARTED" = false ]; then
     abort_on_error "Keylime Registrar failed to become ready"
 fi
 
+report_step_success "Keylime Registrar running and ready for agent registration"
 pause_at_phase "Step 3 Complete" "Keylime Registrar is running. Ready for agent registration."
 
 # Step 4: Skipping rust-keylime Agent (control plane only - agent services managed by test_agents.sh)
@@ -1610,6 +1679,7 @@ echo -e "${YELLOW}  TPM Plugin Server is managed by test_agents.sh${NC}"
 # Removed: All TPM Plugin Server startup code (not needed for control plane only)
 
 # Step 4: Build SPIRE Server binary (if needed) and start it
+report_step_start "4" "Building and starting SPIRE Server"
 echo ""
 echo -e "${CYAN}Step 4: Building SPIRE Server (if needed) and starting it...${NC}"
 
@@ -1759,8 +1829,27 @@ if [ -f "${SERVER_CONFIG}" ]; then
         echo "    Removing SPIRE Server database directory: ${SERVER_WORK_DIR}/.data"
         rm -rf "${SERVER_WORK_DIR}/.data" 2>/dev/null || true
     fi
+    # Clean up the configured data directory (from spire-server.conf: /opt/spire/data/server)
+    # This is where the actual database (datastore.sqlite3) is stored
+    if [ -d "/opt/spire/data/server" ] || [ -f "/opt/spire/data/server/datastore.sqlite3" ]; then
+        echo "    Removing SPIRE Server configured data directory: /opt/spire/data/server"
+        # Stop any processes that might have the database locked
+        pkill -f "spire-server" >/dev/null 2>&1 || true
+        sleep 1
+        # Remove the directory and all its contents
+        rm -rf /opt/spire/data/server 2>/dev/null || true
+        # Also try removing just the database file if directory removal fails
+        rm -f /opt/spire/data/server/datastore.sqlite3* 2>/dev/null || true
+    fi
     # Clean up any SQLite database files in the spire directory
     find "${SERVER_WORK_DIR}" -maxdepth 2 -name "*.sqlite3" -o -name "*.db" 2>/dev/null | while read -r db_file; do
+        if [ -f "$db_file" ]; then
+            echo "    Removing database file: $db_file"
+            rm -f "$db_file" 2>/dev/null || true
+        fi
+    done
+    # Also clean up any SQLite database files in /opt/spire (including -shm and -wal files)
+    find /opt/spire -name "*.sqlite3*" -o -name "*.db" 2>/dev/null | while read -r db_file; do
         if [ -f "$db_file" ]; then
             echo "    Removing database file: $db_file"
             rm -f "$db_file" 2>/dev/null || true
@@ -2014,6 +2103,7 @@ if false; then
     fi
 fi
 
+report_step_success "SPIRE Server running and control plane services ready"
 pause_at_phase "Step 4 Complete" "SPIRE Server is running. Control plane services ready."
 echo ""
 echo -e "${GREEN}Control plane services started successfully:${NC}"

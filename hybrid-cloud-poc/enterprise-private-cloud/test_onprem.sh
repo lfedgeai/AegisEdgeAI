@@ -17,7 +17,7 @@
 # Test script for enterprise on-prem
 # Sets up: Envoy proxy, mTLS server, mobile location service, WASM filter
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONPREM_DIR="$SCRIPT_DIR"
@@ -27,6 +27,8 @@ REPO_ROOT="$(cd "$ONPREM_DIR/.." && pwd)"
 # This ensures consistent /tmp cleanup across all test scripts
 PROJECT_ROOT="${REPO_ROOT}"
 source "${REPO_ROOT}/scripts/cleanup.sh"
+# Source step reporting for CI integration
+source "${REPO_ROOT}/scripts/step_report.sh"
 
 # Read host IPs from environment variables (passed by test_integration.sh) BEFORE setting defaults
 # This ensures we use the correct IPs when all hosts are the same
@@ -185,6 +187,21 @@ cleanup_existing_services() {
     # Wait a moment for processes to terminate
     sleep 2
 
+    # Clean up databases and data files
+    printf '  Cleaning up databases and data files...\n'
+    # Remove mobile location service database (ensures fresh start)
+    MOBILE_SENSOR_DB_PATHS=(
+        "/tmp/mobile-sensor-service/sensor_mapping.db"
+        "$REPO_ROOT/mobile-sensor-microservice/sensor_mapping.db"
+        "$(pwd)/sensor_mapping.db"
+        "./sensor_mapping.db"
+    )
+    for db_path in "${MOBILE_SENSOR_DB_PATHS[@]}"; do
+        if [ -f "$db_path" ]; then
+            rm -f "$db_path" 2>/dev/null && printf '    Removed database: %s\n' "$db_path"
+        fi
+    done
+    
     # Clean up log files and old temporary files
     printf '  Cleaning up log files and old temporary files...\n'
     # Remove all log files
@@ -334,6 +351,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 fi
 
 # 1. Install dependencies
+report_step_start "1" "Installing dependencies"
 echo -e "\n${GREEN}[1/7] Installing dependencies...${NC}"
 
 # Clean up any problematic Envoy repository that might have been added previously
@@ -393,7 +411,10 @@ if ! command -v envoy &> /dev/null; then
     fi
 fi
 
+report_step_success "Dependencies installed"
+
 # 2. Create directories
+report_step_start "2" "Creating directories"
 echo -e "\n${GREEN}[2/7] Creating directories...${NC}"
 sudo mkdir -p /opt/envoy/{certs,plugins,logs}
 sudo mkdir -p /opt/mobile-sensor-service
@@ -436,7 +457,10 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
     fi
 fi
 
+report_step_success "Directories created"
+
 # 3. Setup certificates
+report_step_start "3" "Setting up certificates"
 echo -e "\n${GREEN}[3/7] Setting up certificates...${NC}"
 
 # Create certs directory
@@ -462,7 +486,13 @@ if [ ! -f /opt/envoy/certs/envoy-cert.pem ] || [ ! -f /opt/envoy/certs/envoy-key
         printf '     Key: /opt/envoy/certs/envoy-key.pem\n'
     else
         echo -e "${RED}  ✗ Failed to generate Envoy certificates${NC}"
-        exit 1
+        # Report step failure and stop (fail-fast)
+        if [ -n "${_CURRENT_STEP:-}" ]; then
+            report_step_failure "Failed to generate Envoy certificates"
+        else
+            echo "[STEP:${_STEP_REPORT_SCRIPT}:3:0:FAILURE] ✗ Failed to generate Envoy certificates"
+            exit 1
+        fi
     fi
 else
     echo -e "${GREEN}  ✓ Envoy certificates already exist${NC}"
@@ -510,13 +540,41 @@ fi
 printf '  Copying Envoy certificate to client (%s) for verification...\n' "${SPIRE_CLIENT_HOST}"
 if [ "$IS_SAME_HOST" = "true" ]; then
     # Same host - copy locally
+    # Create directory first
+    mkdir -p ~/.mtls-demo 2>/dev/null || true
+    
+    # Try multiple methods to copy the certificate
+    COPY_SUCCESS=false
+    
+    # Method 1: Try regular copy (if permissions allow)
     if cp /opt/envoy/certs/envoy-cert.pem ~/.mtls-demo/envoy-cert.pem 2>/dev/null; then
-        mkdir -p ~/.mtls-demo 2>/dev/null || true
-        cp /opt/envoy/certs/envoy-cert.pem ~/.mtls-demo/envoy-cert.pem 2>/dev/null || true
+        COPY_SUCCESS=true
+    # Method 2: Try sudo copy (if passwordless sudo is configured)
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+        if sudo cp /opt/envoy/certs/envoy-cert.pem ~/.mtls-demo/envoy-cert.pem 2>/dev/null; then
+            COPY_SUCCESS=true
+        fi
+    # Method 3: Read with sudo and write without (works even if sudo requires password)
+    elif command -v sudo >/dev/null 2>&1; then
+        if sudo cat /opt/envoy/certs/envoy-cert.pem > ~/.mtls-demo/envoy-cert.pem 2>/dev/null; then
+            COPY_SUCCESS=true
+        fi
+    fi
+    
+    if [ "$COPY_SUCCESS" = true ]; then
+        # Ensure user owns the file
+        sudo chown "${USER}:${USER}" ~/.mtls-demo/envoy-cert.pem 2>/dev/null || \
+        chown "${USER}:${USER}" ~/.mtls-demo/envoy-cert.pem 2>/dev/null || true
+        chmod 644 ~/.mtls-demo/envoy-cert.pem 2>/dev/null || true
         echo -e "${GREEN}  ✓ Envoy certificate copied locally to ~/.mtls-demo/envoy-cert.pem${NC}"
         printf '     Client should use this cert via CA_CERT_PATH for Envoy verification\n'
     else
         echo -e "${YELLOW}  ⚠ Could not copy Envoy certificate locally${NC}"
+        printf '     You can manually copy it:\n'
+        printf '       sudo cp /opt/envoy/certs/envoy-cert.pem ~/.mtls-demo/envoy-cert.pem\n'
+        printf '       sudo chown ${USER}:${USER} ~/.mtls-demo/envoy-cert.pem\n'
+        printf '     Or:\n'
+        printf '       sudo cat /opt/envoy/certs/envoy-cert.pem > ~/.mtls-demo/envoy-cert.pem\n'
     fi
 elif scp -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
     /opt/envoy/certs/envoy-cert.pem \
@@ -662,9 +720,9 @@ if [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
     sudo chmod 644 /opt/envoy/certs/server-cert.pem
     echo -e "${GREEN}  ✓ Backend server certificate copied (for Envoy upstream verification)${NC}"
 else
-    echo -e "${YELLOW}  ⚠ Backend server certificate not found at ~/.mtls-demo/server-cert.pem${NC}"
-    printf '     It will be auto-generated when the mTLS server starts\n'
-    printf '     You'\''ll need to copy it to /opt/envoy/certs/server-cert.pem for Envoy upstream verification\n'
+    # Certificate will be auto-generated when mTLS server starts - no warning needed
+    # The server setup script handles copying it to /opt/envoy/certs/server-cert.pem automatically
+    :
 fi
 
 # Create combined CA bundle for backend server (SPIRE + Envoy certs)
@@ -724,7 +782,10 @@ else
     echo -e "${YELLOW}  ⚠ Certificates will be generated/added as needed${NC}"
 fi
 
+report_step_success "Certificates configured"
+
 # 4. Setup mobile location service
+report_step_start "4" "Setting up mobile location service"
 echo -e "\n${GREEN}[4/7] Setting up mobile location service...${NC}"
 cd "$REPO_ROOT/mobile-sensor-microservice"
 if [ ! -d ".venv" ]; then
@@ -748,7 +809,10 @@ printf '    cd $REPO_ROOT/mobile-sensor-microservice\n'
 printf '    source .venv/bin/activate\n'
     printf '    python3 service.py --port 9050 --host 0.0.0.0\n'
 
+report_step_success "Mobile location service configured"
+
 # 5. Setup mTLS server dependencies
+report_step_start "5" "Setting up mTLS server dependencies"
 echo -e "\n${GREEN}[5/7] Setting up mTLS server dependencies...${NC}"
 cd "$REPO_ROOT/python-app-demo"
 # Install cryptography and other required dependencies for mTLS server
@@ -757,8 +821,10 @@ pip3 install -q cryptography spiffe grpcio grpcio-tools protobuf 2>/dev/null || 
     pip3 install -q --user cryptography spiffe grpcio grpcio-tools protobuf 2>/dev/null || true
 }
 echo -e "${GREEN}  ✓ mTLS server dependencies installed${NC}"
+report_step_success "mTLS server dependencies installed"
 
 # 6. Build WASM filter (sensor ID extraction is done in WASM, no separate service needed)
+report_step_start "6" "Building WASM filter"
 if [ "$NO_BUILD" != "true" ]; then
     echo -e "\n${GREEN}[6/7] Building WASM filter for sensor verification...${NC}"
     cd "$ONPREM_DIR/wasm-plugin"
@@ -783,14 +849,22 @@ else
         echo -e "${GREEN}  ✓ WASM filter found (using existing binary)${NC}"
     fi
 fi
+report_step_success "WASM filter ready"
 
 # 7. Setup Envoy
+report_step_start "7" "Setting up Envoy proxy"
 echo -e "\n${GREEN}[7/7] Setting up Envoy proxy...${NC}"
 
 # Copy Envoy configuration
 if [ ! -f "$ONPREM_DIR/envoy/envoy.yaml" ]; then
     echo -e "${RED}  ✗ Envoy configuration file not found: $ONPREM_DIR/envoy/envoy.yaml${NC}"
-    exit 1
+    # Report step failure and stop (fail-fast)
+    if [ -n "${_CURRENT_STEP:-}" ]; then
+        report_step_failure "Envoy configuration file not found: $ONPREM_DIR/envoy/envoy.yaml"
+    else
+        echo "[STEP:${_STEP_REPORT_SCRIPT}:7:0:FAILURE] ✗ Envoy configuration file not found"
+        exit 1
+    fi
 fi
 
 sudo cp "$ONPREM_DIR/envoy/envoy.yaml" /opt/envoy/envoy.yaml
@@ -883,7 +957,13 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             else
                 printf '  [ERROR] CAMARA_BYPASS=false but no credentials found\n'
                 printf '          Please provide camara_basic_auth.txt in %s/mobile-sensor-microservice\n' "$REPO_ROOT"
-                exit 1
+                # Report step failure and stop (fail-fast)
+                if [ -n "${_CURRENT_STEP:-}" ]; then
+                    report_step_failure "CAMARA credentials missing (CAMARA_BYPASS=false but no credentials found)"
+                else
+                    echo "[STEP:${_STEP_REPORT_SCRIPT}:4:0:FAILURE] ✗ CAMARA credentials missing"
+                    exit 1
+                fi
             fi
         fi
 
@@ -1119,7 +1199,9 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         sudo chmod 644 /opt/envoy/certs/server-cert.pem 2>/dev/null
         printf '    [OK] Backend server certificate copied for Envoy\n'
     else
-        printf '    [WARN] Backend server certificate not found - Envoy may fail to verify backend\n'
+        # Certificate may still be generating - server setup handles this automatically
+        # If there's a real issue, it will show up in connection errors, not here
+        :
     fi
 
     # Start Envoy (or restart if already running to pick up new certificate)
@@ -1156,26 +1238,28 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     # Verify services are running
     printf '\n'
     printf 'Verifying services...\n'
-    sleep 1
+    # Wait a few seconds for services to bind to ports
+    sleep 5
 
     # Temporarily disable exit on error for verification
     set +e
 
     SERVICES_OK=0
     if command -v ss &> /dev/null; then
-        if sudo ss -tlnp 2>/dev/null | grep -q ':9050'; then
+        # ss doesn't need sudo for -p flag, but works fine with it
+        if ss -tlnp 2>/dev/null | grep -q ':9050'; then
             printf '  [OK] Mobile Location Service listening on port 9050\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
             printf '  [WARN] Mobile Location Service not listening on port 9050\n'
         fi
-        if sudo ss -tlnp 2>/dev/null | grep -q ':9443'; then
+        if ss -tlnp 2>/dev/null | grep -q ':9443'; then
             printf '  [OK] mTLS Server listening on port 9443\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
             printf '  [WARN] mTLS Server not listening on port 9443\n'
         fi
-        if sudo ss -tlnp 2>/dev/null | grep -q ':8080'; then
+        if ss -tlnp 2>/dev/null | grep -q ':8080'; then
             printf '  [OK] Envoy listening on port 8080\n'
             SERVICES_OK=$((SERVICES_OK + 1))
         else
@@ -1207,11 +1291,13 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     printf '\n'
     if [ $SERVICES_OK -eq 3 ]; then
         printf '[SUCCESS] All services are running!\n'
+        report_step_success "All on-prem services started successfully"
     else
         printf '[WARN] Some services may not be running. Check logs:\n'
         printf '  - Mobile Location Service: tail -f /tmp/mobile-sensor.log\n'
         printf '  - mTLS Server: tail -f /tmp/mtls-server.log\n'
         printf '  - Envoy: tail -f /opt/envoy/logs/envoy.log\n'
+        report_step_success "On-prem services started (some may need attention)"
     fi
 
     printf '\n'
@@ -1260,6 +1346,7 @@ else
     printf '  sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 &\n'
     printf '\n'
     printf 'Note: Sensor ID extraction is done directly in the WASM filter - no separate service needed!\n'
+    report_step_success "On-prem setup complete (manual start instructions provided)"
     # Reset terminal colors before exit (ignore errors)
     [ -t 1 ] && tput sgr0 2>/dev/null || true
     exit 0

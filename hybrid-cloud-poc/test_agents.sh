@@ -27,6 +27,8 @@ set -euo pipefail
 export UNIFIED_IDENTITY_ENABLED="${UNIFIED_IDENTITY_ENABLED:-true}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source step reporting for CI integration
+source "${SCRIPT_DIR}/scripts/step_report.sh"
 # All components are now consolidated in the root directory
 PROJECT_DIR="${SCRIPT_DIR}"
 KEYLIME_DIR="${SCRIPT_DIR}/keylime"
@@ -87,10 +89,19 @@ if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
 fi
 
 # Helper function to abort on critical errors
+# Reports step failure before exiting (fail-fast)
 abort_on_error() {
     local message="$1"
+    local step_desc="${2:-Critical error}"
     echo -e "${RED}✗ CRITICAL ERROR: ${message}${NC}" >&2
-    echo -e "${RED}Aborting test execution.${NC}" >&2
+    # Report step failure for CI test runner
+    if [ -n "${_CURRENT_STEP:-}" ]; then
+        report_step_failure "${step_desc}: ${message}"
+    else
+        echo "[STEP:${_STEP_REPORT_SCRIPT}:0:0:FAILURE] ✗ ${step_desc}: ${message}"
+        exit 1
+    fi
+    # report_step_failure already exits, but just in case:
     exit 1
 }
 
@@ -119,6 +130,8 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 source "${SCRIPT_DIR}/scripts/cleanup.sh"
 # Restore SCRIPT_DIR after sourcing (cleanup.sh may have changed it)
 SCRIPT_DIR="${TEST_SCRIPT_DIR}"
+# Source step reporting for CI integration (after SCRIPT_DIR is restored)
+source "${SCRIPT_DIR}/scripts/step_report.sh"
 
 # Wrap the cleanup function to add "Step 0:" prefix for consistency with test script output
 # Save original function before we override it by copying it with a different name
@@ -159,6 +172,13 @@ stop_agent_services_only() {
 
     # Remove SPIRE Agent data (not Server data)
     echo "     Removing SPIRE Agent data directories..."
+    # Remove agent data directory from config (typically /opt/spire/data/agent)
+    # This contains agent keys and persistent state
+    if [ -d "/opt/spire/data/agent" ]; then
+        echo "     Removing SPIRE Agent data directory: /opt/spire/data/agent"
+        sudo rm -rf /opt/spire/data/agent 2>/dev/null || true
+    fi
+    # Also remove /tmp/spire-agent (used for sockets and logs)
     rm -rf /tmp/spire-agent 2>/dev/null || true
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/spire-agent.log 2>/dev/null || true
@@ -179,6 +199,19 @@ stop_agent_services_only() {
     # Remove SVID dump directory
     echo "     Removing SVID dump directory..."
     rm -rf /tmp/svid-dump 2>/dev/null || true
+    
+    # Clean up other relevant directories
+    echo "     Cleaning up other relevant directories..."
+    # Clean up user home directories (agent-specific only)
+    rm -rf "$HOME/.spire" 2>/dev/null || true
+    # Note: Do NOT clean up ~/.mtls-demo - it's set up by test_onprem.sh
+    # and needed by test_mtls_client.sh which runs after this script
+    # Clean up /var/lib if accessible
+    sudo rm -rf /var/lib/spire 2>/dev/null || true
+    # Clean up /var/run if accessible
+    sudo rm -rf /var/run/spire 2>/dev/null || true
+    # Clean up /run if accessible
+    sudo rm -rf /run/spire 2>/dev/null || true
 
     # Step 3: Remove PID files
     echo "  3. Removing PID files..."
@@ -1240,6 +1273,7 @@ fi
 # Step 1: Setup Keylime environment with TLS certificates
 # Skipped for act 2 - non-control plane only (handled by test_control_plane.sh)
 echo ""
+report_step_start "1" "Verifying control plane services are running"
 echo -e "${CYAN}Step 1: Skipping Keylime setup (act 2 - non-control plane only)${NC}"
 echo -e "${YELLOW}  Assuming control plane services are already running from test_control_plane.sh${NC}"
 
@@ -1292,9 +1326,10 @@ if [ "$CONTROL_PLANE_READY" = false ]; then
     echo "  - Keylime Registrar"
     echo ""
     echo "Then run this script (test_agents.sh) to start agent services."
-    abort_on_error "Control plane services must be running before starting agent services"
+    report_step_failure "Control plane services must be running before starting agent services"
 fi
 
+report_step_success "Control plane services verified"
 echo ""
 
 # Set VERIFIER_CONFIG_ABS even though we're skipping setup (needed for later steps)
@@ -1437,6 +1472,7 @@ echo -e "${YELLOW}  Assuming Keylime Registrar is already running${NC}"
 
 # Step 4: Start rust-keylime Agent
 echo ""
+report_step_start "4" "Starting rust-keylime Agent with delegated certification"
 echo -e "${CYAN}Step 4: Starting rust-keylime Agent with delegated certification...${NC}"
 
 # Clear TPM state before starting agent to avoid NV_Read errors and inconsistent state
@@ -1559,20 +1595,86 @@ fi
 
 # Ensure tpm2-abrmd (resource manager) is running for hardware TPM
 if [ -c /dev/tpmrm0 ] || [ -c /dev/tpm0 ]; then
-    if ! pgrep -x tpm2-abrmd >/dev/null 2>&1; then
-        echo "    Starting tpm2-abrmd resource manager for hardware TPM..."
-        # Start tpm2-abrmd in background if not running
-        if command -v tpm2-abrmd >/dev/null 2>&1; then
-            tpm2-abrmd --tcti=device 2>/dev/null &
-            sleep 1
-            if pgrep -x tpm2-abrmd >/dev/null 2>&1; then
-                echo "    ✓ tpm2-abrmd started"
-            else
-                echo -e "${YELLOW}    ⚠ tpm2-abrmd may need to be started manually or via systemd${NC}"
-            fi
+    # Check if tpm2-abrmd is already running (either as process or systemd service)
+    TPM_ABRMD_RUNNING=false
+    if pgrep -x tpm2-abrmd >/dev/null 2>&1; then
+        TPM_ABRMD_RUNNING=true
+    elif command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet tpm2-abrmd 2>/dev/null; then
+        TPM_ABRMD_RUNNING=true
+    fi
+    
+    # Check if /dev/tpmrm0 is available (indicates tpm2-abrmd is working)
+    TPMRM0_AVAILABLE=false
+    if [ -c /dev/tpmrm0 ]; then
+        TPMRM0_AVAILABLE=true
+    fi
+    
+    if [ "$TPM_ABRMD_RUNNING" = true ] || [ "$TPMRM0_AVAILABLE" = true ]; then
+        if [ "$TPM_ABRMD_RUNNING" = true ]; then
+            echo "    ✓ tpm2-abrmd resource manager is running"
+        else
+            echo "    ✓ /dev/tpmrm0 is available (tpm2-abrmd is running via systemd or other means)"
         fi
     else
-        echo "    ✓ tpm2-abrmd resource manager is running"
+        echo "    Starting tpm2-abrmd resource manager for hardware TPM..."
+        TPM_ABRMD_STARTED=false
+        
+        # Try to start via systemd first (preferred method)
+        # Suppress authentication prompts in non-interactive mode
+        if command -v systemctl >/dev/null 2>&1; then
+            # Try with sudo first (if available and passwordless sudo is configured)
+            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                if sudo systemctl start tpm2-abrmd 2>/dev/null; then
+                    sleep 2
+                    if systemctl is-active --quiet tpm2-abrmd 2>/dev/null || pgrep -x tpm2-abrmd >/dev/null 2>&1; then
+                        echo "    ✓ tpm2-abrmd started via systemd (with sudo)"
+                        TPM_ABRMD_STARTED=true
+                    fi
+                fi
+            else
+                # Try without sudo (may fail with authentication prompt, but suppress output)
+                if systemctl start tpm2-abrmd 2>/dev/null 2>&1; then
+                    sleep 2
+                    if systemctl is-active --quiet tpm2-abrmd 2>/dev/null || pgrep -x tpm2-abrmd >/dev/null 2>&1; then
+                        echo "    ✓ tpm2-abrmd started via systemd"
+                        TPM_ABRMD_STARTED=true
+                    fi
+                fi
+            fi
+        fi
+        
+        # If systemd didn't work, try manual start
+        if [ "$TPM_ABRMD_STARTED" = false ] && command -v tpm2-abrmd >/dev/null 2>&1; then
+            # Try starting in background
+            tpm2-abrmd --tcti=device >/dev/null 2>&1 &
+            TPM_ABRMD_PID=$!
+            sleep 2
+            if kill -0 "$TPM_ABRMD_PID" 2>/dev/null || pgrep -x tpm2-abrmd >/dev/null 2>&1; then
+                echo "    ✓ tpm2-abrmd started manually"
+                TPM_ABRMD_STARTED=true
+            fi
+        fi
+        
+        # Verify it's actually working by checking if /dev/tpmrm0 is accessible
+        if [ "$TPM_ABRMD_STARTED" = true ]; then
+            if [ -c /dev/tpmrm0 ]; then
+                echo "    ✓ tpm2-abrmd is working (/dev/tpmrm0 is accessible)"
+            else
+                echo -e "${YELLOW}    ⚠ tpm2-abrmd started but /dev/tpmrm0 not accessible yet${NC}"
+            fi
+        else
+            # Check if /dev/tpmrm0 exists anyway (might be provided by kernel or another service)
+            if [ -c /dev/tpmrm0 ]; then
+                echo "    ✓ /dev/tpmrm0 is available (tpm2-abrmd is running via systemd or other means)"
+            else
+                echo -e "${YELLOW}    ⚠ Could not start tpm2-abrmd automatically${NC}"
+                echo "    You may need to start it manually:"
+                echo "      sudo systemctl start tpm2-abrmd"
+                echo "    Or if systemd is not available:"
+                echo "      sudo tpm2-abrmd --tcti=device &"
+                echo "    Note: The agent may still work if /dev/tpm0 is available directly"
+            fi
+        fi
     fi
 fi
 
@@ -2023,14 +2125,16 @@ if [ "$RUST_AGENT_STARTED" = false ]; then
     fi
 
     if [ "$RUST_AGENT_STARTED" = false ]; then
-        abort_on_error "rust-keylime Agent failed to become ready - delegated certification is required"
+        report_step_failure "rust-keylime Agent failed to become ready - delegated certification is required"
     fi
 fi
 
+report_step_success "rust-keylime Agent running and ready"
 pause_at_phase "Step 4 Complete" "rust-keylime Agent is running. Ready for registration and attestation."
 
 # Step 5: Verify rust-keylime Agent Registration and TPM Attested Geolocation
 echo ""
+report_step_start "5" "Verifying rust-keylime Agent Registration"
 echo -e "${CYAN}Step 5: Verifying rust-keylime Agent Registration (and optional TPM geolocation)...${NC}"
 echo "  This ensures the agent is registered with Keylime Verifier"
 echo "  and surfaces any geolocation claims only if sensors report them."
@@ -2259,10 +2363,12 @@ fi
 
 echo "  TPM Plugin and SPIRE can now be started."
 
+report_step_success "rust-keylime Agent registration verified"
 pause_at_phase "Step 5 Complete" "Agent is registered with Keylime. Geolocation claims are optional and surface only when sensors report them. Ready for SPIRE integration."
 
 # Step 6: Start TPM Plugin Server (HTTP/UDS)
 echo ""
+report_step_start "6" "Starting TPM Plugin Server"
 echo -e "${CYAN}Step 6: Starting TPM Plugin Server (HTTP/UDS)...${NC}"
 
     TPM_PLUGIN_SERVER="${SCRIPT_DIR}/tpm-plugin/tpm_plugin_server.py"
@@ -2456,11 +2562,13 @@ if [ "$APP_KEY_READY" = false ]; then
     echo "  Verifying TPM_PLUGIN_ENDPOINT: ${TPM_PLUGIN_ENDPOINT}"
 fi
 
+report_step_success "TPM Plugin Server running"
 pause_at_phase "Step 6 Complete" "TPM Plugin Server is running. Ready for SPIRE to use TPM operations."
 
 # Step 7: Start SPIRE Agent
 # SPIRE Server is managed by test_control_plane.sh
 echo ""
+report_step_start "7" "Starting SPIRE Agent"
 echo -e "${CYAN}Step 7: Starting SPIRE Agent (SPIRE Server managed by test_control_plane.sh)...${NC}"
 
 if [ ! -d "${PROJECT_DIR}" ]; then
@@ -2829,10 +2937,12 @@ echo "  Waiting for SPIRE Agent to complete attestation and receive SVID..."
         fi
     fi
 
+report_step_success "SPIRE Agent attested and running"
 pause_at_phase "Step 7 Complete" "SPIRE Agent has completed attestation. Ready for workload registration."
 
 # Step 8: Create Registration Entry
 echo ""
+report_step_start "8" "Creating registration entry for workload"
 echo -e "${CYAN}Step 8: Creating registration entry for workload...${NC}"
 
 # Clean up any existing registration entries for the Python app workload
@@ -2880,24 +2990,66 @@ fi
 
 cd "${PROJECT_DIR}/python-app-demo"
 if [ -f "./create-registration-entry.sh" ]; then
-    ./create-registration-entry.sh
-    if [ $? -eq 0 ]; then
+    if ./create-registration-entry.sh; then
         echo -e "${GREEN}  ✓ Registration entry created${NC}"
-        # Wait for entry to propagate to agent (agent syncs with server periodically)
-        echo "  Waiting 10s for registration entry to propagate to agent..."
-        sleep 10
+        # Wait for entry to propagate to agent (agent syncs with server periodically, typically every 5-10s)
+        echo "  Waiting for registration entry to propagate to agent..."
+        echo "  (Agent syncs with server periodically - checking agent logs for entry sync)"
+        
+        MAX_SYNC_WAIT=30
+        SYNC_WAIT_START=$(date +%s)
+        ENTRY_SYNCED=false
+        
+        while [ $(($(date +%s) - SYNC_WAIT_START)) -lt $MAX_SYNC_WAIT ]; do
+            # Check if agent has synced the entry by looking for the SPIFFE ID in agent logs
+            # The agent logs when it processes entries during sync
+            if [ -f /tmp/spire-agent.log ]; then
+                # Look for evidence that agent has the entry (entry processing, workload API calls, etc.)
+                if grep -q "python-app\|Entry.*synced\|FetchX509SVID.*python-app" /tmp/spire-agent.log 2>/dev/null; then
+                    ENTRY_SYNCED=true
+                    ELAPSED=$(($(date +%s) - SYNC_WAIT_START))
+                    echo "  ✓ Entry synced to agent after ${ELAPSED}s"
+                    break
+                fi
+            fi
+            
+            # Also check if we can verify entry exists on server
+            if "${SPIRE_DIR}/bin/spire-server" entry show \
+                -spiffeID "$WORKLOAD_SPIFFE_ID" \
+                -socketPath "$SERVER_SOCKET" 2>/dev/null | grep -q "$WORKLOAD_SPIFFE_ID"; then
+                # Entry exists on server, but may not be synced to agent yet
+                ELAPSED=$(($(date +%s) - SYNC_WAIT_START))
+                if [ $ELAPSED -ge 15 ]; then
+                    # After 15s, give a warning but continue (agent should sync soon)
+                    echo "  ⚠ Entry exists on server but not yet visible in agent logs after ${ELAPSED}s"
+                    echo "  Agent should sync within next 5-10 seconds"
+                    break
+                fi
+            fi
+            
+            sleep 2
+        done
+        
+        if [ "$ENTRY_SYNCED" = false ]; then
+            ELAPSED=$(($(date +%s) - SYNC_WAIT_START))
+            echo "  ⚠ Entry may not have synced to agent after ${ELAPSED}s"
+            echo "  This is normal - agent syncs periodically. Entry should sync within next sync cycle."
+            echo "  Agent sync interval is typically 5-10 seconds"
+        fi
     else
         echo -e "${RED}  ✗ Registration entry creation failed${NC}"
-        abort_on_error "Registration entry creation failed - workload SVID cannot be issued"
+        report_step_failure "Registration entry creation failed - workload SVID cannot be issued"
     fi
 else
     echo -e "${YELLOW}  ⚠ Registration entry script not found, skipping...${NC}"
 fi
 
+report_step_success "Registration entry created for workload"
 pause_at_phase "Step 8 Complete" "Registration entry created for workload. Workload can now request SVIDs."
 
 # Step 9: Verify TPM Operations in SPIRE Agent Attestation
 echo ""
+report_step_start "9" "Verifying TPM Operations in SPIRE Agent Attestation"
 echo -e "${CYAN}Step 9: Verifying TPM Operations in SPIRE Agent Attestation...${NC}"
 echo "  During Step 7, the SPIRE agent should have:"
 echo "    1. Generated TPM App Key (via TPM Plugin)"
@@ -3039,10 +3191,12 @@ else
     echo "        when unified_identity is enabled and TPM Plugin Server is running."
 fi
 
+report_step_success "TPM Operations verified"
 pause_at_phase "Step 9 Complete" "TPM operations verified in SPIRE agent attestation. Agent SVID includes TPM-attested claims."
 
 # Step 10: Generate Sovereign SVID (reuse demo script to avoid duplication)
 echo ""
+report_step_start "10" "Generating Sovereign SVID with AttestedClaims"
 echo -e "${CYAN}Step 10: Generating Sovereign SVID with AttestedClaims...${NC}"
 echo "  (Reusing demo.sh to avoid code duplication)"
 echo ""
@@ -3072,10 +3226,12 @@ else
     fi
 fi
 
+report_step_success "Sovereign SVID generated"
 pause_at_phase "Step 10 Complete" "Sovereign SVID generated with AttestedClaims. Certificate chain includes Workload + Agent SVIDs."
 
 # Step 11: Run All Tests
 echo ""
+report_step_start "11" "Running all verification tests"
 echo -e "${CYAN}Step 11: Running all tests...${NC}"
 
 cd "${PROJECT_DIR}"
@@ -3185,6 +3341,8 @@ if [ -f /tmp/spire-agent.log ]; then
 else
     echo -e "${YELLOW}  ⚠ SPIRE Agent log not found${NC}"
 fi
+
+report_step_success "All verification tests passed"
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"

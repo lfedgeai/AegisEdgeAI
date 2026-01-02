@@ -193,7 +193,106 @@ else
 fi
 echo ""
 
-# Step 5: Send HTTP request and validate response
+# Step 5: Update SPIRE bundle for Envoy before testing
+# Get fresh bundle from agent (which has the current bundle matching client certs)
+# SPIRE agent reattests every 30s, so wait a moment to ensure we get a fresh bundle
+echo "=========================================="
+echo -e "${YELLOW}Updating SPIRE bundle for Envoy (from agent)...${NC}"
+echo "=========================================="
+# Wait a moment to ensure agent has fresh bundle (agent reattests every 30s)
+sleep 2
+if [ -f "$HOME/AegisSovereignAI/hybrid-cloud-poc/fetch-spire-bundle.py" ]; then
+    # Use fetch-spire-bundle.py which gets bundle from agent
+    if python3 "$HOME/AegisSovereignAI/hybrid-cloud-poc/fetch-spire-bundle.py" -o /tmp/spire-bundle.pem 2>/dev/null; then
+        # Copy bundle to Envoy certs directory
+        if sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem 2>&1; then
+            sudo chmod 644 /opt/envoy/certs/spire-bundle.pem 2>&1
+            echo -e "${GREEN}✓ SPIRE bundle updated for Envoy (from agent)${NC}"
+            # Restart Envoy to pick up new bundle (full restart ensures bundle is loaded)
+            if pgrep -f envoy > /dev/null 2>&1; then
+                echo -e "${YELLOW}Restarting Envoy to pick up new bundle...${NC}"
+                sudo pkill -9 envoy >/dev/null 2>&1 || true
+                sleep 2
+            fi
+            # Start Envoy with the updated bundle
+            # Ensure log directory exists and is writable
+            sudo mkdir -p /opt/envoy/logs >/dev/null 2>&1 || true
+            sudo touch /opt/envoy/logs/envoy.log >/dev/null 2>&1 || true
+            sudo chmod 666 /opt/envoy/logs/envoy.log >/dev/null 2>&1 || true
+            # Start Envoy in background with output redirected
+            sudo env -i PATH=/home/mw/AegisSovereignAI/hybrid-cloud-poc/mobile-sensor-microservice/.venv/bin:/home/mw/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 </dev/null &
+            sleep 3
+            # Restore terminal settings in case they were affected
+            stty sane 2>/dev/null || true
+            if pgrep -f envoy > /dev/null 2>&1; then
+                echo -e "${GREEN}✓ Envoy restarted with new bundle${NC}"
+            else
+                echo -e "${YELLOW}⚠ Envoy failed to start${NC}"
+            fi
+        else
+            echo -e "${YELLOW}⚠ Failed to copy bundle to /opt/envoy/certs/spire-bundle.pem${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ Could not update bundle from agent, trying server...${NC}"
+        # Fallback to server
+        if [ -f "$HOME/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server" ] && [ -S "/tmp/spire-server/private/api.sock" ]; then
+            if "$HOME/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server" bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null; then
+                if sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem 2>&1; then
+                    sudo chmod 644 /opt/envoy/certs/spire-bundle.pem 2>&1
+                    echo -e "${GREEN}✓ SPIRE bundle updated for Envoy (from server)${NC}"
+                    # Restart Envoy
+                    if pgrep -f envoy > /dev/null 2>&1; then
+                        sudo pkill -9 envoy >/dev/null 2>&1 || true
+                        sleep 2
+                    fi
+                    # Ensure log directory exists and is writable
+                    sudo mkdir -p /opt/envoy/logs >/dev/null 2>&1 || true
+                    sudo touch /opt/envoy/logs/envoy.log >/dev/null 2>&1 || true
+                    sudo chmod 666 /opt/envoy/logs/envoy.log >/dev/null 2>&1 || true
+                    # Start Envoy in background with output redirected
+                    sudo env -i PATH=/home/mw/AegisSovereignAI/hybrid-cloud-poc/mobile-sensor-microservice/.venv/bin:/home/mw/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 </dev/null &
+                    sleep 3
+                    # Restore terminal settings in case they were affected
+                    stty sane 2>/dev/null || true
+                    if pgrep -f envoy > /dev/null 2>&1; then
+                        echo -e "${GREEN}✓ Envoy restarted with new bundle${NC}"
+                    fi
+                fi
+            else
+                echo -e "${YELLOW}⚠ Could not update bundle from server, using existing bundle${NC}"
+            fi
+        fi
+    fi
+elif [ -f "$HOME/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server" ] && [ -S "/tmp/spire-server/private/api.sock" ]; then
+    if "$HOME/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server" bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null; then
+        if sudo cp /tmp/spire-bundle.pem /opt/envoy/certs/spire-bundle.pem 2>&1; then
+            sudo chmod 644 /opt/envoy/certs/spire-bundle.pem 2>&1
+            echo -e "${GREEN}✓ SPIRE bundle updated for Envoy (from server)${NC}"
+            # Restart Envoy
+            if pgrep -f envoy > /dev/null 2>&1; then
+                sudo pkill -9 envoy >/dev/null 2>&1 || true
+                sleep 2
+            fi
+            # Ensure log directory exists and is writable
+            sudo mkdir -p /opt/envoy/logs >/dev/null 2>&1 || true
+            sudo touch /opt/envoy/logs/envoy.log >/dev/null 2>&1 || true
+            sudo chmod 666 /opt/envoy/logs/envoy.log >/dev/null 2>&1 || true
+            # Start Envoy in background with output redirected
+            sudo env -i PATH=/home/mw/AegisSovereignAI/hybrid-cloud-poc/mobile-sensor-microservice/.venv/bin:/home/mw/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 </dev/null &
+            sleep 3
+            # Restore terminal settings in case they were affected
+            stty sane 2>/dev/null || true
+            if pgrep -f envoy > /dev/null 2>&1; then
+                echo -e "${GREEN}✓ Envoy restarted with new bundle${NC}"
+            fi
+        fi
+    else
+        echo -e "${YELLOW}⚠ Could not update bundle from SPIRE server, using existing bundle${NC}"
+    fi
+fi
+echo ""
+
+# Step 6: Send HTTP request and validate response
 echo "=========================================="
 echo -e "${GREEN}Sending HTTP request...${NC}"
 echo "=========================================="
@@ -205,7 +304,9 @@ cd "${PYTHON_APP_DIR}"
 
 # Run mtls-client-app.py in background, capture output, and kill after first response
 # Use timeout to ensure it doesn't run forever
-HTTP_RESPONSE=$(timeout 10 python3 mtls-client-app.py 2>&1 | head -100)
+# Increase timeout to 25 seconds and capture more lines to ensure we get the response
+# The client sends messages every 2 seconds, so we need enough time to see a response
+HTTP_RESPONSE=$(timeout 25 python3 mtls-client-app.py 2>&1 | head -400)
 HTTP_EXIT_CODE=$?
 
 # If timeout killed it, that's fine - we got the response
@@ -217,45 +318,64 @@ set -e
 echo "$HTTP_RESPONSE"
 echo ""
 
+# Also check the log file for responses (client logs responses there)
+# Wait a moment for log file to be written and flushed
+sleep 2
+LOG_RESPONSE=""
+if [ -f "$CLIENT_LOG_FILE" ]; then
+    # Read more lines from log file to ensure we capture responses
+    # Use cat instead of tail to get all content if file is small
+    LOG_RESPONSE=$(cat "$CLIENT_LOG_FILE" 2>/dev/null)
+fi
+
+# Combine stdout and log file output for checking
+COMBINED_OUTPUT="$HTTP_RESPONSE"
+if [ -n "$LOG_RESPONSE" ]; then
+    COMBINED_OUTPUT="$HTTP_RESPONSE"$'\n'"$LOG_RESPONSE"
+fi
+
 # Check the response based on expectations
 # Temporarily disable set -e for grep checks
 set +e
 if [ "$EXPECT_SUCCESS" = true ]; then
     # Expect success - look for "SERVER ACK: HELLO" (partial match, e.g., "SERVER ACK: HELLO #1")
-    echo "$HTTP_RESPONSE" | grep -qiE "SERVER ACK: HELLO"
+    # Check both stdout and log file
+    echo "$COMBINED_OUTPUT" | grep -qiE "SERVER ACK: HELLO|📥 Received HTTP response:.*SERVER ACK"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ TEST PASSED: HTTP request succeeded as expected (got SERVER ACK: HELLO)${NC}"
         exit 0
     fi
 
     # Also check for 200 OK status as fallback
-    echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
+    echo "$COMBINED_OUTPUT" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ TEST PASSED: HTTP request succeeded as expected (200 OK)${NC}"
         exit 0
     fi
 
-    echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"
+    echo "$COMBINED_OUTPUT" | grep -qi "Geo Claim Missing"
     if [ $? -eq 0 ]; then
         echo -e "${YELLOW}⚠ TEST FAILED: Expected success (SERVER ACK: HELLO) but got 'Geo Claim Missing'${NC}"
         exit 1
     fi
 
     echo -e "${YELLOW}⚠ TEST FAILED: Expected success (SERVER ACK: HELLO) but got different response${NC}"
+    echo "  Check log file: $CLIENT_LOG_FILE"
     exit 1
 else
     # Expect "Geo Claim Missing" (typically 403 Forbidden)
-    echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"
+    # Check both stdout and log file
+    echo "$COMBINED_OUTPUT" | grep -qi "Geo Claim Missing"
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ TEST PASSED: Got 'Geo Claim Missing' as expected${NC}"
         exit 0
     fi
 
     # Also check for 403 status code
-    echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 403\|HTTP/1.0 403\|403 Forbidden"
+    echo "$COMBINED_OUTPUT" | grep -q "HTTP/1.1 403\|HTTP/1.0 403\|403 Forbidden"
     if [ $? -eq 0 ]; then
         # Check if response body contains Geo Claim Missing (might be in body)
-        if echo "$HTTP_RESPONSE" | grep -qi "Geo Claim Missing"; then
+        if echo "$COMBINED_OUTPUT" | grep -qi "Geo Claim Missing"; then
             echo -e "${GREEN}✓ TEST PASSED: Got 403 with 'Geo Claim Missing' as expected${NC}"
             exit 0
         else
@@ -265,19 +385,20 @@ else
     fi
 
     # Check if we got SERVER ACK: HELLO (success) when we expected failure
-    echo "$HTTP_RESPONSE" | grep -qiE "SERVER ACK: HELLO"
+    echo "$COMBINED_OUTPUT" | grep -qiE "SERVER ACK: HELLO|📥 Received HTTP response:.*SERVER ACK"
     if [ $? -eq 0 ]; then
         echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but request succeeded (got SERVER ACK: HELLO)${NC}"
         exit 1
     fi
 
-    echo "$HTTP_RESPONSE" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
+    echo "$COMBINED_OUTPUT" | grep -q "HTTP/1.1 200\|HTTP/1.0 200\|200 OK"
     if [ $? -eq 0 ]; then
         echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but request succeeded (200 OK)${NC}"
         exit 1
     fi
 
     echo -e "${YELLOW}⚠ TEST FAILED: Expected 'Geo Claim Missing' but got different response${NC}"
+    echo "  Check log file: $CLIENT_LOG_FILE"
     exit 1
 fi
 set -e
