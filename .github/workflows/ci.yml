@@ -98,12 +98,9 @@ jobs:
                   # Remove temp files
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
-                  # CRITICAL: Delete the cloned repo from _work directory
-                  echo "Deleting cloned repository from _work directory..."
-                  rm -rf ${{ github.workspace }}/* || true
-                  rm -rf ${{ github.workspace }}/.* 2>/dev/null || true
-                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/* || true
-                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/.* 2>/dev/null || true
-                  echo "Workspace contents after cleanup:"
-                  ls -la ${{ github.workspace }} || echo "Workspace cleaned"
-                  echo "✅ Post-cleanup complete - cloned repo deleted from machine"
+                  # CRITICAL: Delete the ENTIRE AegisSovereignAI folder from _work directory
+                  echo "Deleting entire AegisSovereignAI folder from _work directory..."
+                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI || true
+                  echo "Verifying cleanup:"
+                  ls -la /home/mw/actions-runner/_work/ || echo "_work directory listing"
+                  echo "✅ Post-cleanup complete - AegisSovereignAI folder deleted from machine"
