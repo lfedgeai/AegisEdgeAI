@@ -41,6 +41,8 @@ jobs:
             - name: Pre-Run Environment Cleanup
               run: |
                   echo "🧹 Cleaning orphan processes and stale workspaces..."
+                  # Ensure working directory exists (previous run may have deleted it)
+                  mkdir -p /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI
                   pkill -9 -f "envoy" || true
                   pkill -9 -f "spire-server" || true
                   pkill -9 -f "spire-agent" || true
