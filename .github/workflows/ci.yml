@@ -35,11 +35,7 @@ jobs:
     integration-test:
         name: Hybrid Cloud PoC Integration Test
         runs-on: self-hosted
-        timeout-minutes: 15
-
-        env:
-            # Use isolated temp directory for this run
-            CI_WORKSPACE: /tmp/ci-workspace-${{ github.run_id }}
+        timeout-minutes: 30
 
         steps:
             - name: Pre-Run Environment Cleanup
@@ -49,17 +45,12 @@ jobs:
                   pkill -9 -f "spire-server" || true
                   pkill -9 -f "spire-agent" || true
                   pkill -9 -f "tpm_plugin" || true
-                  # Clean up old CI workspaces (older than 1 hour)
-                  find /tmp -maxdepth 1 -name "ci-workspace-*" -mmin +60 -exec rm -rf {} \; 2>/dev/null || true
+                  pkill -9 -f "ci_test_runner" || true
+                  pkill -9 -f "test_integration" || true
+                  # Clean up temp files from previous runs
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
                   echo "✅ Pre-cleanup complete"
-
-            - name: Create Isolated Workspace
-              run: |
-                  echo "📁 Creating isolated workspace at $CI_WORKSPACE"
-                  mkdir -p $CI_WORKSPACE
-                  echo "Workspace created: $CI_WORKSPACE"
 
             - name: Checkout Code (Fresh Clone)
               uses: actions/checkout@v4
@@ -67,29 +58,31 @@ jobs:
                   submodules: recursive
                   clean: true
 
-            - name: Copy to Isolated Workspace
+            - name: Debug - Inspect File System
               run: |
-                  echo "📋 Copying repository to isolated workspace..."
-                  cp -r ${{ github.workspace }}/* $CI_WORKSPACE/
-                  echo "Files in isolated workspace:"
-                  ls -la $CI_WORKSPACE/ | head -10
+                  echo "Current directory: $(pwd)"
+                  echo "Workspace: ${{ github.workspace }}"
+                  echo "Runner _work directory contents:"
+                  ls -la /home/mw/actions-runner/_work/ || true
 
             - name: Install Python Dependencies
               timeout-minutes: 5
-              working-directory: ${{ env.CI_WORKSPACE }}/hybrid-cloud-poc
               run: |
+                  cd hybrid-cloud-poc
                   python3 -m pip install --upgrade pip
                   python3 -m pip install -r keylime/requirements.txt
-                  python3 -m pip install -r mobile-sensor-microservice/requirements.txt
-                  python3 -m pip install pytest
 
-            - name: Run Mobile Sensor Microservice Tests
+            - name: Run Integration Tests
               timeout-minutes: 5
-              working-directory: ${{ env.CI_WORKSPACE }}/hybrid-cloud-poc/mobile-sensor-microservice
+              shell: bash
+              env:
+                  TMPDIR: /tmp
               run: |
-                  echo "🧪 Running mobile-sensor-microservice unit tests..."
-                  python3 -m pytest tests/test_service.py -v --tb=short
-                  echo "✅ Mobile sensor microservice tests passed"
+                  cd hybrid-cloud-poc
+                  chmod +x ci_test_runner.py test_integration.sh
+                  echo "🧪 Running integration tests with ci_test_runner.py..."
+                  python3 ./ci_test_runner.py --no-color -- --control-plane-host 10.1.0.10 --agents-host 10.1.0.10 --onprem-host 10.1.0.10
+                  echo "✅ Integration tests completed"
 
             - name: Post-Run Cleanup (Mandatory Purge)
               if: always()
@@ -100,14 +93,17 @@ jobs:
                   pkill -9 -f "spire-agent" || true
                   pkill -9 -f "tpm_plugin" || true
                   pkill -9 -f "envoy" || true
-                  # Remove isolated workspace
-                  echo "Removing isolated workspace: $CI_WORKSPACE"
-                  rm -rf $CI_WORKSPACE || true
+                  pkill -9 -f "ci_test_runner" || true
+                  pkill -9 -f "test_integration" || true
                   # Remove temp files
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
-                  # Clean the github workspace contents (but not the directory itself)
-                  echo "Cleaning workspace contents..."
+                  # CRITICAL: Delete the cloned repo from _work directory
+                  echo "Deleting cloned repository from _work directory..."
                   rm -rf ${{ github.workspace }}/* || true
                   rm -rf ${{ github.workspace }}/.* 2>/dev/null || true
-                  echo "✅ Post-cleanup complete - ALL workspaces purged"
+                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/* || true
+                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/.* 2>/dev/null || true
+                  echo "Workspace contents after cleanup:"
+                  ls -la ${{ github.workspace }} || echo "Workspace cleaned"
+                  echo "✅ Post-cleanup complete - cloned repo deleted from machine"
