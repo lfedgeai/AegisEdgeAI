@@ -100,9 +100,10 @@ jobs:
                   # Remove temp files
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
-                  # CRITICAL: Delete the ENTIRE AegisSovereignAI folder from _work directory
-                  echo "Deleting entire AegisSovereignAI folder from _work directory..."
-                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI || true
-                  echo "Verifying cleanup:"
-                  ls -la /home/mw/actions-runner/_work/ || echo "_work directory listing"
-                  echo "✅ Post-cleanup complete - AegisSovereignAI folder deleted from machine"
+                  # Delete CONTENTS of folder (not folder itself - checkout action needs it)
+                  echo "Deleting contents of AegisSovereignAI folder..."
+                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/* || true
+                  rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/.* 2>/dev/null || true
+                  echo "Workspace contents after cleanup:"
+                  ls -la /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/ || echo "Folder empty"
+                  echo "✅ Post-cleanup complete - repo contents deleted"
