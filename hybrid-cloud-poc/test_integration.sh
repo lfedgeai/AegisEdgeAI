@@ -27,6 +27,7 @@ trap 'pkill -P $$; exit' SIGINT SIGTERM EXIT
 # Unified-Identity - Testing: Structured Logging
 # Create a unique log directory for this run
 LOG_DIR="/tmp/unified_identity_test_$(date +%Y%m%d_%H%M%S)"
+export LOG_DIR
 mkdir -p "${LOG_DIR}"
 echo "Unified-Identity: Logs will be aggregated in ${LOG_DIR}"
 
@@ -125,6 +126,9 @@ run_script() {
 
     # Prepare environment variables to pass to sub-scripts
     local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
+
+    # Ensure log directory exists before writing logs (prevents error if cleanup deleted it)
+    mkdir -p "${LOG_DIR}"
 
     # Unified-Identity - Testing: Fail-Fast & Logging
     # Run script and capture output to specific log file, while also streaming to master log (via stdout)
@@ -389,43 +393,6 @@ verify_onprem() {
     fi
 }
 
-# Function to run script and show output
-run_script() {
-    local run_func="$1"
-    local script_path="$2"
-    local script_args="${3:-}"
-    local description="$4"
-    local log_file="${LOG_DIR}/$(basename ${script_path} .sh).log"
-
-    echo ""
-    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}${description}${NC}"
-    echo -e "${BOLD}Script: ${script_path}${NC}"
-    echo -e "${BOLD}Log:    ${log_file}${NC}"
-    echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-
-    # Prepare environment variables to pass to sub-scripts
-    local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
-
-    # Unified-Identity - Testing: Fail-Fast & Logging
-    # Run script and capture output to specific log file, while also streaming to master log (via stdout)
-    # We use pipefail (set at top) to catch errors in the pipeline
-    if $run_func "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${env_vars} bash ${script_path} ${script_args}" 2>&1 | tee "${log_file}"; then
-        echo ""
-        echo -e "${GREEN}✓ ${description} completed successfully${NC}"
-        return 0
-    else
-        # Unified-Identity - Testing: Fail-Fast
-        # Immediate error reporting
-        echo ""
-        echo -e "${RED}✗ ${description} failed${NC}"
-        echo -e "${YELLOW}Last 20 lines of log (${log_file}):${NC}"
-        tail -n 20 "${log_file}" | sed 's/^/    /'
-        return 1
-    fi
-}
-
 # Main execution
 main() {
     echo "╔════════════════════════════════════════════════════════════════╗"
@@ -630,23 +597,38 @@ main() {
     echo "  ✓ CAMARA Caching and GPS Bypass Tests: Completed"
     echo "  ✓ mTLS Client Test with IMEI/IMSI Validation: Completed"
     echo ""
-    echo -e "${CYAN}To check logs:${NC}"
+    echo -e "${CYAN}To check logs (Consolidated in ${LOG_DIR}):${NC}"
     if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then
-        echo "  Control Plane: ssh ${SSH_USER}@${CONTROL_PLANE_HOST} 'tail -f /tmp/spire-server.log'"
+        echo "  Control Plane: ssh ${SSH_USER}@${CONTROL_PLANE_HOST} 'tail -f ${LOG_DIR}/spire-server.log'"
     else
-        echo "  Control Plane: tail -f /tmp/spire-server.log"
+        echo "  Control Plane: tail -f ${LOG_DIR}/spire-server.log"
     fi
     if [ "${ON_AGENTS_HOST}" != "true" ]; then
-        echo "  Agents: ssh ${SSH_USER}@${AGENTS_HOST} 'tail -f /tmp/spire-agent.log'"
+        echo "  Agents: ssh ${SSH_USER}@${AGENTS_HOST} 'tail -f ${LOG_DIR}/spire-agent.log'"
     else
-        echo "  Agents: tail -f /tmp/spire-agent.log"
+        echo "  Agents: tail -f ${LOG_DIR}/spire-agent.log"
     fi
     if [ "${ON_ONPREM_HOST}" != "true" ]; then
-        echo "  On-Prem: ssh ${SSH_USER}@${ONPREM_HOST} 'tail -f /opt/envoy/logs/envoy.log'"
+        echo "  On-Prem: ssh ${SSH_USER}@${ONPREM_HOST} 'tail -f ${LOG_DIR}/envoy.log'"
     else
-        echo "  On-Prem: tail -f /opt/envoy/logs/envoy.log"
+        echo "  On-Prem: tail -f ${LOG_DIR}/envoy.log"
     fi
     echo ""
+
+    # Archive logs to the unique directory
+    collect_logs
+
+    # Perform final cleanup unless explicitly disabled
+    if [ "${NO_CLEANUP:-false}" != "true" ]; then
+        echo ""
+        echo -e "${CYAN}Performing final cleanup (without recreating directories)...${NC}"
+        # We export SKIP_RECREATE so that scripts/cleanup.sh knows to skip step 6
+        export SKIP_RECREATE=true
+        cleanup_all
+    else
+        echo ""
+        echo -e "${YELLOW}Skipping final cleanup as requested (--no-cleanup)${NC}"
+    fi
 }
 
 # Function to perform cleanup on both hosts
@@ -664,8 +646,13 @@ cleanup_all() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
+    local cleanup_args="--cleanup-only"
+    if [ "${SKIP_RECREATE:-false}" = "true" ]; then
+        cleanup_args="${cleanup_args} --skip-recreate"
+    fi
+
     # Cleanup control plane services
-    if run_script "run_on_control_plane" "test_control_plane.sh" "--cleanup-only" \
+    if run_script "run_on_control_plane" "test_control_plane.sh" "${cleanup_args}" \
         "Cleaning up Control Plane Services (SPIRE Server, Keylime Verifier/Registrar)"; then
         echo -e "${GREEN}✓ Control plane cleanup completed${NC}"
     else
@@ -676,7 +663,7 @@ cleanup_all() {
     echo ""
     echo -e "${CYAN}Cleaning up Agent Services on ${AGENTS_HOST}${NC}"
     echo ""
-    if run_script "run_on_agents" "test_agents.sh" "--cleanup-only" \
+    if run_script "run_on_agents" "test_agents.sh" "${cleanup_args}" \
         "Cleaning up Agent Services (SPIRE Agent, rust-keylime Agent, TPM Plugin)"; then
         echo -e "${GREEN}✓ Agent services cleanup completed${NC}"
     else
@@ -692,7 +679,7 @@ cleanup_all() {
 
     # Cleanup on-prem services
     set +e
-    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && ./test_onprem.sh --cleanup-only" 2>&1 | tee "/tmp/remote_test_onprem_cleanup.log"
+    run_on_onprem "cd ~/AegisSovereignAI/hybrid-cloud-poc/enterprise-private-cloud && env SKIP_RECREATE=${SKIP_RECREATE:-false} ./test_onprem.sh --cleanup-only" 2>&1 | tee "${LOG_DIR}/test_onprem.log"
     ONPREM_CLEANUP_EXIT_CODE=$?
     set -e
 
@@ -724,14 +711,80 @@ cleanup_all() {
     echo ""
     echo -e "${CYAN}All services have been stopped and data cleaned up on:${NC}"
     echo "  • Control Plane Host: ${CONTROL_PLANE_HOST}"
-    echo "  • Agents Host: ${AGENTS_HOST}"
     echo "  • On-Prem Host: ${ONPREM_HOST}"
+}
+
+# Function to collect logs from /tmp to the test log directory
+# This allows logs to stay in /tmp for live viewing, but still be archived
+collect_logs() {
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}Archiving Service Logs to ${LOG_DIR}${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # List of logs to collect
+    local logs=(
+        "/tmp/spire-server.log"
+        "/tmp/spire-agent.log"
+        "/tmp/keylime-verifier.log"
+        "/tmp/keylime-registrar.log"
+        "/tmp/rust-keylime-agent.log"
+        "/tmp/tpm-plugin-server.log"
+        "/tmp/mobile-sensor.log"
+        "/tmp/mobile-sensor-microservice.log"
+        "/tmp/mtls-server.log"
+        "/tmp/mtls-server-app.log"
+        "/tmp/mtls-client-app.log"
+        "/tmp/wasm-build.log"
+        "/tmp/phase3_complete_workflow_logs.txt"
+        "/tmp/remote_test_mtls_client.log"
+        "/tmp/remote_test_onprem.log"
+        "/tmp/remote_test_onprem_cleanup.log"
+    )
+
+    for log in "${logs[@]}"; do
+        if [ -f "${log}" ]; then
+            local base_name=$(basename "${log}")
+            echo "  Archiving ${base_name}..."
+            mv "${log}" "${LOG_DIR}/" 2>/dev/null || true
+        fi
+    done
+
+    # Collect Envoy logs if accessible
+    if [ -f "/opt/envoy/logs/envoy.log" ]; then
+        echo "  Archiving envoy.log..."
+        sudo mv "/opt/envoy/logs/envoy.log" "${LOG_DIR}/" 2>/dev/null || true
+        sudo chown "$(whoami):$(whoami)" "${LOG_DIR}/envoy.log" 2>/dev/null || true
+        sudo chmod 644 "${LOG_DIR}/envoy.log" 2>/dev/null || true
+    fi
+
+    # Collect SVID dumps
+    if [ -d "/tmp/svid-dump" ]; then
+        echo "  Archiving SVID dump..."
+        mv /tmp/svid-dump "${LOG_DIR}/" 2>/dev/null || true
+    fi
+
+    if [ -d "/tmp/agent-svid-dump" ]; then
+        echo "  Archiving Agent SVID dump..."
+        mv /tmp/agent-svid-dump "${LOG_DIR}/" 2>/dev/null || true
+    fi
+
+    # Collect workflow visualization
+    if [ -f "/tmp/workflow_visualization.html" ]; then
+        echo "  Archiving workflow_visualization.html..."
+        mv "/tmp/workflow_visualization.html" "${LOG_DIR}/" 2>/dev/null || true
+    fi
+
+    echo ""
+    echo -e "${GREEN}✓ Logs archived successfully in ${LOG_DIR}${NC}"
     echo ""
 }
 
 # Parse command-line arguments
 NO_PAUSE=false
 NO_BUILD=false
+NO_CLEANUP=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --control-plane-host)
@@ -782,11 +835,17 @@ while [[ $# -gt 0 ]]; do
                     echo -e "${YELLOW}⚠ Cannot SSH to on-prem host: ${ONPREM_HOST} (continuing anyway)${NC}"
                 fi
             fi
+            # Standalone cleanup should leave /tmp pristine (skip recreation)
+            export SKIP_RECREATE=true
             cleanup_all
             exit 0
             ;;
         --no-pause)
             NO_PAUSE=true
+            shift
+            ;;
+        --no-cleanup)
+            NO_CLEANUP=true
             shift
             ;;
         --help|-h)
@@ -799,6 +858,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --cleanup-only             Stop services, remove data, and exit"
             echo "  --no-pause                 Skip all pause prompts and continue automatically"
             echo "  --no-build                 Skip building binaries (use existing binaries)"
+            echo "  --no-cleanup               Do not perform cleanup at the end of the test"
             echo "  --help, -h                 Show this help message"
             echo ""
             echo "Environment Variables:"

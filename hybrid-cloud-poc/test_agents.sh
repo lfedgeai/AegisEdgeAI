@@ -202,11 +202,16 @@ stop_agent_services_only() {
     echo "  6. Cleaning up temporary files in /tmp..."
     cleanup_tmp_files
 
-    # Step 7: Create clean data directories
-    echo "  7. Creating clean data directories..."
-    mkdir -p /tmp/spire-agent/public 2>/dev/null || true
-    mkdir -p /tmp/keylime-agent 2>/dev/null || true
-    mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
+    # Step 7: Create clean data directories (unless skipped)
+    if [ "${SKIP_RECREATE:-false}" != "true" ]; then
+        echo "  7. Creating clean data directories..."
+        mkdir -p /tmp/spire-agent/public 2>/dev/null || true
+        mkdir -p /tmp/keylime-agent 2>/dev/null || true
+        mkdir -p /tmp/spire-data/tpm-plugin 2>/dev/null || true
+        mkdir -p /tmp/rust-keylime-data 2>/dev/null || true
+    else
+        echo "  7. Skipping directory recreation as requested..."
+    fi
 
     echo ""
     echo -e "${GREEN}  ✓ Agent services stopped and data cleaned up${NC}"
@@ -1180,6 +1185,10 @@ while [[ $# -gt 0 ]]; do
             # For --cleanup-only, only clean up agent services (control plane is managed separately)
             stop_agent_services_only
             exit 0
+            ;;
+        --skip-recreate)
+            export SKIP_RECREATE=true
+            shift
             ;;
         --skip-cleanup)
             RUN_INITIAL_CLEANUP=false

@@ -168,11 +168,15 @@ stop_control_plane_services_only() {
     rm -f /tmp/spire-server/private/api.sock 2>/dev/null || true
     rm -f /tmp/spire-server/public/api.sock 2>/dev/null || true
 
-    # Step 6: Create clean data directories
-    echo "  6. Creating clean data directories..."
-    mkdir -p /tmp/spire-server/private 2>/dev/null || true
-    mkdir -p /tmp/spire-server/public 2>/dev/null || true
-    mkdir -p /tmp/keylime 2>/dev/null || true
+    # Step 6: Create clean data directories (unless skipped)
+    if [ "${SKIP_RECREATE:-false}" != "true" ]; then
+        echo "  6. Creating clean data directories..."
+        mkdir -p /tmp/spire-server/private 2>/dev/null || true
+        mkdir -p /tmp/spire-server/public 2>/dev/null || true
+        mkdir -p /tmp/keylime 2>/dev/null || true
+    else
+        echo "  6. Skipping directory recreation as requested..."
+    fi
 
     echo ""
     echo -e "${GREEN}  ✓ Control plane services stopped and data cleaned up${NC}"
@@ -1172,6 +1176,10 @@ while [[ $# -gt 0 ]]; do
             echo ""
             SKIP_HEADER=1 _original_stop_all_instances_and_cleanup
             exit 0
+            ;;
+        --skip-recreate)
+            export SKIP_RECREATE=true
+            shift
             ;;
         --skip-cleanup)
             RUN_INITIAL_CLEANUP=false

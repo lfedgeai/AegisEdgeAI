@@ -248,9 +248,9 @@ stop_all_instances_and_cleanup() {
     # Clean up SPIRE data directories
     echo "     Removing SPIRE data directories..."
     sudo rm -rf /opt/spire/data 2>/dev/null || true
-    rm -rf /tmp/spire-server 2>/dev/null || true
-    rm -rf /tmp/spire-agent 2>/dev/null || true
-    rm -rf /tmp/spire-data 2>/dev/null || true
+    sudo rm -rf /tmp/spire-server 2>/dev/null || true
+    sudo rm -rf /tmp/spire-agent 2>/dev/null || true
+    sudo rm -rf /tmp/spire-data 2>/dev/null || true
 
     # Clean up Keylime databases and persistent data
     echo "     Removing Keylime databases and persistent data..."
@@ -262,7 +262,7 @@ stop_all_instances_and_cleanup() {
         rm -f "${KEYLIME_DIR}"/*.sqlite 2>/dev/null || true
     fi
     # Clean up /tmp/keylime directory (contains registrar database)
-    rm -rf /tmp/keylime 2>/dev/null || true
+    sudo rm -rf /tmp/keylime 2>/dev/null || true
     # Clean up any Keylime data in user home directory
     rm -rf "$HOME/.keylime" 2>/dev/null || true
     rm -rf "$HOME/.local/share/keylime" 2>/dev/null || true
@@ -274,9 +274,9 @@ stop_all_instances_and_cleanup() {
     rm -rf /tmp/phase3-demo-tpm 2>/dev/null || true
     rm -rf "$HOME/.spire/data/agent/tpm-plugin" 2>/dev/null || true
     rm -rf "$HOME/.spire" 2>/dev/null || true
-    rm -rf /tmp/spire-data/tpm-plugin 2>/dev/null || true
-    rm -rf /tmp/tpm-plugin-* 2>/dev/null || true
-    rm -rf /tmp/rust-keylime-data 2>/dev/null || true
+    sudo rm -rf /tmp/spire-data/tpm-plugin 2>/dev/null || true
+    sudo rm -rf /tmp/tpm-plugin-* 2>/dev/null || true
+    sudo rm -rf /tmp/rust-keylime-data 2>/dev/null || true
     # Clean up any TPM plugin state files
     rm -f /tmp/tpm-plugin*.pid 2>/dev/null || true
     rm -f /tmp/tpm-plugin*.log 2>/dev/null || true
@@ -296,12 +296,13 @@ stop_all_instances_and_cleanup() {
     if mountpoint -q "/tmp/keylime-agent/secure" 2>/dev/null; then
         echo -e "${YELLOW}     ⚠ Warning: /tmp/keylime-agent/secure still mounted, skipping directory removal${NC}"
     else
-        rm -rf /tmp/keylime-agent 2>/dev/null || true
+        sudo rm -rf /tmp/keylime-agent 2>/dev/null || true
     fi
 
     # Clean up SVID dump directory
     echo "     Removing SVID dump directory..."
-    rm -rf /tmp/svid-dump 2>/dev/null || true
+    sudo rm -rf /tmp/svid-dump 2>/dev/null || true
+    sudo rm -rf /tmp/agent-svid-dump 2>/dev/null || true
 
     # Clean up TLS certificates
     if [ -n "${KEYLIME_DIR:-}" ] && [ -d "${KEYLIME_DIR}" ]; then
@@ -319,6 +320,9 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/spire-server.pid 2>/dev/null || true
     rm -f /tmp/spire-agent.pid 2>/dev/null || true
     rm -f /tmp/tpm-plugin-server.pid 2>/dev/null || true
+    rm -f /tmp/mtls-server-app.pid 2>/dev/null || true
+    rm -f /tmp/mobile-sensor-microservice.pid 2>/dev/null || true
+    rm -f /tmp/rust-keylime-agent.pid 2>/dev/null || true
 
     # Step 4: Clean up all log files and temporary files (relevant to test_agents.sh only)
     echo "  4. Removing log files and temporary files..."
@@ -334,14 +338,23 @@ stop_all_instances_and_cleanup() {
     rm -f /tmp/rust-keylime-agent.log 2>/dev/null || true
     # TPM plugin log files
     rm -f /tmp/tpm-plugin-server.log 2>/dev/null || true
-    # Mobile sensor microservice log files (used in test_agents.sh)
+    # Mobile sensor microservice log files
     rm -f /tmp/mobile-sensor-microservice.log 2>/dev/null || true
+    rm -f /tmp/mobile-sensor.log 2>/dev/null || true
+    # mTLS server/client log files
+    rm -f /tmp/mtls-server.log 2>/dev/null || true
+    rm -f /tmp/mtls-server-app.log 2>/dev/null || true
+    rm -f /tmp/mtls-client-app.log 2>/dev/null || true
+    # Orchestrator/Remote execution log files
+    rm -f /tmp/remote_test_*.log 2>/dev/null || true
+    rm -f /tmp/wasm-build.log 2>/dev/null || true
     # Phase/workflow log files
     rm -f /tmp/bundle.pem 2>/dev/null || true
     rm -f /tmp/spire-bundle.pem 2>/dev/null || true
     rm -f /tmp/phase3_complete_workflow_logs.txt 2>/dev/null || true
     rm -f /tmp/phase3_*.log 2>/dev/null || true
     rm -f /tmp/test_phase3_*.log 2>/dev/null || true
+    rm -f /tmp/workflow_visualization.html 2>/dev/null || true
     # Old backup files for relevant logs only
     rm -f /tmp/spire-*.log.old 2>/dev/null || true
     rm -f /tmp/keylime-*.log.old 2>/dev/null || true
@@ -361,7 +374,13 @@ stop_all_instances_and_cleanup() {
 
     # Clean up unified_identity test log directories
     echo "     Removing old unified_identity test logs..."
-    rm -rf /tmp/unified_identity_test_* 2>/dev/null || true
+    if [ -n "${LOG_DIR:-}" ]; then
+        # Protect the currently active test directory if it's within /tmp
+        local CURRENT_DIR_NAME=$(basename "${LOG_DIR}")
+        find /tmp -maxdepth 1 -name "unified_identity_test_*" ! -name "${CURRENT_DIR_NAME}" -type d -exec rm -rf {} + 2>/dev/null || true
+    else
+        rm -rf /tmp/unified_identity_test_* 2>/dev/null || true
+    fi
 
     # Step 5: Clean up sockets
     echo "  5. Removing socket files..."
@@ -377,7 +396,12 @@ stop_all_instances_and_cleanup() {
     rm -rf /tmp/spire-server 2>/dev/null || true
     rm -rf /tmp/spire-agent 2>/dev/null || true
 
-    # Step 6: Recreate clean data directories (optional - comment out if you don't want this)
+    # Step 6: Recreate clean data directories (unless skipped)
+    if [ "${SKIP_RECREATE:-false}" = "true" ]; then
+        echo "  6. Skipping directory recreation as requested..."
+        return 0
+    fi
+
     echo "  6. Creating clean data directories..."
     sudo mkdir -p /opt/spire/data/server /opt/spire/data/agent 2>/dev/null || true
     sudo chown -R "$(whoami):$(whoami)" /opt/spire/data 2>/dev/null || true
@@ -422,9 +446,11 @@ This script stops all Unified-Identity services and cleans up:
   - TPM state (if accessible)
   - tmpfs mounts
 
-After cleanup, clean data directories are recreated for the next run.
+After cleanup, clean data directories are recreated for the next run (unless --skip-recreate is used).
 
-Examples:
+Options:
+  -h, --help           Show this help message.
+  --skip-recreate     Cleanup everything but don't recreate data directories.
   $0              # Run full cleanup
   $0 --help       # Show this help message
 EOF
@@ -438,6 +464,10 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
             -h|--help)
                 show_usage
                 exit 0
+                ;;
+            --skip-recreate)
+                export SKIP_RECREATE=true
+                shift
                 ;;
             *)
                 echo -e "${RED}Unknown option: $1${NC}"
