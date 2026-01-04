@@ -1,6 +1,6 @@
 # Master Roadmap: Aegis Sovereign Unified Identity Upstreaming
 
-<!-- Version: 0.1.0 | Last Updated: 2025-12-29 -->
+<!-- Version: 0.1.1 | Last Updated: 2026-01-04 -->
 
 This document serves as the **single source of truth** for both the technical roadmap and the execution strategy for refactoring the "Unified Identity" PoC into upstream-ready components.
 
@@ -40,12 +40,12 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 | Pillar | Total | Complete | In Progress | Blocked | Not Started |
 |--------|-------|----------|-------------|---------|-------------|
 | Pillar 0 | 7 | 7 | 0 | 0 | 0 |
-| Pillar 1 | 5 | 3 | 1 | 0 | 1 |
+| Pillar 1 | 5 | 4 | 0 | 0 | 1 |
 | Pillar 2 | 10 | 10 | 0 | 0 | 0 |
 | Pillar 3 | 6 | 3 | 0 | 0 | 3 |
 | Pillar 4 | 7 | 5 | 0 | 0 | 2 |
 | Pillar 5 | 9 | 6 | 0 | 0 | 3 |
-| **Total** | **44** | **34** | **1** | **0** | **9** |
+| **Total** | **44** | **35** | **0** | **0** | **9** |
 
 ---
 
@@ -154,19 +154,22 @@ Effort: 0.5 days (actual: 0.5 days)
 |------|-------------|----------|--------|-------|--------|
 | **Task 0** | Harden `test_integration.sh` (Fail-fast, structured logging) | P1 | `[x]` | — | Done |
 | **Task 0b** | CI Runner (`ci_test_runner.py`) for real-time monitoring | P1 | `[x]` | — | Done |
-| **Task 0c** | Add GitHub Actions CI/CD pipeline | P1 | `[/]` | — | Partial (PR CI, hello_world) |
+| **Task 0c** | Add GitHub Actions CI/CD pipeline | P1 | `[x]` | — | Done (Self-hosted) |
 | **Task 0d** | Add pre-commit hooks configuration | P2 | `[x]` | — | Done |
 | **Task 0e** | Implement Software TPM (`swtpm`) for dev/test | P2 | `[ ]` | TBD | Week 3 |
 
 ### Task 0c: GitHub Actions CI/CD (NEW)
 ```yaml
-Location: /.github/workflows/
-Files:
-- ci.yml (lint, unit tests, integration tests)
-- release.yml (tagged releases, artifact signing)
-- security-scan.yml (dependency scanning, SAST)
+Goal: Establish a reliable CI/CD pipeline using GitHub Actions.
+Status: ✅ Complete
+Actions:
+1. ✅ Created `ci.yml` in `.github/workflows/`
+2. ✅ Configured self-hosted runner on hardware-equipped node (10.1.0.10)
+3. ✅ Implemented fail-fast integration tests via `ci_test_runner.py`
+4. ✅ Added license header checks as parallel job
+5. ✅ Implemented mandatory workspace purge (pre/post run) for ephemeral security
 Dependencies: Tasks G1-G6 complete
-Effort: 2-3 days
+Effort: 2-3 days (Actual: 3 days)
 ```
 
 ### Task 0e: Software TPM Support (NEW)
@@ -821,7 +824,7 @@ Effort: 1 day
 | Risk | Mitigation | Status |
 |------|------------|--------|
 | No CI/CD pipeline | Task 0c - add GitHub Actions | ✅ |
-| Stale documentation | Pillar 5 - documentation completeness | ⏳ |
+| Stale documentation | Pillar 5 - documentation completeness | ✅ |
 
 ---
 
@@ -949,7 +952,7 @@ cd hybrid-cloud-poc
 **Exit Criteria**: Repository can be made public without legal/security issues.
 
 ### Week 2: P1 Critical
-- [/] Task 0c (CI/CD pipeline)
+- [x] Task 0c (CI/CD pipeline)
 - [x] Task 12b (Complete schema separation)
 - [x] Task D3 (Fix stale URLs)
 - [x] Task D5 (CHANGELOG.md)
@@ -1018,4 +1021,4 @@ hybrid-cloud-poc/README-arch-sovereign-unified-identity.md (fix URLs, remove sta
 
 ---
 
-*Last Updated: 2025-12-28 | Next Review: 2025-01-04*
+*Last Updated: 2026-01-04 | Next Review: 2026-01-11*
