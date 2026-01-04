@@ -40,7 +40,7 @@ jobs:
         steps:
             - name: Pre-Run Environment Cleanup
               run: |
-                  echo "?? Cleaning orphan processes and stale workspaces..."
+                  echo "Cleaning orphan processes and stale workspaces..."
                   # Ensure working directory exists (previous run may have deleted it)
                   mkdir -p /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI
                   # Kill CI-spawned processes only (specific patterns to avoid system services)
@@ -54,7 +54,7 @@ jobs:
                   # Clean up temp files from previous runs
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
-                  echo "? Pre-cleanup complete"
+                  echo "Pre-cleanup complete"
 
             - name: Checkout Code (Fresh Clone)
               uses: actions/checkout@v4
@@ -84,14 +84,17 @@ jobs:
               run: |
                   cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
-                  echo "?? Running integration tests with ci_test_runner.py..."
+                  echo "Running integration tests with ci_test_runner.py..."
                   python3 ./ci_test_runner.py --no-color -- --control-plane-host 10.1.0.10 --agents-host 10.1.0.10 --onprem-host 10.1.0.10
-                  echo "? Integration tests completed"
+                  echo "Integration tests completed"
 
             - name: Post-Run Cleanup (Mandatory Purge)
               if: always()
               run: |
-                  echo "??? Purging all workspaces to prevent state poisoning..."
+                  echo "Purging all workspaces to prevent state poisoning..."
+                  # Run cleanup script first to properly stop services
+                  cd hybrid-cloud-poc
+                  python3 ./ci_test_runner.py --cleanup-only 2>/dev/null || true
                   # Kill CI-spawned processes only (specific patterns to avoid system services)
                   # Redirect stderr to hide 'Operation not permitted' for root processes
                   pkill -9 -f "spire-server run" 2>/dev/null || true
@@ -109,4 +112,4 @@ jobs:
                   rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/.* 2>/dev/null || true
                   echo "Workspace contents after cleanup:"
                   ls -la /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/ || echo "Folder empty"
-                  echo "? Post-cleanup complete - repo contents deleted"
+                  echo "Post-cleanup complete - repo contents deleted"
