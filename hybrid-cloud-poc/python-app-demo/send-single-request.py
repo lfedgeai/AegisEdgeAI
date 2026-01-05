@@ -25,8 +25,9 @@ import os
 import sys
 import socket
 import ssl
-import tempfile
 import importlib.util
+import time
+import random
 from pathlib import Path
 
 # Simple SPIFFE ID class
@@ -102,18 +103,41 @@ def fetch_svid_via_grpc(socket_path):
     workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
     spec_grpc.loader.exec_module(workload_pb2_grpc)
 
-    abs_socket_path = socket_path.replace('unix://', '')
-    channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
-    stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
-    grpc_metadata = [('workload.spiffe.io', 'true')]
+    # gRPC retry logic with exponential backoff
+    max_attempts = 5
+    attempt = 0
+    backoff = 1.0 # Start with 1 second
 
-    # Fetch SVID
-    request = workload_pb2.X509SVIDRequest()
-    response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=10)
-    response = next(response_stream)
+    while attempt < max_attempts:
+        attempt += 1
+        try:
+            abs_socket_path = socket_path.replace('unix://', '')
+            channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
+            stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
+            grpc_metadata = [('workload.spiffe.io', 'true')]
 
-    if not response.svids:
-        raise Exception("No SVIDs in response")
+            # Fetch SVID
+            request = workload_pb2.X509SVIDRequest()
+            # Use a smaller timeout for the first few attempts
+            rpc_timeout = 5 if attempt < max_attempts else 15
+            response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=rpc_timeout)
+            response = next(response_stream)
+
+            if not response.svids:
+                raise Exception("No SVIDs in response")
+            
+            # If we got here, we succeeded
+            break
+        except (grpc.RpcError, Exception) as e:
+            if attempt < max_attempts:
+                wait_time = backoff + random.uniform(0, 0.5)
+                print(f"  ⚠ gRPC fetch attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
+                time.sleep(wait_time)
+                backoff *= 2 # Exponential backoff
+            else:
+                # Final attempt failed
+                print(f"  ✗ gRPC fetch failed after {max_attempts} attempts: {e}")
+                raise
 
     svid_response = response.svids[0]
 

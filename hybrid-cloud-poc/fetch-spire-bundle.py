@@ -22,8 +22,9 @@ Uses direct gRPC calls to SPIRE Agent Workload API (no python-spiffe dependency)
 """
 
 import os
-import sys
 import importlib.util
+import time
+import random
 from pathlib import Path
 
 # Simple SPIFFE ID class
@@ -99,24 +100,55 @@ def fetch_bundle_via_grpc(socket_path):
     workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
     spec_grpc.loader.exec_module(workload_pb2_grpc)
 
-    # Create gRPC channel
+    # gRPC retry logic with exponential backoff
+    max_attempts = 5
+    attempt = 0
+    backoff = 1.0 # Start with 1 second
+
     abs_socket_path = socket_path.replace('unix://', '')
-    if not os.path.exists(abs_socket_path):
-        # Graceful exit if socket doesn't exist (common during early integration test stages)
-        print(f"SPIRE Agent socket not found at {abs_socket_path}. SPIRE Agent may not be started yet.")
-        sys.exit(1)
-        
-    channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
-    stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
-    grpc_metadata = [('workload.spiffe.io', 'true')]
 
-    # Fetch SVID to get trust domain
-    request = workload_pb2.X509SVIDRequest()
-    response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=10)
-    response = next(response_stream)
+    while attempt < max_attempts:
+        attempt += 1
+        try:
+            # Check if socket exists (optional, gRPC will fail anyway if missing)
+            if not os.path.exists(abs_socket_path) and attempt < max_attempts:
+                # If socket doesn't exist yet, we can wait early
+                raise Exception(f"Socket not found at {abs_socket_path}")
 
-    if not response.svids:
-        raise Exception("No SVIDs in response")
+            channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
+            stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
+            grpc_metadata = [('workload.spiffe.io', 'true')]
+
+            # Fetch SVID to get trust domain
+            request = workload_pb2.X509SVIDRequest()
+            # Use smaller timeout for first attempts
+            rpc_timeout = 5 if attempt < max_attempts else 15
+            response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=rpc_timeout)
+            response = next(response_stream)
+
+            if not response.svids:
+                raise Exception("No SVIDs in response")
+            
+            # If we got here, we succeeded
+            break
+        except (grpc.RpcError, Exception) as e:
+            if attempt < max_attempts:
+                wait_time = backoff + random.uniform(0, 0.5)
+                # Suppress loud error if it's the specific "socket not found" or "UNAVAILABLE"
+                err_msg = str(e)
+                if "Socket not found" in err_msg or "UNAVAILABLE" in err_msg:
+                    print(f"  ⚠ SPIRE Agent not ready (fetch attempt {attempt}). Retrying in {wait_time:.1f}s...")
+                else:
+                    print(f"  ⚠ gRPC fetch attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
+                time.sleep(wait_time)
+                backoff *= 2 # Exponential backoff
+            else:
+                # Final attempt failed
+                if "Socket not found" in str(e):
+                    print(f"  ✗ SPIRE Agent socket still not found after {max_attempts} attempts at {abs_socket_path}")
+                else:
+                    print(f"  ✗ gRPC fetch failed after {max_attempts} attempts: {e}")
+                sys.exit(1) # Final failure in this script is fatal for the test step
 
     svid_response = response.svids[0]
     

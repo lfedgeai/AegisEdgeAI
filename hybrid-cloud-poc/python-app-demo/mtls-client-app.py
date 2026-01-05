@@ -30,7 +30,7 @@ import time
 import socket
 import ssl
 import signal
-import ipaddress
+import random
 from pathlib import Path
 
 # Simple SPIFFE ID class to replace spiffe.spiffe_id.SpiffeId dependency
@@ -325,21 +325,46 @@ class SPIREmTLSClient:
             workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
             spec_grpc.loader.exec_module(workload_pb2_grpc)
 
-            # Create gRPC channel to Unix socket
-            abs_socket_path = self.socket_path.replace('unix://', '')
-            channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
-            stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
+            # gRPC retry logic with exponential backoff
+            max_attempts = 5
+            attempt = 0
+            backoff = 1.0 # Start with 1 second
 
-            # Create request
-            request = workload_pb2.X509SVIDRequest()
-            grpc_metadata = [('workload.spiffe.io', 'true')]
+            while attempt < max_attempts:
+                attempt += 1
+                try:
+                    # Create gRPC channel to Unix socket
+                    abs_socket_path = self.socket_path.replace('unix://', '')
+                    channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
+                    stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
 
-            # Fetch X509 SVID (streaming RPC)
-            response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=10)
-            response = next(response_stream)
+                    # Create request
+                    request = workload_pb2.X509SVIDRequest()
+                    grpc_metadata = [('workload.spiffe.io', 'true')]
 
-            if not response.svids:
-                raise Exception("No SVIDs in response")
+                    # Fetch X509 SVID (streaming RPC)
+                    # Use a smaller timeout for the first few attempts
+                    rpc_timeout = 5 if attempt < max_attempts else 15
+                    response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=rpc_timeout)
+                    response = next(response_stream)
+
+                    if not response.svids:
+                        raise Exception("No SVIDs in response")
+                    
+                    # If we got here, we succeeded
+                    break
+                except (grpc.RpcError, Exception) as e:
+                    # Check if it's a connectivity issue or just taking time
+                    status_code = getattr(e, 'code', lambda: None)()
+                    if attempt < max_attempts:
+                        wait_time = backoff + random.uniform(0, 0.5)
+                        self.log(f"  ⚠ gRPC fetch attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
+                        time.sleep(wait_time)
+                        backoff *= 2 # Exponential backoff
+                    else:
+                        # Final attempt failed
+                        self.log(f"  ✗ gRPC fetch failed after {max_attempts} attempts: {e}")
+                        raise
 
             # Get first SVID
             svid_response = response.svids[0]
@@ -385,7 +410,13 @@ class SPIREmTLSClient:
                     certs.extend(_parse_der_chain(cert_der))
 
             if not certs:
-                raise Exception("No certificates in SVID")
+                # Fallback to svid_response.certs if it exists (older/different proto)
+                if hasattr(svid_response, 'certs'):
+                    for cert_der in svid_response.certs:
+                        certs.extend(_parse_der_chain(cert_der))
+                
+                if not certs:
+                    raise Exception("No certificates in SVID")
 
 
             # Parse private key

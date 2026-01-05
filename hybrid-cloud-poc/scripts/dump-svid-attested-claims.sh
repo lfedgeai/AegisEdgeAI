@@ -63,8 +63,7 @@ if [ ! -f "$SVID_FILE" ]; then
 fi
 
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║  SVID Certificate with AttestedClaims Extension               ║"
-echo "║  Certificate Chain Verification                               ║"
+echo "║  Unified-Identity: SVID Certification & Claims Verification   ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 echo "Certificate: $SVID_FILE"
