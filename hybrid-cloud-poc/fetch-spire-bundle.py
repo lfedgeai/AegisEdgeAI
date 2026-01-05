@@ -137,15 +137,16 @@ def fetch_bundle_via_grpc(socket_path):
                 # Suppress loud error if it's the specific "socket not found" or "UNAVAILABLE"
                 err_msg = str(e)
                 if "Socket not found" in err_msg or "UNAVAILABLE" in err_msg:
-                    print(f"  ⚠ SPIRE Agent not ready (fetch attempt {attempt}). Retrying in {wait_time:.1f}s...")
+                    # Very quiet for expected startup wait
+                    pass
                 else:
                     print(f"  ⚠ gRPC fetch attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
                 time.sleep(wait_time)
                 backoff *= 2 # Exponential backoff
             else:
                 # Final attempt failed
-                if "Socket not found" in str(e):
-                    print(f"  ✗ SPIRE Agent socket still not found after {max_attempts} attempts at {abs_socket_path}")
+                if "Socket not found" in str(e) or "UNAVAILABLE" in str(e):
+                    print(f"  ⚠ SPIRE Agent not ready after {max_attempts} attempts. Check if it is running.")
                 else:
                     print(f"  ✗ gRPC fetch failed after {max_attempts} attempts: {e}")
                 sys.exit(1) # Final failure in this script is fatal for the test step

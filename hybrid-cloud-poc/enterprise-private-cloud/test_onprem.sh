@@ -50,6 +50,10 @@ CONTROL_PLANE_HOST="${CONTROL_PLANE_HOST}"
 AGENTS_HOST="${AGENTS_HOST}"
 ONPREM_HOST="${ONPREM_HOST}"
 
+# Default paths for mTLS server certificates
+export SERVER_CERT_PATH="${SERVER_CERT_PATH:-~/.mtls-demo/server-cert.pem}"
+export SERVER_KEY_PATH="${SERVER_KEY_PATH:-~/.mtls-demo/server-key.pem}"
+
 # Detect current host IP early
 CURRENT_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1 || echo 'unknown')
 CURRENT_HOSTNAME=$(hostname 2>/dev/null || echo 'unknown')
@@ -557,18 +561,26 @@ fi
 if [ "$IS_SAME_HOST" = "true" ]; then
     # Same host - check and generate locally
     if [ ! -f /tmp/spire-bundle.pem ]; then
-        echo "  Generating SPIRE bundle locally..."
-        if cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null; then
-            echo -e "${GREEN}  ✓ SPIRE bundle generated locally${NC}"
-        elif [ -S /tmp/spire-server/private/api.sock ]; then
-            # Try alternative method: use SPIRE server command directly
+        # On the same host, we likely have spire-server available (started in test_control_plane.sh)
+        if [ -S /tmp/spire-server/private/api.sock ]; then
             if ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null; then
-                echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
-            else
-                echo -e "${YELLOW}  ⚠ Could not generate bundle locally (SPIRE server may not be ready)${NC}"
+                printf '  ✓ SPIRE bundle generated using SPIRE server command\n'
             fi
-        else
-            echo -e "${YELLOW}  ⚠ Could not generate bundle locally (SPIRE server may not be ready)${NC}"
+        fi
+
+        # If not generated yet, try agent Workload API
+        if [ ! -f /tmp/spire-bundle.pem ]; then
+            # Only try if socket exists to avoid gRPC retry noise
+            if [ -S /tmp/spire-agent/public/api.sock ]; then
+                printf '  Fetching SPIRE bundle via agent...\n'
+                if cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py >/dev/null 2>&1; then
+                    printf '  ✓ SPIRE bundle generated via agent\n'
+                fi
+            fi
+        fi
+
+        if [ ! -f /tmp/spire-bundle.pem ]; then
+            printf '  ⚠ Could not generate SPIRE bundle (services may not be ready)\n'
         fi
     fi
 else
@@ -576,20 +588,19 @@ else
     if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
         "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
         "test -f /tmp/spire-bundle.pem" 2>/dev/null; then
-        # Bundle doesn't exist, try to generate it
-        echo "  Generating SPIRE bundle on ${SPIRE_CLIENT_HOST}..."
+        # Bundle doesn't exist, try to generate it via server command first (more reliable if on CP host)
         if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
             "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-            "cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py 2>/dev/null" 2>/dev/null; then
-            echo -e "${GREEN}  ✓ SPIRE bundle generated on ${SPIRE_CLIENT_HOST}${NC}"
+            "test -S /tmp/spire-server/private/api.sock && ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem" 2>/dev/null; then
+            printf '  ✓ SPIRE bundle generated on %s via server command\n' "${SPIRE_CLIENT_HOST}"
         else
-            # Try alternative method: use SPIRE server command directly
+            # Try agent Workload API if server command failed/not available
             if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
                 "${SPIRE_CLIENT_USER}@${SPIRE_CLIENT_HOST}" \
-                "test -S /tmp/spire-server/private/api.sock && ~/AegisSovereignAI/hybrid-cloud-poc/spire/bin/spire-server bundle show -format pem -socketPath /tmp/spire-server/private/api.sock > /tmp/spire-bundle.pem 2>/dev/null" 2>/dev/null; then
-                echo -e "${GREEN}  ✓ SPIRE bundle generated using SPIRE server command${NC}"
+                "test -S /tmp/spire-agent/public/api.sock && cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py" >/dev/null 2>&1; then
+                printf '  ✓ SPIRE bundle generated on %s via agent\n' "${SPIRE_CLIENT_HOST}"
             else
-                echo -e "${YELLOW}  ⚠ Could not generate bundle on ${SPIRE_CLIENT_HOST} (SPIRE server may not be ready)${NC}"
+                printf '  ⚠ Could not generate bundle on %s (services may not be ready)\n' "${SPIRE_CLIENT_HOST}"
             fi
         fi
     fi
@@ -662,9 +673,9 @@ if [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
     sudo chmod 644 /opt/envoy/certs/server-cert.pem
     echo -e "${GREEN}  ✓ Backend server certificate copied (for Envoy upstream verification)${NC}"
 else
-    echo -e "${YELLOW}  ⚠ Backend server certificate not found at ~/.mtls-demo/server-cert.pem${NC}"
+    printf '  ℹ Backend server certificate not found at ~/.mtls-demo/server-cert.pem\n'
     printf '     It will be auto-generated when the mTLS server starts\n'
-    printf '     You'\''ll need to copy it to /opt/envoy/certs/server-cert.pem for Envoy upstream verification\n'
+    printf '     You will need to copy it to /opt/envoy/certs/server-cert.pem for Envoy upstream verification\n'
 fi
 
 # Create combined CA bundle for backend server (SPIRE + Envoy certs)
@@ -684,7 +695,7 @@ if [ -f /opt/envoy/certs/spire-bundle.pem ] && [ -f /opt/envoy/certs/envoy-cert.
     printf '     Contains: SPIRE CA bundle + Envoy certificate\n'
     printf '     Note: mTLS server will overwrite this with its own certificate\n'
 else
-    echo -e "${YELLOW}  ⚠ Could not create combined CA bundle (missing spire-bundle.pem or envoy-cert.pem)${NC}"
+    printf '  ℹ Could not create combined CA bundle (missing spire-bundle.pem or envoy-cert.pem)\n'
     printf '     Backend server will need to trust Envoy certificate separately\n'
 fi
 
@@ -1021,9 +1032,10 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             export CA_CERT_PATH="/opt/envoy/certs/spire-bundle.pem"
             printf '    [WARN] Using spire-bundle.pem only (Envoy cert not available)\n'
         fi
-
         # Ensure certificate directory exists
         mkdir -p ~/.mtls-demo 2>/dev/null || true
+        export SERVER_CERT_PATH="~/.mtls-demo/server-cert.pem"
+        export SERVER_KEY_PATH="~/.mtls-demo/server-key.pem"
 
         # Always clean up old certificates to ensure fresh generation on every start
         # This prevents key mismatch errors from old/stale certificates
@@ -1102,11 +1114,12 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         done
 
         if [ "$MTLS_STARTED" = "false" ]; then
-            printf '    [WARN] mTLS Server failed to start after %d attempts - check /tmp/mtls-server.log\n' "$((MAX_RETRIES + 1))"
+            printf '    [ERROR] mTLS Server failed to start after %d attempts - check /tmp/mtls-server.log\n' "$((MAX_RETRIES + 1))"
             if [ -f /tmp/mtls-server.log ]; then
                 printf '    Recent log entries:\n'
                 tail -30 /tmp/mtls-server.log | sed 's/^/      /'
             fi
+            exit 1
         fi
     else
         printf '    [WARN] mtls-server-app.py not found - skipping mTLS server startup\n'
@@ -1114,12 +1127,14 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 
     # Ensure backend server cert is available for Envoy (always copy after server starts)
     # The server generates fresh certificates, so we need to copy the latest one
-    if [ -f "$HOME/.mtls-demo/server-cert.pem" ]; then
-        sudo cp "$HOME/.mtls-demo/server-cert.pem" /opt/envoy/certs/server-cert.pem 2>/dev/null
+    SERVER_CERT_EXPANDED="${SERVER_CERT_PATH/#\~/$HOME}"
+    if [ -f "$SERVER_CERT_EXPANDED" ]; then
+        sudo cp "$SERVER_CERT_EXPANDED" /opt/envoy/certs/server-cert.pem 2>/dev/null
         sudo chmod 644 /opt/envoy/certs/server-cert.pem 2>/dev/null
         printf '    [OK] Backend server certificate copied for Envoy\n'
     else
-        printf '    [WARN] Backend server certificate not found - Envoy may fail to verify backend\n'
+        printf '    [ERROR] Backend server certificate not found at %s - Envoy will fail to verify backend\n' "$SERVER_CERT_EXPANDED"
+        exit 1
     fi
 
     # Start Envoy (or restart if already running to pick up new certificate)
@@ -1144,7 +1159,11 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
             # Restore terminal settings as Envoy/sudo might have messed them up (causing staircase output)
             stty sane 2>/dev/null || true
         else
-            printf '    [WARN] Envoy may have failed - check /opt/envoy/logs/envoy.log\n'
+            printf '    [ERROR] Envoy failed to start or died immediately - check /opt/envoy/logs/envoy.log\n'
+            if [ -f /opt/envoy/logs/envoy.log ]; then
+                tail -20 /opt/envoy/logs/envoy.log | sed 's/^/      /'
+            fi
+            exit 1
         fi
     else
         printf '    [WARN] Envoy not found - please install and start manually\n'

@@ -326,7 +326,7 @@ class SPIREmTLSClient:
             spec_grpc.loader.exec_module(workload_pb2_grpc)
 
             # gRPC retry logic with exponential backoff
-            max_attempts = 5
+            max_attempts = 10
             attempt = 0
             backoff = 1.0 # Start with 1 second
 
@@ -355,15 +355,24 @@ class SPIREmTLSClient:
                     break
                 except (grpc.RpcError, Exception) as e:
                     # Check if it's a connectivity issue or just taking time
-                    status_code = getattr(e, 'code', lambda: None)()
+                    err_msg = str(e)
+                    is_connectivity = "failed to connect" in err_msg.lower() or "UNAVAILABLE" in err_msg or "No such file" in err_msg
+                    
                     if attempt < max_attempts:
                         wait_time = backoff + random.uniform(0, 0.5)
-                        self.log(f"  ⚠ gRPC fetch attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
+                        if is_connectivity:
+                            if attempt % 3 == 0: # Only log every 3rd attempt for connectivity issues
+                                self.log(f"  ℹ SPIRE Agent not ready (attempt {attempt}/{max_attempts})...")
+                        else:
+                            self.log(f"  ⚠ gRPC fetch attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
                         time.sleep(wait_time)
-                        backoff *= 2 # Exponential backoff
+                        backoff = min(backoff * 2, 5.0) # Cap backoff at 5s
                     else:
                         # Final attempt failed
-                        self.log(f"  ✗ gRPC fetch failed after {max_attempts} attempts: {e}")
+                        if is_connectivity:
+                            self.log(f"  ⚠ SPIRE Agent still not ready after {max_attempts} attempts. Check /tmp/spire-agent.log")
+                        else:
+                            self.log(f"  ✗ gRPC fetch failed after {max_attempts} attempts: {e}")
                         raise
 
             # Get first SVID
@@ -403,7 +412,7 @@ class SPIREmTLSClient:
             if hasattr(svid_response, 'x509_svid'):
                 certs = _parse_der_chain(svid_response.x509_svid)
                 if len(certs) > 1:
-                    self.log(f"  ⚠ Loaded certificate chain ({len(certs)} certs) from x509_svid field")
+                    self.log(f"  ℹ Loaded certificate chain ({len(certs)} certs) from x509_svid field")
             elif hasattr(svid_response, 'certificate'):
                 # Some versions use 'certificate' field which is repeated bytes
                 for cert_der in svid_response.certificate:
@@ -425,15 +434,16 @@ class SPIREmTLSClient:
                 raise Exception("No private key in SVID")
             key = serialization.load_der_private_key(key_data, password=None)
 
-            # Parse trust bundle
-            bundle_certs = []
+            # Parse trust bundle (from SVID message)
+            # This bundle is specifically for this SVID's trust domain
+            svid_bundle_certs = []
             bundle_data = getattr(svid_response, 'bundle', getattr(svid_response, 'trust_bundle', None))
             if bundle_data:
                 if isinstance(bundle_data, (list, tuple)):
                     for b_der in bundle_data:
-                        bundle_certs.extend(_parse_der_chain(b_der))
+                        svid_bundle_certs.extend(_parse_der_chain(b_der))
                 else:
-                    bundle_certs.extend(_parse_der_chain(bundle_data))
+                    svid_bundle_certs.extend(_parse_der_chain(bundle_data))
 
 
             # Create a simple SVID-like object
@@ -461,14 +471,19 @@ class SPIREmTLSClient:
             bundle_response_stream = stub.FetchX509Bundles(bundle_request, metadata=grpc_metadata, timeout=10)
             bundle_response = next(bundle_response_stream)
 
-            # Parse bundle
-            bundle_certs = {}
-            for trust_domain, bundle_der in bundle_response.bundles.items():
-                bundle_cert = x509.load_der_x509_certificate(bundle_der)
-                bundle_certs[trust_domain] = bundle_cert
+            # Parse all bundles
+            all_bundle_certs = {}
+            for td_str, b_der in bundle_response.bundles.items():
+                all_bundle_certs[td_str] = _parse_der_chain(b_der)
+
+            # If the SVID's own bundle was provided in the SVID response, make sure it's included
+            if svid_bundle_certs and svid.spiffe_id:
+                td_str = str(svid.spiffe_id.trust_domain)
+                if td_str not in all_bundle_certs:
+                    all_bundle_certs[td_str] = svid_bundle_certs
 
             channel.close()
-            return svid, bundle_certs
+            return svid, all_bundle_certs
 
         except Exception as e:
             self.log(f"  ✗ gRPC fetch failed: {e}")
@@ -515,13 +530,14 @@ class SPIREmTLSClient:
 
                 # Get bundle from gRPC response
                 if bundle_certs:
-                    bundle_cert = bundle_certs.get(trust_domain)
-                    if bundle_cert:
+                    # trust_domain is a string here from svid.spiffe_id.trust_domain
+                    td_certs = bundle_certs.get(str(trust_domain))
+                    if td_certs:
                         # Create a simple bundle-like object
                         class SimpleBundle:
-                            def __init__(self, cert):
-                                self.x509_authorities = [cert]
-                        bundle = SimpleBundle(bundle_cert)
+                            def __init__(self, certs):
+                                self.x509_authorities = certs
+                        bundle = SimpleBundle(td_certs)
                 
                 if bundle:
                     # Load CA certificates from bundle into SSL context

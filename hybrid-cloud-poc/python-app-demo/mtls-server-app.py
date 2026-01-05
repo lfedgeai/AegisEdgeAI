@@ -293,8 +293,11 @@ class SPIREmTLSServer:
             cert_path = self.server_cert_path
             key_path = self.server_key_path
             if not os.path.exists(cert_path) or not os.path.exists(key_path):
-                raise Exception(f"Certificate files not found: {cert_path} or {key_path}")
-            self.log(f"  Using provided certificates: {cert_path}, {key_path}")
+                self.log(f"  Certificate files not found: {cert_path} or {key_path}")
+                self.log("  Generating fresh certificates...")
+                self.generate_self_signed_cert(cert_path, key_path, self.ca_cert_path)
+            else:
+                self.log(f"  Using provided certificates: {cert_path}, {key_path}")
         else:
             # Generate self-signed certificates
             cert_dir = os.path.join(os.path.expanduser("~"), ".mtls-demo")

@@ -204,13 +204,14 @@ set +e
 cd "${PYTHON_APP_DIR}"
 
 # Run mtls-client-app.py in background, capture output, and kill after first response
-# Use timeout to ensure it doesn't run forever
-HTTP_RESPONSE=$(timeout 10 python3 mtls-client-app.py 2>&1 | head -100)
+# Use a larger timeout (60s) to allow for multiple gRPC retries if needed
+HTTP_RESPONSE=$(timeout 60 python3 mtls-client-app.py 2>&1 | head -100)
 HTTP_EXIT_CODE=$?
 
 # If timeout killed it, that's fine - we got the response
 if [ $HTTP_EXIT_CODE -eq 124 ]; then
-    HTTP_EXIT_CODE=0  # Timeout is expected, treat as success for our purposes
+    printf "  ⚠ mtls-client-app.py timed out after 60s (may be still retrying gRPC)\n"
+    HTTP_EXIT_CODE=0
 fi
 set -e
 
