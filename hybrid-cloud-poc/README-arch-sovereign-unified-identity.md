@@ -1321,7 +1321,6 @@ rate_limit_per_minute = 10 # Conservative limit
 
 **Verification**: Tested on real TPM hardware with full integration test suite (`ci_test_runner.py`).
 
-
 ### Security Considerations
 
 **Current Security Features**:
