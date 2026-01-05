@@ -11,7 +11,7 @@ jobs:
     license-headers:
         name: Check Apache 2.0 License Headers
         runs-on: ubuntu-latest
-        timeout-minutes: 10
+        timeout-minutes: 5
 
         steps:
             - name: Checkout Code

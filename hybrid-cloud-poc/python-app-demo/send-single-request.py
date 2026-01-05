@@ -69,11 +69,37 @@ def fetch_svid_via_grpc(socket_path):
     if not workload_pb2_path.exists() or not workload_pb2_grpc_path.exists():
         raise ImportError(f"Protobuf files not found: {workload_pb2_path}")
 
+    # Load protobuf modules - need to register in sys.modules to avoid conflicts
+    # Must create full module hierarchy in sys.modules before loading grpc module
+    import types
+    import sys
+    
+    # Create placeholder modules for the hierarchy (to avoid importing system 'spiffe')
+    if 'spiffe' not in sys.modules or hasattr(sys.modules.get('spiffe'), '__path__'):
+        # Only override if not already loaded, or if it's a real package
+        spiffe_module = types.ModuleType('spiffe')
+        spiffe_module.__path__ = []  # Make it a package
+        sys.modules['spiffe'] = spiffe_module
+    
+    if 'spiffe.workload' not in sys.modules:
+        spiffe_workload = types.ModuleType('spiffe.workload')
+        spiffe_workload.__path__ = []
+        sys.modules['spiffe.workload'] = spiffe_workload
+        # Compatibility with different import styles
+        if hasattr(sys.modules['spiffe'], 'workload'):
+            sys.modules['spiffe'].workload = spiffe_workload
+            
+    # Load workload_pb2 first
     spec_pb2 = importlib.util.spec_from_file_location("workload_pb2", workload_pb2_path)
-    spec_grpc = importlib.util.spec_from_file_location("workload_pb2_grpc", workload_pb2_grpc_path)
     workload_pb2 = importlib.util.module_from_spec(spec_pb2)
-    workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
     spec_pb2.loader.exec_module(workload_pb2)
+    
+    # Register in sys.modules so workload_pb2_grpc can find it
+    sys.modules['spiffe.workload.workload_pb2'] = workload_pb2
+    
+    # Now load workload_pb2_grpc
+    spec_grpc = importlib.util.spec_from_file_location("workload_pb2_grpc", workload_pb2_grpc_path)
+    workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
     spec_grpc.loader.exec_module(workload_pb2_grpc)
 
     abs_socket_path = socket_path.replace('unix://', '')
@@ -91,27 +117,67 @@ def fetch_svid_via_grpc(socket_path):
 
     svid_response = response.svids[0]
 
+    def _parse_der_chain(data):
+        """Iteratively parse concatenated DER certificates."""
+        res = []
+        pos = 0
+        while pos < len(data):
+            if data[pos] != 0x30: break
+            start = pos
+            try:
+                pos += 1
+                if pos >= len(data): break
+                length = data[pos]
+                pos += 1
+                if length & 0x80:
+                    n = length & 0x7f
+                    if pos + n > len(data): break
+                    length = int.from_bytes(data[pos:pos+n], 'big')
+                    pos += n
+                
+                full_len = pos - start + length
+                cert_data = data[start:start+full_len]
+                cert = x509.load_der_x509_certificate(cert_data)
+                res.append(cert)
+                pos = start + full_len
+            except Exception:
+                break
+        return res
+
+
     # Parse certificates
     certs = []
-    for cert_der in svid_response.x509_svid:
-        cert = x509.load_der_x509_certificate(cert_der)
-        certs.append(cert)
+    svid_data = getattr(svid_response, 'x509_svid', getattr(svid_response, 'certificate', None))
+    if isinstance(svid_data, (list, tuple)):
+        for cert_der in svid_data:
+            certs.extend(_parse_der_chain(cert_der))
+    elif isinstance(svid_data, bytes):
+        certs = _parse_der_chain(svid_data)
 
     if not certs:
         raise Exception("No certificates in SVID")
 
-    # Parse private key
-    key = serialization.load_der_private_key(svid_response.private_key, password=None)
 
-    # Extract SPIFFE ID
-    spiffe_id = None
-    for ext in certs[0].extensions:
-        if ext.oid._name == 'subjectAltName':
-            for name in ext.value:
-                if hasattr(name, 'value') and isinstance(name.value, str):
-                    if name.value.startswith('spiffe://'):
-                        spiffe_id = SimpleSpiffeId(name.value)
-                        break
+    # Parse private key
+    key_data = getattr(svid_response, 'x509_svid_key', getattr(svid_response, 'spiffe_key', getattr(svid_response, 'private_key', None)))
+    if not key_data:
+        raise Exception("No private key in SVID")
+    key = serialization.load_der_private_key(key_data, password=None)
+
+
+    # Extract SPIFFE ID (use field if available, otherwise parse cert)
+    spiffe_id_str = getattr(svid_response, 'spiffe_id', None)
+    if spiffe_id_str:
+        spiffe_id = SimpleSpiffeId(spiffe_id_str)
+    else:
+        spiffe_id = None
+        for ext in certs[0].extensions:
+            if ext.oid._name == 'subjectAltName':
+                for name in ext.value:
+                    if hasattr(name, 'value') and isinstance(name.value, str):
+                        if name.value.startswith('spiffe://'):
+                            spiffe_id = SimpleSpiffeId(name.value)
+                            break
 
     # Simple SVID object
     class SimpleSVID:

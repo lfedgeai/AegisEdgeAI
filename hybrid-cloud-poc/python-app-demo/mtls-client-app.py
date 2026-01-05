@@ -295,14 +295,34 @@ class SPIREmTLSClient:
                 raise ImportError(f"Protobuf files not found: {workload_pb2_path}")
 
             # Load modules directly from file paths to avoid namespace conflicts
+            # Must create full module hierarchy in sys.modules before loading grpc module
+            import types
+            
+            # Create placeholder modules for the hierarchy (to avoid importing system 'spiffe')
+            if 'spiffe' not in sys.modules or hasattr(sys.modules.get('spiffe'), '__path__'):
+                # Only override if not already loaded, or if it's a real package
+                spiffe_module = types.ModuleType('spiffe')
+                spiffe_module.__path__ = []  # Make it a package
+                sys.modules['spiffe'] = spiffe_module
+            
+            if 'spiffe.workload' not in sys.modules:
+                spiffe_workload = types.ModuleType('spiffe.workload')
+                spiffe_workload.__path__ = []
+                sys.modules['spiffe.workload'] = spiffe_workload
+                sys.modules['spiffe'].workload = spiffe_workload
+            
+            # Load workload_pb2 first
             spec_pb2 = importlib.util.spec_from_file_location("workload_pb2", workload_pb2_path)
-            spec_grpc = importlib.util.spec_from_file_location("workload_pb2_grpc", workload_pb2_grpc_path)
-
             workload_pb2 = importlib.util.module_from_spec(spec_pb2)
-            workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
-
-            # Load the modules
             spec_pb2.loader.exec_module(workload_pb2)
+            
+            # Register in sys.modules so workload_pb2_grpc can find it
+            sys.modules['spiffe.workload.workload_pb2'] = workload_pb2
+            sys.modules['spiffe.workload'].workload_pb2 = workload_pb2
+            
+            # Now load workload_pb2_grpc
+            spec_grpc = importlib.util.spec_from_file_location("workload_pb2_grpc", workload_pb2_grpc_path)
+            workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
             spec_grpc.loader.exec_module(workload_pb2_grpc)
 
             # Create gRPC channel to Unix socket
@@ -325,16 +345,65 @@ class SPIREmTLSClient:
             svid_response = response.svids[0]
 
             # Parse certificates from DER format (bypassing validation)
+            def _parse_der_chain(data):
+                """Iteratively parse concatenated DER certificates."""
+                res = []
+                pos = 0
+                while pos < len(data):
+                    if data[pos] != 0x30: break
+                    start = pos
+                    try:
+                        pos += 1
+                        if pos >= len(data): break
+                        length = data[pos]
+                        pos += 1
+                        if length & 0x80:
+                            n = length & 0x7f
+                            if pos + n > len(data): break
+                            length = int.from_bytes(data[pos:pos+n], 'big')
+                            pos += n
+                        
+                        full_len = pos - start + length
+                        cert_data = data[start:start+full_len]
+                        cert = x509.load_der_x509_certificate(cert_data)
+                        res.append(cert)
+                        pos = start + full_len
+                    except Exception:
+                        break
+                return res
+
+
+            # Handle potential singular vs repeated field based on proto version
             certs = []
-            for cert_der in svid_response.certificate:
-                cert = x509.load_der_x509_certificate(cert_der)
-                certs.append(cert)
+            if hasattr(svid_response, 'x509_svid'):
+                certs = _parse_der_chain(svid_response.x509_svid)
+                if len(certs) > 1:
+                    self.log(f"  ⚠ Loaded certificate chain ({len(certs)} certs) from x509_svid field")
+            elif hasattr(svid_response, 'certificate'):
+                # Some versions use 'certificate' field which is repeated bytes
+                for cert_der in svid_response.certificate:
+                    certs.extend(_parse_der_chain(cert_der))
 
             if not certs:
                 raise Exception("No certificates in SVID")
 
+
             # Parse private key
-            key = serialization.load_der_private_key(svid_response.spiffe_key, password=None)
+            key_data = getattr(svid_response, 'x509_svid_key', getattr(svid_response, 'spiffe_key', None))
+            if not key_data:
+                raise Exception("No private key in SVID")
+            key = serialization.load_der_private_key(key_data, password=None)
+
+            # Parse trust bundle
+            bundle_certs = []
+            bundle_data = getattr(svid_response, 'bundle', getattr(svid_response, 'trust_bundle', None))
+            if bundle_data:
+                if isinstance(bundle_data, (list, tuple)):
+                    for b_der in bundle_data:
+                        bundle_certs.extend(_parse_der_chain(b_der))
+                else:
+                    bundle_certs.extend(_parse_der_chain(bundle_data))
+
 
             # Create a simple SVID-like object
             class SimpleSVID:

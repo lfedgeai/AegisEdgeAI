@@ -30,6 +30,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # All components are now consolidated in the root directory
 PROJECT_DIR="${SCRIPT_DIR}"
 KEYLIME_DIR="${SCRIPT_DIR}/keylime"
+# Silence Keylime configuration warnings by providing a minimal logging config
+export KEYLIME_LOGGING_CONFIG="${KEYLIME_DIR}/logging.conf"
 PYTHON_KEYLIME_DIR="${KEYLIME_DIR}"
 RUST_KEYLIME_DIR="${SCRIPT_DIR}/rust-keylime"
 SPIRE_DIR="${SCRIPT_DIR}/spire"

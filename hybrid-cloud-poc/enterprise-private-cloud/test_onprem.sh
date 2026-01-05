@@ -1155,51 +1155,48 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 
     # Verify services are running
     printf '\n'
+    # Verify services are running with retries
+    printf '\n'
     printf 'Verifying services...\n'
-    sleep 1
-
+    
     # Temporarily disable exit on error for verification
     set +e
 
+    MAX_RETRIES=5
+    RETRY_DELAY=2
     SERVICES_OK=0
+    
+    for i in $(seq 1 $MAX_RETRIES); do
+        SERVICES_OK=0
+        if command -v ss &> /dev/null; then
+            sudo ss -tlnp 2>/dev/null | grep -q ':9050' && SERVICES_OK=$((SERVICES_OK + 1))
+            sudo ss -tlnp 2>/dev/null | grep -q ':9443' && SERVICES_OK=$((SERVICES_OK + 1))
+            sudo ss -tlnp 2>/dev/null | grep -q ':8080' && SERVICES_OK=$((SERVICES_OK + 1))
+        elif command -v netstat &> /dev/null; then
+            sudo netstat -tlnp 2>/dev/null | grep -q ':9050' && SERVICES_OK=$((SERVICES_OK + 1))
+            sudo netstat -tlnp 2>/dev/null | grep -q ':9443' && SERVICES_OK=$((SERVICES_OK + 1))
+            sudo netstat -tlnp 2>/dev/null | grep -q ':8080' && SERVICES_OK=$((SERVICES_OK + 1))
+        fi
+        
+        if [ $SERVICES_OK -eq 3 ]; then
+            break
+        fi
+        
+        if [ $i -lt $MAX_RETRIES ]; then
+            printf "  Waiting for services to start (attempt $i/$MAX_RETRIES)...\n"
+            sleep $RETRY_DELAY
+        fi
+    done
+
+    # Print final status
     if command -v ss &> /dev/null; then
-        if sudo ss -tlnp 2>/dev/null | grep -q ':9050'; then
-            printf '  [OK] Mobile Location Service listening on port 9050\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] Mobile Location Service not listening on port 9050\n'
-        fi
-        if sudo ss -tlnp 2>/dev/null | grep -q ':9443'; then
-            printf '  [OK] mTLS Server listening on port 9443\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] mTLS Server not listening on port 9443\n'
-        fi
-        if sudo ss -tlnp 2>/dev/null | grep -q ':8080'; then
-            printf '  [OK] Envoy listening on port 8080\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] Envoy not listening on port 8080\n'
-        fi
+        sudo ss -tlnp 2>/dev/null | grep -q ':9050' && printf '  [OK] Mobile Location Service listening on port 9050\n' || printf '  [WARN] Mobile Location Service not listening on port 9050\n'
+        sudo ss -tlnp 2>/dev/null | grep -q ':9443' && printf '  [OK] mTLS Server listening on port 9443\n' || printf '  [WARN] mTLS Server not listening on port 9443\n'
+        sudo ss -tlnp 2>/dev/null | grep -q ':8080' && printf '  [OK] Envoy listening on port 8080\n' || printf '  [WARN] Envoy not listening on port 8080\n'
     elif command -v netstat &> /dev/null; then
-        if sudo netstat -tlnp 2>/dev/null | grep -q ':9050'; then
-            printf '  [OK] Mobile Location Service listening on port 9050\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] Mobile Location Service not listening on port 9050\n'
-        fi
-        if sudo netstat -tlnp 2>/dev/null | grep -q ':9443'; then
-            printf '  [OK] mTLS Server listening on port 9443\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] mTLS Server not listening on port 9443\n'
-        fi
-        if sudo netstat -tlnp 2>/dev/null | grep -q ':8080'; then
-            printf '  [OK] Envoy listening on port 8080\n'
-            SERVICES_OK=$((SERVICES_OK + 1))
-        else
-            printf '  [WARN] Envoy not listening on port 8080\n'
-        fi
+        sudo netstat -tlnp 2>/dev/null | grep -q ':9050' && printf '  [OK] Mobile Location Service listening on port 9050\n' || printf '  [WARN] Mobile Location Service not listening on port 9050\n'
+        sudo netstat -tlnp 2>/dev/null | grep -q ':9443' && printf '  [OK] mTLS Server listening on port 9443\n' || printf '  [WARN] mTLS Server not listening on port 9443\n'
+        sudo netstat -tlnp 2>/dev/null | grep -q ':8080' && printf '  [OK] Envoy listening on port 8080\n' || printf '  [WARN] Envoy not listening on port 8080\n'
     else
         printf '  [WARN] Cannot verify ports (ss/netstat not available)\n'
     fi
