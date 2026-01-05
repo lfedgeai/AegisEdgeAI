@@ -1326,8 +1326,6 @@ rate_limit_per_minute = 10 # Conservative limit
 
 #### Delegated Certification Security (Production Controls)
 
-**Implemented**: December 2025
-
 The delegated certification endpoint (`/certify_app_key`) now includes production-grade security controls:
 
 **Features:**
@@ -1380,7 +1378,7 @@ rate_limit_per_minute = 10 # Conservative limit
 - ✅ IP allowlist and rate limiting
 - ✅ mTLS between components
 - ✅ Geolocation attestation with TPM binding
-- ✅ **Full TLS certificate validation** (Task 7 Complete - No `InsecureSkipVerify`)
+- ✅ **Full TLS certificate validation** (No `InsecureSkipVerify`)
 
 **Production Gaps & Roadmap Status**:
 For a comprehensive view of production readiness, identified security gaps, and the detailed upstreaming strategy, please refer to the project roadmap:
