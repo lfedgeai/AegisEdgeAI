@@ -1321,27 +1321,6 @@ rate_limit_per_minute = 10 # Conservative limit
 
 **Verification**: Tested on real TPM hardware with full integration test suite (`ci_test_runner.py`).
 
-### Test Infrastructure
-
-**CI/CD Ready**: ✅ Complete
-
-- **Test Runner**: `ci_test_runner.py` - Automated integration testing
-  - Real-time output streaming
-  - Structured logging with timestamps
-  - Error detection and reporting
-  - Automatic `--no-pause` for CI environments
-  - **Self-Hosted Runner**: hardware-equipped (10.1.0.10) for real TPM access
-- **Test Scripts**: Hardened with fail-fast (`set -euo pipefail`)
-- **Cleanup**: Comprehensive state reset including `/tmp` hygiene and log consolidation (`LOG_DIR`)
-- **Hardware**: Verified on TPM 2.0 (10.1.0.11)
-
-**Test Coverage:**
-- TPM operations (EK, AK, App Key generation)
-- Delegated certification flow
-- SPIRE Agent attestation
-- Geolocation data extraction
-- SVID issuance and renewal
-- Enterprise gateway verification
 
 ### Security Considerations
 
