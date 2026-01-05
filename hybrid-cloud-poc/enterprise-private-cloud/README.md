@@ -19,7 +19,7 @@ Envoy Proxy (10.1.0.10:8080)
     | 1. Terminates mTLS
     | 2. Verifies SPIRE cert signature (using SPIRE CA bundle)
     | 3. WASM filter extracts sensor metadata and coordinates from certificate chain
-    |    (Unified Identity extension in intermediate cert)
+    |    (Unified Identity extension in agent SVID)
     | 4. WASM filter behavior:
     |    - GPS/GNSS sensors: Trusted hardware, bypass mobile location service (allow directly)
     |    - Mobile sensors: Calls mobile location service with SVID coordinates (blocking)
@@ -305,7 +305,7 @@ tail -f /tmp/mobile-sensor.log
 - Check WASM filter is loaded: Look for "sensor_verification" in Envoy logs (`/opt/envoy/logs/envoy.log`)
 - Verify WASM file exists: `/opt/envoy/plugins/sensor_verification_wasm.wasm`
 - Verify SPIRE cert has Unified Identity extension with geolocation data
-- **Note**: The Unified Identity extension is in the **intermediate certificate** (agent SVID), not the leaf certificate
+- **Note**: The Unified Identity extension is in the **agent SVID** (second certificate in chain), not the leaf certificate
 - Check Envoy logs for certificate parsing errors
 - Rebuild WASM filter if needed: `cd enterprise-private-cloud/wasm-plugin && bash build.sh`
 
@@ -334,7 +334,7 @@ tail -f /tmp/mobile-sensor.log
 - **Timeout**: 5 seconds for mobile location service call
 
 ### Certificate Chain Parsing
-- **Location**: Unified Identity extension is in the **intermediate certificate** (agent SVID)
+- **Location**: Unified Identity extension is in the **agent SVID** (second certificate in chain)
 - **OID**: 1.3.6.1.4.1.99999.2 (or legacy 1.3.6.1.4.1.99999.1)
 - **Format**: JSON with `grc.geolocation.sensor_id` field
 - **Extraction**: WASM filter parses full certificate chain from `x-forwarded-client-cert` header

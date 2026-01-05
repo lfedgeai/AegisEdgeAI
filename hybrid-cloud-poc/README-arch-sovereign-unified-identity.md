@@ -478,9 +478,9 @@ The workload SVID flow follows the standard SPIRE pattern, with the key differen
 9. **SPIRE Agent Returns SVID to Workload**
    - The SPIRE Agent returns the workload SVID and certificate chain to the workload
    - The workload receives:
-     - The workload SVID (leaf certificate)
-     - The agent SVID (intermediate certificate in chain)
-     - Both certificates are signed by the SPIRE Server CA
+      - The workload SVID (leaf certificate)
+      - The agent SVID (included in chain for claim inheritance)
+      - Both certificates are signed by the SPIRE Server CA (flat hierarchy, Option A)
 
 10. **Workload Uses SVID**
     - The workload can now use its SVID for:
@@ -499,30 +499,40 @@ The workload SVID flow follows the standard SPIRE pattern, with the key differen
 - **Inherited Trust**: Workloads inherit the TPM-backed trust of their hosting agent through the certificate chain
 - **Standard SPIRE Pattern**: The workload SVID flow follows standard SPIRE patterns, with the addition of the agent SVID in the certificate chain
 
-### Certificate Chain Structure
+### Certificate Chain Structure (Option A: Claims Propagation)
+
+> [!NOTE]
+> The current implementation uses **Option A (flat hierarchy)**. Both Agent and Workload SVIDs are signed directly by the SPIRE Server CA. The Agent SVID is included in the certificate chain to provide claim inheritance, but it is **NOT** a true X.509 intermediate CA. See the "Hierarchical Workload SVID Architecture Options" section for future intermediate CA plans.
 
 ```
 Workload SVID (Leaf)
 ├── Subject: spiffe://example.org/python-app
 ├── Claims: grc.workload.* (workload-specific only)
-└── Issuer: SPIRE Server CA
+├── Issuer: SPIRE Server CA           ← Signed directly by Server CA (flat)
+│
+└── Agent SVID (Chain Position 1)     ← Included for claim inheritance, NOT an intermediate CA
+    ├── Subject: spiffe://example.org/spire/agent/join_token/...
+    ├── Claims: grc.geolocation.*, grc.tpm-attestation.*
+    ├── Issuer: SPIRE Server CA       ← Also signed directly by Server CA (flat)
+    ├── BasicConstraints: CA:FALSE    ← NOT a CA certificate
     │
-    └── Agent SVID (Intermediate)
-        ├── Subject: spiffe://example.org/spire/agent/join_token/...
-        ├── Claims: grc.geolocation.*, grc.tpm-attestation.*, grc.workload.*
-        └── Issuer: SPIRE Server CA
-            │
-            └── SPIRE Server CA (Root)
+    └── SPIRE Server CA (Root)
 ```
 
+**Key Clarification**: In the current implementation:
+- Both SVIDs are **leaf certificates** (`CA:FALSE`) signed by the Server CA
+- The Agent SVID is passed in the certificate chain for **claim visibility**, not for signing
+- Relying parties extract attestation claims from the Agent SVID via the chain
+- Standard X.509 path validation treats both as leaves under the same root
+
 This structure allows verifiers to:
-- Validate the workload's identity directly
-- Trace back to the agent's TPM attestation for policy enforcement
-- Enforce geofencing and platform policies based on agent attestation
+- Validate the workload's identity directly (Server CA signature)
+- Access the agent's TPM attestation claims from the chain
+- Enforce geofencing and platform policies based on agent claims
 
 ---
 
-## 🏗️ Hierarchical Workload SVID Architecture Options
+## Hierarchical Workload SVID Architecture Options
 
 ### The Challenge: SPIRE's Flat Certificate Model
 
@@ -823,7 +833,7 @@ After workloads receive their SPIRE SVIDs, they can use these certificates to ac
 
 - **WASM Filter Extracts Sensor Information**:
   - Parses the certificate chain.
-  - Extracts Unified Identity extension (OID `1.3.6.1.4.1.99999.2`) from Agent SVID (intermediate certificate).
+  - Extracts Unified Identity extension (OID `1.3.6.1.4.1.99999.2`) from Agent SVID (second certificate in chain).
   - Extracts sensor metadata: `sensor_id`, `sensor_type`, `sensor_imei`, `sensor_imsi`, `sensor_msisdn`.
   - **Coordinate Propagation**: Extracts `latitude`, `longitude`, and `accuracy` if present in SVID claims to enable the **DB-less verification flow**.
   - **No Filter Caching**: The WASM filter is stateless; all result caching is centralized in the mobile location microservice.
@@ -855,7 +865,7 @@ After workloads receive their SPIRE SVIDs, they can use these certificates to ac
 - **GPS Sensor Bypass**: GPS/GNSS sensors (trusted hardware) bypass mobile location service entirely, allowing requests directly without verification
 - **Mobile Sensor Verification**: Mobile sensors require CAMARA API verification via mobile location service (with caching)
 - **Blocking Verification**: For mobile sensors, requests pause until mobile location service responds
-- **Certificate Chain**: WASM filter extracts sensor information from Agent SVID (intermediate certificate) in the certificate chain
+- **Certificate Chain**: WASM filter extracts sensor information from Agent SVID (second certificate in chain, contains attestation claims)
 - **Centralized Caching**: All caching logic centralized in mobile location service, making it easier to maintain and debug
 
 ### Flow Diagram

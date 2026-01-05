@@ -284,7 +284,7 @@ impl HttpContext for SensorVerificationFilter {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
         // Get certificate chain from x-forwarded-client-cert header (set by forward_client_cert_details in Envoy)
         // Format: "By=...;Cert=\"...\";Chain=\"...\";Subject=...;URI=..."
-        // The Unified Identity extension is in the intermediate certificate (agent SVID) in the Chain
+        // The Unified Identity extension is in the agent SVID (second certificate in chain)
         let cert_pem: Option<Vec<u8>> = self.get_http_request_header("x-forwarded-client-cert")
             .and_then(|header| {
                 // Try to get Chain first (contains full chain: leaf + intermediate)
@@ -495,8 +495,8 @@ struct SensorInfo {
 }
 
 fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
-    // Parse certificate chain (may contain multiple certificates: leaf + intermediates)
-    // The Unified Identity extension is in the intermediate certificate (agent SVID)
+    // Parse certificate chain (may contain multiple certificates: leaf + agent SVID)
+    // The Unified Identity extension is in the agent SVID (second certificate in chain)
     let pem_str = match std::str::from_utf8(cert_pem) {
         Ok(s) => s,
         Err(e) => {

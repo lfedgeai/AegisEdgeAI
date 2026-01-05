@@ -95,7 +95,7 @@ The current implementation demonstrates a hybrid cloud unified identity system c
 - Control Plane Identity Services: Host Identity (Keylime Verifier & Registrar), Workload Identity (SPIRE Server)
 - Agents and Plugins: Keylime Agent, SPIRE Agent, SPIRE TPM Plugin, Mobile location sensor (USB tethered smartphone), TPM, and Client App using unified identity (SPIRE SVID)
 - System flow: SPIRE agent gets/refreshes unified identity with TPM-attested geolocation from SPIRE server
-- Client App flow: Client app inherits unified identity from SPIRE server – intermediate cert in cert hierarchy
+- Client App flow: Client app inherits unified identity from SPIRE server – agent SVID included in certificate chain for claim inheritance
 
 **Customer on-Prem Private Cloud (right, blue boundary):**
 - Contains: Envoy (API Gateway) with WASM plugin, Server App, and Mobile Geolocation Service (CAMARA API)
