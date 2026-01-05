@@ -46,7 +46,7 @@ else
     echo -e "${GREEN}✓ No existing mTLS client processes found${NC}"
 fi
 # Clean up log files
-rm -f /tmp/mtls-client-app.log
+rm -f /tmp/mtls-client-app.log 2>/dev/null || sudo rm -f /tmp/mtls-client-app.log
 echo -e "${GREEN}✓ Log files cleaned${NC}"
 echo ""
 
