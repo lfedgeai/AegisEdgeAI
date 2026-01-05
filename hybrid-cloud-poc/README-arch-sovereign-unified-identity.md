@@ -1322,27 +1322,6 @@ rate_limit_per_minute = 10 # Conservative limit
 
 **Verification**: Tested on real TPM hardware with full integration test suite (`ci_test_runner.py`).
 
-### Upstreaming Roadmap
-
-**Comprehensive Status**: See [`PILLAR2_STATUS.md`](PILLAR2_STATUS.md)
-
-The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks required for submission to Keylime and SPIRE upstream projects:
-
-| Task | Component | Status | Est. Effort |
-|------|-----------|--------|-------------|
-| **Task 1** | Keylime Agent - Delegated Certifier | ✅ Production-ready | 3 days |
-| **Task 2** | Keylime Agent - Geolocation API | ⚠️ Needs refactoring | 5 days |
-| **Task 3** | Keylime Verifier - Cleanup | ⚠️ Has dead code | 2 days |
-| **Task 4** | SPIRE Server - Validator Plugin | ❌ Major refactoring | 9 days |
-| **Task 5** | SPIRE Agent - Collector Plugin | ❌ Major refactoring | 12 days |
-| **Task 6** | SPIRE - CredentialComposer | ✅ Config change | 2 days |
-
-**Total Upstream Effort**: ~6 weeks
-
-**Phased Approach**:
-1. **Quick Wins** (5 days): Tasks 1, 3, 6 - immediate upstream value
-2. **Moderate Refactoring** (10 days): Task 2 - separate geolocation endpoint
-3. **Major Refactoring** (20 days): Tasks 4 & 5 - SPIRE plugin extraction
 
 ### Test Infrastructure
 
