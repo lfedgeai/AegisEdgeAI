@@ -26,8 +26,14 @@ echo "--- Mobile Device Identity Retrieval ---"
 MODEM_PATH=$(sudo mmcli -L | grep '\[huawei\]' | head -n 1 | awk '{print $1}')
 
 if [ -z "$MODEM_PATH" ]; then
-    echo "❌ ERROR: No Huawei modem detected."
-    exit 1
+    echo "ℹ️  No Huawei modem detected - IMEI/IMSI cannot be retrieved."
+    echo "   This is expected on systems without mobile hardware."
+    echo "----------------------------------------"
+    echo "Device Summary:"
+    echo "Modem IMEI: Not Available"
+    echo "SIM IMSI:   Not Available"
+    echo "----------------------------------------"
+    exit 0
 fi
 
 # Extract the Modem Index number (e.g., '5' from '.../Modem/5')
