@@ -23,16 +23,17 @@ import os
 import sys
 
 try:
-    # Unified-Identity: Proactively patch validation to skip CA flag check
-    # Some versions of python-spiffe validate intermediate certificates strictly
-    # SPIRE agent SVIDs are end-entity certs, not CAs, so we need to skip this check
+    # Unified-Identity: Workaround for python-spiffe library mismatch
+    # The library assumes any cert after the leaf is an "intermediate CA" with CA:TRUE
+    # But our agent SVID has CA:FALSE (correctly! - we use Option A flat hierarchy, NOT intermediate CA)
+    # The agent SVID is in the chain only for claim inheritance, not for CA signing
+    # Patch the library to skip this misaligned validation
     try:
         from spiffe.svid import x509_svid
         if hasattr(x509_svid, '_validate_intermediate_certificate'):
             original_validate = x509_svid._validate_intermediate_certificate
             def patched_validate(cert):
-                # Skip CA flag validation for intermediate certificates
-                # SPIRE agent SVIDs are end-entity certs, not CAs
+                # Skip CA flag check - agent SVID has CA:FALSE which is correct for Option A
                 pass
             x509_svid._validate_intermediate_certificate = patched_validate
     except Exception:

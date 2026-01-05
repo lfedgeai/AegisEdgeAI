@@ -31,18 +31,18 @@ from pathlib import Path
 
 try:
     # Unified-Identity: Proactively patch validation to skip CA flag check
-    # Some versions of python-spiffe validate intermediate certificates strictly
-    # SPIRE agent SVIDs are end-entity certs, not CAs, so we need to skip this check
+    # Some versions of python-spiffe validate chain certificates strictly
+    # SPIRE agent SVIDs are end-entity certs (CA:FALSE), not CAs, so we skip this check
     try:
         from spiffe.svid import x509_svid
         if hasattr(x509_svid, '_validate_intermediate_certificate'):
             original_validate = x509_svid._validate_intermediate_certificate
             def patched_validate(cert):
-                # Skip CA flag validation for intermediate certificates
-                # SPIRE agent SVIDs are end-entity certs, not CAs
+                # Skip CA flag validation for agent SVID in chain
+                # SPIRE agent SVIDs are end-entity certs (CA:FALSE), not CAs
                 pass
             x509_svid._validate_intermediate_certificate = patched_validate
-            print("Unified-Identity: intermediate certificate missing CA flag; skipping strict validation")
+            print("Unified-Identity: agent SVID missing CA flag (expected in Option A flat hierarchy); skipping strict validation")
     except Exception:
         # If patching fails at import time, we'll patch later when needed
         pass
@@ -132,9 +132,9 @@ class SPIREmTLSClient:
             leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
             cert_pem = leaf_cert.public_bytes(serialization.Encoding.PEM)
 
-            # Try to get the full chain including agent SVID (intermediate)
+            # Try to get the full chain including agent SVID
             # SPIRE X509Source provides the full chain via the underlying workload API
-            # The chain includes: workload SVID (leaf) + agent SVID (intermediate)
+            # The chain includes: workload SVID (leaf) + agent SVID (contains attestation claims)
             try:
                 if hasattr(self.source, '_x509_svid') and self.source._x509_svid:
                     x509_svid = self.source._x509_svid
@@ -148,8 +148,8 @@ class SPIREmTLSClient:
                         for cert in x509_svid.certificates[1:]:  # Skip first (leaf)
                             cert_pem += cert.public_bytes(serialization.Encoding.PEM)
             except Exception as e:
-                # If we can't get intermediates, log but continue with leaf only
-                self.log(f"  ⚠ Could not extract intermediate certificates (agent SVID): {e}")
+                # If we can't get agent SVID from chain, log but continue with leaf only
+                self.log(f"  ⚠ Could not extract agent SVID from certificate chain: {e}"))
 
             # Save to file
             svid_path = os.path.join(svid_dump_dir, 'svid.pem')
@@ -388,7 +388,7 @@ class SPIREmTLSClient:
 
         try:
             # Create X509Source which handles automatic renewal
-            # Note: Some versions of python-spiffe may validate intermediate certificates strictly
+            # Note: Some versions of python-spiffe may validate chain certificates strictly
             # If this fails with CA flag error, we'll use an alternative approach
             try:
                 self.source = X509Source(socket_path=socket_path_with_scheme)
@@ -404,8 +404,8 @@ class SPIREmTLSClient:
                         from spiffe.svid import x509_svid
                         original_validate = x509_svid._validate_intermediate_certificate
                         def patched_validate(cert):
-                            # Skip CA flag validation for intermediate certificates
-                            # SPIRE agent SVIDs are end-entity certs, not CAs
+                            # Skip CA flag validation for agent SVID in chain
+                            # SPIRE agent SVIDs are end-entity certs (CA:FALSE), not CAs
                             pass
                         x509_svid._validate_intermediate_certificate = patched_validate
                         self.log(f"  ✓ Patched validation function")
@@ -547,8 +547,8 @@ class SPIREmTLSClient:
                     self.log(f"  ⚠ No bundle path available, using CERT_NONE (no peer verification)")
                     context.verify_mode = ssl.CERT_NONE  # Don't verify if no bundle
 
-            # Load certificate chain (leaf + intermediates)
-            # The Unified Identity extension is in the intermediate certificate (agent SVID)
+            # Load certificate chain (leaf + agent SVID)
+            # The Unified Identity extension is in the agent SVID (second certificate in chain)
             from cryptography.hazmat.primitives import serialization
 
             # Handle different svid object structures (X509Source vs DefaultX509Source)
@@ -564,7 +564,7 @@ class SPIREmTLSClient:
                 raise Exception("SVID object does not have expected certificate structure")
 
             # SPIRE X509Source provides the full chain via the underlying workload API
-            # The chain includes: workload SVID (leaf) + agent SVID (intermediate)
+            # The chain includes: workload SVID (leaf) + agent SVID (contains attestation claims)
             # Check if svid has a chain attribute or if we need to get it from the source
             try:
                 # Try to get the full chain from the source's underlying data
@@ -592,10 +592,10 @@ class SPIREmTLSClient:
                         for cert in x509_svid.certificates[1:]:  # Skip first (leaf)
                             cert_pem += cert.public_bytes(serialization.Encoding.PEM)
             except Exception as e:
-                # If we can't get intermediates, log but continue with leaf only
+                # If we can't get agent SVID from chain, log but continue with leaf only
                 # The WASM filter will check what's available in the chain
-                self.log(f"  ⚠ Could not extract intermediate certificates: {e}")
-                self.log(f"  ℹ Note: Unified Identity extension should be in intermediate cert")
+                self.log(f"  ⚠ Could not extract agent SVID from chain: {e}")
+                self.log(f"  ℹ Note: Unified Identity extension is in agent SVID (second cert in chain)")
 
             key_pem = private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,

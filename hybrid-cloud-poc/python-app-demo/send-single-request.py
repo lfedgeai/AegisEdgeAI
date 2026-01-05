@@ -61,12 +61,14 @@ def get_tls_context():
     except Exception as e:
         error_msg = str(e)
         if "CA flag" in error_msg or "intermediate certificate" in error_msg:
-            # Workaround for strict validation: monkey-patch the validation function
+            # Workaround: python-spiffe library expects chain certs to have CA:TRUE
+            # But our agent SVID has CA:FALSE (Option A flat hierarchy - not an intermediate CA)
+            # Monkey-patch the library's validation to skip this check
             try:
                 from spiffe.svid import x509_svid
                 original_validate = x509_svid._validate_intermediate_certificate
                 def patched_validate(cert):
-                    pass  # Skip CA flag validation
+                    pass  # Skip CA flag validation for agent SVID (CA:FALSE is correct)
                 x509_svid._validate_intermediate_certificate = patched_validate
                 source = X509Source(socket_path=socket_path_with_scheme)
                 x509_svid._validate_intermediate_certificate = original_validate
@@ -155,7 +157,7 @@ def get_tls_context():
     else:
         raise Exception("SVID object does not have expected certificate structure")
 
-    # Try to get certificate chain (leaf + intermediates)
+    # Try to get certificate chain (leaf + agent SVID)
     try:
         if hasattr(source, '_x509_svid') and source._x509_svid:
             x509_svid = source._x509_svid

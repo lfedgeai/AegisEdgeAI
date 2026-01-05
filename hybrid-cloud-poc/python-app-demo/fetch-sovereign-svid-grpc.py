@@ -327,7 +327,8 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
         # Unified-Identity - Verification: SPIRE automatically returns the full certificate chain
         # The x509_svid field contains DER-encoded certificate chain:
         #   - Workload SVID (leaf certificate)
-        #   - Agent SVID (intermediate certificate that signed the workload)
+        #   - Agent SVID (second certificate in chain, contains attestation claims)
+        # Note: Agent SVID is NOT an intermediate CA (CA:FALSE) in current Option A flat hierarchy
         # SPIRE agent/server code automatically includes the agent SVID in the chain
 
         try:
