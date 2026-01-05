@@ -1353,8 +1353,9 @@ The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks requ
   - Structured logging with timestamps
   - Error detection and reporting
   - Automatic `--no-pause` for CI environments
+  - **Self-Hosted Runner**: hardware-equipped (10.1.0.10) for real TPM access
 - **Test Scripts**: Hardened with fail-fast (`set -euo pipefail`)
-- **Cleanup**: Comprehensive state reset between test runs
+- **Cleanup**: Comprehensive state reset including `/tmp` hygiene and log consolidation (`LOG_DIR`)
 - **Hardware**: Verified on TPM 2.0 (10.1.0.11)
 
 **Test Coverage:**
@@ -1378,7 +1379,3 @@ The Pillar 2 document provides detailed analysis of all 6 upstreaming tasks requ
 **Production Gaps & Roadmap Status**:
 For a comprehensive view of production readiness, identified security gaps, and the detailed upstreaming strategy, please refer to the project roadmap:
 👉 **[`UPSTREAM_MERGE_ROADMAP.md`](UPSTREAM_MERGE_ROADMAP.md)**
-
----
-
----
