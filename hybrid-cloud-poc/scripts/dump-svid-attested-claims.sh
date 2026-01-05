@@ -119,7 +119,7 @@ def classify_cert(index, cert, spiffe_id, root_certs=None):
 
     # SPIRE Agent SVID has specific SPIFFE ID pattern
     if spiffe_id and "/spire/agent/" in spiffe_id:
-        return "SPIRE Agent SVID (Issuer of Workload SVID)"
+        return "SPIRE Agent SVID (Node Identity)"
 
     # Other SPIFFE identities
     if spiffe_id:
@@ -441,7 +441,7 @@ for idx, cert in enumerate(certs):
     # Enhanced role display with icons - prioritize agent SVID detection
     if "SPIRE Agent SVID" in role or (spiffe_id and "/spire/agent/" in spiffe_id):
         icon = "🔸"
-        role_desc = "SPIRE AGENT SVID (Issuer of Workload SVID)"
+        role_desc = "SPIRE AGENT SVID (Node Identity)"
     elif "Workload SVID" in role or idx == 0:
         icon = "🔹"
         role_desc = "WORKLOAD SVID (Application Certificate)"
@@ -644,7 +644,7 @@ try:
         # Use same classification as summary - ensure agent SVID is correctly identified
         if "SPIRE Agent SVID" in role or (spiffe_id and "/spire/agent/" in spiffe_id):
             icon = "🔸"
-            title = f"SPIRE AGENT SVID (Issuer of Workload SVID)"
+            title = f"SPIRE AGENT SVID (Node Identity)"
         elif "Workload SVID" in role or idx == 0:
             icon = "🔹"
             title = f"WORKLOAD SVID (Application Certificate)"
