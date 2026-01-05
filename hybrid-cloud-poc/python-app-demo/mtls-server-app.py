@@ -233,9 +233,8 @@ class SPIREmTLSServer:
             cert_bytes = cert_chain[0]
             cert = x509.load_der_x509_certificate(cert_bytes, default_backend())
 
-                    # Extract SPIFFE ID from certificate
+            # Extract SPIFFE ID from certificate
             try:
-                from spiffe.spiffe_id import SpiffeId
                 spiffe_id_str = None
                 for ext in cert.extensions:
                     if ext.oid._name == 'subjectAltName':

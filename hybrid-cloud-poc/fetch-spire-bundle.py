@@ -17,86 +17,136 @@
 """
 Fetch SPIRE Trust Bundle (CA Certificate)
 Extracts the SPIRE CA certificate bundle for use with standard cert servers.
+
+Uses direct gRPC calls to SPIRE Agent Workload API (no python-spiffe dependency).
 """
 
 import os
 import sys
+import importlib.util
+from pathlib import Path
+
+# Simple SPIFFE ID class
+class SimpleSpiffeId:
+    """Simple SPIFFE ID parser."""
+    def __init__(self, spiffe_id_str):
+        self._str = spiffe_id_str
+        if not spiffe_id_str.startswith('spiffe://'):
+            raise ValueError(f"Invalid SPIFFE ID: {spiffe_id_str}")
+        parts = spiffe_id_str[9:].split('/', 1)
+        self.trust_domain = parts[0]
+        self.path = '/' + parts[1] if len(parts) > 1 else '/'
+    
+    def __str__(self):
+        return self._str
 
 try:
-    # Unified-Identity: Workaround for python-spiffe library mismatch
-    # The library assumes any cert after the leaf is an "intermediate CA" with CA:TRUE
-    # But our agent SVID has CA:FALSE (correctly! - we use Option A flat hierarchy, NOT intermediate CA)
-    # The agent SVID is in the chain only for claim inheritance, not for CA signing
-    # Patch the library to skip this misaligned validation
-    try:
-        from spiffe.svid import x509_svid
-        if hasattr(x509_svid, '_validate_intermediate_certificate'):
-            original_validate = x509_svid._validate_intermediate_certificate
-            def patched_validate(cert):
-                # Skip CA flag check - agent SVID has CA:FALSE which is correct for Option A
-                pass
-            x509_svid._validate_intermediate_certificate = patched_validate
-    except Exception:
-        # If patching fails at import time, we'll patch later when needed
-        pass
-
-    from spiffe.workloadapi.x509_source import X509Source
-    HAS_SPIFFE = True
+    import grpc
+    HAS_GRPC = True
 except ImportError:
-    print("Error: spiffe library not installed")
-    print("Install it with: pip install spiffe")
+    print("Error: grpcio library not installed")
+    print("Install it with: pip install grpcio")
     sys.exit(1)
 
+try:
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+except ImportError:
+    print("Error: cryptography library not installed")
+    print("Install it with: pip install cryptography")
+    sys.exit(1)
+
+
+def fetch_bundle_via_grpc(socket_path):
+    """Fetch trust bundle from SPIRE Agent via direct gRPC."""
+    # Load protobuf modules
+    script_dir = Path(__file__).parent / "python-app-demo"
+    workload_pb2_path = script_dir / "generated" / "spiffe" / "workload" / "workload_pb2.py"
+    workload_pb2_grpc_path = script_dir / "generated" / "spiffe" / "workload" / "workload_pb2_grpc.py"
+
+    if not workload_pb2_path.exists() or not workload_pb2_grpc_path.exists():
+        raise ImportError(f"Protobuf files not found: {workload_pb2_path}")
+
+    spec_pb2 = importlib.util.spec_from_file_location("workload_pb2", workload_pb2_path)
+    spec_grpc = importlib.util.spec_from_file_location("workload_pb2_grpc", workload_pb2_grpc_path)
+    workload_pb2 = importlib.util.module_from_spec(spec_pb2)
+    workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
+    spec_pb2.loader.exec_module(workload_pb2)
+    spec_grpc.loader.exec_module(workload_pb2_grpc)
+
+    # Create gRPC channel
+    abs_socket_path = socket_path.replace('unix://', '')
+    channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
+    stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
+    grpc_metadata = [('workload.spiffe.io', 'true')]
+
+    # Fetch SVID to get trust domain
+    request = workload_pb2.X509SVIDRequest()
+    response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=10)
+    response = next(response_stream)
+
+    if not response.svids:
+        raise Exception("No SVIDs in response")
+
+    svid_response = response.svids[0]
+    
+    # Parse leaf certificate to get SPIFFE ID
+    cert = x509.load_der_x509_certificate(svid_response.x509_svid)
+    spiffe_id = None
+    for ext in cert.extensions:
+        if ext.oid._name == 'subjectAltName':
+            for name in ext.value:
+                if hasattr(name, 'value') and isinstance(name.value, str):
+                    if name.value.startswith('spiffe://'):
+                        spiffe_id = SimpleSpiffeId(name.value)
+                        break
+
+    if not spiffe_id:
+        raise Exception("Could not extract SPIFFE ID from certificate")
+
+    # Fetch bundle
+    bundle_request = workload_pb2.X509BundlesRequest()
+    bundle_response_stream = stub.FetchX509Bundles(bundle_request, metadata=grpc_metadata, timeout=10)
+    bundle_response = next(bundle_response_stream)
+
+    # Parse bundle
+    bundle_certs = []
+    for trust_domain, bundle_der in bundle_response.bundles.items():
+        if trust_domain == spiffe_id.trust_domain:
+            bundle_cert = x509.load_der_x509_certificate(bundle_der)
+            bundle_certs.append(bundle_cert)
+
+    channel.close()
+    return spiffe_id, bundle_certs
+
+
 def main():
-    # SPIRE_AGENT_SOCKET can be either:
-    # - A bare Unix socket path (e.g., /tmp/spire-agent/public/api.sock)
-    # - A full endpoint URI (e.g., unix:///tmp/spire-agent/public/api.sock or tcp://10.0.0.5:8081)
     raw_socket = os.environ.get('SPIRE_AGENT_SOCKET', '/tmp/spire-agent/public/api.sock')
     output_path = os.environ.get('BUNDLE_OUTPUT_PATH', '/tmp/spire-bundle.pem')
 
-    # If the value already contains a scheme (://), use it as-is.
-    # Otherwise, assume a Unix domain socket path and prefix with unix://
     if "://" in raw_socket:
-        socket_path_with_scheme = raw_socket
+        socket_path = raw_socket
     else:
-        socket_path_with_scheme = f"unix://{raw_socket}"
+        socket_path = f"unix://{raw_socket}"
 
-    print(f"Fetching SPIRE trust bundle from: {socket_path_with_scheme}")
+    print(f"Fetching SPIRE trust bundle from: {socket_path}")
     print(f"Output path: {output_path}")
     print("")
 
     try:
-        # Create X509Source to access bundle
-        source = X509Source(socket_path=socket_path_with_scheme)
+        spiffe_id, bundle_certs = fetch_bundle_via_grpc(socket_path)
 
-        # Get SVID to determine trust domain
-        svid = source.svid
-        if not svid:
-            print("Error: Failed to get SVID from SPIRE Agent")
-            print("Make sure SPIRE Agent is running and accessible")
-            sys.exit(1)
-
-        trust_domain = svid.spiffe_id.trust_domain
-        print(f"Trust domain: {trust_domain}")
-        print(f"SPIFFE ID: {svid.spiffe_id}")
+        print(f"Trust domain: {spiffe_id.trust_domain}")
+        print(f"SPIFFE ID: {spiffe_id}")
         print("")
 
-        # Get trust bundle
-        bundle = source.get_bundle_for_trust_domain(trust_domain)
-        if not bundle:
-            print("Error: Failed to get trust bundle from SPIRE Agent")
-            sys.exit(1)
-
-        # Extract CA certificates
-        from cryptography.hazmat.primitives import serialization
-        x509_authorities = bundle.x509_authorities
-        if not x509_authorities or len(x509_authorities) == 0:
+        if not bundle_certs:
             print("Error: Trust bundle has no X509 authorities")
             sys.exit(1)
 
         # Write bundle to file
         bundle_pem = b""
-        for cert in x509_authorities:
+        for cert in bundle_certs:
             bundle_pem += cert.public_bytes(serialization.Encoding.PEM)
 
         # Create output directory if needed
@@ -109,16 +159,11 @@ def main():
 
         print(f"✓ Successfully extracted SPIRE trust bundle")
         print(f"  Bundle file: {output_path}")
-        print(f"  Number of CA certificates: {len(x509_authorities)}")
+        print(f"  Number of CA certificates: {len(bundle_certs)}")
         print("")
         print("You can now use this bundle file with:")
         print(f"  export CA_CERT_PATH=\"{output_path}\"")
         print("")
-        print("For the server (standard cert mode):")
-        print(f"  export CA_CERT_PATH=\"{output_path}\"  # To verify SPIRE client certs")
-        print("")
-
-        source.close()
 
     except Exception as e:
         print(f"Error: {e}")

@@ -16,8 +16,12 @@
 
 """
 mTLS Client App with SPIRE SVID and Automatic Renewal
-This client connects to the mTLS server using SPIRE SVIDs and automatically renews when agent SVID renews.
+This client connects to the mTLS server using SPIRE SVIDs (via direct gRPC to Workload API).
 Can also work with standard certificates (no SPIRE required).
+
+Note: This implementation uses direct gRPC calls instead of python-spiffe library
+to avoid CA flag validation issues with our Option A flat hierarchy where
+agent SVID has CA:FALSE (correctly, since it's not an intermediate CA).
 """
 
 import os
@@ -29,28 +33,31 @@ import signal
 import ipaddress
 from pathlib import Path
 
-try:
-    # Unified-Identity: Proactively patch validation to skip CA flag check
-    # Some versions of python-spiffe validate chain certificates strictly
-    # SPIRE agent SVIDs are end-entity certs (CA:FALSE), not CAs, so we skip this check
-    try:
-        from spiffe.svid import x509_svid
-        if hasattr(x509_svid, '_validate_intermediate_certificate'):
-            original_validate = x509_svid._validate_intermediate_certificate
-            def patched_validate(cert):
-                # Skip CA flag validation for agent SVID in chain
-                # SPIRE agent SVIDs are end-entity certs (CA:FALSE), not CAs
-                pass
-            x509_svid._validate_intermediate_certificate = patched_validate
-            print("Unified-Identity: agent SVID missing CA flag (expected in Option A flat hierarchy); skipping strict validation")
-    except Exception:
-        # If patching fails at import time, we'll patch later when needed
-        pass
+# Simple SPIFFE ID class to replace spiffe.spiffe_id.SpiffeId dependency
+class SimpleSpiffeId:
+    """Simple SPIFFE ID parser - replaces python-spiffe SpiffeId."""
+    def __init__(self, spiffe_id_str):
+        self._str = spiffe_id_str
+        # Parse spiffe://trust_domain/path
+        if not spiffe_id_str.startswith('spiffe://'):
+            raise ValueError(f"Invalid SPIFFE ID: {spiffe_id_str}")
+        parts = spiffe_id_str[9:].split('/', 1)  # Remove 'spiffe://'
+        self.trust_domain = parts[0]
+        self.path = '/' + parts[1] if len(parts) > 1 else '/'
+    
+    def __str__(self):
+        return self._str
+    
+    @staticmethod
+    def parse(spiffe_id_str):
+        return SimpleSpiffeId(spiffe_id_str)
 
-    from spiffe.workloadapi.x509_source import X509Source
-    HAS_SPIFFE = True
+# Check for gRPC availability (required for SPIRE mode)
+try:
+    import grpc
+    HAS_GRPC = True
 except ImportError:
-    HAS_SPIFFE = False
+    HAS_GRPC = False
 
 try:
     from cryptography import x509
@@ -87,8 +94,8 @@ class SPIREmTLSClient:
 
         # Certificate mode configuration
         if use_spire is None:
-            # Auto-detect: use SPIRE if socket exists and spiffe is available, otherwise use standard
-            self.use_spire = HAS_SPIFFE and os.path.exists(socket_path) if socket_path else False
+            # Auto-detect: use SPIRE if socket exists and gRPC is available
+            self.use_spire = HAS_GRPC and os.path.exists(socket_path) if socket_path else False
         else:
             self.use_spire = use_spire
 
@@ -126,30 +133,21 @@ class SPIREmTLSClient:
             svid_dump_dir = '/tmp/svid-dump'
             os.makedirs(svid_dump_dir, mode=0o755, exist_ok=True)
 
-            # Get certificate chain in PEM format (leaf + intermediates)
-            from cryptography.hazmat.primitives import serialization
-            # Handle both X509Source (.leaf) and DefaultX509Source (.cert) structures
+            # Get certificate chain in PEM format
             leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
             cert_pem = leaf_cert.public_bytes(serialization.Encoding.PEM)
 
-            # Try to get the full chain including agent SVID
-            # SPIRE X509Source provides the full chain via the underlying workload API
-            # The chain includes: workload SVID (leaf) + agent SVID (contains attestation claims)
+            # Add agent SVID to chain if available (for claim extraction by verifiers)
             try:
-                if hasattr(self.source, '_x509_svid') and self.source._x509_svid:
-                    x509_svid = self.source._x509_svid
-                    # Check if there are additional certificates in the chain
-                    if hasattr(x509_svid, 'cert_chain') and x509_svid.cert_chain:
-                        for cert in x509_svid.cert_chain:
-                            if cert != leaf_cert:
-                                cert_pem += cert.public_bytes(serialization.Encoding.PEM)
-                    # Alternative: check for intermediates in the raw response
-                    elif hasattr(x509_svid, 'certificates') and x509_svid.certificates:
-                        for cert in x509_svid.certificates[1:]:  # Skip first (leaf)
+                if hasattr(svid, 'cert_chain') and svid.cert_chain:
+                    for cert in svid.cert_chain:
+                        if cert != leaf_cert:
                             cert_pem += cert.public_bytes(serialization.Encoding.PEM)
+                elif hasattr(svid, 'certificates') and svid.certificates:
+                    for cert in svid.certificates[1:]:  # Skip first (leaf)
+                        cert_pem += cert.public_bytes(serialization.Encoding.PEM)
             except Exception as e:
-                # If we can't get agent SVID from chain, log but continue with leaf only
-                self.log(f"  ⚠ Could not extract agent SVID from certificate chain: {e}"))
+                self.log(f"  ⚠ Could not extract agent SVID from chain: {e}")
 
             # Save to file
             svid_path = os.path.join(svid_dump_dir, 'svid.pem')
@@ -347,14 +345,13 @@ class SPIREmTLSClient:
                     self.certificates = certs
                     self.private_key = key
                     self.spiffe_id = None
-                    # Extract SPIFFE ID from certificate
+                    # Extract SPIFFE ID from certificate SAN
                     for ext in certs[0].extensions:
                         if ext.oid._name == 'subjectAltName':
                             for name in ext.value:
                                 if hasattr(name, 'value') and isinstance(name.value, str):
                                     if name.value.startswith('spiffe://'):
-                                        from spiffe.spiffe_id import SpiffeId
-                                        self.spiffe_id = SpiffeId.parse(name.value)
+                                        self.spiffe_id = SimpleSpiffeId.parse(name.value)
                                         break
 
             svid = SimpleSVID(certs, key)
@@ -380,70 +377,20 @@ class SPIREmTLSClient:
             raise
 
     def setup_tls_context_spire(self):
-        """Setup TLS context with SPIRE SVID source."""
-        if not HAS_SPIFFE:
-            raise Exception("SPIRE mode requires spiffe library. Install with: pip install spiffe")
-
-        socket_path_with_scheme = f"unix://{self.socket_path}"
+        """Setup TLS context with SPIRE SVID via direct gRPC to Workload API."""
+        if not HAS_GRPC:
+            raise Exception("SPIRE mode requires grpc library. Install with: pip install grpcio")
 
         try:
-            # Create X509Source which handles automatic renewal
-            # Note: Some versions of python-spiffe may validate chain certificates strictly
-            # If this fails with CA flag error, we'll use an alternative approach
-            try:
-                self.source = X509Source(socket_path=socket_path_with_scheme)
-            except Exception as e:
-                error_msg = str(e)
-                if "CA flag" in error_msg or "intermediate certificate" in error_msg:
-                    # Workaround for strict validation: monkey-patch the validation function
-                    # This allows X509Source to work without CA flag validation
-                    self.log(f"  ⚠ X509Source validation failed: {error_msg}")
-                    self.log(f"  ℹ Attempting to patch validation to skip CA flag check...")
-                    try:
-                        # Monkey-patch the validation function to skip CA flag check
-                        from spiffe.svid import x509_svid
-                        original_validate = x509_svid._validate_intermediate_certificate
-                        def patched_validate(cert):
-                            # Skip CA flag validation for agent SVID in chain
-                            # SPIRE agent SVIDs are end-entity certs (CA:FALSE), not CAs
-                            pass
-                        x509_svid._validate_intermediate_certificate = patched_validate
-                        self.log(f"  ✓ Patched validation function")
-                        # Now try X509Source again
-                        self.source = X509Source(socket_path=socket_path_with_scheme)
-                        # Restore original function
-                        x509_svid._validate_intermediate_certificate = original_validate
-                        self.log(f"  ✓ X509Source created successfully after patching")
-                    except Exception as e2:
-                        self.log(f"  ✗ Patching failed: {e2}")
-                        # Fallback to gRPC direct method
-                        self.log(f"  ℹ Falling back to gRPC direct method...")
-                        self._use_grpc_direct = True
-                        self._socket_path = socket_path_with_scheme
-                        self.log(f"  ✓ Using gRPC directly (bypasses CA flag validation)")
-                else:
-                    raise
-
-            # Get initial SVID
-            # Handle X509Source (.svid property), DefaultX509Source (.get_x509_svid() method), or direct gRPC
-            if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
-                # Use gRPC directly to fetch raw certificates without validation
-                svid, bundle = self._fetch_svid_via_grpc()
-                if not svid:
-                    raise Exception("Failed to get SVID from SPIRE Agent via gRPC")
-                self._grpc_bundle = bundle
-            elif hasattr(self.source, 'svid'):
-                svid = self.source.svid
-            elif hasattr(self.source, 'get_x509_svid'):
-                svid = self.source.get_x509_svid()
-            else:
-                raise Exception("X509Source does not provide expected SVID interface")
-
+            # Fetch SVID and bundle via direct gRPC (no python-spiffe dependency)
+            svid, bundle_certs = self._fetch_svid_via_grpc()
             if not svid:
-                raise Exception("Failed to get SVID from SPIRE Agent")
+                raise Exception("Failed to get SVID from SPIRE Agent via gRPC")
+            
+            # Store bundle for later use
+            self._grpc_bundle = bundle_certs
 
             self.log(f"Got initial SVID: {svid.spiffe_id}")
-            # Handle both X509Source (.leaf) and DefaultX509Source (.cert) structures
             leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
             self.log(f"  Initial Certificate Serial: {leaf_cert.serial_number}")
             expiry = leaf_cert.not_valid_after_utc if hasattr(leaf_cert, 'not_valid_after_utc') else leaf_cert.not_valid_after
@@ -463,35 +410,23 @@ class SPIREmTLSClient:
                     try:
                         os.unlink(self.bundle_path)
                     except Exception:
-                        pass  # Ignore errors during cleanup
+                        pass
                     self.bundle_path = None
 
-                # Wait a moment for bundle to be available
-                import time
-                time.sleep(0.5)
-
-                # Handle X509Source, DefaultX509Source, or direct gRPC bundle methods
-                if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
-                    # Get bundle from gRPC response
-                    if hasattr(self, '_grpc_bundle') and self._grpc_bundle:
-                        bundle_cert = self._grpc_bundle.get(trust_domain)
-                        if bundle_cert:
-                            # Create a simple bundle-like object
-                            class SimpleBundle:
-                                def __init__(self, cert):
-                                    self.x509_authorities = [cert]
-                            bundle = SimpleBundle(bundle_cert)
-                elif hasattr(self.source, 'get_bundle_for_trust_domain'):
-                    bundle = self.source.get_bundle_for_trust_domain(trust_domain)
-                elif hasattr(self.source, 'get_bundle'):
-                    bundle = self.source.get_bundle(trust_domain)
-                else:
-                    self.log(f"  ⚠ Warning: Source does not provide bundle method")
+                # Get bundle from gRPC response
+                if bundle_certs:
+                    bundle_cert = bundle_certs.get(trust_domain)
+                    if bundle_cert:
+                        # Create a simple bundle-like object
+                        class SimpleBundle:
+                            def __init__(self, cert):
+                                self.x509_authorities = [cert]
+                        bundle = SimpleBundle(bundle_cert)
+                
                 if bundle:
                     # Load CA certificates from bundle into SSL context
-                    from cryptography.hazmat.primitives import serialization
                     import tempfile
-                    x509_authorities = bundle.x509_authorities  # Property, not method
+                    x509_authorities = bundle.x509_authorities
                     if x509_authorities and len(x509_authorities) > 0:
                         bundle_pem = b""
                         for cert in x509_authorities:
@@ -499,7 +434,7 @@ class SPIREmTLSClient:
 
                         with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pem') as bundle_file:
                             bundle_file.write(bundle_pem)
-                            self.bundle_path = bundle_file.name  # Store as instance variable
+                            self.bundle_path = bundle_file.name
 
                         self.log(f"  ✓ Loaded trust bundle with {len(x509_authorities)} CA certificate(s)")
                         self.log(f"  Bundle file: {self.bundle_path}")
@@ -522,21 +457,17 @@ class SPIREmTLSClient:
                     context.load_verify_locations(self.bundle_path)
                     self.log(f"  ✓ SPIRE trust bundle loaded into SSL context")
 
-                    # Also load additional CA cert if provided (for mixed mode: SPIRE client + standard cert server)
+                    # Also load additional CA cert if provided (for mixed mode)
                     if self.ca_cert_path:
                         expanded_ca_path = os.path.expanduser(self.ca_cert_path)
                         if os.path.exists(expanded_ca_path):
                             context.load_verify_locations(expanded_ca_path)
                             self.log(f"  ✓ Additional CA certificate loaded: {expanded_ca_path}")
-                            self.log(f"  ℹ Mixed mode: SPIRE client can verify standard cert servers")
-                        else:
-                            self.log(f"  ⚠ CA certificate path not found: {expanded_ca_path}")
-                            self.log(f"  ⚠ Server verification may fail for standard cert servers")
 
-                    context.verify_mode = ssl.CERT_REQUIRED  # Verify server certificate using trust bundle
+                    context.verify_mode = ssl.CERT_REQUIRED
                 except Exception as e:
                     self.log(f"  ⚠ Error loading bundle into SSL context: {e}")
-                    context.verify_mode = ssl.CERT_NONE  # Fallback: don't verify if bundle load fails
+                    context.verify_mode = ssl.CERT_NONE
             else:
                 # If no SPIRE bundle, try to use CA cert if provided
                 if self.ca_cert_path and os.path.exists(self.ca_cert_path):
@@ -545,57 +476,21 @@ class SPIREmTLSClient:
                     self.log(f"  ✓ CA certificate loaded for server verification: {self.ca_cert_path}")
                 else:
                     self.log(f"  ⚠ No bundle path available, using CERT_NONE (no peer verification)")
-                    context.verify_mode = ssl.CERT_NONE  # Don't verify if no bundle
+                    context.verify_mode = ssl.CERT_NONE
 
             # Load certificate chain (leaf + agent SVID)
             # The Unified Identity extension is in the agent SVID (second certificate in chain)
-            from cryptography.hazmat.primitives import serialization
+            cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
+            private_key = svid.private_key
 
-            # Handle different svid object structures (X509Source vs DefaultX509Source)
-            if hasattr(svid, 'leaf'):
-                # X509Source returns svid with .leaf property
-                cert_pem = svid.leaf.public_bytes(serialization.Encoding.PEM)
-                private_key = svid.private_key
-            elif hasattr(svid, 'cert'):
-                # DefaultX509Source returns svid with .cert property
-                cert_pem = svid.cert.public_bytes(serialization.Encoding.PEM)
-                private_key = svid.private_key
-            else:
-                raise Exception("SVID object does not have expected certificate structure")
-
-            # SPIRE X509Source provides the full chain via the underlying workload API
-            # The chain includes: workload SVID (leaf) + agent SVID (contains attestation claims)
-            # Check if svid has a chain attribute or if we need to get it from the source
-            try:
-                # Try to get the full chain from the source's underlying data
-                # The python-spiffe library may store intermediates separately
-                if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
-                    # For direct gRPC, get chain from SimpleSVID
-                    if hasattr(svid, 'cert_chain') and svid.cert_chain:
-                        leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
-                        for cert in svid.cert_chain:
-                            if cert != leaf_cert:
-                                cert_pem += cert.public_bytes(serialization.Encoding.PEM)
-                    elif hasattr(svid, 'certificates') and svid.certificates:
-                        for cert in svid.certificates[1:]:  # Skip first (leaf)
-                            cert_pem += cert.public_bytes(serialization.Encoding.PEM)
-                elif hasattr(self.source, '_x509_svid') and self.source._x509_svid:
-                    x509_svid = self.source._x509_svid
-                    # Check if there are additional certificates in the chain
-                    if hasattr(x509_svid, 'cert_chain') and x509_svid.cert_chain:
-                        leaf_cert = svid.leaf if hasattr(svid, 'leaf') else svid.cert
-                        for cert in x509_svid.cert_chain:
-                            if cert != leaf_cert:
-                                cert_pem += cert.public_bytes(serialization.Encoding.PEM)
-                    # Alternative: check for intermediates in the raw response
-                    elif hasattr(x509_svid, 'certificates') and x509_svid.certificates:
-                        for cert in x509_svid.certificates[1:]:  # Skip first (leaf)
-                            cert_pem += cert.public_bytes(serialization.Encoding.PEM)
-            except Exception as e:
-                # If we can't get agent SVID from chain, log but continue with leaf only
-                # The WASM filter will check what's available in the chain
-                self.log(f"  ⚠ Could not extract agent SVID from chain: {e}")
-                self.log(f"  ℹ Note: Unified Identity extension is in agent SVID (second cert in chain)")
+            # Add agent SVID to chain (for claim extraction by verifiers)
+            if hasattr(svid, 'cert_chain') and svid.cert_chain:
+                for cert in svid.cert_chain:
+                    if cert != svid.leaf:
+                        cert_pem += cert.public_bytes(serialization.Encoding.PEM)
+            elif hasattr(svid, 'certificates') and svid.certificates:
+                for cert in svid.certificates[1:]:  # Skip first (leaf)
+                    cert_pem += cert.public_bytes(serialization.Encoding.PEM)
 
             key_pem = private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
@@ -613,12 +508,14 @@ class SPIREmTLSClient:
 
                 context.load_cert_chain(cert_path)
             finally:
-                # Always clean up temporary cert file, even if load_cert_chain fails
                 if cert_path and os.path.exists(cert_path):
                     try:
                         os.unlink(cert_path)
                     except Exception:
-                        pass  # Ignore errors during cleanup
+                        pass
+
+            # Store svid for renewal checking
+            self._current_svid = svid
 
             return context
 
@@ -661,7 +558,8 @@ class SPIREmTLSClient:
             return False  # No renewal in standard cert mode
 
         try:
-            new_svid = self.source.svid
+            # Fetch current SVID via gRPC to check for renewal
+            new_svid, _ = self._fetch_svid_via_grpc()
             if new_svid and self.last_svid_serial:
                 if new_svid.leaf.serial_number != self.last_svid_serial:
                     # Detected a new SVID (renewal event)
@@ -671,6 +569,7 @@ class SPIREmTLSClient:
 
                     self.renewal_count += 1
                     self.last_svid_serial = new_serial
+                    self._current_svid = new_svid
 
                     # Log a single concise line per renewal
                     self.log(
@@ -685,8 +584,9 @@ class SPIREmTLSClient:
                     # Signal that the current connection should be rebuilt
                     return True
             elif new_svid:
-                    leaf_cert = new_svid.leaf if hasattr(new_svid, 'leaf') else new_svid.cert
-                    self.last_svid_serial = leaf_cert.serial_number
+                leaf_cert = new_svid.leaf if hasattr(new_svid, 'leaf') else new_svid.cert
+                self.last_svid_serial = leaf_cert.serial_number
+                self._current_svid = new_svid
         except Exception as e:
             if self.running:
                 self.log(f"Error checking renewal: {e}")
@@ -694,11 +594,16 @@ class SPIREmTLSClient:
 
     def check_svid_expired(self):
         """Check if current SVID is expired or about to expire (SPIRE mode only)."""
-        if not self.use_spire or not self.source:
+        if not self.use_spire:
             return False
 
         try:
-            svid = self.source.svid
+            # Use cached SVID, or fetch if not available
+            svid = getattr(self, '_current_svid', None)
+            if not svid:
+                svid, _ = self._fetch_svid_via_grpc()
+                self._current_svid = svid
+            
             if not svid:
                 return False
 
@@ -711,14 +616,12 @@ class SPIREmTLSClient:
 
             now = datetime.now(timezone.utc)
 
-            # Check if expired or expires within next 10 seconds (more buffer for proactive refresh)
+            # Check if expired or expires within next 10 seconds
             time_until_expiry = (expiry - now).total_seconds()
             if expiry <= now:
-                # SVID is expired - need to refresh immediately
                 self.log(f"⚠️  SVID expired at {expiry}, refreshing context...")
                 return True
             elif time_until_expiry < 10:
-                # SVID expires soon - refresh proactively
                 self.log(f"⚠️  SVID expires in {time_until_expiry:.1f}s ({expiry}), refreshing context proactively...")
                 return True
         except Exception as e:
@@ -736,56 +639,37 @@ class SPIREmTLSClient:
         while self.running:
             try:
                 # Check if we just reconnected due to renewal (from inner loop break)
-                # This happens when renewal was detected during active connection
-                # We preserve _reconnect_due_to_renewal for connection logging below
                 if self._reconnect_due_to_renewal:
                     just_reconnected_due_to_renewal = True
 
                 # If we just reconnected due to renewal, update serial and skip renewal check
-                # to prevent infinite reconnect loops
                 if just_reconnected_due_to_renewal:
-                    if self.use_spire and self.source:
+                    if self.use_spire:
                         try:
-                            # Handle X509Source, DefaultX509Source, or direct gRPC
-                            if hasattr(self, '_use_grpc_direct') and self._use_grpc_direct:
-                                current_svid, _ = self._fetch_svid_via_grpc()
-                                if current_svid:
-                                    leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
-                                    self.last_svid_serial = leaf_cert.serial_number
-                            elif hasattr(self.source, 'svid'):
-                                current_svid = self.source.svid
-                                if current_svid:
-                                    leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
-                                    self.last_svid_serial = leaf_cert.serial_number
-                            elif hasattr(self.source, 'get_x509_svid'):
-                                current_svid = self.source.get_x509_svid()
-                                if current_svid:
-                                    leaf_cert = current_svid.leaf if hasattr(current_svid, 'leaf') else current_svid.cert
-                                    self.last_svid_serial = leaf_cert.serial_number
+                            # Fetch current SVID via gRPC
+                            current_svid, _ = self._fetch_svid_via_grpc()
+                            if current_svid:
+                                self.last_svid_serial = current_svid.leaf.serial_number
+                                self._current_svid = current_svid
                         except Exception:
                             pass
                     just_reconnected_due_to_renewal = False
-                    # Skip renewal check on this iteration - go straight to connecting
-                    # But we MUST recreate the TLS context with the new certificate
-                    # The old context still has the old certificate, so we need a fresh one
+                    # Recreate TLS context with new certificate
                     context = self.setup_tls_context()
                     self.log("  ✓ TLS context recreated with renewed certificate")
                 else:
                     # Update serial before checking for renewal to avoid detecting the same renewal twice
-                    if self.use_spire and self.source:
+                    if self.use_spire and not self.last_svid_serial:
                         try:
-                            current_svid = self.source.svid
-                            if current_svid and not self.last_svid_serial:
-                                # Initialize serial if not set
+                            current_svid = getattr(self, '_current_svid', None)
+                            if current_svid:
                                 self.last_svid_serial = current_svid.leaf.serial_number
                         except Exception:
                             pass
 
                     # Check for renewal before connecting
                     if self.check_renewal():
-                        # DEMO: Show TLS context recreation
                         self.log("  🔧 Recreating TLS context with renewed SVID...")
-                        # Mark that reconnection is due to renewal (will be logged on reconnect)
                         self._reconnect_due_to_renewal = True
                         just_reconnected_due_to_renewal = True
                         context = self.setup_tls_context()
@@ -793,20 +677,11 @@ class SPIREmTLSClient:
                         self.log("  🔌 Reconnecting to server with new certificate...")
                     # Also check if SVID is expired or about to expire
                     elif self.check_svid_expired():
-                        # SVID expired - refresh context proactively
                         self.log("  🔧 Recreating TLS context (SVID expired/expiring)...")
-                        # Mark that reconnection is due to renewal/expiration (will be logged on reconnect)
                         self._reconnect_due_to_renewal = True
                         just_reconnected_due_to_renewal = True
-                        # Close old source if it exists to force fresh SVID fetch
-                        if self.source:
-                            try:
-                                self.source.close()
-                            except:
-                                pass
                         context = self.setup_tls_context()
                         self.log("  ✓ TLS context recreated successfully")
-                        # Small delay to ensure new SVID is fully loaded
                         time.sleep(0.5)
                         self.log("  🔌 Reconnecting to server with refreshed certificate...")
                     else:
