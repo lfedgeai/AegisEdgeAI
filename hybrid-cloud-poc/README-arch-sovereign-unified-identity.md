@@ -1322,6 +1322,33 @@ rate_limit_per_minute = 10 # Conservative limit
 
 **Verification**: Tested on real TPM hardware with full integration test suite (`ci_test_runner.py`).
 
+### Recent Enhancements
+
+#### Delegated Certification Security (Production Controls)
+
+**Implemented**: December 2025
+
+The delegated certification endpoint (`/certify_app_key`) now includes production-grade security controls:
+
+**Features:**
+- **IP Allowlist**: Configurable list of allowed IPs (default: localhost only)
+- **Rate Limiting**: Per-IP request limiting (default: 10 requests/minute, 60s sliding windows)
+- **Secure Defaults**: Disabled by default, requires explicit configuration
+
+**Configuration** (`rust-keylime/keylime-agent.conf`):
+```toml
+[delegated_certification]
+enabled = false # Gated by unified_identity_enabled
+allowed_ips = ["127.0.0.1"] # Localhost only
+rate_limit_per_minute = 10 # Conservative limit
+```
+
+**Implementation Files:**
+- `rust-keylime/keylime/src/config/base.rs` - Configuration parsing
+- `rust-keylime/keylime-agent/src/delegated_certification_handler.rs` - Security enforcement
+- `rust-keylime/keylime-agent/src/main.rs` - QuoteData integration
+
+**Verification**: Tested on real TPM hardware with full integration test suite (`ci_test_runner.py`).
 
 ### Test Infrastructure
 
@@ -1350,7 +1377,7 @@ rate_limit_per_minute = 10 # Conservative limit
 **Current Security Features**:
 - ✅ Feature flag gating (`unified_identity_enabled`)
 - ✅ Hardware-rooted trust (TPM 2.0)
-- ✅ IP allowlist and rate limiting (Task 1)
+- ✅ IP allowlist and rate limiting
 - ✅ mTLS between components
 - ✅ Geolocation attestation with TPM binding
 - ✅ **Full TLS certificate validation** (Task 7 Complete - No `InsecureSkipVerify`)
