@@ -570,7 +570,7 @@ main() {
     MTLS_TEST_PASSED=false
     if run_on_agents "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${mTLS_ENV_VARS} ./test_mtls_client.sh" 2>&1 | tee "/tmp/remote_test_mtls_client.log"; then
         echo ""
-        echo -e "${GREEN}✓ mTLS client test completed successfully${NC}"
+        echo -e "${GREEN}✓ mTLS client test completed successfully in ~/AegisSovereignAI/hybrid-cloud-poc directory${NC}"
         MTLS_TEST_PASSED=true
     else
         echo ""
