@@ -1294,33 +1294,6 @@ The "Unified Identity" feature is **fully functional** and has been verified on 
 - Issues Sovereign SVIDs with attested claims
 - Enforces runtime geolocation verification at enterprise gateways
 
-### Recent Enhancements
-
-#### Task 1: Delegated Certification Security (✅ Complete)
-
-**Implemented**: December 2025
-
-The delegated certification endpoint (`/certify_app_key`) now includes production-grade security controls:
-
-**Features:**
-- **IP Allowlist**: Configurable list of allowed IPs (default: localhost only)
-- **Rate Limiting**: Per-IP request limiting (default: 10 requests/minute, 60s sliding windows)
-- **Secure Defaults**: Disabled by default, requires explicit configuration
-
-**Configuration** (`rust-keylime/keylime-agent.conf`):
-```toml
-[delegated_certification]
-enabled = false # Gated by unified_identity_enabled
-allowed_ips = ["127.0.0.1"] # Localhost only
-rate_limit_per_minute = 10 # Conservative limit
-```
-
-**Implementation Files:**
-- `rust-keylime/keylime/src/config/base.rs` - Configuration parsing
-- `rust-keylime/keylime-agent/src/delegated_certification_handler.rs` - Security enforcement
-- `rust-keylime/keylime-agent/src/main.rs` - QuoteData integration
-
-**Verification**: Tested on real TPM hardware with full integration test suite (`ci_test_runner.py`).
 
 ### Recent Enhancements
 
