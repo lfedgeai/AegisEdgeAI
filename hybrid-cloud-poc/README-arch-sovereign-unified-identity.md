@@ -522,6 +522,276 @@ This structure allows verifiers to:
 
 ---
 
+## 🏗️ Hierarchical Workload SVID Architecture Options
+
+### The Challenge: SPIRE's Flat Certificate Model
+
+Standard SPIRE uses a **flat certificate hierarchy** where the SPIRE Server CA directly signs all SVIDs:
+
+```
+┌─────────────────────┐
+│   SPIRE Server      │  ← Root CA (issues ALL SVIDs directly)
+│       CA            │
+└──────────┬──────────┘
+           │ (flat issuance)
+     ┌─────┴─────┐
+     ▼           ▼
+┌─────────┐  ┌─────────┐
+│ Agent   │  │Workload │   ← Both are LEAF certs from same CA
+│ SVID    │  │ SVID    │
+└─────────┘  └─────────┘
+```
+
+**Limitation**: The SPIRE `unifiedidentity` plugin cannot natively provide intermediate CA functionality. This section documents the architectural options for achieving a true hierarchical certificate chain.
+
+### Design Goals
+
+| Goal | Description |
+|------|-------------|
+| **Traceability** | Know which TPM-attested agent issued a workload SVID |
+| **Revocation** | Revoke all workload certs when an agent is compromised |
+| **Trust Scoping** | Limit which workloads an agent can certify |
+| **Audit Chain** | Cryptographic proof: Hardware → Agent → Workload |
+
+---
+
+### Option A: Claims Propagation (Current Implementation)
+
+**Approach**: Keep flat certs, embed agent attestation as claims in workload SVID.
+
+```
+Workload SVID:
+  Subject: spiffe://example.org/python-app
+  Claims:
+    agent.spiffe_id: "spiffe://example.org/spire/agent/tpm/..."
+    grc.tpm-attestation.*: (inherited from agent)
+    grc.geolocation.*: (inherited from agent)
+```
+
+| Pros | Cons |
+|------|------|
+| Works now, no SPIRE core changes | No true PKI hierarchy |
+| Simple implementation | Revocation is per-workload, not per-agent |
+| Claims visible to relying parties | No cryptographic agent→workload binding |
+
+**Status**: ✅ Implemented (current behavior)
+
+---
+
+### Option B: UpstreamAuthority Plugin (External Root)
+
+**Approach**: Make SPIRE Server act as an intermediate CA under an external root (e.g., HashiCorp Vault, AWS ACM PCA).
+
+```
+External HSM/Vault (Root)
+         │
+    SPIRE Server (Intermediate)
+         │
+    Agent/Workload SVIDs (Leaf)
+```
+
+| Pros | Cons |
+|------|------|
+| Real PKI hierarchy | Doesn't solve agent→workload hierarchy |
+| Integrates with enterprise PKI | Just pushes root up, same flat structure under SPIRE |
+| Uses SPIRE's native plugin | External dependency |
+
+**Status**: ⚪ Standard SPIRE feature, not Unified Identity specific
+
+---
+
+### Option C: Hybrid TPM Assertion in Claims
+
+**Approach**: Keep SPIRE signing centralized, but add a TPM-signed assertion as a claim in workload SVIDs.
+
+```
+Workload SVID:
+  Subject: spiffe://example.org/python-app
+  Issuer: SPIRE Server CA (standard)
+  Claims:
+    agent.tpm_assertion: <signed by agent's TPM App Key>
+      ├── agent_spiffe_id
+      ├── tpm_pcr_quote_hash
+      ├── timestamp
+      └── signature (TPM App Key)
+```
+
+**How it works**:
+1. When SPIRE Agent requests workload SVID, it generates a TPM-signed assertion
+2. The assertion is embedded as a claim in the workload SVID
+3. Relying parties verify both: SVID signature (SPIRE CA) + Assertion signature (TPM App Key)
+
+| Pros | Cons |
+|------|------|
+| Plugin-level implementation | Two signature verifications required |
+| Provides cryptographic agent binding | Not standard X.509 path validation |
+| No SPIRE core changes | Custom verification logic at relying parties |
+| Uses existing TPM App Key | |
+
+**Status**: ⚪ Proposed alternative
+
+---
+
+### Option D: TPM-Based Intermediate CA (Recommended)
+
+**Approach**: Leverage the existing TPM App Key (already attested via delegated certification) as an intermediate CA signing key.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     TRUE HIERARCHICAL PKI                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  SPIRE Server CA (Root)                                                 │
+│       │                                                                 │
+│       │ signs (Server CA private key)                                   │
+│       ▼                                                                 │
+│  Agent SVID (Intermediate CA)                                           │
+│  ├── Subject: spiffe://example.org/spire/agent/tpm/...                 │
+│  ├── Public Key: TPM App Key (certified by AK via TPM2_Certify)        │
+│  ├── BasicConstraints: CA:TRUE, pathLen:0                              │
+│  ├── KeyUsage: KeyCertSign, DigitalSignature                           │
+│  └── Claims: grc.geolocation.*, grc.tpm-attestation.*                  │
+│       │                                                                 │
+│       │ signs (TPM App Key via TPM Plugin Server)                       │
+│       ▼                                                                 │
+│  Workload SVID (Leaf)                                                   │
+│  ├── Subject: spiffe://example.org/python-app                          │
+│  ├── BasicConstraints: CA:FALSE                                        │
+│  └── Claims: grc.workload.* (inherits agent context)                   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Why This Works with Existing Infrastructure
+
+The Unified Identity implementation already has all the components:
+
+| Component | Current State | Role in Option D |
+|-----------|---------------|------------------|
+| **TPM App Key** | ✅ Generated by TPM Plugin Server | Intermediate CA signing key |
+| **TPM2_Certify** | ✅ AK certifies App Key via rust-keylime | Proves App Key is hardware-bound |
+| **TPM Plugin `/sign-data`** | ✅ Signs TLS handshakes for mTLS | Signs workload SVIDs |
+| **Agent SVID** | ✅ Contains TPM App Key as public key | Becomes intermediate CA cert |
+
+#### Implementation Changes Required
+
+**1. Agent SVID becomes Intermediate CA**
+
+In `unifiedidentity` CredentialComposer:
+
+```go
+// When issuing Agent SVID, mark it as an intermediate CA
+func (p *Plugin) ComposeAgentX509SVID(ctx context.Context, ...) {
+    agentCert := &x509.Certificate{
+        Subject:               agentSPIFFEID,
+        PublicKey:             tpmAppKeyPublicKey,  // Already set
+        IsCA:                  true,                 // NEW: Enable CA
+        MaxPathLen:            0,                    // Can only sign leaf certs
+        MaxPathLenZero:        true,
+        KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+        BasicConstraintsValid: true,
+        // ... existing attested claims
+    }
+}
+```
+
+**2. SPIRE Agent Signs Workload SVIDs**
+
+Move workload SVID signing from SPIRE Server to SPIRE Agent:
+
+```go
+// SPIRE Agent: Sign workload SVID using TPM App Key
+func (a *Agent) SignWorkloadSVID(workloadCSR *x509.CertificateRequest) ([][]byte, error) {
+    workloadCert := &x509.Certificate{
+        Subject:   workloadCSR.Subject,
+        PublicKey: workloadCSR.PublicKey,
+        IsCA:      false,
+        // Inherit relevant claims from agent SVID
+    }
+    
+    // Sign using TPM App Key via TPM Plugin Server
+    tbsCert := workloadCert.RawTBSCertificate
+    signature, err := tpmPluginGateway.SignData(tbsCert, "sha256")
+    if err != nil {
+        return nil, err
+    }
+    
+    // Construct signed certificate
+    signedCert := appendSignature(workloadCert, signature)
+    
+    // Return full chain: [Workload, Agent SVID, Server CA]
+    return [][]byte{signedCert, a.agentSVID.Raw, a.serverCACert.Raw}, nil
+}
+```
+
+**3. Relying Party Verification**
+
+Standard X.509 path validation works automatically:
+
+```
+Relying Party receives mTLS connection:
+  1. Verify Workload SVID signature → using Agent SVID public key (TPM App Key)
+  2. Verify Agent SVID signature → using SPIRE Server CA
+  3. Trust SPIRE Server CA → configured trust anchor
+  4. Extract claims from Agent SVID → enforce geofencing/TPM policies
+```
+
+#### Security Properties
+
+| Property | Result |
+|----------|--------|
+| **True X.509 hierarchy** | Standard path validation: Root → Intermediate → Leaf |
+| **Hardware-bound intermediate** | TPM App Key cannot be extracted; signing requires physical TPM |
+| **Agent revocation** | Revoke Agent SVID = all its workload SVIDs immediately invalid |
+| **Claim inheritance** | Workload inherits agent's TPM/geo attestation via chain |
+| **Audit trail** | Cryptographic proof of which hardware signed each workload |
+| **Certificate theft mitigation** | Stolen workload cert useless without agent's TPM for renewal |
+
+#### Trade-offs
+
+| Consideration | Impact |
+|---------------|--------|
+| **Performance** | TPM signing (~100ms) slower than in-memory keys (~1ms) |
+| **Key escrow** | SPIRE Server cannot re-sign workloads for a given agent |
+| **Complexity** | Agent becomes a signing authority, more complex logic |
+| **SPIRE changes** | Requires modifying workload SVID issuance flow |
+
+**Status**: 🎯 **Recommended for future implementation**
+
+---
+
+### Comparison Matrix
+
+| Option | Hierarchy | Hardware Binding | Agent Revocation | Implementation Complexity |
+|--------|-----------|------------------|------------------|---------------------------|
+| **A: Claims Propagation** | ❌ Flat | ✅ Via claims | ❌ Per-workload | ✅ Low (current) |
+| **B: UpstreamAuthority** | ⚠️ External root only | ❌ No | ❌ Per-workload | ✅ Low |
+| **C: Hybrid Assertion** | ⚠️ Logical only | ✅ TPM signature | ⚠️ Manual | ⚡ Medium |
+| **D: TPM Intermediate CA** | ✅ True X.509 | ✅ Hardware-bound | ✅ Automatic | ⚡ Medium-High |
+
+---
+
+### Implementation Recommendation
+
+**Phase 1 (Current)**: Option A - Claims Propagation
+- Already implemented and working
+- Provides attestation data to relying parties
+- Sufficient for initial deployments
+
+**Phase 2 (Future)**: Option D - TPM-Based Intermediate CA
+- Leverage existing TPM App Key infrastructure
+- True hierarchical PKI with hardware-bound signing
+- Agent compromise isolation (revoke one agent, all its workloads invalidated)
+- Standard X.509 path validation at relying parties
+
+**Migration Path**:
+1. Modify Agent SVID issuance to include `CA:TRUE, pathLen:0`
+2. Add workload SVID signing capability to SPIRE Agent
+3. Route workload SVID requests through Agent instead of Server
+4. Update relying parties to validate full chain (most already do)
+
+---
+
 ## End-to-End Flow: Enterprise On-Prem Runtime Access (Envoy WASM Filter)
 
 After workloads receive their SPIRE SVIDs, they can use these certificates to access enterprise on-prem services. The Envoy proxy with WASM filter verifies the sensor identity at runtime.
