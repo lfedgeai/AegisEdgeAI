@@ -1188,13 +1188,16 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
     for i in $(seq 1 $MAX_RETRIES); do
         SERVICES_OK=0
         if command -v ss &> /dev/null; then
-            sudo ss -tlnp 2>/dev/null | grep -q ':9050' && SERVICES_OK=$((SERVICES_OK + 1))
-            sudo ss -tlnp 2>/dev/null | grep -q ':9443' && SERVICES_OK=$((SERVICES_OK + 1))
-            sudo ss -tlnp 2>/dev/null | grep -q ':8080' && SERVICES_OK=$((SERVICES_OK + 1))
+            # Check for listening ports using ss (looking for just the port number in the output)
+            # We filter for LISTEN state and check if the port appears in the local address column
+            sudo ss -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":9050[[:space:]]|:9050$" >/dev/null && SERVICES_OK=$((SERVICES_OK + 1))
+            sudo ss -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":9443[[:space:]]|:9443$" >/dev/null && SERVICES_OK=$((SERVICES_OK + 1))
+            sudo ss -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":8080[[:space:]]|:8080$" >/dev/null && SERVICES_OK=$((SERVICES_OK + 1))
         elif command -v netstat &> /dev/null; then
-            sudo netstat -tlnp 2>/dev/null | grep -q ':9050' && SERVICES_OK=$((SERVICES_OK + 1))
-            sudo netstat -tlnp 2>/dev/null | grep -q ':9443' && SERVICES_OK=$((SERVICES_OK + 1))
-            sudo netstat -tlnp 2>/dev/null | grep -q ':8080' && SERVICES_OK=$((SERVICES_OK + 1))
+            # Fallback to netstat
+            sudo netstat -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":9050[[:space:]]|:9050$" >/dev/null && SERVICES_OK=$((SERVICES_OK + 1))
+            sudo netstat -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":9443[[:space:]]|:9443$" >/dev/null && SERVICES_OK=$((SERVICES_OK + 1))
+            sudo netstat -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":8080[[:space:]]|:8080$" >/dev/null && SERVICES_OK=$((SERVICES_OK + 1))
         fi
         
         if [ $SERVICES_OK -eq 3 ]; then
@@ -1209,13 +1212,13 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
 
     # Print final status
     if command -v ss &> /dev/null; then
-        sudo ss -tlnp 2>/dev/null | grep -q ':9050' && printf '  [OK] Mobile Location Service listening on port 9050\n' || printf '  [WARN] Mobile Location Service not listening on port 9050\n'
-        sudo ss -tlnp 2>/dev/null | grep -q ':9443' && printf '  [OK] mTLS Server listening on port 9443\n' || printf '  [WARN] mTLS Server not listening on port 9443\n'
-        sudo ss -tlnp 2>/dev/null | grep -q ':8080' && printf '  [OK] Envoy listening on port 8080\n' || printf '  [WARN] Envoy not listening on port 8080\n'
+        sudo ss -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":9050[[:space:]]|:9050$" >/dev/null && printf '  [OK] Mobile Location Service listening on port 9050\n' || printf '  [WARN] Mobile Location Service not listening on port 9050\n'
+        sudo ss -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":9443[[:space:]]|:9443$" >/dev/null && printf '  [OK] mTLS Server listening on port 9443\n' || printf '  [WARN] mTLS Server not listening on port 9443\n'
+        sudo ss -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":8080[[:space:]]|:8080$" >/dev/null && printf '  [OK] Envoy listening on port 8080\n' || printf '  [WARN] Envoy not listening on port 8080\n'
     elif command -v netstat &> /dev/null; then
-        sudo netstat -tlnp 2>/dev/null | grep -q ':9050' && printf '  [OK] Mobile Location Service listening on port 9050\n' || printf '  [WARN] Mobile Location Service not listening on port 9050\n'
-        sudo netstat -tlnp 2>/dev/null | grep -q ':9443' && printf '  [OK] mTLS Server listening on port 9443\n' || printf '  [WARN] mTLS Server not listening on port 9443\n'
-        sudo netstat -tlnp 2>/dev/null | grep -q ':8080' && printf '  [OK] Envoy listening on port 8080\n' || printf '  [WARN] Envoy not listening on port 8080\n'
+        sudo netstat -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":9050[[:space:]]|:9050$" >/dev/null && printf '  [OK] Mobile Location Service listening on port 9050\n' || printf '  [WARN] Mobile Location Service not listening on port 9050\n'
+        sudo netstat -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":9443[[:space:]]|:9443$" >/dev/null && printf '  [OK] mTLS Server listening on port 9443\n' || printf '  [WARN] mTLS Server not listening on port 9443\n'
+        sudo netstat -tlnp 2>/dev/null | grep -E "LISTEN" | grep -E ":8080[[:space:]]|:8080$" >/dev/null && printf '  [OK] Envoy listening on port 8080\n' || printf '  [WARN] Envoy not listening on port 8080\n'
     else
         printf '  [WARN] Cannot verify ports (ss/netstat not available)\n'
     fi
