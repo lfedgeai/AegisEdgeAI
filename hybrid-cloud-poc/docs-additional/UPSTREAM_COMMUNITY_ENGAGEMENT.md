@@ -75,15 +75,15 @@ This document outlines the sequential steps for introducing the Unified Identity
 > - **Geolocation Attestation** with nonce-bound location claims in PCR-15
 > - **rust-keylime extensions** for TPM quote generation with geolocation
 >
-> **Use Case: Telecom Edge 5G with CAMARA APIs**
-> A telecom operator deploys AI workloads at 5G edge sites. The solution integrates with [GSMA CAMARA Device Location APIs](https://www.camaraproject.org/) to provide:
-> 1. Mobile device location verification via carrier network (not GPS spoofing)
-> 2. TPM-bound proof that the edge node is in the licensed spectrum zone
-> 3. Hardware-rooted identity for regulatory spectrum compliance
+> **Use Case: Sovereign Banking AI Inference**
+> A European bank runs AI inference on edge devices across multiple jurisdictions. Regulatory compliance (GDPR, PSD2) requires cryptographic proof that:
+> 1. The workload is running on verified, untampered hardware (TPM attestation)
+> 2. The data never leaves the specified geofence (location proofs in SVID)
+> 3. Access to customer keys is bound to hardware identity, not just bearer tokens
 >
-> Keylime verifies the TPM quote containing CAMARA-verified location, which SPIRE then embeds into workload SVIDs.
+> Keylime provides the TPM attestation and geolocation verification that SPIRE embeds into X.509 SVIDs.
 >
-> **Reference:** [CAMARA Hardware Location Proposal](https://github.com/lfedgeai/AegisSovereignAI/blob/main/proposals/camara-hardware-location.md)
+> **Reference:** [Hybrid Cloud PoC README](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc#the-problem) - see "The Problem" and "The Solution" sections
 >
 > **Changes:**
 > - `keylime/app_key_verification.py` - New verification endpoint
@@ -128,15 +128,15 @@ This document outlines the sequential steps for introducing the Unified Identity
 > - Calls a sidecar for CAMARA device location verification (mobile sensors)
 > - Exposes Prometheus metrics for observability
 >
-> **Use Case: Zero-Trust Manufacturing IoT**
-> A manufacturing plant with mobile robots and fixed sensors requires:
-> 1. **GPS sensors** on fixed equipment → Trusted at attestation time (bypass sidecar)
-> 2. **Mobile sensors** on robots → Real-time location verification via CAMARA APIs
-> 3. **Policy enforcement** at the Envoy gateway based on sensor type and location
+> **Use Case: Sovereign Banking AI Inference**
+> A European bank runs AI inference on edge devices across multiple jurisdictions. Regulatory compliance (GDPR, PSD2) requires cryptographic proof that:
+> 1. The workload is running on verified, untampered hardware (TPM attestation)
+> 2. The data never leaves the specified geofence (location proofs in SVID)
+> 3. Access to customer keys is bound to hardware identity, not just bearer tokens
 >
-> The WASM filter extracts the sensor type from the SVID and routes to appropriate verification mode, enforcing that only devices in the authorized zone can access production systems.
+> The WASM filter extracts the hardware attestation claims from SPIRE SVIDs and enforces location-based access policies at the Envoy gateway.
 >
-> **Reference:** [Enterprise Private Cloud README](https://github.com/lfedgeai/AegisSovereignAI/blob/main/hybrid-cloud-poc/enterprise-private-cloud/README.md)
+> **Reference:** [Hybrid Cloud PoC README](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc#the-problem) - see "The Problem" and "The Solution" sections
 >
 > **Resources:**
 > - WASM Filter: https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin
