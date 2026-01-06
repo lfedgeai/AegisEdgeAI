@@ -33,7 +33,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 LOG = logging.getLogger("mobile_sensor_service")
 
@@ -45,6 +46,26 @@ DEFAULT_MSISDN = "+34696810912"
 DEFAULT_LATITUDE = 40.33
 DEFAULT_LONGITUDE = -3.7707
 DEFAULT_ACCURACY = 7.0
+
+# Prometheus metrics (Task 18: Observability)
+REQUEST_COUNT = Counter(
+    'sidecar_request_total',
+    'Total verification requests',
+    ['result']  # 'success' or 'failure'
+)
+CAMARA_LATENCY = Histogram(
+    'sidecar_camara_api_latency_seconds',
+    'CAMARA API call latency in seconds',
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+)
+VERIFICATION_SUCCESS = Counter(
+    'sidecar_location_verification_success_total',
+    'Successful location verifications'
+)
+VERIFICATION_FAILURE = Counter(
+    'sidecar_location_verification_failure_total',
+    'Failed location verifications'
+)
 
 CAMARA_BASE = os.getenv(
     "CAMARA_BASE_URL", "https://sandbox.opengateway.telefonica.com/apigateway"
@@ -246,7 +267,8 @@ class CamaraClient:
 
         payload = {"ueId": {"msisdn": msisdn}, "latitude": lat, "longitude": lon, "accuracy": acc}
         LOG.info("[API CALL] CAMARA verify_location API call: %s", payload)
-        resp = requests.post(f"{CAMARA_BASE}{VERIFY_PATH}", headers=self._bearer_headers(token), json=payload, timeout=30)
+        with CAMARA_LATENCY.time():
+            resp = requests.post(f"{CAMARA_BASE}{VERIFY_PATH}", headers=self._bearer_headers(token), json=payload, timeout=30)
         resp.raise_for_status()
         result = bool(resp.json().get("verificationResult"))
 
@@ -363,6 +385,15 @@ def create_app(db_path: Path) -> Flask:
             return jsonify({"error": f"unsupported_sensor_type_in_mobile_sidecar: {sensor.get('sensor_type')}"}), 400
 
         result = verifier.verify(sensor, skip_cache=payload.get("skip_cache", False))
+        
+        # Record metrics
+        if result:
+            REQUEST_COUNT.labels(result='success').inc()
+            VERIFICATION_SUCCESS.inc()
+        else:
+            REQUEST_COUNT.labels(result='failure').inc()
+            VERIFICATION_FAILURE.inc()
+        
         return jsonify({"verification_result": result, **sensor})
 
     @app.route("/lookup_msisdn", methods=["POST"])
@@ -380,6 +411,11 @@ def create_app(db_path: Path) -> Flask:
             "longitude": sensor.get("longitude", 0.0),
             "accuracy": sensor.get("accuracy", 0.0),
         })
+
+    @app.route("/metrics", methods=["GET"])
+    def metrics():
+        """Prometheus metrics endpoint."""
+        return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
     return app
 

@@ -75,6 +75,15 @@ struct PluginConfig {
     sidecar_endpoint: String,
 }
 
+// Metric IDs for Envoy stats (Task 18: Observability)
+#[derive(Clone, Default)]
+struct MetricIds {
+    request_total: u32,
+    verification_success: u32,
+    verification_failure: u32,
+    sidecar_call_total: u32,
+}
+
 impl Default for PluginConfig {
     fn default() -> Self {
         PluginConfig {
@@ -119,12 +128,14 @@ proxy_wasm::main! {{
     proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
         Box::new(SensorVerificationRoot {
             config: PluginConfig::default(),
+            metrics: MetricIds::default(),
         })
     });
 }}
 
 struct SensorVerificationRoot {
     config: PluginConfig,
+    metrics: MetricIds,
 }
 
 impl Context for SensorVerificationRoot {}
@@ -148,12 +159,33 @@ impl RootContext for SensorVerificationRoot {
         } else {
             proxy_wasm::hostcalls::log(LogLevel::Info, "WASM filter using default config: verification_mode=runtime");
         }
+
+        // Define metrics (Task 18: Observability)
+        self.metrics.request_total = proxy_wasm::hostcalls::define_metric(
+            MetricType::Counter,
+            "wasm_filter_request_total"
+        ).unwrap_or(0);
+        self.metrics.verification_success = proxy_wasm::hostcalls::define_metric(
+            MetricType::Counter,
+            "wasm_filter_verification_success_total"
+        ).unwrap_or(0);
+        self.metrics.verification_failure = proxy_wasm::hostcalls::define_metric(
+            MetricType::Counter,
+            "wasm_filter_verification_failure_total"
+        ).unwrap_or(0);
+        self.metrics.sidecar_call_total = proxy_wasm::hostcalls::define_metric(
+            MetricType::Counter,
+            "wasm_filter_sidecar_call_total"
+        ).unwrap_or(0);
+        proxy_wasm::hostcalls::log(LogLevel::Info, "WASM metrics defined");
+
         true
     }
 
     fn create_http_context(&self, _context_id: u32) -> Option<Box<dyn HttpContext>> {
         Some(Box::new(SensorVerificationFilter {
             config: self.config.clone(),
+            metrics: self.metrics.clone(),
             sensor_id: None,
             sensor_type: None,
             sensor_imei: None,
@@ -173,6 +205,7 @@ impl RootContext for SensorVerificationRoot {
 
 struct SensorVerificationFilter {
     config: PluginConfig,
+    metrics: MetricIds,
     sensor_id: Option<String>,
     sensor_type: Option<String>, // "mobile" or "gnss"
     sensor_imei: Option<String>,
@@ -256,10 +289,12 @@ impl Context for SensorVerificationFilter {
                 if verified {
                     // Verification successful - resume request
                     proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Sensor verification successful for sensor_id: {} - resuming request", sensor_id));
+                    let _ = proxy_wasm::hostcalls::increment_metric(self.metrics.verification_success, 1);
                     self.resume_http_request();
                 } else {
                     // Verification failed - reject request
                     proxy_wasm::hostcalls::log(LogLevel::Warn, &format!("Sensor verification failed for sensor_id: {} - rejecting request", sensor_id));
+                    let _ = proxy_wasm::hostcalls::increment_metric(self.metrics.verification_failure, 1);
                     self.send_http_response(
                         403,
                         vec![("content-type", "text/plain")],
