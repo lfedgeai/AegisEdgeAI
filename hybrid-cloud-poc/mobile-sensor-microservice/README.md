@@ -32,7 +32,15 @@ This installs both runtime dependencies (Flask, requests) and the `pytest` tooli
 | `CAMARA_SCOPE` | Scope used in `/bc-authorize` | `dpv:FraudPreventionAndDetection#device-location-read` |
 | `CAMARA_BYPASS` | Set to `true` to skip CAMARA API calls (for testing only) | `false` |
 | `DEMO_MODE` | Set to `true` to suppress CAMARA_BYPASS log messages (useful for demos). Defaults to `true` when `CAMARA_BYPASS` is enabled. | `false` (or `true` if `CAMARA_BYPASS=true`) |
-| `CAMARA_VERIFY_CACHE_TTL_SECONDS` | Cache TTL for `verify_location` API results. The actual CAMARA API is called at most once per TTL period; subsequent calls return the cached result. | `900` (15 minutes) |
+| `CAMARA_VERIFY_CACHE_TTL_SECONDS` | Cache TTL for `verify_location` API results. | `900` (15 minutes) |
+| `MOBILE_SENSOR_ID` | Default sensor ID for mapping | `12d1:1433` |
+| `MOBILE_SENSOR_MSISDN` | Default MSISDN for mapping | `+34696810912` |
+| `MOBILE_SENSOR_LAT_DEFAULT` | Default latitude for mapping | `40.33` |
+| `MOBILE_SENSOR_LON_DEFAULT` | Default longitude for mapping | `-3.7707` |
+| `MOBILE_SENSOR_ACC_DEFAULT` | Default accuracy for mapping | `7.0` |
+| `CAMARA_AUTHORIZE_PATH` | Path for CAMARA authorize endpoint | `/bc-authorize` |
+| `CAMARA_TOKEN_PATH` | Path for CAMARA token endpoint | `/token` |
+| `CAMARA_VERIFY_PATH` | Path for CAMARA verify endpoint | `/location/v0/verify` |
 
 ### Obtaining CAMARA Credentials
 

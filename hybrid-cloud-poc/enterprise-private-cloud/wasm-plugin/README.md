@@ -53,7 +53,7 @@ configuration:
 ## How It Works
 
 1. **Certificate Extraction**: Gets client certificate from TLS connection
-2. **Sensor Info Extraction**: Parses X.509 Unified Identity extension (OID `1.3.6.1.4.1.99999.2`)
+2. **Sensor Info Extraction**: Parses X.509 Unified Identity extension (OID `1.3.6.1.4.1.55744.1.1`)
 3. **Claim Parsing**: Extracts sensor metadata from nested `grc.geolocation` structure:
    - **Mobile**: `grc.geolocation.mobile` → `sensor_id`, `sensor_imei`, `sim_imsi`, `sim_msisdn`, and `location_verification` (lat/lon/acc)
    - **GNSS**: `grc.geolocation.gnss` → `sensor_id`, `sensor_serial_number`, and `retrieved_location` (lat/lon/acc)

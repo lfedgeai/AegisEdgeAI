@@ -514,7 +514,7 @@ for idx, cert in enumerate(certs):
 
     # Check for AttestedClaims extension
     for ext in cert.extensions:
-        if ext.oid.dotted_string == "1.3.6.1.4.1.99999.1":
+        if ext.oid.dotted_string == "1.3.6.1.4.1.55744.1.1":
             attested_extension = ext
             try:
                 data = ext.value.value if hasattr(ext.value, "value") else ext.value

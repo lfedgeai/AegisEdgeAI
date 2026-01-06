@@ -860,7 +860,7 @@ After workloads receive their SPIRE SVIDs, they can use these certificates to ac
 
 - **WASM Filter Extracts Sensor Information**:
   - Parses the certificate chain.
-  - Extracts Unified Identity extension (OID `1.3.6.1.4.1.99999.2`) from Agent SVID (second certificate in chain).
+  - Extracts Unified Identity extension (OID `1.3.6.1.4.1.55744.1.1`) from Agent SVID (second certificate in chain).
   - Extracts sensor metadata: `sensor_id`, `sensor_type`, `sensor_imei`, `sensor_imsi`, `sensor_msisdn`.
   - **Coordinate Propagation**: Extracts `latitude`, `longitude`, and `accuracy` if present in SVID claims to enable the **DB-less verification flow**.
   - **No Filter Caching**: The WASM filter is stateless; all result caching is centralized in the mobile location microservice.
@@ -1514,7 +1514,7 @@ typed_config:
 
 The WASM filter extracts claims from the SPIRE certificate chain:
 
-1. **Extract Unified Identity Extension** (OID `1.3.6.1.4.1.99999.2`) from Agent SVID
+1. **Extract Unified Identity Extension** (OID `1.3.6.1.4.1.55744.1.1`) from Agent SVID
 2. **Parse JSON claims**: `sensor_id`, `sensor_type`, `sensor_imei`, `sensor_imsi`, **`msisdn`** ← NEW
 3. **Apply policy**:
    - GPS/GNSS sensors: Always bypass (trusted hardware)

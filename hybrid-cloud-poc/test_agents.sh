@@ -3599,7 +3599,7 @@ if [ -f "/tmp/svid-dump/svid.pem" ]; then
     if [ -f "${SCRIPT_DIR}/scripts/dump-svid-attested-claims.sh" ]; then
         echo "  ${SCRIPT_DIR}/scripts/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem"
     else
-        echo "  openssl x509 -in /tmp/svid-dump/svid.pem -text -noout | grep -A 2 \"1.3.6.1.4.1.99999.1\""
+        echo "  openssl x509 -in /tmp/svid-dump/svid.pem -text -noout | grep -A 2 \"1.3.6.1.4.1.55744.1.1\""
     fi
     echo ""
 fi

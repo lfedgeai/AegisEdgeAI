@@ -46,11 +46,11 @@ type Config struct {
 // sensor_imei: Unified-Identity: IMEI (International Mobile Equipment Identity) for mobile devices
 // sensor_imsi: Unified-Identity: IMSI (International Mobile Subscriber Identity) for mobile devices
 type Geolocation struct {
-	Type               string  `json:"type"`                     // "mobile" or "gnss"
-	SensorID           string  `json:"sensor_id"`                // Sensor identifier
-	Value              string  `json:"value"`                    // Optional for mobile, mandatory for gnss
-	SensorIMEI         string  `json:"sensor_imei,omitempty"`    // Unified-Identity: IMEI for mobile devices
-	SensorIMSI         string  `json:"sensor_imsi,omitempty"`    // Unified-Identity: IMSI for mobile devices
+	Type               string  `json:"type"`                    // "mobile" or "gnss"
+	SensorID           string  `json:"sensor_id"`               // Sensor identifier
+	Value              string  `json:"value"`                   // Optional for mobile, mandatory for gnss
+	SensorIMEI         string  `json:"sensor_imei,omitempty"`   // Unified-Identity: IMEI for mobile devices
+	SensorIMSI         string  `json:"sensor_imsi,omitempty"`   // Unified-Identity: IMSI for mobile devices
 	SensorMSISDN       string  `json:"sensor_msisdn,omitempty"` // Task 2f: MSISDN (phone number) for mobile devices
 	SensorSerialNumber string  `json:"sensor_serial_number,omitempty"`
 	Latitude           float64 `json:"latitude,omitempty"`
@@ -120,18 +120,26 @@ func NewClient(config Config) (*Client, error) {
 		// Unified-Identity - Verification: Increased timeout to 60s to allow for TPM quote operations
 		// With USE_TPM2_QUOTE_DIRECT, quotes complete in ~10s, but we allow extra time for
 		// network overhead and verifier processing
-		config.Timeout = 60 * time.Second
+		timeoutStr := os.Getenv("KEYLIME_VERIFIER_TIMEOUT")
+		if timeoutStr != "" {
+			if parsed, err := time.ParseDuration(timeoutStr); err == nil {
+				config.Timeout = parsed
+			}
+		}
+		if config.Timeout == 0 {
+			config.Timeout = 60 * time.Second
+		}
 	}
 
-// Unified-Identity - Verification: Hardware Integration & Delegated Certification
-// Interface: SPIRE Server → Keylime Verifier
-// Status: 🆕 New (Attestation/3 Addition)
-// Transport: mTLS over HTTPS
-// Protocol: JSON REST API
-// Port: localhost:8881
-// Endpoint: POST /v2.4/verify/evidence
-// Authentication: TLS client certificate authentication (mTLS)
-// Configure TLS for mTLS connection to Keylime Verifier
+	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
+	// Interface: SPIRE Server → Keylime Verifier
+	// Status: 🆕 New (Attestation/3 Addition)
+	// Transport: mTLS over HTTPS
+	// Protocol: JSON REST API
+	// Port: localhost:8881
+	// Endpoint: POST /v2.4/verify/evidence
+	// Authentication: TLS client certificate authentication (mTLS)
+	// Configure TLS for mTLS connection to Keylime Verifier
 	tlsConfig := &tls.Config{
 		// Default to insecure skip if no CA provided (legacy/compat)
 		// but encourage proper CA usage via config.
@@ -204,8 +212,8 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-    // Debug: Log full request body
-    c.logger.WithField("body", string(reqBody)).Info("Unified-Identity: Debug Payload - Full Keylime Request Body")
+	// Debug: Log full request body
+	c.logger.WithField("body", string(reqBody)).Info("Unified-Identity: Debug Payload - Full Keylime Request Body")
 
 	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// Create HTTP request
@@ -279,7 +287,7 @@ func (c *Client) VerifyEvidence(req *VerifyEvidenceRequest) (*AttestedClaims, er
 		"audit_id":    verifyResp.Results.AuditID,
 		"geolocation": geoLog,
 	}).Info("Unified-Identity - Verification: Successfully received AttestedClaims from Keylime")
-	
+
 	// Debug: Log raw response to see what Keylime is actually sending
 	if verifyResp.Results.AttestedClaims.Geolocation != nil {
 		c.logger.WithFields(logrus.Fields{

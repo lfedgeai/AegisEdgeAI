@@ -534,19 +534,19 @@ def fetch_from_workload_api_grpc(max_wait_seconds=60):
         print()
 
         # Unified-Identity - Verification: Extract Unified Identity claims from certificate extension
-        # Try new Unified Identity extension (OID 1.3.6.1.4.1.99999.2) first, then legacy (1.3.6.1.4.1.99999.1)
+        # Try Unified Identity extension (OID 1.3.6.1.4.1.55744.1.1)
         claims_json = None
         extension_claims = None
         try:
             # Try new Unified Identity extension (Verification)
-            oid = x509.ObjectIdentifier("1.3.6.1.4.1.99999.2")
+            oid = x509.ObjectIdentifier("1.3.6.1.4.1.55744.1.1")
             ext = cert.extensions.get_extension_for_oid(oid)
             ext_value = ext.value.value if hasattr(ext.value, "value") else ext.value
             extension_claims = json.loads(ext_value)
         except Exception:
             try:
                 # Fall back to legacy AttestedClaims extension (if present)
-                oid = x509.ObjectIdentifier("1.3.6.1.4.1.99999.1")
+                oid = x509.ObjectIdentifier("1.3.6.1.4.1.55744.1.1")
                 ext = cert.extensions.get_extension_for_oid(oid)
                 ext_value = ext.value.value if hasattr(ext.value, "value") else ext.value
                 extension_claims = json.loads(ext_value)

@@ -10,9 +10,8 @@ import (
 )
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification
-// OID for AttestedClaims extension: 1.3.6.1.4.1.99999.1 (Private Enterprise Number - placeholder)
-// In production, this should use a registered OID from IANA
-var AttestedClaimsExtensionOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 1}
+// OID for AttestedClaims extension: 1.3.6.1.4.1.55744.1.1 (Sovereign Unified Identity Claims)
+var AttestedClaimsExtensionOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 55744, 1, 1}
 
 // AttestedClaimsExtension embeds Unified Identity claims as a certificate extension.
 // If unifiedJSON is provided it is embedded verbatim; otherwise the legacy

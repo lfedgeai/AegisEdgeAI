@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -61,9 +62,15 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 		// Structured claims for Sensor Type Isolation (Task 12b)
 		if attestedClaims != nil && attestedClaims.Geolocation != nil {
 			geo := attestedClaims.Geolocation
+			pcrIndex := 15
+			if pcrStr := os.Getenv("UNIFIED_IDENTITY_PCR_INDEX"); pcrStr != "" {
+				if parsed, err := strconv.Atoi(pcrStr); err == nil {
+					pcrIndex = parsed
+				}
+			}
 			geoObj := map[string]any{
-				"tpm-attested-location": true,
-				"tpm-attested-pcr-index": 15,
+				"tpm-attested-location":  true,
+				"tpm-attested-pcr-index": pcrIndex,
 			}
 
 			// 1. Mobile-Specific Claims (Nested)
@@ -117,7 +124,7 @@ func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[stri
 	// Format 1: "country:state:city:latitude:longitude" (precise coordinates)
 	// Format 2: "country: description" (administrative only)
 	parts := strings.Split(geoStr, ":")
-	
+
 	if len(parts) >= 5 {
 		// Format 1: Has coordinates - use precise format
 		country := strings.TrimSpace(parts[0])
@@ -125,10 +132,10 @@ func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[stri
 		city := strings.TrimSpace(parts[2])
 		latStr := strings.TrimSpace(parts[3])
 		lonStr := strings.TrimSpace(parts[4])
-		
+
 		lat, errLat := strconv.ParseFloat(latStr, 64)
 		lon, errLon := strconv.ParseFloat(lonStr, 64)
-		
+
 		if errLat == nil && errLon == nil {
 			// Use precise format with coordinates
 			geo["physical-location"] = map[string]any{
@@ -138,7 +145,7 @@ func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[stri
 					"longitude": lon,
 				},
 			}
-			
+
 			// Add administrative boundaries if available
 			if country != "" {
 				jurisdiction := map[string]any{
@@ -174,7 +181,7 @@ func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[stri
 		if len(parts) >= 3 {
 			city = strings.TrimSpace(parts[2])
 		}
-		
+
 		admin := map[string]any{
 			"country": country,
 		}
@@ -184,12 +191,12 @@ func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[stri
 		if city != "" {
 			admin["city"] = city
 		}
-		
+
 		geo["physical-location"] = map[string]any{
-			"format":        "administrative",
+			"format":         "administrative",
 			"administrative": admin,
 		}
-		
+
 		jurisdiction := map[string]any{
 			"country": country,
 		}
@@ -204,13 +211,13 @@ func buildGeolocationClaim(geoStr string, hasSovereignAttestation bool) map[stri
 		// Invalid format, return nil
 		return nil
 	}
-	
+
 	// Unified-Identity - Verification: Hardware Integration & Delegated Certification
 	// If TPM attestation is present, mark geolocation as TPM-attested
 	if hasSovereignAttestation {
 		geo["tpm-attested-location"] = true
 		geo["tpm-attested-pcr-index"] = 15 // PCR 15 is used for geolocation per rust-keylime agent
 	}
-	
+
 	return geo
 }

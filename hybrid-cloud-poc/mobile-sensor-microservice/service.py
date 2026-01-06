@@ -38,14 +38,14 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 
 LOG = logging.getLogger("mobile_sensor_service")
 
-DEFAULT_SCOPE = "dpv:FraudPreventionAndDetection#device-location-read"
-DEFAULT_SENSOR_ID = "12d1:1433"
-DEFAULT_SENSOR_IMEI = "356345043865103"
-DEFAULT_SENSOR_IMSI = "214070610960475"
-DEFAULT_MSISDN = "+34696810912"
-DEFAULT_LATITUDE = 40.33
-DEFAULT_LONGITUDE = -3.7707
-DEFAULT_ACCURACY = 7.0
+DEFAULT_SCOPE = os.getenv("MOBILE_SENSOR_SCOPE", "dpv:FraudPreventionAndDetection#device-location-read")
+DEFAULT_SENSOR_ID = os.getenv("MOBILE_SENSOR_ID", "12d1:1433")
+DEFAULT_SENSOR_IMEI = os.getenv("MOBILE_SENSOR_IMEI_DEFAULT", "356345043865103")
+DEFAULT_SENSOR_IMSI = os.getenv("MOBILE_SENSOR_IMSI_DEFAULT", "214070610960475")
+DEFAULT_MSISDN = os.getenv("MOBILE_SENSOR_MSISDN", "+34696810912")
+DEFAULT_LATITUDE = float(os.getenv("MOBILE_SENSOR_LAT_DEFAULT", "40.33"))
+DEFAULT_LONGITUDE = float(os.getenv("MOBILE_SENSOR_LON_DEFAULT", "-3.7707"))
+DEFAULT_ACCURACY = float(os.getenv("MOBILE_SENSOR_ACC_DEFAULT", "7.0"))
 
 # Prometheus metrics (Task 18: Observability)
 REQUEST_COUNT = Counter(
@@ -70,9 +70,9 @@ VERIFICATION_FAILURE = Counter(
 CAMARA_BASE = os.getenv(
     "CAMARA_BASE_URL", "https://sandbox.opengateway.telefonica.com/apigateway"
 )
-AUTHORIZE_PATH = "/bc-authorize"
-TOKEN_PATH = "/token"
-VERIFY_PATH = "/location/v0/verify"
+AUTHORIZE_PATH = os.getenv("CAMARA_AUTHORIZE_PATH", "/bc-authorize")
+TOKEN_PATH = os.getenv("CAMARA_TOKEN_PATH", "/token")
+VERIFY_PATH = os.getenv("CAMARA_VERIFY_PATH", "/location/v0/verify")
 
 
 def _get_default_latitude() -> float:

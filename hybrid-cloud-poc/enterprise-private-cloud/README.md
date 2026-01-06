@@ -335,7 +335,7 @@ tail -f /tmp/mobile-sensor.log
 
 ### Certificate Chain Parsing
 - **Location**: Unified Identity extension is in the **agent SVID** (second certificate in chain)
-- **OID**: 1.3.6.1.4.1.99999.2 (or legacy 1.3.6.1.4.1.99999.1)
+- **OID**: 1.3.6.1.4.1.55744.1.1
 - **Format**: JSON with `grc.geolocation.sensor_id` field
 - **Extraction**: WASM filter parses full certificate chain from `x-forwarded-client-cert` header
 

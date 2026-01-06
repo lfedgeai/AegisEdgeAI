@@ -18,10 +18,9 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 // Unified Identity extension OIDs (as ASN.1 OID bytes)
-// 1.3.6.1.4.1.99999.2 = 0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x63, 0x02
-// 1.3.6.1.4.1.99999.1 = 0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x63, 0x01
-const UNIFIED_IDENTITY_OID_STR: &str = "1.3.6.1.4.1.99999.2";
-const LEGACY_OID_STR: &str = "1.3.6.1.4.1.99999.1";
+// 1.3.6.1.4.1.55744.1.1 = 0x2b, 0x06, 0x01, 0x04, 0x01, 0x83, 0xb3, 0x40, 0x01, 0x01
+const UNIFIED_IDENTITY_OID_STR: &str = "1.3.6.1.4.1.55744.1.1";
+const LEGACY_OID_STR: &str = "1.3.6.1.4.1.55744.1.1";
 
 #[derive(Serialize, Deserialize)]
 struct VerifyRequest {

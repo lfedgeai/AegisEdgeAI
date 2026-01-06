@@ -158,7 +158,7 @@ if [ -f "./fetch-sovereign-svid-grpc.py" ]; then
             if [ -f "${PHASE2_DIR}/dump-svid-attested-claims.sh" ]; then
                 echo "  ${PHASE2_DIR}/dump-svid-attested-claims.sh /tmp/svid-dump/svid.pem"
             else
-                echo "  openssl x509 -in /tmp/svid-dump/svid.pem -text -noout | grep -A 2 \"1.3.6.1.4.1.99999\""
+                echo "  openssl x509 -in /tmp/svid-dump/svid.pem -text -noout | grep -A 2 \"1.3.6.1.4.1.55744.1.1\""
             fi
         fi
 
