@@ -53,6 +53,21 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 | Pillar 5 | 9 | 4/4 Done | 2/5 Done | ✅ Ready |
 | **Total** | **48** | **33/33** | **5/15** | **100% Done (P1)** |
 
+### Upstream Readiness Status
+
+| Category | Status | Details |
+|----------|--------|---------|
+| **Governance** | ✅ Ready | Apache 2.0, DCO, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY |
+| **Documentation** | ✅ Ready | 3,600+ lines of architecture docs, API diagrams |
+| **P1 Completion** | ✅ 100% | 33/33 mandatory tasks complete |
+| **OID Registration** | ✅ Done | `1.3.6.1.4.1.55744.1.1` for AttestedClaims |
+| **Integration Tests** | ✅ Passing | End-to-end on real TPM hardware (2 nodes) |
+| **Production TLS** | ✅ Hardened | InsecureSkipVerify removed, mTLS throughout |
+
+**Key Contributions for Discussion:**
+- **SPIRE:** CredentialComposer plugin, TPM App Key integration, AttestedClaims X.509 extension
+- **Keylime:** App Key Verification API, geolocation attestation (PCR-15), rust-keylime extensions
+
 ---
 
 ---
