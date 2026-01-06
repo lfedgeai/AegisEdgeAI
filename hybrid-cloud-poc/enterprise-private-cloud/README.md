@@ -339,6 +339,25 @@ tail -f /tmp/mobile-sensor.log
 - **Format**: JSON with `grc.geolocation.sensor_id` field
 - **Extraction**: WASM filter parses full certificate chain from `x-forwarded-client-cert` header
 
+## Observability
+
+The on-prem components expose Prometheus metrics for monitoring sensor verification performance.
+
+### Envoy Metrics (Port 9901)
+Available at `http://localhost:9901/stats/prometheus`:
+- `wasm_filter_request_total`: Total requests processed
+- `wasm_filter_sidecar_call_total`: Total verifications requested from sidecar
+- `wasm_filter_verification_success_total`: Successful verifications
+- `wasm_filter_verification_failure_total`: Policy rejections
+- `wasm_filter_sidecar_latency_ms`: Histogram of sidecar call duration
+
+### Sidecar Metrics (Port 9050)
+Available at `http://localhost:9050/metrics`:
+- `sidecar_request_total`: Total requests received by sidecar
+- `sidecar_location_verification_success_total`: Successful CAMARA verifications
+- `sidecar_location_verification_failure_total`: Failed CAMARA verifications
+- `sidecar_camara_api_latency_seconds`: Histogram of CAMARA API latency
+
 ## Files
 
 - `envoy/envoy.yaml` - Envoy proxy configuration with HTTP connection manager and WASM filter

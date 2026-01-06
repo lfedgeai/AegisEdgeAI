@@ -155,27 +155,26 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 
 ### Unified Identity Metrics
 
-SPIRE Server emits metrics for Unified Identity attestation flows via the standard `telemetry.Metrics` interface:
+The implementation provides granular metrics for both the attestation control plane and the runtime verification data plane.
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `agent_manager.unified_identity.reattest.success` | Counter | Successful TPM-based re-attestations |
-| `agent_manager.unified_identity.reattest.error` | Counter | Failed TPM-based re-attestations |
+| Scope | Metric | Type | Description |
+|-------|--------|------|-------------|
+| **SPIRE** | `agent_manager.unified_identity.reattest.success` | Counter | Successful TPM-based re-attestations |
+| **SPIRE** | `agent_manager.unified_identity.reattest.error` | Counter | Failed TPM-based re-attestations |
+| **Envoy** | `wasm_filter_request_total` | Counter | Total requests processed by the sovereign filter |
+| **Envoy** | `wasm_filter_sidecar_call_total` | Counter | Total calls to the mobile sensor sidecar |
+| **Envoy** | `wasm_filter_sidecar_latency_ms` | Histogram | Latency of sidecar verification calls |
+| **Envoy** | `wasm_filter_verification_success_total` | Counter | Successful sidecar verifications |
+| **Envoy** | `wasm_filter_verification_failure_total` | Counter | Failed sidecar verifications |
+| **Sidecar** | `sidecar_request_total` | Counter | Total requests (labels: `result='total'\|'error'`) |
+| **Sidecar** | `sidecar_location_verification_success_total` | Counter | Successful location verifications |
+| **Sidecar** | `sidecar_location_verification_failure_total` | Counter | Failed location verifications |
+| **Sidecar** | `sidecar_camara_api_latency_seconds` | Histogram | Latency of CAMARA API calls |
 
-**Configuration:** Metrics are exposed via Prometheus on port `9988`:
-```hcl
-# spire-server.conf
-telemetry {
-    Prometheus {
-        host = "0.0.0.0"
-        port = 9988
-    }
-}
-```
-
-**Scrape Endpoint:** `http://<spire-server>:9988/metrics`
-
-> **Note:** Keylime does not currently have a native metrics stack. Use Keylime logs for observability.
+**Scrape Configuration:**
+- **SPIRE Server**: Port `9988` (HCL `telemetry` block)
+- **Envoy Proxy**: Port `9901`, path `/stats/prometheus`
+- **Mobile Sidecar**: Port `9050`, path `/metrics`
 
 ---
 

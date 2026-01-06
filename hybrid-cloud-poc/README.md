@@ -64,9 +64,32 @@ This document covers:
 
 ### Observability
 
-SPIRE Server exposes Prometheus metrics for Unified Identity attestation on port `9988`:
+The system provides comprehensive observability via Prometheus metrics across all layers of the stack.
+
+#### SPIRE Server (port 9988)
+Exposes Unified Identity attestation metrics:
 - `agent_manager.unified_identity.reattest.success` - Successful TPM-based re-attestations
 - `agent_manager.unified_identity.reattest.error` - Failed TPM-based re-attestations
+
+#### Envoy WASM Filter (port 9901)
+Exposes metrics for request processing and sidecar interaction:
+- `wasm_filter_request_total` - Total requests processed by the sovereign filter
+- `wasm_filter_sidecar_call_total` - Total calls to the mobile sensor sidecar
+- `wasm_filter_sidecar_latency_ms` (Histogram) - Latency of sidecar verification calls
+- `wasm_filter_verification_success_total` - Successful sidecar verifications
+- `wasm_filter_verification_failure_total` - Failed sidecar verifications (policy violations)
+
+#### Mobile Sensor Microservice (port 9050)
+Exposes metrics for location verification and CAMARA API interaction:
+- `sidecar_request_total` - Total requests received (labels: `result='total'|'error'`)
+- `sidecar_location_verification_success_total` - Successful location verifications
+- `sidecar_location_verification_failure_total` - Failed location verifications
+- `sidecar_camara_api_latency_seconds` (Histogram) - Latency of CAMARA API calls
+
+**Scrape Endpoints:**
+- SPIRE: `http://<spire-server-ip>:9988/metrics`
+- Envoy: `http://<on-prem-ip>:9901/stats/prometheus`
+- Sidecar: `http://<on-prem-ip>:9050/metrics`
 
 ## Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture
 

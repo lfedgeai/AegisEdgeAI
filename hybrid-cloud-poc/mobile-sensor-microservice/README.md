@@ -154,6 +154,19 @@ CAMARA verify_location caching: ENABLED (TTL: 900 seconds = 15.0 minutes)
 [LOCATION VERIFY] Location verification completed for sensor_id=12d1:1433: result=true
 ```
 
+### Observability
+
+The microservice exposes Prometheus metrics on the `/metrics` endpoint.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `sidecar_request_total` | Counter | `result` | Total requests received (`total` or `error`) |
+| `sidecar_location_verification_success_total` | Counter | None | Successful CAMARA verifications |
+| `sidecar_location_verification_failure_total` | Counter | None | Failed CAMARA verifications |
+| `sidecar_camara_api_latency_seconds` | Histogram | None | Latency of CAMARA API calls |
+
+**Scrape Endpoint**: `http://<host>:<port>/metrics`
+
 ### Unit Tests
 The unit test (`tests/test_service.py`) uses `unittest.mock` to stub out HTTP calls so it can run without contacting the live CAMARA sandbox.
 Run the tests with:
