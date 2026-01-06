@@ -12,7 +12,6 @@ jobs:
         name: Check Apache 2.0 License Headers
         runs-on: ubuntu-latest
         timeout-minutes: 5
-
         steps:
             - name: Checkout Code
               uses: actions/checkout@v4
@@ -34,17 +33,18 @@ jobs:
             - name: Pre-Run Environment Cleanup
               run: |
                   echo "Cleaning orphan processes and stale workspaces..."
-                  # Ensure working directory exists (previous run may have deleted it)
+                  # Ensure working directory exists
                   mkdir -p /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI
-                  # Kill CI-spawned processes only (specific patterns to avoid system services)
-                  # Redirect stderr to hide 'Operation not permitted' for root processes
+
+                  # Kill CI-spawned processes
                   pkill -9 -f "envoy -c" 2>/dev/null || true
                   pkill -9 -f "spire-server run" 2>/dev/null || true
                   pkill -9 -f "spire-agent run" 2>/dev/null || true
                   pkill -9 -f "tpm_plugin_server" 2>/dev/null || true
                   pkill -9 -f "ci_test_runner" 2>/dev/null || true
                   pkill -9 -f "test_integration" 2>/dev/null || true
-                  # Clean up temp files from previous runs
+
+                  # Clean up temp files
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
                   echo "Pre-cleanup complete"
@@ -55,54 +55,145 @@ jobs:
                   submodules: recursive
                   clean: true
 
-            - name: Debug - Inspect File System
+            # Check Initial Package Status
+            - name: Check Initial Packages (Pre-Install)
               run: |
-                  echo "Current directory: $(pwd)"
-                  echo "Workspace: ${{ github.workspace }}"
-                  echo "Runner _work directory contents:"
-                  ls -la /home/mw/actions-runner/_work/ || true
+                  cd hybrid-cloud-poc
+                  chmod +x check_packages.sh
+                  echo "=== Running check_packages.sh (Before Install) ==="
+                  ./check_packages.sh || echo "Packages missing (Expected on fresh run)"
 
+            - name: Install Prerequisites
+              timeout-minutes: 15
+              run: |
+                  cd hybrid-cloud-poc
+                  chmod +x install_prerequisites.sh
+                  echo "=== Running install_prerequisites.sh ==="
+                  # Using sudo as implied by README saying it prompts for password
+                  # Ensure your runner user has passwordless sudo for this script
+                  sudo ./install_prerequisites.sh || true
+
+            # Persist PATHs for Go and Rust across all future steps
+            # In GitHub Actions, 'source' only works for the current step.
+            # Writing to $GITHUB_PATH makes it permanent for the job.
+            - name: Configure Persistent Environment Paths
+              run: |
+                  echo "=== Configuring Paths ==="
+                  # Add Go to GITHUB_PATH
+                  echo "/usr/local/go/bin" >> $GITHUB_PATH
+                  # Add Cargo (Rust) to GITHUB_PATH
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+                  echo "Paths added. They will be available in next steps automatically."
+
+            # Explicit Python Dependencies from README Troubleshooting
             - name: Install Python Dependencies
               timeout-minutes: 5
               run: |
                   cd hybrid-cloud-poc
                   python3 -m pip install --upgrade pip
+                  # Installing specific libs mentioned in README Troubleshooting
+                  python3 -m pip install spiffe cryptography grpcio protobuf requests
+                  # Installing project requirements
                   python3 -m pip install -r keylime/requirements.txt
+                  echo "Python dependencies installed."
+
+            # Re-run check packages to verify installation success
+            - name: Verify Installation (check_packages.sh)
+              run: |
+                  cd hybrid-cloud-poc
+                  echo "=== Running check_packages.sh (Verification) ==="
+                  ./check_packages.sh
+
+            - name: Verify Prerequisites & TPM Access
+              run: |
+                  echo "=== Step: Deep Verification ==="
+
+                  echo "--- System Packages ---"
+                  dpkg -l | grep -E "(tpm2|swtpm|libtss2|libssl-dev|python3-dev|build-essential|libclang)" | head -10 || echo "Packages missing"
+
+                  echo "--- Toolchain Versions ---"
+                  echo "Python: $(python3 --version 2>&1)"
+                  # We don't need to source cargo env here because we added it to GITHUB_PATH earlier
+                  echo "Rust: $(rustc --version 2>&1 || echo 'not installed')"
+                  echo "Go: $(go version 2>&1 || echo 'not installed')"
+
+                  echo "--- TPM Access Check ---"
+                  # Critical check: Can we actually read the TPM device?
+                  if [ -r /dev/tpm0 ] || [ -r /dev/tpmrm0 ]; then
+                      echo "SUCCESS: Read access to TPM device verified."
+                  else
+                      echo "WARNING: Cannot read /dev/tpm*. User might need to re-login or use sudo."
+                      ls -la /dev/tpm* 2>/dev/null || echo "No TPM devices found"
+                  fi
+
+                  groups | grep tss && echo "User is in tss group" || echo "Warning: User not in tss group"
+
+            - name: Build SPIRE Components
+              timeout-minutes: 10
+              run: |
+                  echo "=== Building SPIRE ==="
+                  cd hybrid-cloud-poc
+
+                  if [ -f "spire/bin/spire-server" ] && [ -f "spire/bin/spire-agent" ]; then
+                      echo "SPIRE binaries already exist."
+                  else
+                      cd spire
+                      make bin/spire-server bin/spire-agent
+                  fi
+
+            - name: Build Rust-Keylime Agent
+              timeout-minutes: 15
+              run: |
+                  echo "=== Building Rust-Keylime ==="
+                  cd hybrid-cloud-poc
+
+                  if [ -f "rust-keylime/target/release/keylime_agent" ]; then
+                      echo "rust-keylime agent already built."
+                  else
+                      if [ -d "rust-keylime" ]; then
+                          cd rust-keylime
+                          cargo build --release
+                      else
+                          echo "rust-keylime directory not found!"
+                          exit 1
+                      fi
+                  fi
 
             - name: Run Integration Tests
-              timeout-minutes: 5
+              timeout-minutes: 10
               shell: bash
               env:
                   TMPDIR: /tmp
               run: |
                   cd hybrid-cloud-poc
                   chmod +x ci_test_runner.py test_integration.sh
-                  echo "Running integration tests with ci_test_runner.py..."
+
+                  echo "Starting Integration Runner..."
+                  # Note: If TPM access fails here due to group membership (which requires relogin),
+                  # you might need to run this specific command with 'sudo -E' or 'sg tss -c ...'
+
                   python3 ./ci_test_runner.py --no-color -- --control-plane-host 10.1.0.10 --agents-host 10.1.0.10 --onprem-host 10.1.0.10
+
                   echo "Integration tests completed"
 
             - name: Post-Run Cleanup (Mandatory Purge)
               if: always()
               run: |
-                  echo "Purging all workspaces to prevent state poisoning..."
-                  # Run cleanup script first to properly stop services
+                  echo "Purging workspaces..."
                   cd hybrid-cloud-poc
                   python3 ./ci_test_runner.py --cleanup-only 2>/dev/null || true
-                  # Kill CI-spawned processes only (specific patterns to avoid system services)
-                  # Redirect stderr to hide 'Operation not permitted' for root processes
+
                   pkill -9 -f "spire-server run" 2>/dev/null || true
                   pkill -9 -f "spire-agent run" 2>/dev/null || true
                   pkill -9 -f "tpm_plugin_server" 2>/dev/null || true
                   pkill -9 -f "envoy -c" 2>/dev/null || true
                   pkill -9 -f "ci_test_runner" 2>/dev/null || true
                   pkill -9 -f "test_integration" 2>/dev/null || true
-                  # Remove temp files
+
                   rm -rf /tmp/unified_identity_test_* || true
                   rm -rf /tmp/spire-* || true
-                  # Delete CONTENTS of folder (not folder itself - checkout action needs it)
-                  echo "Deleting contents of AegisSovereignAI folder..."
+
+                  echo "Deleting repository contents..."
                   rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/* || true
                   rm -rf /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/.* 2>/dev/null || true
-                  echo "Workspace contents after cleanup:"
-                  ls -la /home/mw/actions-runner/_work/AegisSovereignAI/AegisSovereignAI/ || echo "Folder empty"
-                  echo "Post-cleanup complete - repo contents deleted"
+                  echo "Cleanup complete."
