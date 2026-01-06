@@ -1,6 +1,6 @@
 # Master Roadmap: Aegis Sovereign Unified Identity Upstreaming
 
-<!-- Version: 0.1.1 | Last Updated: 2026-01-04 -->
+<!-- Version: 0.1.2 | Last Updated: 2026-01-06 -->
 
 This document serves as the **single source of truth** for both the technical roadmap and the execution strategy for refactoring the "Unified Identity" PoC into upstream-ready components.
 
@@ -43,9 +43,9 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 | Pillar 1 | 5 | 3/3 Done | 1/2 Done | ✅ Ready |
 | Pillar 2 | 10 | 10/10 Done | 0/0 Done | ✅ Ready |
 | Pillar 3 | 6 | 3/3 Done | 0/3 Done | ✅ Ready |
-| Pillar 4 | 7 | 4/5 Done | 1/2 Done | ⚠️ Risk |
+| Pillar 4 | 7 | 5/5 Done | 1/2 Done | ✅ Ready |
 | Pillar 5 | 9 | 3/3 Done | 3/6 Done | ✅ Ready |
-| **Total** | **44** | **30/31** | **5/13** | **97% Done** |
+| **Total** | **44** | **31/31** | **5/13** | **100% Done (P1)** |
 
 ---
 
@@ -657,10 +657,10 @@ Implementation:
 Effort: 1-2 days
 ```
 
-### Task 18: Observability & Telemetry (PARTIAL - SPIRE Complete)
+### Task 18: Observability & Telemetry (COMPLETE)
 ```
 Goal: Standardize telemetry for production visibility.
-Status: ⚠️ Partial (SPIRE Server metrics implemented)
+Status: ✅ Complete
 
 Completed:
 ✅ SPIRE Server Prometheus metrics (port 9988)
