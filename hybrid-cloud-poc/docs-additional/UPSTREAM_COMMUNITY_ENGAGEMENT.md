@@ -25,7 +25,15 @@ This document outlines the sequential steps for introducing the Unified Identity
 > - TPM "App Key" support - workload-specific keys certified by Keylime's Attestation Key
 > - Geolocation claims bound to TPM PCR-15
 >
-> **Use case:** Hybrid cloud environments where workload identity needs to carry verifiable hardware integrity and location proofs.
+> **Use Case: Sovereign Banking AI Inference**
+> A European bank runs AI inference on edge devices across multiple jurisdictions. Regulatory compliance (GDPR, PSD2) requires cryptographic proof that:
+> 1. The workload is running on verified, untampered hardware (TPM attestation)
+> 2. The data never leaves the specified geofence (location proofs in SVID)
+> 3. Access to customer keys is bound to hardware identity, not just bearer tokens
+>
+> Our solution replaces fragile IP-based geofencing with hardware-rooted "Proof of Residency" embedded directly in X.509 SVIDs.
+>
+> **Reference:** [Hybrid Cloud PoC README](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc#the-problem) - see "The Problem" and "The Solution" sections
 >
 > **Resources:**
 > - Repository: https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc
@@ -35,6 +43,7 @@ This document outlines the sequential steps for introducing the Unified Identity
 > We'd love to discuss upstreaming this as a formal SPIRE plugin. Would there be interest in a community meeting presentation?
 >
 > Thanks!
+
 
 ### Step 1.3: Request Community Meeting Slot
 - **Meeting Schedule:** Bi-weekly (check SPIFFE calendar)
@@ -65,6 +74,16 @@ This document outlines the sequential steps for introducing the Unified Identity
 > - **Delegated Certification** where the Attestation Key (AK) signs workload App Keys
 > - **Geolocation Attestation** with nonce-bound location claims in PCR-15
 > - **rust-keylime extensions** for TPM quote generation with geolocation
+>
+> **Use Case: Telecom Edge 5G with CAMARA APIs**
+> A telecom operator deploys AI workloads at 5G edge sites. The solution integrates with [GSMA CAMARA Device Location APIs](https://www.camaraproject.org/) to provide:
+> 1. Mobile device location verification via carrier network (not GPS spoofing)
+> 2. TPM-bound proof that the edge node is in the licensed spectrum zone
+> 3. Hardware-rooted identity for regulatory spectrum compliance
+>
+> Keylime verifies the TPM quote containing CAMARA-verified location, which SPIRE then embeds into workload SVIDs.
+>
+> **Reference:** [CAMARA Hardware Location Proposal](https://github.com/lfedgeai/AegisSovereignAI/blob/main/proposals/camara-hardware-location.md)
 >
 > **Changes:**
 > - `keylime/app_key_verification.py` - New verification endpoint
@@ -109,7 +128,15 @@ This document outlines the sequential steps for introducing the Unified Identity
 > - Calls a sidecar for CAMARA device location verification (mobile sensors)
 > - Exposes Prometheus metrics for observability
 >
-> **Use case:** Zero-trust edge deployments where location-based access control is required, with hardware-rooted identity proofs.
+> **Use Case: Zero-Trust Manufacturing IoT**
+> A manufacturing plant with mobile robots and fixed sensors requires:
+> 1. **GPS sensors** on fixed equipment → Trusted at attestation time (bypass sidecar)
+> 2. **Mobile sensors** on robots → Real-time location verification via CAMARA APIs
+> 3. **Policy enforcement** at the Envoy gateway based on sensor type and location
+>
+> The WASM filter extracts the sensor type from the SVID and routes to appropriate verification mode, enforcing that only devices in the authorized zone can access production systems.
+>
+> **Reference:** [Enterprise Private Cloud README](https://github.com/lfedgeai/AegisSovereignAI/blob/main/hybrid-cloud-poc/enterprise-private-cloud/README.md)
 >
 > **Resources:**
 > - WASM Filter: https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc/enterprise-private-cloud/wasm-plugin
