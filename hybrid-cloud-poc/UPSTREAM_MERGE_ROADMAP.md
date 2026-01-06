@@ -6,12 +6,18 @@ This document serves as the **single source of truth** for both the technical ro
 
 ## Executive Summary
 
-The "Unified Identity" feature introduces a hardware-rooted relationship between SPIRE and Keylime. We follow a **6-Pillar Strategy** to transition from a "Fork & Patch" pattern to upstream-ready contributions:
+The "Unified Identity" feature introduces a hardware-rooted relationship between SPIRE and Keylime. We follow a **6-Pillar Strategy** to transition from a "Fork & Patch" pattern to upstream-ready contributions.
+
+**Current Status (January 2026):**
+- **Initial P0/P1 Implementation**: **100% Complete**.
+- **Specification/Refactoring P1 Backlog**: **31/33 Done** (Reflected in GitHub P1 labels).
+- Integration with public GitHub issues is established for maximum transparency.
+- Focus has shifted to **P2 Hardening** and **P3 Ecosystem** expansion.
 
 ### Upstreaming Targets
 
 | Component | Target Project | Contribution Type |
-|-----------|---------------|-------------------|
+| :--- | :--- | :--- |
 | SPIRE plugins | `spiffe/spire` | Plugin PRs |
 | Keylime Agent extensions | `keylime/rust-keylime` | Feature PRs |
 | Keylime Verifier extensions | `keylime/keylime` | Feature PRs |
@@ -29,7 +35,7 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 
 ### Priority Levels
 | Priority | Meaning | Timeline |
-|----------|---------|----------|
+| :--- | :--- | :--- |
 | **P0** | Blocker - Must fix before public release | Week 1 |
 | **P1** | Critical - Required for production readiness | Week 2-3 |
 | **P2** | Important - Should complete for 1.0 release | Week 4-6 |
@@ -38,14 +44,56 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 ### Quick Status Dashboard
 
 | Pillar | Total | Mandatory (P0/P1) | Optional (P2/P3) | Status |
-|--------|-------|-------------------|------------------|--------|
-| Pillar 0 | 7 | 7/7 Done | 0/0 Done | ✅ Ready |
+| :--- | :--- | :--- | :--- | :--- |
+| Pillar 0 | 7 | 6/6 Done | 1/1 Done | ✅ Ready |
 | Pillar 1 | 5 | 3/3 Done | 1/2 Done | ✅ Ready |
-| Pillar 2 | 10 | 10/10 Done | 0/0 Done | ✅ Ready |
-| Pillar 3 | 6 | 3/3 Done | 0/3 Done | ✅ Ready |
-| Pillar 4 | 7 | 5/5 Done | 1/2 Done | ✅ Ready |
-| Pillar 5 | 9 | 3/3 Done | 3/6 Done | ✅ Ready |
-| **Total** | **44** | **31/31** | **5/13** | **100% Done (P1)** |
+| Pillar 2 | 12 | 10/10 Done | 0/2 Done | ✅ Ready |
+| Pillar 3 | 7 | 3/3 Done | 0/4 Done | ✅ Ready |
+| Pillar 4 | 8 | 5/7 Done | 1/1 Done | ⚠️ P1 Backlog |
+| Pillar 5 | 9 | 4/4 Done | 2/5 Done | ✅ Ready |
+| **Total** | **48** | **31/33** | **5/15** | **94% Done (P1)** |
+
+---
+
+---
+
+## 🛰️ Public Tracking: GitHub Issue Mapping
+
+To ensure maximum external visibility, every public issue is mapped to the architectural roadmap.
+
+### ✅ Completed & Closed
+| Task | Issue | Summary | Status |
+| :--- | :--- | :--- | :--- |
+| **Task 13** | [#126](https://github.com/lfedgeai/AegisSovereignAI/issues/126) | Remove `InsecureSkipVerify` (Production TLS) | ✅ Closed |
+| **Task 14** | [#141](https://github.com/lfedgeai/AegisSovereignAI/issues/141) | Secure Credentials (Secrets Management) | ✅ Closed |
+| **Task 18** | [#151](https://github.com/lfedgeai/AegisSovereignAI/issues/151) | Production Observability & Prometheus Metrics | ✅ Closed |
+
+### 🛠️ In-Progress / P1 Backlog
+| Focus | Issue | Summary | Roadmap Status |
+| :--- | :--- | :--- | :--- |
+| **Pillar 4** | [#153](https://github.com/lfedgeai/AegisSovereignAI/issues/153) | Externalize Hardcoded Config Defaults | ⚠️ Partial |
+| **Pillar 2** | [#130](https://github.com/lfedgeai/AegisSovereignAI/issues/130) | Replace placeholder OID for AttestedClaims | 🚀 Planned |
+| **Task 5/6** | [#139](https://github.com/lfedgeai/AegisSovereignAI/issues/139) | TSS Library Integration (SPIRE TPM Plugin) | 🚀 Planned |
+| **Pillar 3** | [#140](https://github.com/lfedgeai/AegisSovereignAI/issues/140) | TSS Library Integration (Keylime Agent) | 🚀 Planned |
+
+### 📋 Hardening & Reliability Backlog (P2)
+| Category | Issues | Summaries |
+| :--- | :--- | :--- |
+| **Testing** | [#184](https://github.com/lfedgeai/AegisSovereignAI/issues/184) | Software TPM (swtpm) support for dev/test |
+| **Packaging** | [#185](https://github.com/lfedgeai/AegisSovereignAI/issues/185), [#186](https://github.com/lfedgeai/AegisSovereignAI/issues/186) | WASM Standalone Packaging & OCI Publishing |
+| **Deployment** | [#156](https://github.com/lfedgeai/AegisSovereignAI/issues/156), [#160](https://github.com/lfedgeai/AegisSovereignAI/issues/160), [#161](https://github.com/lfedgeai/AegisSovereignAI/issues/161) | Containerization, Deployment Guides, and API Docs |
+| **Resilience** | [#147](https://github.com/lfedgeai/AegisSovereignAI/issues/147), [#148](https://github.com/lfedgeai/AegisSovereignAI/issues/148), [#158](https://github.com/lfedgeai/AegisSovereignAI/issues/158), [#157](https://github.com/lfedgeai/AegisSovereignAI/issues/157) | Graceful Shutdown, Health Checks, Timeout Config, Error Recovery |
+| **Security** | [#142](https://github.com/lfedgeai/AegisSovereignAI/issues/142), [#143](https://github.com/lfedgeai/AegisSovereignAI/issues/143), [#144](https://github.com/lfedgeai/AegisSovereignAI/issues/144), [#145](https://github.com/lfedgeai/AegisSovereignAI/issues/145), [#152](https://github.com/lfedgeai/AegisSovereignAI/issues/152), [#187](https://github.com/lfedgeai/AegisSovereignAI/issues/187) | Input Validation, Token Storage, Cert Pinning, DB Encryption, Audit Logging, **Gate Level Rate Limiting** |
+| **Internal Sec**| [#136](https://github.com/lfedgeai/AegisSovereignAI/issues/136), [#135](https://github.com/lfedgeai/AegisSovereignAI/issues/135), [#127](https://github.com/lfedgeai/AegisSovereignAI/issues/127), [#137](https://github.com/lfedgeai/AegisSovereignAI/issues/137) | UDS for Local IPC, DoS prevention (io.ReadAll), EK Cert Verification |
+| **Performance** | [#149](https://github.com/lfedgeai/AegisSovereignAI/issues/149), [#134](https://github.com/lfedgeai/AegisSovereignAI/issues/134), [#162](https://github.com/lfedgeai/AegisSovereignAI/issues/162) | HTTP Connection Pooling and Performance Benchmarks |
+| **Logic/QA** | [#132](https://github.com/lfedgeai/AegisSovereignAI/issues/132), [#131](https://github.com/lfedgeai/AegisSovereignAI/issues/131), [#128](https://github.com/lfedgeai/AegisSovereignAI/issues/128), [#129](https://github.com/lfedgeai/AegisSovereignAI/issues/129), [#154](https://github.com/lfedgeai/AegisSovereignAI/issues/154), [#155](https://github.com/lfedgeai/AegisSovereignAI/issues/155), [#163](https://github.com/lfedgeai/AegisSovereignAI/issues/163), [#188](https://github.com/lfedgeai/AegisSovereignAI/issues/188) | Unit Policy Bugs, Proto Mismatches, Context Cancellation, Retries, Schema Validation, Test Coverage, Dependency Pinning, **Sensor Terminology consistency** |
+| **Enhancement** | [#133](https://github.com/lfedgeai/AegisSovereignAI/issues/133), [#138](https://github.com/lfedgeai/AegisSovereignAI/issues/138), [#150](https://github.com/lfedgeai/AegisSovereignAI/issues/150), [#190](https://github.com/lfedgeai/AegisSovereignAI/issues/190) | Resource externalization, TPM Handle Persistence, Structured Logging, **Pluggable Sidecar Backends** |
+| **Lifecycle** | [#189](https://github.com/lfedgeai/AegisSovereignAI/issues/189) | Project Versioning Strategy (SemVer) |
+| **Backup/Rec** | [#159](https://github.com/lfedgeai/AegisSovereignAI/issues/159) | Backup and Recovery Procedures (P3) |
+
+---
+
+---
 
 ---
 
@@ -175,6 +223,7 @@ Effort: 2-3 days (Actual: 3 days)
 ### Task 0e: Software TPM Support (NEW)
 ```
 Goal: Enable development and testing on systems without physical TPM hardware.
+Status: 🚀 Tracked in GitHub [#184](https://github.com/lfedgeai/AegisSovereignAI/issues/184)
 Actions:
 1. Integrate `swtpm` or `ibmtpm` into `scripts/setup_tpm_plugin.sh`.
 2. Update `test_integration.sh` to auto-detect and use soft-TPM if no hardware is present.
@@ -213,6 +262,8 @@ Effort: 2 days
 | **Task 4** | SPIRE Server - Validator Plugin with Geolocation | P1 | `[x]` | — | Done |
 | **Task 5** | SPIRE Agent - Collector Plugin (Go) | P1 | `[x]` | — | Done |
 | **Task 6** | SPIRE Creds - Credential Composer (Go) | P1 | `[x]` | — | Done |
+| **Task 5b** | TSS Library Integration (Go) | P2 | `[ ]` | — | [#139](https://github.com/lfedgeai/AegisSovereignAI/issues/139) |
+| **Task 6b** | TSS Library Integration (Rust) | P2 | `[ ]` | — | [#140](https://github.com/lfedgeai/AegisSovereignAI/issues/140) |
 | **Task 12b** | Sensor Schema Separation (Mobile vs GNSS) | P1 | `[x]` | — | Done |
 
 ### SPIRE Modifications Summary
@@ -331,7 +382,7 @@ Benefit: Future-proofed schema for heterogeneous sensor attestation.
 | **Task 9** | Envoy WASM Plugin - Package for standalone release | P2 | `[ ]` | TBD | Week 4 |
 | **Task 10** | Envoy WASM Plugin - Publish Signed WASM to OCI registry | P2 | `[ ]` | TBD | Week 5 |
 | **Task 11** | Mobile Sensor Sidecar - Pure Mobile & DB-less Flow | P1 | `[x]` | — | Done |
-| **Task 12** | Mobile Sensor Sidecar - Pluggable Backends | P3 | `[ ]` | TBD | Post-1.0 |
+| **Task 12** | Mobile Sensor Sidecar - Pluggable Backends | P3 | `[ ]` | — | [#190](https://github.com/lfedgeai/AegisSovereignAI/issues/190) |
 
 ### Task 7 Details (Complete)
   - Implemented `verification_mode` config: `trust`, `runtime`, `strict`
@@ -375,6 +426,7 @@ This approach enables:
 - Future extraction to standalone repo if community demands it
 
 Dependencies: Tasks G1-G6
+Status: 🚀 Tracked in GitHub [#185](https://github.com/lfedgeai/AegisSovereignAI/issues/185)
 Effort: 2-3 days
 ```
 
@@ -409,6 +461,7 @@ Distribution Channels:
 - Envoy Extension Hub - discoverability
 
 Dependencies: Task 9, Tasks G1-G6
+Status: 🚀 Tracked in GitHub [#186](https://github.com/lfedgeai/AegisSovereignAI/issues/186)
 Effort: 2 days
 ```
 
@@ -475,6 +528,8 @@ Effort: 2 days
 | **Task 16** | Cleanup stale backup files | P1 | `[x]` | — | Done |
 | **Task 17** | Rate limiting at Envoy gateway level | P2 | `[ ]` | TBD | Week 4 |
 | **Task 18** | Standardize Observability (Metrics & Telemetry) | P1 | `[x]` | — | Done |
+| **Task 13b** | Registered OID for AttestedClaims | P1 | `[ ]` | — | [#130](https://github.com/lfedgeai/AegisSovereignAI/issues/130) |
+| **Task 15b** | Externalize Remaining Hardcoded Defaults | P1 | `[ ]` | — | [#153](https://github.com/lfedgeai/AegisSovereignAI/issues/153) |
 
 ### Task 15: Quality Assurance - Linting, pre-commit hooks (COMPLETE)
 ```
@@ -648,6 +703,7 @@ Effort: 30 minutes
 ```
 Current State: Rate limiting exists in rust-keylime delegated_certification_handler
 Missing: Envoy-level rate limiting for API gateway protection
+Status: 🚀 Tracked in GitHub [#187](https://github.com/lfedgeai/AegisSovereignAI/issues/187)
 
 Implementation:
 - Add Envoy rate limit filter configuration
@@ -695,7 +751,7 @@ Effort: 3-4 days (COMPLETE)
 | **Task D6** | Standardize sensor type casing (mobile/gnss) | P2 | `[ ]` | TBD | Week 2 |
 | **Task D7** | Expand troubleshooting section in README | P2 | `[x]` | — | Done |
 | **Task D8** | Add container/Kubernetes deployment docs | P2 | `[ ]` | TBD | Week 4 |
-| **Task D9** | Define Versioning & Release Strategy (SemVer) | P2 | `[ ]` | TBD | Week 2 |
+| **Task D9** | Define Versioning & Release Strategy (SemVer) | P2 | `[ ]` | — | [#189](https://github.com/lfedgeai/AegisSovereignAI/issues/189) |
 
 ### Task D1: Prerequisite Consolidation
 ```
@@ -759,7 +815,7 @@ Issue: Inconsistent casing of sensor types across documents
 
 Decision: Use lowercase everywhere (mobile, gnss) to match code
 Files to Update: README.md, README-arch-sovereign-unified-identity.md
-
+Status: 🚀 Tracked in GitHub [#188](https://github.com/lfedgeai/AegisSovereignAI/issues/188)
 Effort: 30 minutes
 ```
 
