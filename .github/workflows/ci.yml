@@ -181,7 +181,7 @@ jobs:
               run: |
                   echo "Purging workspaces..."
                   cd hybrid-cloud-poc
-                  python3 ./ci_test_runner.py --cleanup-only 2>/dev/null || true
+                  python3 ./ci_test_runner.py --cleanup-only -- --control-plane-host 10.1.0.10 --agents-host 10.1.0.10 --onprem-host 10.1.0.10 2>/dev/null || true
 
                   pkill -9 -f "spire-server run" 2>/dev/null || true
                   pkill -9 -f "spire-agent run" 2>/dev/null || true
