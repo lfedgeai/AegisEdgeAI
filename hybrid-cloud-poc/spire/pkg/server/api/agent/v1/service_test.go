@@ -27,6 +27,7 @@ import (
 	"github.com/spiffe/spire/proto/spire/common"
 	"github.com/spiffe/spire/test/clock"
 	"github.com/spiffe/spire/test/fakes/fakedatastore"
+	"github.com/spiffe/spire/test/fakes/fakemetrics"
 	"github.com/spiffe/spire/test/fakes/fakeserverca"
 	"github.com/spiffe/spire/test/fakes/fakeservercatalog"
 	"github.com/spiffe/spire/test/fakes/fakeservernodeattestor"
@@ -3222,12 +3223,15 @@ func setupServiceTest(t *testing.T, agentSVIDTTL time.Duration) *serviceTest {
 	cat := fakeservercatalog.New()
 	clk := clock.NewMock(t)
 
+	metrics := fakemetrics.New()
+
 	service := agent.New(agent.Config{
 		ServerCA:    ca,
 		DataStore:   ds,
 		TrustDomain: td,
 		Clock:       clk,
 		Catalog:     cat,
+		Metrics:     metrics,
 	})
 
 	log, logHook := test.NewNullLogger()

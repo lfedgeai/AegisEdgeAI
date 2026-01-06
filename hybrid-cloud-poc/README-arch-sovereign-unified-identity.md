@@ -151,6 +151,34 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 
 ---
 
+## 📊 Observability
+
+### Unified Identity Metrics
+
+SPIRE Server emits metrics for Unified Identity attestation flows via the standard `telemetry.Metrics` interface:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `agent_manager.unified_identity.reattest.success` | Counter | Successful TPM-based re-attestations |
+| `agent_manager.unified_identity.reattest.error` | Counter | Failed TPM-based re-attestations |
+
+**Configuration:** Metrics are exposed via Prometheus on port `9988`:
+```hcl
+# spire-server.conf
+telemetry {
+    Prometheus {
+        host = "0.0.0.0"
+        port = 9988
+    }
+}
+```
+
+**Scrape Endpoint:** `http://<spire-server>:9988/metrics`
+
+> **Note:** Keylime does not currently have a native metrics stack. Use Keylime logs for observability.
+
+---
+
 ## 🔐 Key Architecture Highlights
 
 ### TPM Hardware Binding for All Operations

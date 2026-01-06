@@ -62,6 +62,12 @@ This document covers:
 - Certificate chain structure
 - Security mechanisms and design points
 
+### Observability
+
+SPIRE Server exposes Prometheus metrics for Unified Identity attestation on port `9988`:
+- `agent_manager.unified_identity.reattest.success` - Successful TPM-based re-attestations
+- `agent_manager.unified_identity.reattest.error` - Failed TPM-based re-attestations
+
 ## Hybrid Cloud Unified Identity PoC End-to-End Solution Architecture
 
 The current implementation demonstrates a hybrid cloud unified identity system connecting a Sovereign Cloud/Edge Cloud environment with a Customer on-Prem Private Cloud.
