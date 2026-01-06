@@ -371,7 +371,7 @@ def write_private(inp: Tuple[Dict[str, Any], str]) -> None:
     towrite = {"salt": salt, "priv": ciphertext}
 
     mask = os.umask(0o037)
-    with os.fdopen(os.open("private.yml", os.O_WRONLY | os.O_CREAT, 0o640), "w", encoding="utf-8") as f:
+    with os.fdopen(os.open("private.yml", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640), "w", encoding="utf-8") as f:
         yaml.dump(towrite, f, Dumper=SafeDumper)
     os.umask(mask)
 
