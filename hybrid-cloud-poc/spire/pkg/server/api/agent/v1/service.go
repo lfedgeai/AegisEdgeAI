@@ -45,27 +45,30 @@ type Config struct {
 	DataStore   datastore.DataStore
 	ServerCA    ca.ServerCA
 	TrustDomain spiffeid.TrustDomain
+	Metrics     telemetry.Metrics
 }
 
 // Service implements the v1 agent service
 type Service struct {
 	agentv1.UnsafeAgentServer
 
-	cat catalog.Catalog
-	clk clock.Clock
-	ds  datastore.DataStore
-	ca  ca.ServerCA
-	td  spiffeid.TrustDomain
+	cat     catalog.Catalog
+	clk     clock.Clock
+	ds      datastore.DataStore
+	ca      ca.ServerCA
+	td      spiffeid.TrustDomain
+	metrics telemetry.Metrics
 }
 
 // New creates a new agent service
 func New(config Config) *Service {
 	return &Service{
-		cat: config.Catalog,
-		clk: config.Clock,
-		ds:  config.DataStore,
-		ca:  config.ServerCA,
-		td:  config.TrustDomain,
+		cat:     config.Catalog,
+		clk:     config.Clock,
+		ds:      config.DataStore,
+		ca:      config.ServerCA,
+		td:      config.TrustDomain,
+		metrics: config.Metrics,
 	}
 }
 
@@ -324,8 +327,10 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 		// Unified-Identity: Derive agent ID from TPM evidence (AK/EK via keylime_agent_uuid or App Key)
 		agentIDStr, err := s.deriveAgentIDFromTPM(ctx, log, params.Params.SovereignAttestation)
 		if err != nil {
+			s.metrics.IncrCounter([]string{"agent_manager", "unified_identity", "reattest", "error"}, 1)
 			return api.MakeErr(log, codes.Internal, "failed to derive agent ID from TPM evidence", err)
 		}
+		s.metrics.IncrCounter([]string{"agent_manager", "unified_identity", "reattest", "success"}, 1)
 		attestResult = &nodeattestor.AttestResult{
 			AgentID:     agentIDStr,
 			CanReattest: true, // TPM-based attestation is re-attestable
@@ -338,8 +343,10 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 			// Derive agent ID from TPM evidence instead of join_token
 			agentIDStr, err := s.deriveAgentIDFromTPM(ctx, log, params.Params.SovereignAttestation)
 			if err != nil {
+				s.metrics.IncrCounter([]string{"agent_manager", "unified_identity", "reattest", "error"}, 1)
 				return api.MakeErr(log, codes.Internal, "failed to derive agent ID from TPM evidence", err)
 			}
+			s.metrics.IncrCounter([]string{"agent_manager", "unified_identity", "reattest", "success"}, 1)
 			attestResult = &nodeattestor.AttestResult{
 				AgentID:     agentIDStr,
 				CanReattest: true,
@@ -357,8 +364,10 @@ func (s *Service) AttestAgent(stream agentv1.Agent_AttestAgentServer) error {
 		if params.Params != nil && params.Params.SovereignAttestation != nil {
 			agentIDStr, err := s.deriveAgentIDFromTPM(ctx, log, params.Params.SovereignAttestation)
 			if err != nil {
+				s.metrics.IncrCounter([]string{"agent_manager", "unified_identity", "reattest", "error"}, 1)
 				return api.MakeErr(log, codes.Internal, "failed to derive agent ID from TPM evidence", err)
 			}
+			s.metrics.IncrCounter([]string{"agent_manager", "unified_identity", "reattest", "success"}, 1)
 			attestResult = &nodeattestor.AttestResult{
 				AgentID:     agentIDStr,
 				CanReattest: true,
@@ -542,7 +551,6 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 	}
 	rpccontext.AuditRPC(ctx)
 
-
 	resp := &agentv1.RenewAgentResponse{
 		Svid: &types.X509SVID{
 			Id:        api.ProtoFromID(callerID),
@@ -561,7 +569,6 @@ func (s *Service) RenewAgent(ctx context.Context, req *agentv1.RenewAgentRequest
 
 	return resp, nil
 }
-
 
 // PostStatus post agent status
 func (s *Service) PostStatus(context.Context, *agentv1.PostStatusRequest) (*agentv1.PostStatusResponse, error) {
