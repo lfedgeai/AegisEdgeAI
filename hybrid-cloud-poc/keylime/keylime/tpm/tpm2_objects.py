@@ -59,6 +59,7 @@ TPM_ALG_ECDSA = 0x0018
 
 TPM_GENERATED_VALUE = 0xFF544347
 
+TPM_ST_ATTEST_CERTIFY = 0x8017
 TPM_ST_ATTEST_QUOTE = 0x8018
 
 # These are the object attribute values important for EK certs
@@ -546,13 +547,13 @@ def unmarshal_tpms_attest(tpms_attest: bytes) -> TpmsAttestType:
     magic, typ = struct.unpack_from(">IH", tpms_attest, 0)
     if magic != TPM_GENERATED_VALUE:
         raise Exception("Bad magic in tpms_attest")
-    if typ != TPM_ST_ATTEST_QUOTE:
+    if typ not in [TPM_ST_ATTEST_QUOTE, TPM_ST_ATTEST_CERTIFY]:
         raise Exception(f"Unsupported type in tpms_attest: {typ:#x}")
     o = 6
-    # TPM2B_NAME
+    # TPM2B_NAME (qualifiedSigner)
     (sz,) = struct.unpack_from(">H", tpms_attest, o)
     o = o + 2 + sz
-    # TPM2B_NAME
+    # TPM2B_DATA (extraData)
     (sz,) = struct.unpack_from(">H", tpms_attest, o)
     o = o + 2
     (extradata,) = struct.unpack_from(f"{sz}s", tpms_attest, o)
@@ -560,14 +561,31 @@ def unmarshal_tpms_attest(tpms_attest: bytes) -> TpmsAttestType:
     # TPMS_CLOCK_INFO
     clock_info = unmarshal_tpms_clock_info(tpms_attest[o : o + 17])
     o = o + 17
-    # UINT64
+    # UINT64 (firmwareVersion)
     o = o + 8
-    pcrDigest = unmarshal_tpms_quote_info(tpms_attest[o:])
+
+    attested_data = {}
+    if typ == TPM_ST_ATTEST_QUOTE:
+        pcrDigest = unmarshal_tpms_quote_info(tpms_attest[o:])
+        attested_data["attested.quote.pcrDigest"] = pcrDigest
+    elif typ == TPM_ST_ATTEST_CERTIFY:
+        # TPMS_CERTIFY_INFO has two TPM2B_NAME fields
+        # name
+        (sz,) = struct.unpack_from(">H", tpms_attest, o)
+        offset = o + 2
+        (name,) = struct.unpack_from(f"{sz}s", tpms_attest, offset)
+        offset = offset + sz
+        # qualifiedName
+        (sz,) = struct.unpack_from(">H", tpms_attest, offset)
+        offset = offset + 2
+        (qualifiedName,) = struct.unpack_from(f"{sz}s", tpms_attest, offset)
+        attested_data["attested.certify.name"] = name
+        attested_data["attested.certify.qualifiedName"] = qualifiedName
 
     return {
         "clockInfo": clock_info,
         "extraData": bytes(extradata),
-        "attested.quote.pcrDigest": pcrDigest,
+        **attested_data
     }
 
 
