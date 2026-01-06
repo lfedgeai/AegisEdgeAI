@@ -347,6 +347,9 @@ def create_app(db_path: Path) -> Flask:
 
     @app.route("/verify", methods=["POST"])
     def verify():
+        # Increment request total (Task 18: Observability)
+        REQUEST_COUNT.labels(result='total').inc()
+        
         payload = request.get_json(force=True) or {}
         LOG.info("Request: %s", payload)
 
@@ -378,10 +381,12 @@ def create_app(db_path: Path) -> Flask:
             sensor = database.get_sensor(sensor_id, payload.get("sensor_imei"), payload.get("sensor_imsi"), payload.get("sensor_serial_number"))
             if not sensor:
                 LOG.error("Sensor not found in DB: %s", sensor_id)
+                REQUEST_COUNT.labels(result='error').inc()
                 return jsonify({"error": "sensor_not_found"}), 404
 
         verifier = verifiers.get(sensor.get("sensor_type"))
         if not verifier:
+            REQUEST_COUNT.labels(result='error').inc()
             return jsonify({"error": f"unsupported_sensor_type_in_mobile_sidecar: {sensor.get('sensor_type')}"}), 400
 
         result = verifier.verify(sensor, skip_cache=payload.get("skip_cache", False))

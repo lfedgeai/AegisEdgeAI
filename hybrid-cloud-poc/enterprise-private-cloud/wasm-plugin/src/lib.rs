@@ -82,6 +82,7 @@ struct MetricIds {
     verification_success: u32,
     verification_failure: u32,
     sidecar_call_total: u32,
+    sidecar_latency_ms: u32,
 }
 
 impl Default for PluginConfig {
@@ -177,7 +178,15 @@ impl RootContext for SensorVerificationRoot {
             MetricType::Counter,
             "wasm_filter_sidecar_call_total"
         ).unwrap_or(0);
-        proxy_wasm::hostcalls::log(LogLevel::Info, "WASM metrics defined");
+        self.metrics.sidecar_latency_ms = proxy_wasm::hostcalls::define_metric(
+            MetricType::Histogram,
+            "wasm_filter_sidecar_latency_ms"
+        ).unwrap_or(0);
+        proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+            "WASM metrics defined: request_total={}, success={}, failure={}, sidecar_call={}, latency={}",
+            self.metrics.request_total, self.metrics.verification_success, self.metrics.verification_failure,
+            self.metrics.sidecar_call_total, self.metrics.sidecar_latency_ms
+        ));
 
         true
     }
@@ -195,6 +204,7 @@ impl RootContext for SensorVerificationRoot {
             sensor_latitude: None,
             sensor_longitude: None,
             sensor_accuracy: None,
+            sidecar_call_start_ms: None,
         }))
     }
 
@@ -215,6 +225,7 @@ struct SensorVerificationFilter {
     sensor_latitude: Option<f64>,
     sensor_longitude: Option<f64>,
     sensor_accuracy: Option<f64>,
+    sidecar_call_start_ms: Option<u64>,
 }
 
 impl Context for SensorVerificationFilter {
@@ -227,6 +238,15 @@ impl Context for SensorVerificationFilter {
 
         // Get response body
         let body_result = self.get_http_call_response_body(0, body_size);
+        
+        // Record latency (Task 18: Observability)
+        if let Some(start_time) = self.sidecar_call_start_ms {
+            let now = self.get_current_time().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+            let latency = now.saturating_sub(start_time);
+            let _ = proxy_wasm::hostcalls::record_metric(self.metrics.sidecar_latency_ms, latency);
+            proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Recorded sidecar latency: {}ms", latency));
+        }
+
         let body = match body_result {
             Some(b) => b,
             None => {
@@ -317,6 +337,10 @@ impl Context for SensorVerificationFilter {
 
 impl HttpContext for SensorVerificationFilter {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
+        // Increment request total (Task 18: Observability)
+        let _ = proxy_wasm::hostcalls::increment_metric(self.metrics.request_total, 1);
+        proxy_wasm::hostcalls::log(LogLevel::Debug, &format!("Incremented request_total (ID: {})", self.metrics.request_total));
+
         // Get certificate chain from x-forwarded-client-cert header (set by forward_client_cert_details in Envoy)
         // Format: "By=...;Cert=\"...\";Chain=\"...\";Subject=...;URI=..."
         // The Unified Identity extension is in the agent SVID (second certificate in chain)
@@ -485,6 +509,10 @@ impl HttpContext for SensorVerificationFilter {
                         Duration::from_secs(5),
                     ) {
                         Ok(_) => {
+                            // Record start time and increment sidecar call count (Task 18: Observability)
+                            self.sidecar_call_start_ms = Some(self.get_current_time().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64);
+                            let _ = proxy_wasm::hostcalls::increment_metric(self.metrics.sidecar_call_total, 1);
+
                             proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
                                 "Mobile sensor (sensor_id={}): verification_mode={}, skip_cache={} - dispatched sidecar call",
                                 sensor_id, mode_str, skip_cache

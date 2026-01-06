@@ -474,7 +474,7 @@ Effort: 2 days
 | **Task 15** | Quality Assurance - Linting, pre-commit hooks | P2 | `[x]` | — | Done |
 | **Task 16** | Cleanup stale backup files | P1 | `[x]` | — | Done |
 | **Task 17** | Rate limiting at Envoy gateway level | P2 | `[ ]` | TBD | Week 4 |
-| **Task 18** | Standardize Observability (Metrics & Telemetry) | P1 | `[/]` | — | Week 4 |
+| **Task 18** | Standardize Observability (Metrics & Telemetry) | P1 | `[x]` | — | Done |
 
 ### Task 15: Quality Assurance - Linting, pre-commit hooks (COMPLETE)
 ```
