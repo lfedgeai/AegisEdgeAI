@@ -10,7 +10,7 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 
 **Current Status (January 2026):**
 - **Initial P0/P1 Implementation**: **100% Complete**.
-- **Specification/Refactoring P1 Backlog**: **31/33 Done** (Reflected in GitHub P1 labels).
+- **Specification/Refactoring P1**: **33/33 Done** (All P1 tasks complete!).
 - Integration with public GitHub issues is established for maximum transparency.
 - Focus has shifted to **P2 Hardening** and **P3 Ecosystem** expansion.
 
@@ -47,11 +47,11 @@ The "Unified Identity" feature introduces a hardware-rooted relationship between
 | :--- | :--- | :--- | :--- | :--- |
 | Pillar 0 | 7 | 6/6 Done | 1/1 Done | ✅ Ready |
 | Pillar 1 | 5 | 3/3 Done | 1/2 Done | ✅ Ready |
-| Pillar 2 | 12 | 10/10 Done | 0/2 Done | ✅ Ready |
+| Pillar 2 | 12 | 11/11 Done | 0/2 Done | ✅ Ready |
 | Pillar 3 | 7 | 3/3 Done | 0/4 Done | ✅ Ready |
-| Pillar 4 | 8 | 5/7 Done | 1/1 Done | ⚠️ P1 Backlog |
+| Pillar 4 | 8 | 7/7 Done | 1/1 Done | ✅ Ready |
 | Pillar 5 | 9 | 4/4 Done | 2/5 Done | ✅ Ready |
-| **Total** | **48** | **31/33** | **5/15** | **94% Done (P1)** |
+| **Total** | **48** | **33/33** | **5/15** | **100% Done (P1)** |
 
 ---
 
@@ -67,14 +67,14 @@ To ensure maximum external visibility, every public issue is mapped to the archi
 | **Task 13** | [#126](https://github.com/lfedgeai/AegisSovereignAI/issues/126) | Remove `InsecureSkipVerify` (Production TLS) | ✅ Closed |
 | **Task 14** | [#141](https://github.com/lfedgeai/AegisSovereignAI/issues/141) | Secure Credentials (Secrets Management) | ✅ Closed |
 | **Task 18** | [#151](https://github.com/lfedgeai/AegisSovereignAI/issues/151) | Production Observability & Prometheus Metrics | ✅ Closed |
+| **Task 13b** | [#130](https://github.com/lfedgeai/AegisSovereignAI/issues/130) | Registered OID for AttestedClaims (`1.3.6.1.4.1.55744.1.1`) | ✅ Closed |
+| **Task 15b** | [#153](https://github.com/lfedgeai/AegisSovereignAI/issues/153) | Externalize Hardcoded Config Defaults | ✅ Closed |
 
-### 🛠️ In-Progress / P1 Backlog
+### � P2 Backlog (Deferred from P1)
 | Focus | Issue | Summary | Roadmap Status |
 | :--- | :--- | :--- | :--- |
-| **Pillar 4** | [#153](https://github.com/lfedgeai/AegisSovereignAI/issues/153) | Externalize Hardcoded Config Defaults | ⚠️ Partial |
-| **Pillar 2** | [#130](https://github.com/lfedgeai/AegisSovereignAI/issues/130) | Replace placeholder OID for AttestedClaims | 🚀 Planned |
-| **Task 5/6** | [#139](https://github.com/lfedgeai/AegisSovereignAI/issues/139) | TSS Library Integration (SPIRE TPM Plugin) | 🚀 Planned |
-| **Pillar 3** | [#140](https://github.com/lfedgeai/AegisSovereignAI/issues/140) | TSS Library Integration (Keylime Agent) | 🚀 Planned |
+| **Task 5/6** | [#139](https://github.com/lfedgeai/AegisSovereignAI/issues/139) | TSS Library Integration (SPIRE TPM Plugin) | � P2 (Feature-flagged) |
+| **Pillar 3** | [#140](https://github.com/lfedgeai/AegisSovereignAI/issues/140) | TSS Library Integration (Keylime Agent) | � P2 (Feature-flagged) |
 
 ### 📋 Hardening & Reliability Backlog (P2)
 | Category | Issues | Summaries |
