@@ -1,6 +1,6 @@
 # Master Roadmap: Aegis Sovereign Unified Identity Upstreaming
 
-<!-- Version: 0.1.2 | Last Updated: 2026-01-06 -->
+<!-- Version: 0.1.3 | Last Updated: 2026-01-07 -->
 
 This document serves as the **single source of truth** for both the technical roadmap and the execution strategy for refactoring the "Unified Identity" PoC into upstream-ready components.
 
@@ -543,8 +543,8 @@ Effort: 2 days
 | **Task 16** | Cleanup stale backup files | P1 | `[x]` | — | Done |
 | **Task 17** | Rate limiting at Envoy gateway level | P2 | `[ ]` | TBD | Week 4 |
 | **Task 18** | Standardize Observability (Metrics & Telemetry) | P1 | `[x]` | — | Done |
-| **Task 13b** | Registered OID for AttestedClaims | P1 | `[ ]` | — | [#130](https://github.com/lfedgeai/AegisSovereignAI/issues/130) |
-| **Task 15b** | Externalize Remaining Hardcoded Defaults | P1 | `[ ]` | — | [#153](https://github.com/lfedgeai/AegisSovereignAI/issues/153) |
+| **Task 13b** | Registered OID for AttestedClaims (`1.3.6.1.4.1.55744.1.1`) | P1 | `[x]` | — | Done |
+| **Task 15b** | Externalize Remaining Hardcoded Defaults | P1 | `[x]` | — | Done |
 
 ### Task 15: Quality Assurance - Linting, pre-commit hooks (COMPLETE)
 ```
