@@ -46,7 +46,7 @@ For security architects and systems engineers, AegisSovereignAI acts as the unif
 Aegis secures the physical and virtual environment where AI executes, supporting both high-performance enclaves and commodity edge hardware. A single control plane provides integrity on standard hardware today and full confidentiality on TEEs tomorrow.
 
 * **Confidential Computing (CC) & Trusted Execution Environments (TEE):** For high-stakes inference, Aegis integrates with **Intel Trust Domain Extensions (TDX)** and **NVIDIA H100 TEEs**. This ensures that model weights and sensitive context remain encrypted while in use, shielding them from privileged system administrators.
-* **Integrity for Standard Hardware:** For legacy hardware that cannot run TEEs, Aegis uses **Keylime** and the **Trusted Platform Module (TPM)** to verify the software stack's **Integrity** (via IMA/EVM). If you cannot have encryption-in-use (**Confidentiality**), you at least have proof the code is untampered (**Integrity**).
+* **Integrity for Standard Hardware:** For legacy hardware that cannot run TEEs, Aegis uses **Keylime** and the **Trusted Platform Module (TPM)** to verify the software stack's **Integrity** (via IMA/EVM). If you cannot have encryption-in-use (**Confidentiality**), you at least have proof the code is untampered (**Integrity**). See the [Hybrid Cloud PoC](./hybrid-cloud-poc/README.md) for the SPIRE-Keylime integration code.
 
 ### Layer 2: Workload Identity (The Provable Bridge)
 
@@ -120,7 +120,13 @@ AegisSovereignAI contributes to industry standards, turning high-level framework
 
 ### NIST AI Risk Management Framework (AI RMF)
 
-* **The Measurement Engine:** NIST emphasizes "measurable" trust. Aegis provides the first measurement engine for AI security via the **Immutable Triad** (Input Hash + Context Hash + Model Config) for **Verifiable AI Audit Logs**.
+NIST emphasizes "measurable" trust. Aegis provides the first measurement engine for AI security:
+
+> **The Immutable Triad**
+>
+> `Audit Log = Hash(Input) + Hash(Context) + Hash(Model Config)`
+>
+> Every AI decision carries cryptographic proof of exactly what input, context, and model version produced the output—enabling **Verifiable AI Audit Logs**.
 
 ---
 
