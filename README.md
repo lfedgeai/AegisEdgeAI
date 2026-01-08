@@ -16,20 +16,41 @@ In the modern distributed enterprise, AI workloads operate across a fragmented l
 
 ---
 
+## Why Now?
+
+Three converging forces make verifiable AI security urgent:
+
+1. **Regulatory Pressure:** The EU AI Act mandates auditability for high-risk AI. SOC 2 and ISO 27001 auditors now require evidence of AI governance. GDPR/CCPA create a deadlock between transparency and privacy that only ZKP resolves.
+2. **Multi-Agent Explosion:** Autonomous AI agents are proliferating across trading, customer service, and operations. A single compromised agent can move laterally across the fabric. Traditional perimeter security cannot contain agents that act autonomously.
+3. **Confidential Computing Maturation:** Intel TDX and NVIDIA H100 TEEs are production-ready. Enterprises can now demand encryption-in-use, but need a control plane that works across legacy and next-gen hardware.
+
+---
+
+## Use Cases
+
+| Industry | Challenge | Aegis Solution |
+| --- | --- | --- |
+| **Financial Services** | Prove AI trading decisions comply with regulations without exposing proprietary strategies | ZK-Proofs of model version and input constraints |
+| **Healthcare AI** | Audit diagnostic AI without exposing patient data (HIPAA) | Audit without Disclosure via ZKP-RAG |
+| **Defense / Sovereign Cloud** | Guarantee AI never executes outside authorized jurisdictions | Hardware-attested geofencing with Autonomous Revocation |
+| **Multi-Agent Systems** | Isolate compromised agents before lateral movement | SPIRE identity revocation triggered by Keylime attestation failure |
+
+---
+
 ## The Three-Layer Trust Architecture: Technical Deep Dive
 
 For security architects and systems engineers, AegisSovereignAI acts as the unifying control plane that cryptographically binds silicon-level attestation to application-level governance.
 
 ### Layer 1: Infrastructure Security (The Confidentiality Upgrade Path)
 
-We secure the physical and virtual environment where AI "thinks," supporting both high-performance enclaves and commodity edge hardware. Aegis serves as your **Confidentiality Upgrade Path**—providing integrity today on standard hardware and full confidentiality tomorrow on TEEs, using the *same* software control plane.
+Aegis secures the physical and virtual environment where AI executes, supporting both high-performance enclaves and commodity edge hardware. A single control plane provides integrity on standard hardware today and full confidentiality on TEEs tomorrow.
 
 * **Confidential Computing (CC) & Trusted Execution Environments (TEE):** For high-stakes inference, Aegis integrates with **Intel Trust Domain Extensions (TDX)** and **NVIDIA H100 TEEs**. This ensures that model weights and sensitive context remain encrypted while in use, shielding them from privileged system administrators.
-* **Integrity for Standard Hardware:** Many enterprises are stuck in the "Messy Middle"—legacy hardware that can't run TEEs. Aegis hardens these systems using **Keylime** and the **Trusted Platform Module (TPM)**. We verify the software stack's **Integrity** (via IMA/EVM), ensuring that if you cannot have encryption-in-use (**Confidentiality**), you at least have proof the code is untampered (**Integrity**).
+* **Integrity for Standard Hardware:** For legacy hardware that cannot run TEEs, Aegis uses **Keylime** and the **Trusted Platform Module (TPM)** to verify the software stack's **Integrity** (via IMA/EVM). If you cannot have encryption-in-use (**Confidentiality**), you at least have proof the code is untampered (**Integrity**).
 
 ### Layer 2: Workload Identity (The Provable Bridge)
 
-We bind **Who** is running to **Where** they are running, replacing weak bearer tokens with hardware-rooted possession.
+Aegis binds **Who** is running to **Where** they are running, replacing bearer tokens with hardware-rooted possession.
 
 * **Unified Identity:** We bind **Secure Production Identity Framework for Everyone (SPIRE)** workload identities to hardware credentials. An AI agent cannot execute unless it is on a verified, authorized machine.
 * **Zero-Knowledge Proof (ZKP) of Residency:** Using our **Internet Engineering Task Force (IETF)** proposals (**WIMSE/RATS**), agents prove they are in a compliant jurisdiction (e.g., "Inside the Corporate Data Center") without revealing raw Global Positioning System (GPS) or network metadata.
@@ -37,13 +58,13 @@ We bind **Who** is running to **Where** they are running, replacing weak bearer 
 
 ### Layer 3: AI Governance (Verifiable Logic & Privacy)
 
-We turn high-level policy into mathematical constraints, moving security into the core architecture.
+High-level policy becomes mathematical constraints, moving security into the core architecture.
 
 * **Beyond Retrieval-Augmented Generation (RAG):** ZK-Proofs extend beyond context protection to the entire AI lifecycle:
   * **Verifiable Inference:** Prove the AI used a specific, audited model version without revealing weights (IP protection).
   * **Fairness Auditing:** Prove a model is unbiased across demographic groups without the auditor ever seeing the sensitive customer data used in the audit.
 
-* **Policy-as-Circuit:** We are evolving governance from "Code" to "Circuits." By compiling rules into **Zero-Knowledge Succinct Non-Interactive Argument of Knowledge (zk-SNARK)** circuits, we provide an immutable **Certificate of Compliance** for every AI decision.
+* **Policy-as-Circuit:** Governance evolves from "Code" to "Circuits." Rules compiled into **zk-SNARK** circuits provide an immutable **Certificate of Compliance** for every AI decision.
 
 ![AegisSovereignAI Architecture](images/readme-arch-new.svg)
 
@@ -72,7 +93,7 @@ A common concern with ZKP is the computational "tax." Aegis addresses this throu
 
 ## Competitive Landscape
 
-Aegis occupies a unique niche by providing **AI-specific orchestration** on top of foundational security primitives:
+Aegis provides **AI-specific orchestration** on top of foundational security primitives:
 
 | Project | What They Provide | Aegis Differentiator |
 | --- | --- | --- |
@@ -86,11 +107,11 @@ Aegis occupies a unique niche by providing **AI-specific orchestration** on top 
 
 ## Driving AI Security Standards
 
-AegisSovereignAI is actively contributing to industry standards, turning high-level frameworks into **executable code**.
+AegisSovereignAI contributes to industry standards, turning high-level frameworks into **executable code**.
 
 ### OWASP Top 10 for LLMs
 
-* **LLM01 (Prompt Injection):** Aegis drives a new standard for **Architectural Separation**. We propose **Hardware-Verified Intent Tunnels**—where LLMs only accept input signed by a hardware-attested classifier, moving beyond text filtering to structural enforcement.
+* **LLM01 (Prompt Injection):** **Hardware-Verified Intent Tunnels**—LLMs only accept input signed by a hardware-attested classifier. Structural enforcement, not text filtering.
 * **LLM06 (Sensitive Data Disclosure):** Our **ZKP-RAG** implementation serves as a reference guardrail for privacy-preserving retrieval.
 
 ### Cloud Security Alliance (CSA) - AI Security Stack
