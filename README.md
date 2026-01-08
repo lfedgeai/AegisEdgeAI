@@ -1,128 +1,82 @@
 # AegisSovereignAI: Trusted AI for the Distributed Enterprise
 
-**AegisSovereignAI** is the **Trust Integration Layer** for the Linux Foundation AI ecosystem. It delivers verifiable trust for AI workloads across the **distributed enterprise** - from **Centralized Clouds** to the **Far Edge** - unifying open standards from the CNCF (SPIFFE/Keylime/OPA) and IETF (RATS/WIMSE) into a contiguous **Chain of Trust** from Silicon to Prompt.
+**Verifiable Trust from Silicon to Prompt.**
 
-We don't just integrate with AI frameworks; we actively harden them. From defining **Zero-Trust Governance Middleware** for **LangChain** to proposing **Hardware-Verified Location APIs** for the **Linux Foundation CAMARA Project**, we are driving security standards directly into the tools developers and carriers use daily.
+## Executive Summary: The Value of Verifiable Intelligence
 
-### The Missing Link in the LF AI Ecosystem
-Our architecture is designed to complement the emerging Linux Foundation AI stack:
-* **Complements [OPEA](https://opea.dev) (Open Platform for Enterprise AI):** While OPEA defines the *reference architecture* for building RAG pipelines, AegisSovereignAI provides the **Hardened Runtime** - ensuring those microservices only boot on verified hardware.
-* **Complements [AAIF](https://lfaidata.foundation) (Agentic AI Foundation):** While AAIF standardizes *how* agents communicate (via the Model Context Protocol, MCP), AegisSovereignAI defines **Who** is communicating - securing agent-to-agent interactions with hardware-rooted Mutual TLS.
+In the modern distributed enterprise, AI workloads operate across a fragmented landscape of public clouds, on-premise data centers, and the far edge. Traditional "wrapper-based" security—like firewalls or real-time guardrails—is no longer sufficient for regulated markets. These methods are bypassable, add latency, and fail to provide the mathematical proof required by auditors.
 
-We bridge the gap between these frameworks and the physical infrastructure, providing cryptographic proof that your AI agents are running on verified hardware, in authorized jurisdictions, and acting within sovereign policy limits.
+**AegisSovereignAI** transforms AI security from "Best-Effort" to **Verifiable Intelligence**. We provide a contiguous **Chain of Trust** that ensures:
 
-<p align="center">
-  <img src="images/readme-arch.svg" alt="AegisSovereignAI 3-Layer Trust Model" width="800">
-</p>
+* **Sovereignty:** Mathematical proof that data and models never leave authorized jurisdictions.
+* **Privacy:** Auditing of AI decisions via Zero-Knowledge Proofs (ZKP) without ever exposing PII or sensitive context.
+* **Resiliency:** A hardware-rooted "Kill-Switch" that autonomously isolates compromised agents in multi-agent ecosystems.
 
-## The Trusted AI Stack
-AegisSovereignAI addresses the three critical layers required to unlock regulated markets across a distributed fleet:
+![AegisSovereignAI Architecture Summary](images/readme-arch-new-summary.svg)
 
-### 1. Infrastructure Security (The Foundation)
-* **Hardware Supply Chain:** We utilize **TPM Endorsement Keys (EK)** and **BMC-based Inventory Attestation** to detect component swapping or firmware downgrades before the OS even boots.
-* **Runtime Integrity ("Self-Healing Trust"):** We simplify security operations by binding **Keylime** (IMA/EVM) integrity checks directly to the **SPIRE Agent's** periodic re-attestation loop.
-    * **The Mechanism:** The Agent must prove its binary integrity (via TPM Quote) every renewal cycle.
-    * **The Result:** If the `spire-agent` or `kubelet` binaries are tampered with, the Server denies the renewal. The compromised node is naturally cut off from the mesh, requiring no manual "Kill Switch" infrastructure.
+---
 
-### 2. Workload Identity (The Bridge)
-* **Proof of Residency (PoR):** We issue cryptographic certificates that bind the **Workload Identity** (executable hash) to the **Hardware Identity** (TPM). This replaces weak bearer tokens with hardware-rooted proof of possession.
-* **Proof of Geofencing (PoG):** We extend PoR to include **Location Identity** (GNSS/Mobile Sensors), ensuring data sovereignty by preventing AI agents from running in disallowed jurisdictions.
+## The Three-Layer Trust Architecture: Technical Deep Dive
 
-### 3. AI Governance & Compliance (The New Layer)
-* **Zero-Trust Data Filtering:** Middleware that enforces **OPA (Open Policy Agent)** rules on RAG retrieval contexts.
-* **Immutable Audit Logs:** Generation of compliance artifacts that capture the "Immutable Triad" (User Input + Context Hash + Model Config), turning "trust" into a mathematically verifiable feature.
+For security architects and systems engineers, AegisSovereignAI acts as the unifying control plane that cryptographically binds silicon-level attestation to application-level governance.
 
-## Why It Matters
-* **Unified Control Plane:** Eliminate security silos. Apply a single, rigorous trust policy that spans your Multi-Cloud, On-Premise Data Centers, and Edge locations.
-* **Unlock Regulated Markets:** Meet strict data sovereignty and integrity requirements with verifiable proof that spans user, device, and workload.
-* **Reduce Audit Friction:** Provide clear, end-to-end evidence that identity pillars are authentic.
-* **Turn Trust into a Feature:** Make holistic, hardware-rooted trust a customer-visible advantage.
+### Layer 1: Infrastructure Security (The Confidential Foundation)
 
-## Built on Open Standards
-AegisSovereignAI does not reinvent the wheel. Instead, we act as the unifying control plane that cryptographically binds best-in-class open-source projects into a cohesive trust fabric.
+We secure the physical and virtual environment where AI "thinks," supporting both high-performance enclaves and commodity edge hardware.
 
-* **[SPIFFE/SPIRE](https://spiffe.io) (CNCF):** The industry standard for **Workload Identity**. We use SPIRE to issue short-lived, verifiable X.509 certificates that replace static API keys.
-* **[Keylime](https://keylime.dev) (CNCF):** The standard for **Remote Attestation**. We use Keylime to validate TPM quotes and Linux Kernel integrity (IMA) in real-time.
-* **[Open Policy Agent (OPA)](https://www.openpolicyagent.org) (CNCF):** The standard for **Policy-as-Code**. We use OPA to make granular "Allow/Deny" decisions on RAG data retrieval.
-* **[LangChain](https://www.langchain.com):** The leading framework for **LLM Orchestration**. Our governance middleware is designed as a drop-in LangChain component.
+* **Confidential Computing (CC) & Trusted Execution Environments (TEE):** For high-stakes inference, Aegis integrates with **Intel Trust Domain Extensions (TDX)** and **NVIDIA H100 TEEs**. This ensures that model weights and sensitive context remain encrypted while in use, shielding them from privileged system administrators.
+* **Integrity for Standard Hardware:** Recognizing that Confidential Computing (CC) adoption is a multi-year journey, Aegis hardens standard hardware using **Keylime** and the **Trusted Platform Module (TPM)**. We verify the software stack's **Integrity** (via IMA/EVM), ensuring that if you cannot have encryption-in-use (**Confidentiality**), you at least have proof the code is untampered (**Integrity**).
 
-## Contributions
-We actively contribute to open standards and upstream projects to harden the global AI supply chain.
+### Layer 2: Workload Identity (The Provable Bridge)
 
-* **[IETF Draft: Verifiable Geofencing & Unified Identity](https://datatracker.ietf.org/doc/draft-lkspa-wimse-verifiable-geo-fence/)**
-    * **Status:** Active Internet-Draft (IETF WIMSE/RATS Working Group)
-    * **Scope:** Defines the protocol for cryptographically binding a **Workload Identity** (SPIFFE) to its **Physical Location** and **Hardware Identity** (TPM).
-    * **Implementation:** The open-source reference implementation for this standard is available in our **[Hybrid Cloud PoC](hybrid-cloud-poc)**.
+We bind **Who** is running to **Where** they are running, replacing weak bearer tokens with hardware-rooted possession.
 
-* **[LangChain Proposal: Zero-Trust Governance Middleware](proposals/rag-governance.md)**
-    * **Status:** Draft / RFC (To be submitted to LangChain Community)
-    * **Scope:** Standardizing **Policy-as-Code** and **Verifiable Audit Logs** for Enterprise RAG systems. This proposal solves "Context Contamination" by cryptographically binding the retrieved context to the model decision.
+* **Unified Identity:** We bind **Secure Production Identity Framework for Everyone (SPIRE)** workload identities to hardware credentials. An AI agent cannot execute unless it is on a verified, authorized machine.
+* **Zero-Knowledge Proof (ZKP) of Residency:** Using our **Internet Engineering Task Force (IETF)** proposals (**WIMSE/RATS**), agents prove they are in a compliant jurisdiction (e.g., "Inside the Corporate Data Center") without revealing raw Global Positioning System (GPS) or network metadata.
+* **Autonomous Revocation:** If a node's hardware state drifts, its identity is revoked in real-time, "ghosting" the agent from the distributed fabric before it can move laterally.
 
-* **[CAMARA Project Proposal: Hardware-Verified Location API](proposals/camara-hardware-location.md)**
-    * **Status:** Draft / RFC (To be submitted to Linux Foundation CAMARA Project)
-    * **Scope:** Extending the CAMARA `Device Location Verification` API to support a **"Premium Tier"** backed by TPM Attestation. This replaces network-based assurance with hardware-rooted **"Proof of Residency,"** enabling Telcos to serve regulated markets (Banking/Defense) with unforgeable location proofs.
+### Layer 3: AI Governance (Verifiable Logic & Privacy)
 
-## Stakeholders
-* **Ramki Krishnan (Vishanti Systems)** (Project Lead / Maintainer)
-* Andreas Spanner (Red Hat)
-* Michael Epley (Red Hat)
-* A. Prasad (Oracle)
-* Srini Addepalli (Aryaka)
-* Vijaya Prakash Masilamani (Independent)
-* Bala Siva Sai Akhil Malepati (Independent)
-* Dhanush (Vishanti Systems)
-* Pranav Kirtani (Independent)
+We turn high-level policy into mathematical constraints, moving security into the core architecture.
 
-## Problem Statement: The Distributed Trust Gap
+* **Beyond Retrieval-Augmented Generation (RAG):** While ZK-Proofs protect RAG context, their value extends to the entire AI lifecycle:
+  * **Verifiable Inference:** Prove the AI used a specific, audited model version without revealing weights (IP protection).
+  * **Fairness Auditing:** Prove a model is unbiased across demographic groups without the auditor ever seeing the sensitive customer data used in the audit.
 
-In a modern distributed enterprise, inference happens everywhere—from secure cloud data centers to branch offices and tactical edge servers. This sprawl creates **fragmented security models** where the "Cloud" is secure (IAM), but the "Edge" is exposed (Physical Access). This inconsistency creates amplification points for emerging **Multi-Agent** threats.
 
-### A. Infrastructure Threats
-1.  **Token Replay & Identity Abuse:** Bearer tokens (RFC 6750) can be stolen and replayed. Even "Cloud Identity" is vulnerable if the underlying host is compromised.
-2.  **Weak Location Assurance:** IP-based geofencing is easily bypassed via VPNs. AI agents inheriting false location claims can trigger compliance violations.
-3.  **Physical Exposure:** Edge nodes in semi-trusted environments (factories, retail) are vulnerable to physical tampering and hardware substitution.
+* **Policy-as-Circuit:** We are evolving governance from "Code" to "Circuits." By compiling rules into **Zero-Knowledge Succinct Non-Interactive Argument of Knowledge (zk-SNARK)** circuits, we provide an immutable **Certificate of Compliance** for every AI decision.
 
-### B. Application & Governance Threats
-1.  **Data Provenance Gaps:** In distributed RAG pipelines, there is no cryptographic link between *what* was measured and *who* measured it. Poisoned data can corrupt decision pipelines without detection.
-2.  **MCP Protocol Risks:** In the Model Context Protocol (MCP), "confused deputy" attacks can allow agents to access resources beyond their scope. Unverified MCP servers can inject malicious tools or exfiltrate data.
-3.  **Model Placement Risks:**
-    * *Local Placement:* Host compromise grants control over both the orchestration logic and the model weights (IP theft).
-    * *Remote Placement:* Weak endpoint verification allows "Man-in-the-Middle" attacks on inference requests.
+![AegisSovereignAI Architecture](images/readme-arch-new.svg)
 
-## Core Solution Architecture
+---
 
-### 1. Unified Workload Identity
-We extend the standard software identity (SPIFFE) by cryptographically binding it to the physical reality of the device. This creates a "Unified ID" that serves as the root of trust for all three critical security assertions:
+## Addressing Complexity: The ZKP Performance Reality
 
-* **A. Proof of Residency (PoR)**
-    * **Challenge:** Weak bearer tokens in exposed environments allow identity theft and replay attacks.
-    * **Solution:** We bind **Workload Identity** (Code Hash) + **Host Hardware Identity** (TPM PKI) + **Platform Policy** (Kernel Version). This generates a certificate that proves *what* is running and *where* it is running.
+A common concern with ZKP is the computational "tax." Aegis addresses this through a **Hybrid Performance Model**:
 
-* **B. Proof of Geofencing (PoG)**
-    * **Challenge:** Unreliable IP-based location checks are easily bypassed via VPNs.
-    * **Solution:** We extend PoR to include **Location Hardware Identity** (GNSS/Mobile Sensors). This enables verifiable enforcement of geographic policy at the workload level, ensuring data sovereignty even on the far edge.
+1. **Succinctness:** We utilize **zk-SNARKs**, where the resulting proof is tiny (**<1 KB**) and verified in **milliseconds** on standard edge devices.
+2. **Asynchronous Proving:** Proof generation happens in parallel to AI inference. The AI responds instantly, while the "Compliance Receipt" is attached moments later, ensuring **zero latency** for the end-user.
+3. **Tiered Verification:** Use ZKP for high-value governance (legal/financial) while using lightweight **Hardware Attestation** (TPM) for routine operations.
 
-* **C. Supply Chain Security**
-    * **Challenge:** Counterfeit hardware and firmware downgrades in physical deployments.
-    * **Solution:** We enforce a layered hardware gate:
-        * *Enrollment:* Restricted to manufacturer-issued **TPM Endorsement Keys (EK)**.
-        * *Inventory:* Out-of-band verification of components (NICs, GPUs) against purchase orders via BMC.
+---
 
-### 2. Zero-Trust RAG Governance
-Security does not stop at identity; it must extend to the data the AI consumes.
+## Strategic Differentiation
 
-* **Challenge:** "Context Contamination" and the "GenAI Audit Paradox." In RAG systems, malicious actors can inject poisoned data into the retrieval pipeline, and standard logs cannot prove *why* a model made a specific decision.
-* **Solution:** We introduce a **Policy Enforcement Point (PEP)** middleware that sits between the vector database and the LLM.
-    * *Pre-Computation:* It enforces **OPA (Open Policy Agent)** rules to filter retrieved context before the model sees it.
-    * *Post-Computation:* It generates an immutable audit log that cryptographically binds the **User Prompt** + **Retrieved Context Hash** + **Model Response**.
+| Feature | Legacy AI Security | Aegis Sovereign AI |
+| --- | --- | --- |
+| **Trust Model** | Implicit (Trust the Provider) | **Explicit (Verify the Math)** |
+| **Data Privacy** | Redaction / Masking | **Mathematical Privacy (Zero-Disclosure)** |
+| **Auditability** | Forensic Logs (Post-Facto) | **Deterministic Proofs (Real-Time)** |
+| **Hardware** | Unprotected / Cloud-only | **Hybrid (Confidential + Standard TPM)** |
 
-## Additional Resources
-* **Zero‑Trust Sovereign AI Deck:** [View Deck](https://1drv.ms/b/c/746ada9dc9ba7cb7/ETTLFqSUV3pCsIWiD4zMDt0BXzSwcCMGX8cA-qllKfmYvw?e=ONrjf1)
-* **IETF Presentations:**
-    * IETF 123 WIMSE: [View Slides](https://datatracker.ietf.org/meeting/123/materials/slides-123-wimse-zero-trust-sovereign-ai-wimse-impact-04)
-    * IETF 123 RATS: [View Slides](https://datatracker.ietf.org/meeting/123/materials/slides-123-rats-zero-trust-sovereign-ai-rats-impact-00)
+---
 
-## References
-1.  [Simply NUC: Banks Data Closer to Customers](https://simplynuc.com/blog/banks-data-closer-to-customers/)
-2.  [Keylime Documentation](https://keylime.readthedocs.io/en/latest/)
-3.  [SPIFFE/SPIRE Documentation](https://spiffe.io/docs/)
+## Get Involved
+
+* **Hybrid Cloud PoC:** Integration of **SPIRE** and **Keylime** for [real-time node revocation](./hybrid-cloud-poc/README.md).
+* **Contributing:** We welcome contributions! See our [Contributing Guide](./CONTRIBUTING.md) for guidelines.
+* **Quick Start:** Clone the repo and explore the [Hybrid Cloud PoC](./hybrid-cloud-poc/) to see unified identity in action.
+
+---
+
+[Architecture Deep Dive](./docs/arch.md) | [IETF WIMSE Draft](https://datatracker.ietf.org/doc/draft-lkspa-wimse-verifiable-geo-fence/) | [Auditor Guide](./docs/auditor.md)
