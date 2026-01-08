@@ -1,0 +1,26 @@
+<svg width="800" height="400" viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="400" fill="#ffffff" />
+  
+  <line x1="400" y1="50" x2="400" y2="350" stroke="#E0E0E0" stroke-width="4" stroke-dasharray="10,10" />
+
+  <g transform="translate(150, 40)">
+    <rect width="500" height="90" rx="15" fill="#E3F2FD" stroke="#1976D2" stroke-width="2" />
+    <text x="250" y="35" font-family="Segoe UI, Arial" font-size="20" font-weight="bold" text-anchor="middle" fill="#0D47A1">Verifiable Logic &amp; Privacy</text>
+    <text x="250" y="65" font-family="Segoe UI, Arial" font-size="14" text-anchor="middle" fill="#1976D2">Mathematical proof that AI followed safety &amp; privacy policies</text>
+    <path d="M20,20 L40,20 L40,40 L20,40 Z" fill="#1976D2" transform="translate(-30, 10)" opacity="0.2"/>
+  </g>
+
+  <g transform="translate(150, 155)">
+    <rect width="500" height="90" rx="15" fill="#FFF3E0" stroke="#FB8C00" stroke-width="2" />
+    <text x="250" y="35" font-family="Segoe UI, Arial" font-size="20" font-weight="bold" text-anchor="middle" fill="#E65100">Provable Identity &amp; Residency</text>
+    <text x="250" y="65" font-family="Segoe UI, Arial" font-size="14" text-anchor="middle" fill="#FB8C00">Cryptographic proof of 'Who' is running and 'Where' they are</text>
+  </g>
+
+  <g transform="translate(150, 270)">
+    <rect width="500" height="90" rx="15" fill="#F1F8E9" stroke="#43A047" stroke-width="2" />
+    <text x="250" y="35" font-family="Segoe UI, Arial" font-size="20" font-weight="bold" text-anchor="middle" fill="#1B5E20">Silicon-Rooted Foundation</text>
+    <text x="250" y="65" font-family="Segoe UI, Arial" font-size="14" text-anchor="middle" fill="#43A047">Hardware-level protection for AI models and sensitive data</text>
+  </g>
+
+  <text x="410" y="380" font-family="Segoe UI, Arial" font-size="12" font-style="italic" fill="#9E9E9E" text-anchor="middle">A Continuous Chain of Trust: Silicon to Prompt</text>
+</svg>
