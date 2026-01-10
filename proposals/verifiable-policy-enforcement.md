@@ -89,7 +89,7 @@ SPIRE Server embeds the Sovereignty Receipt in the Agent SVID claims. If the pro
 
 | Option | Use Case | Mechanism |
 |--------|----------|-----------|
-| **Automated (Envoy WASM)** | Real-time enforcement on every mTLS request | `zkp` verification mode in WASM filter |
+| **Automated (Envoy WASM)** | Real-time enforcement on every mTLS request | Envoy WASM routes to ZKP verifier service |
 | **Manual (CLI)** | On-demand audit by external auditors | `aegis-cli verify-receipt <svid>` |
 
 * **Automated:** Envoy extracts `grc.sovereignty_receipt.*` from SVID, verifies SNARK → allows or blocks traffic.
@@ -311,7 +311,7 @@ The [hybrid-cloud-poc](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hy
 | **Step 1** | Evidence Gathering | rust-keylime Agent + TPM | ✅ |
 | **Step 2** | Network Endorsement | Mobile Sensor Microservice | ⚠️ Verification only, no signed packet |
 | **Step 3** | ZK-Proof Generation | *AegisSovereignAI ZKP Plugin (proposed)* | ❌ Not implemented |
-| **Step 4** | Verification | Envoy WASM `zkp` mode | ❌ Not implemented |
+| **Step 4** | Verification | Envoy WASM routes to ZKP verifier | ❌ Not implemented |
 | **Step 5** | Identity-Residency Binding | unifiedidentity plugin | ✅ (claims inheritance ready) |
 
 ---
@@ -323,7 +323,7 @@ The [hybrid-cloud-poc](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hy
 | TPM App Key for mTLS | Noir ZK-Circuit (SPIRE Server Plugin) |
 | PCR 15 geolocation binding | Server-generated SNARK |
 | `grc.geolocation.*` claims | `grc.sovereignty_receipt.*` claims |
-| Envoy WASM Trust/Runtime/Strict | Envoy WASM `zkp` mode |
+| Envoy WASM Trust/Runtime/Strict | Envoy WASM routes to ZKP verifier |
 
 ---
 
