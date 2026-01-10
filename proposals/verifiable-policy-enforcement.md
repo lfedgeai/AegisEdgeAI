@@ -85,15 +85,24 @@ The **AegisSovereignAI ZKP Plugin** on SPIRE Server runs the **Noir Logic**. It 
 
 SPIRE Server embeds the Sovereignty Receipt in the Agent SVID claims. If the proof fails or expires, the SVID is not issued/renewed, effectively revoking the agent's ability to communicate via mTLS. This creates a hard link between **Physical Residency** and **Digital Identity**.
 
-### Step 5: Verification (Two Options)
+### Step 5: Verification (Two Layers, Two Options)
+
+Verification covers **both** compliance and authenticity:
+
+| Layer | What's Verified | SVID Claim |
+|-------|-----------------|------------|
+| **ZKP (Compliance)** | Location within policy boundary | `grc.sovereignty_receipt.*` |
+| **Integrity (Authenticity)** | TPM-attested mobile sensor (IMEI, IMSI), GPS sensor (serial, location), OS, SPIRE Agent | `grc.geolocation.*`, `grc.tpm-attestation.*` |
+
+**Verification Options:**
 
 | Option | Use Case | Mechanism |
 |--------|----------|-----------|
-| **Automated (Envoy WASM)** | Real-time enforcement on every mTLS request | Envoy WASM routes to ZKP verifier service |
+| **Automated (Envoy)** | Real-time enforcement on every mTLS request | WASM routes to ZKP verifier + validates integrity claims |
 | **Manual (CLI)** | On-demand audit by external auditors | `aegis-cli verify-receipt <svid>` |
 
-* **Automated:** Envoy extracts `grc.sovereignty_receipt.*` from SVID, verifies SNARK → allows or blocks traffic.
-* **Manual:** External auditor runs CLI to verify receipt independently, receives **"COMPLIANT"** status without seeing raw GPS or IMEI/IMSI data.
+* **Automated:** Envoy verifies ZKP (routes to verifier service) AND validates hardware attestation claims → allows or blocks traffic.
+* **Manual:** External auditor runs CLI to verify both layers independently, receives **"COMPLIANT"** status without seeing raw GPS or IMEI/IMSI data.
 
 ---
 
