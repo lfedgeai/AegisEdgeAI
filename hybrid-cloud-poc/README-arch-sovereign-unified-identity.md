@@ -1588,6 +1588,245 @@ POST http://localhost:9050/verify
 
 ---
 
+## 🔮 Gen 4: Zero-Knowledge Proof Layer (Planned)
+
+> [!NOTE]
+> Gen 4 builds on the Gen 3 foundation. All TPM attestation, delegated certification, and unified identity infrastructure remains unchanged. Gen 4 adds a **privacy-preserving verification layer** via ZK-SNARKs.
+
+> [!IMPORTANT]
+> **Signed MNO Response Required for True Zero-Trust**
+>
+> Without a **cryptographically signed** MNO response, Gen 4 has a trust gap:
+>
+> | Scenario | Trust Chain | Result |
+> |----------|-------------|--------|
+> | **With signed MNO** | TPM (hw) → MNO Signature (crypto) → ZKP (math) | ✅ True zero-trust |
+> | **Without signed MNO** | TPM (hw) → CAMARA API call (trust) → ZKP (math) | ⚠️ Partial trust |
+>
+> The ZKP proves *computation correctness* ("if inputs valid, then compliant"), but does NOT prove *input authenticity* ("MNO response is genuine"). An attacker who compromises the Keylime Verifier ↔ CAMARA channel could inject fake location data.
+>
+> **Dependency:** Gen 4 true zero-trust requires the [camara-hardware-location.md](../proposals/camara-hardware-location.md) "Premium Tier" proposal for MNO signed endorsements.
+
+### Evolution: Gen 3 → Gen 4
+
+| Aspect | Gen 3 (Current) | Gen 4 (Planned) |
+|--------|-----------------|-----------------|
+| **SVID Claims** | `grc.geolocation.*` (raw coordinates) | `grc.sovereignty_receipt.*` (ZKP) |
+| **Envoy Verification** | Raw hw-rooted evidence + location | **ZKP verification only** (no raw data) |
+| **Privacy** | Coordinates visible to gateway | **Zero disclosure** to relying parties |
+| **Audit** | Logs contain location data | Logs contain only compliance proof |
+
+### Key Architectural Change: Envoy Verification
+
+**Gen 3 (Current):**
+```
+Envoy WASM Filter
+    ↓
+Extract grc.geolocation.* claims (lat, lon, IMEI, IMSI)
+    ↓
+Verify via CAMARA API (mobile) or trust GNSS
+    ↓
+Allow/Deny
+```
+
+**Gen 4 (Planned):**
+```
+Envoy WASM Filter
+    ↓
+Extract grc.sovereignty_receipt.* claim (1KB SNARK)
+    ↓
+Route to ZKP Verifier Service (or inline verification)
+    ↓
+Verify proof against PolicyZone commitment
+    ↓
+Allow/Deny (no raw coordinates exposed)
+```
+
+### ZKP Technology: gnark (Recommended)
+
+For SPIRE Server plugin compatibility, we recommend [gnark](https://github.com/Consensys/gnark)—a Go-native ZK-SNARK library:
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **gnark (Go)** | Native SPIRE Plugin SDK; no FFI | Circuit written in Go |
+| Noir → ACIR → gnark | Portable Noir circuits | FFI complexity (Rust → Go) |
+
+### MNO Integration via Keylime Verifier API Extension
+
+In Gen 4, MNO endorsement is fetched **inside the existing `/v2.2/verify/sovereignattestation` API** — no new endpoint needed. The Keylime Verifier's logic is simply extended to also call the MNO API before returning.
+
+**Current Gen 3 Flow (unchanged):**
+```
+SPIRE Server ──▶ Keylime Verifier `/v2.2/verify/sovereignattestation`
+                        │
+                        ├─▶ Fetch TPM Quote (rust-keylime agent)
+                        ├─▶ Fetch Geolocation (rust-keylime agent)
+                        │
+                        └─▶ Return AttestedClaims → SPIRE Server
+```
+
+**Gen 4 Extension (same API, extended logic):**
+```
+SPIRE Server ──▶ Keylime Verifier `/v2.2/verify/sovereignattestation`
+                        │
+                        ├─▶ Fetch TPM Quote (existing)
+                        ├─▶ Fetch Geolocation (existing)
+                        ├─▶ Fetch MNO Anchor (NEW) ◀── calls MNO/CAMARA API
+                        │
+                        └─▶ Return AttestedClaims + MNO Anchor
+                                      │
+                                      ▼
+                        SPIRE Server gnark Plugin
+                                      │
+                        Generate ZKP from (TPM evidence + MNO Anchor)
+                                      │
+                                      ▼
+                        Issue Agent SVID with Sovereignty Receipt
+```
+
+**Why extend existing API:**
+1. **Location is a host property** — Keylime already handles host-level attestation
+2. **Same attestation flow** — No architectural changes to SPIRE ↔ Keylime integration
+3. **Existing secure channels** — Verifier already has mTLS to rust-keylime agent
+4. **Single round-trip** — Produces TPM evidence + MNO endorsement in one call
+
+**Gen 3 vs Gen 4 MNO Flow:**
+
+| Aspect | Gen 3 (Current) | Gen 4 (Planned) |
+|--------|-----------------|-----------------|
+| **When** | Runtime (every request) | Attestation-time (once) |
+| **Where** | Envoy → Mobile Sidecar | Keylime Verifier API (extended) |
+| **Output** | Pass/Fail verification | Signed MNO Anchor → ZKP input |
+| **API Change** | N/A | None — extends existing `/v2.2/verify/sovereignattestation` |
+
+### Trust Progression: Unsigned → Signed MNO → ZKP
+
+The path to Gen 4 is enabled by **MNO signed responses** (see [camara-hardware-location.md](../proposals/camara-hardware-location.md) proposal):
+
+| Level | MNO Response | Verification | Trust Guarantee |
+|-------|--------------|--------------|-----------------|
+| **Gen 3 (Current)** | Unsigned (pass/fail) | Runtime at Envoy | Trust CAMARA API call |
+| **Gen 3.5 (Bridge)** | **Signed endorsement** | Attestation-time at Keylime Verifier | Verifiable carrier cryptographic proof |
+| **Gen 4 (Target)** | Signed endorsement | Attestation-time + ZKP | Mathematical proof, zero disclosure |
+
+**Key Insight:** Once MNO API returns **signed responses**, Gen 3 can immediately adopt the attestation-time flow:
+
+```
+Gen 3 (Current):    Envoy → CAMARA API (runtime, unsigned, every request)
+                           ↓
+Gen 3.5 (Bridge):   Keylime Verifier → CAMARA API (attestation-time, signed)
+                    → Signed anchor stored in SVID claims
+                    → Runtime sidecar becomes optional
+                           ↓
+Gen 4 (Target):     Keylime Verifier → CAMARA API (attestation-time, signed)
+                    → Signed anchor as ZKP input
+                    → Sovereignty Receipt in SVID (no raw data exposed)
+```
+
+**Benefits of Signed MNO Response:**
+1. **Gen 3 improvement** — Eliminates runtime sidecar; attestation-time verification
+2. **Gen 4 enabler** — Cryptographic anchor for ZKP circuit
+3. **Audit trail** — Carrier-signed proof of location at attestation time
+4. **Reduced API calls** — One call per attestation vs. every request
+
+### SPIRE Server ZKP Plugin Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         SPIRE SERVER                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌────────────────┐   ┌────────────────┐   ┌────────────────────┐  │
+│  │    Keylime     │   │  AegisSovereignAI  │   │  unifiedidentity   │  │
+│  │    Verifier    │   │   ZKP Plugin   │   │  CredentialComposer│  │
+│  │    Plugin      │   │ (gnark Prover) │   │                    │  │
+│  └───────┬────────┘   └───────┬────────┘   └─────────┬──────────┘  │
+│          │                    │                      │             │
+│          │ AttestedClaims     │ SNARK                │             │
+│          └────────────────────┴──────────────────────┘             │
+│                               │                                    │
+│                    ┌──────────▼──────────┐                        │
+│                    │  Agent SVID with    │                        │
+│                    │  grc.sovereignty_   │                        │
+│                    │  receipt.* claims   │                        │
+│                    └─────────────────────┘                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### gnark Circuit: Geofencing Policy
+
+```go
+// pkg/server/zkpplugin/circuit.go
+type SovereignResidencyCircuit struct {
+    // Private Witnesses (from Gen 3 TPM evidence)
+    SecretGPS     frontend.Variable `gnark:",secret"`
+    SecretIMEI    frontend.Variable `gnark:",secret"`
+    SecretIMSI    frontend.Variable `gnark:",secret"`
+    
+    // Public Inputs
+    PolicyZone    frontend.Variable `gnark:",public"`  // Bounding box hash
+    Nonce         frontend.Variable `gnark:",public"`  // Freshness (PCR 15)
+    MNOAnchorHash frontend.Variable `gnark:",public"`  // MNO endorsement
+}
+
+func (c *SovereignResidencyCircuit) Define(api frontend.API) error {
+    // 1. Verify device binding: H(IMEI || IMSI) == MNO anchor device_id_hash
+    deviceHash := api.Hash(c.SecretIMEI, c.SecretIMSI)
+    api.AssertIsEqual(deviceHash, c.MNOAnchorHash)
+    
+    // 2. Geofencing: GPS within PolicyZone
+    api.AssertIsEqual(api.InZone(c.SecretGPS, c.PolicyZone), 1)
+    
+    return nil
+}
+```
+
+### WASM Filter Verification Mode Extension
+
+The existing `VerificationMode` enum in `lib.rs` will be extended:
+
+```rust
+enum VerificationMode {
+    Trust,    // No sidecar call (Gen 3 default)
+    Runtime,  // Sidecar call with caching (Gen 3)
+    Strict,   // Real-time sidecar (Gen 3)
+    Zkp,      // ZKP verification (Gen 4) ← NEW
+}
+```
+
+**`Zkp` Mode Behavior:**
+1. Extract `grc.sovereignty_receipt.snark` from SVID extension
+2. Extract `grc.sovereignty_receipt.policy_zone` (public input)
+3. Route to ZKP verifier service (or inline if binary size permits)
+4. Allow if proof valid, deny otherwise
+5. **No raw coordinates ever visible to gateway**
+
+### Implementation Timeline
+
+| Phase | Deliverable | Effort |
+|-------|-------------|--------|
+| **P1** | gnark circuit + SPIRE Plugin scaffold | 2-3 weeks |
+| **P2** | Integration with `unifiedidentity/claims.go` | 1 week |
+| **P3** | WASM Filter `Zkp` verification mode | 1-2 weeks |
+| **Total** | **Production-Ready Gen 4** | **~6 weeks** |
+
+### Gen 4 Claim Schema
+
+```json
+{
+  "grc.sovereignty_receipt": {
+    "snark": "<base64-encoded 1KB SNARK>",
+    "policy_zone": "EU-DE-1",
+    "residency_hash": "<H(SNARK || Agent_SPIFFE_ID)>",
+    "expires_at": "2026-01-10T12:00:00Z"
+  }
+}
+```
+
+**Note:** Gen 3 `grc.geolocation.*` claims remain in Agent SVIDs for backward compatibility. Gen 4-aware Envoy gateways use `grc.sovereignty_receipt.*`; legacy gateways fall back to Gen 3 claims.
+
+---
+
 ## Production Readiness & Implementation Status
 
 ### Current Implementation State

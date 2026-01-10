@@ -281,10 +281,21 @@ When a workload connects via mTLS, the on-prem Envoy gateway verifies **two dist
 
 The [Hybrid Cloud PoC](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc) provides the **Gen 3 foundation** (Silicon-Rooted Trust). The VPE layer builds on top:
 
+![Gen 3 to Gen 4 Architecture Evolution](./images/gen3_gen4_architecture.png)
+
 | Layer | Status | Component |
 | --- | --- | --- |
 | **Gen 3 (Silicon)** | ✅ Implemented | TPM App Key, PCR 15 binding, Unified Identity SVIDs |
-| **Gen 4 (ZKP)** | 🔜 Planned | Noir Circuit, TPM-signed SNARK, Sovereignty Receipt |
+| **Gen 4 (ZKP)** | 🔜 Planned | gnark ZK-Circuit, Sovereignty Receipt in SVID |
+
+### ZKP Technology: gnark (Recommended)
+
+For SPIRE Server plugin compatibility, we recommend [gnark](https://github.com/Consensys/gnark)—a Go-native ZK-SNARK library:
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **gnark (Go)** | Native SPIRE Plugin SDK; no FFI | Circuit written in Go |
+| Noir → ACIR → gnark | Portable Noir circuits | FFI complexity (Rust → Go) |
 
 ### SPIRE Integration Architecture
 
@@ -325,11 +336,20 @@ The VPE ZKP generation happens **server-side** as a SPIRE Server plugin, integra
 ```
 
 **Key Design Decisions:**
-1. **Server-Side ZKP** — Noir prover runs on SPIRE Server (trusted compute, cleaner audit)
+1. **Server-Side ZKP** — gnark prover runs on SPIRE Server (trusted compute, cleaner audit)
 2. **HW-Rooted Evidence** — Agent sends TPM-signed evidence; Server generates ZKP from already-attested data
 3. **No Circular Signing** — ZKP is derived from TPM-signed evidence, not re-signed by TPM
 4. **Claim Inheritance** — Workload SVIDs inherit Sovereignty Receipt via existing certificate chain pattern
 5. **Plugin Model** — AegisSovereignAI ZKP Plugin follows SPIRE Plugin SDK (Go/gRPC) for upstream compatibility
+
+### Implementation Timeline
+
+| Phase | Deliverable | Effort |
+|-------|-------------|--------|
+| **P1** | gnark circuit + SPIRE Plugin scaffold | 2-3 weeks |
+| **P2** | Integration with `unifiedidentity/claims.go` | 1 week |
+| **P3** | WASM Filter `zkp` verification mode | 1-2 weeks |
+| **Total** | **Production-Ready Gen 4** | **~6 weeks** |
 
 ---
 
