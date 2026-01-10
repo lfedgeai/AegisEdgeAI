@@ -1,12 +1,6 @@
 # Verifiable Policy Enforcement (VPE)
 
-**Strategic Context: Moving from Contractual to Cryptographic Geofencing**
-
 **Status:** Draft / RFC
-
-**Scope:** Layer 3 (Verifiable Logic)
-
-**Hardware Hook:** TPM 2.0 (Measured Sensor Evidence)
 
 ---
 
