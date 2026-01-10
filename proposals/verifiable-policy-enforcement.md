@@ -18,18 +18,18 @@ To understand the value of **AegisSovereignAI**, we must view it as the final ev
 | --- | --- | --- | --- |
 | **Gen 1** | **Contractual** | SLAs & Cloud Provider Promises | **Blind Trust:** "We promise it's in Germany." |
 | **Gen 2** | **Administrative** | IP Geolocation & Rounding (Obfuscation) | **Soft Trust:** Easily spoofed via VPNs or misconfigurations. |
-| **Gen 3 (Aegis)** | **Silicon-Rooted** | **TPM Attestation** of Hardware Sensors | **Hard Trust:** Verified silicon identity; no virtualization spoofing. |
-| **Gen 4 (Aegis)** | **Deterministic** | **Silicon + ZKP (Sovereignty Receipt)** | **Zero Trust:** Mathematically enforced; absolute privacy via zero disclosure. |
+| **Gen 3 (AegisSovereignAI)** | **Silicon-Rooted** | **TPM Attestation** of Hardware Sensors | **Hard Trust:** Verified silicon identity; no virtualization spoofing. |
+| **Gen 4 (AegisSovereignAI)** | **Deterministic** | **Silicon + ZKP (Sovereignty Receipt)** | **Zero Trust:** Mathematically enforced; absolute privacy via zero disclosure. |
 
 ---
 
 ## 2. The Gap: Why "Proof of Geofencing" is Missing Today
 
-Current geofencing is **contractual**, not **verifiable**. Enterprises rely on Cloud Provider SLAs—essentially a "promise" that data stays in a region. Aegis replaces this with **Deterministic Geofencing**, where the AI workload cannot execute unless it provides a mathematical receipt of its physical residency.
+Current geofencing is **contractual**, not **verifiable**. Enterprises rely on Cloud Provider SLAs—essentially a "promise" that data stays in a region. AegisSovereignAI replaces this with **Deterministic Geofencing**, where the AI workload cannot execute unless it provides a mathematical receipt of its physical residency.
 
-### Legacy Rounding vs. Aegis ZKP
+### Legacy Rounding vs. AegisSovereignAI ZKP
 
-| Feature | Rounding (Legacy) | Aegis ZKP (VPE) |
+| Feature | Rounding (Legacy) | AegisSovereignAI ZKP (VPE) |
 | --- | --- | --- |
 | **Integrity** | Software-based (Spoofable) | **Silicon-rooted (TPM-signed)** |
 | **Privacy** | Obscurity (De-anonymization risk) | **Mathematical (Zero Disclosure)** |
@@ -40,7 +40,7 @@ Current geofencing is **contractual**, not **verifiable**. Enterprises rely on C
 
 ## 3. Three Cases for Verifiable Location Attestation
 
-Aegis supports three distinct sensing modes, all rooted in **TPM-attested evidence** (Sensor ID, Serial Number, and IMEI/IMSI) as demonstrated in the [Hybrid Cloud PoC](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc).
+AegisSovereignAI supports three distinct sensing modes, all rooted in **TPM-attested evidence** (Sensor ID, Serial Number, and IMEI/IMSI) as demonstrated in the [Hybrid Cloud PoC](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc).
 
 ### Case 1: GPS + Mobile (Full Triangulation)
 
@@ -74,9 +74,9 @@ The server captures its internal ground truth. The **TPM 2.0** measures and sign
 
 The **MNO** (Carrier) detects the server's network attachment and provides a **Signed Coarse-Location Packet**. This acts as a "sanity check" to ensure the hardware isn't spoofing its internal sensor data.
 
-### Step 3: ZK-Proof Generation (Aegis Sidecar)
+### Step 3: ZK-Proof Generation (AegisSovereignAI Sidecar)
 
-The **Aegis Sidecar** runs the **Noir Logic**. It feeds in the private TPM evidence and the private MNO anchor.
+The **AegisSovereignAI Sidecar** runs the **Noir Logic**. It feeds in the private TPM evidence and the private MNO anchor.
 
 * **Logic:** Does `Measured_IMEI/IMSI` match `Carrier_IMEI/IMSI`? Does `Measured_Location` fall inside `JPMC_Policy_Boundary`?
 * **Artifact:** A 1KB **SNARK** (Sovereignty Receipt) embedded in the Agent SVID.
@@ -205,7 +205,7 @@ When a workload connects via mTLS, the on-prem Envoy gateway verifies **two dist
 **Single mTLS Handshake = Complete Trust Chain:**
 - ✅ Certificate signed by trusted SPIRE CA (identity)
 - ✅ Hardware attestation claims from Keylime (authenticity)
-- ✅ ZK compliance proof from Aegis ZKP Plugin (policy)
+- ✅ ZK compliance proof from AegisSovereignAI ZKP Plugin (policy)
 
 ---
 
@@ -228,7 +228,7 @@ The VPE ZKP generation happens **server-side** as a SPIRE Server plugin, integra
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │  ┌────────────────┐   ┌────────────────┐   ┌────────────────────┐  │
-│  │    Keylime     │   │   Aegis ZKP    │   │  unifiedidentity   │  │
+│  │    Keylime     │   │   AegisSovereignAI ZKP    │   │  unifiedidentity   │  │
 │  │    Verifier    │   │    Plugin      │   │  CredentialComposer│  │
 │  │    Plugin      │   │  (Noir Prover) │   │                    │  │
 │  └───────┬────────┘   └───────┬────────┘   └─────────┬──────────┘  │
@@ -261,7 +261,7 @@ The VPE ZKP generation happens **server-side** as a SPIRE Server plugin, integra
 2. **HW-Rooted Evidence** — Agent sends TPM-signed evidence; Server generates ZKP from already-attested data
 3. **No Circular Signing** — ZKP is derived from TPM-signed evidence, not re-signed by TPM
 4. **Claim Inheritance** — Workload SVIDs inherit Sovereignty Receipt via existing certificate chain pattern
-5. **Plugin Model** — Aegis ZKP Plugin follows SPIRE Plugin SDK (Go/gRPC) for upstream compatibility
+5. **Plugin Model** — AegisSovereignAI ZKP Plugin follows SPIRE Plugin SDK (Go/gRPC) for upstream compatibility
 
 ---
 
@@ -304,7 +304,7 @@ The [hybrid-cloud-poc](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hy
 |------|-------------|--------------|--------|
 | **Step 1** | Evidence Gathering | rust-keylime Agent + TPM | ✅ |
 | **Step 2** | Network Endorsement | Mobile Sensor Microservice | ⚠️ Verification only, no signed packet |
-| **Step 3** | ZK-Proof Generation | *Aegis ZKP Plugin (proposed)* | ❌ Not implemented |
+| **Step 3** | ZK-Proof Generation | *AegisSovereignAI ZKP Plugin (proposed)* | ❌ Not implemented |
 | **Step 4** | Verification | Envoy WASM `zkp` mode | ❌ Not implemented |
 | **Step 5** | Identity-Residency Binding | unifiedidentity plugin | ✅ (claims inheritance ready) |
 
@@ -324,7 +324,7 @@ The [hybrid-cloud-poc](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hy
 ## Next Steps
 
 1. **Noir Circuit** — Implement Section 5's `vpe_residency/src/main.nr` pattern with freshness binding
-2. **Aegis ZKP Plugin** — SPIRE Server plugin following Plugin SDK (Go/gRPC)
+2. **AegisSovereignAI ZKP Plugin** — SPIRE Server plugin following Plugin SDK (Go/gRPC)
 3. **WASM Extension** — Add `zkp` mode alongside Trust/Runtime/Strict
 4. **MNO Endorsement** — See [camara-hardware-location.md](./camara-hardware-location.md) proposal
 
