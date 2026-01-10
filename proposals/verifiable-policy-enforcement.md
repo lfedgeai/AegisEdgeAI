@@ -112,23 +112,35 @@ This code demonstrates how the **TPM-attested sensor data** is used as a private
 
 ```rust
 // vpe_residency/src/main.nr
+
+// Formalized MNO Anchor prevents mix-and-match attacks
+struct MNOAnchor {
+    tower_id: Field,
+    device_id_hash: Field,  // Bound to IMEI/IMSI
+    timestamp: u64,
+    signature: [u64; 8],    // EdDSA signature from MNO
+}
+
 fn main(
     secret_gps: Private,        // GPS from TPM (Case 1 & 2)
     secret_imei: Private,       // IMEI from TPM (Case 1 & 3)
     secret_imsi: Private,       // IMSI from TPM (Case 1 & 3)
-    mno_anchor: Private,        // Signed Tower ID (Case 1 & 3)
+    mno_anchor: MNOAnchor,      // Signed Tower ID (Case 1 & 3)
+    mno_pub_key: pub [u64; 4],  // MNO's public key
     public_nonce: pub Field,    // Freshness binding (prevents replay)
     public_zone: pub Area       // Public Bounding Box
 ) {
-    // 1. Freshness Constraint (prevents replay attacks)
-    // Binds proof to current attestation request epoch
-    assert(is_fresh(mno_anchor, public_nonce));
+    // 1. Verify MNO Signature (prevents mix-and-match attacks)
+    assert(verify_signature(mno_pub_key, mno_anchor.signature, 
+           [mno_anchor.tower_id, mno_anchor.device_id_hash]));
 
-    // 2. Hardware-to-Network Binding (Case 3 logic)
-    // Verifies MNO Tower ID matches TPM-attested IMEI/IMSI
-    assert(is_consistent(secret_imei, secret_imsi, mno_anchor));
+    // 2. Freshness Constraint (prevents replay attacks)
+    assert(is_fresh(mno_anchor.timestamp, public_nonce));
 
-    // 3. Geofencing Constraint
+    // 3. Hardware-to-Network Binding (Case 3 logic)
+    assert(hash(secret_imei, secret_imsi) == mno_anchor.device_id_hash);
+
+    // 4. Geofencing Constraint
     assert(public_zone.contains(secret_gps));
     
     // Outcome: A 1KB proof of physical residency.
@@ -137,7 +149,9 @@ fn main(
 
 ---
 
-## 6. Sovereignty Receipt Workflow
+## 6. Sovereignty Receipt Workflow: The Dual-Identity Pattern
+
+To prevent the high overhead of generating a new ZKP for every short-lived Workload SVID (TTL ~1hr), AegisSovereignAI utilizes a **Dual-Identity Pattern**. The expensive ZK-Prover runs once for the SPIRE Agent to generate a **Long-Lived Residency Token (LLRT)**, which workloads then reference.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
@@ -150,41 +164,50 @@ fn main(
 │                                     │    Server    │                     │
 │  ┌─────┐  Signed Tower ID           │              │                     │
 │  │ MNO │ ──────────────────────────→│  ┌────────┐  │                     │
-│  └─────┘                            │  │ Aegis  │  │  Noir    ┌───────┐  │
-│                                     │  │  ZKP   │──┼─Prover──→│ SNARK │  │
-│                                     │  │ Plugin │  │          └───┬───┘  │
-│                                     │  └────────┘  │              │      │
+│  └─────┘                            │  │  ZKP   │  │  Noir    ┌───────┐  │
+│                                     │  │ Plugin │──┼─Prover──→│ SNARK │  │
+│                                     │  └────────┘  │          └───┬───┘  │
 │                                     └──────────────┘              │      │
 │                                            │                      │      │
 │                                            ▼                      ▼      │
 │                               ┌─────────────────────────────────────┐    │
-│                               │         Agent SVID                   │    │
-│                               │  • grc.geolocation.* (HW evidence)   │    │
-│                               │  • grc.sovereignty_receipt.* (ZKP)   │    │
+│                               │         Agent SVID (LLRT)            │    │
+│                               │  • Full SNARK (sovereignty_receipt)  │    │
+│                               │  • H(SNARK) = Residency Hash         │    │
 │                               └─────────────────────────────────────┘    │
 │                                            │                             │
 │                                            ▼                             │
 │                               ┌─────────────────────────────────────┐    │
-│                               │       Workload SVID                  │    │
-│                               │  (inherits Agent claims via chain)   │    │
+│                               │       Workload SVID (Lightweight)    │    │
+│                               │  • grc.residency_hash = H(SNARK)     │    │
+│                               │  • grc.compliance_zone (readable)    │    │
+│                               │  (inherits via claims - implemented) │    │
 │                               └─────────────────────────────────────┘    │
 │                                            │                             │
 │                                            ▼                             │
 │                               ┌─────────────────────────────────────┐    │
 │                               │         Envoy WASM                   │    │
-│                               │  (verifies ZKP → allows traffic)     │    │
+│                               │  (routes to ZKP verifier service)    │    │
 │                               └─────────────────────────────────────┘    │
 │                                                                           │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Flow Summary:**
-1. **SPIRE Agent** sends TPM-signed evidence (GPS/IMEI/IMSI) to **SPIRE Server**
-2. **MNO** provides signed Tower ID anchor to **SPIRE Server**
-3. **SPIRE Server** runs Noir prover → generates **SNARK** (Sovereignty Receipt)
-4. **SPIRE Server** issues **Agent SVID** with ZKP embedded in claims
-5. **Workload SVID** inherits claims via certificate chain
-6. **Envoy** verifies ZKP → allows or blocks traffic
+1. **SPIRE Agent** sends TPM-signed evidence to **SPIRE Server**
+2. **MNO** provides signed Tower ID anchor
+3. **SPIRE Server** runs Noir prover → generates **SNARK**
+4. **Agent SVID** contains full SNARK + `H(SNARK)` residency hash
+5. **Workload SVID** inherits lightweight `residency_hash` via claims (already implemented in [hybrid-cloud-poc](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc))
+6. **Envoy** routes to ZKP verifier → allows or blocks traffic
+
+### X.509 Certificate Encoding (Interoperability)
+
+| Feature | Encoding Location | OID |
+|---------|-------------------|-----|
+| **Sovereignty Receipt (SNARK)** | `Extension` (Octet String) | `1.3.6.1.4.1.58156.1.1` (AegisSovereignAI Arc) |
+| **Residency Hash** | `SubjectAlternativeName` (otherName) | `1.3.6.1.4.1.58156.1.2` |
+| **Hardware Evidence** | `Extension` (Keylime/TPM) | `1.3.6.1.4.1.55744.1.1` (Unified Identity) |
 
 ---
 
@@ -380,3 +403,23 @@ In Case 3 (Mobile Only), MNO dependency introduces third-party risk.
 | **P1** | Noir Optimization | Move from Groth16 to **UltraHonk** for faster server-side proving |
 | **P2** | SVID Claims | Use recursive proofs; consider LSVID if needed |
 | **P3** | Hardware Binding | Lock Noir Prover keys to TPM 2.0 PCR 15 state |
+
+## 5. Verification Key Distribution
+
+The **Noir Verification Key (VK)** must be distributed to all Envoy gateways for SNARK verification.
+
+**Mechanism:** SPIRE Server distributes the VK as part of the **SPIFFE Trust Bundle**. This allows policy updates (new Noir circuits) to automatically propagate to thousands of Envoys without restarts.
+
+---
+
+# Appendix C: Threat Model
+
+| Attack Vector | Mitigation in VPE |
+|---------------|-------------------|
+| **Relocation Attack** | Binding of MNO Tower ID to TPM-Signed IMEI/IMSI via `device_id_hash` |
+| **Replay Attack** | `public_nonce` (Freshness Binding) in Noir circuit |
+| **Mix-and-Match Attack** | MNOAnchor struct with EdDSA signature verification |
+| **Virtualization Spoofing** | Silicon-rooted TPM Attestation (PCR 15) |
+| **Proof Forgery** | ZK-SNARK mathematical hardness (Noir/UltraHonk) |
+| **MNO Offline** | "Black Cloud" isolation — never fall back to IP geolocation |
+| **SVID Revocation Bypass** | H(SNARK) binding — Agent revocation invalidates all Workload SVIDs |
