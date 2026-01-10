@@ -45,7 +45,7 @@ AegisSovereignAI supports three distinct sensing modes, all rooted in **TPM-atte
 ### Case 1: GPS + Mobile (Full Triangulation)
 
 * **Evidence:** TPM-signed GPS (Precise) + MNO-signed Tower ID (Anchor).
-* **Value:** The "Gold Standard" for high-compliance workloads (e.g., JPMC Core Banking).
+* **Value:** The "Gold Standard" for high-compliance workloads (e.g., global banks, insurance firms).
 
 ### Case 2: GPS Only (Infrastructure Residency)
 
@@ -78,7 +78,7 @@ The **MNO** (Carrier) detects the server's network attachment and provides a **S
 
 The **AegisSovereignAI Sidecar** runs the **Noir Logic**. It feeds in the private TPM evidence and the private MNO anchor.
 
-* **Logic:** Does `Measured_IMEI/IMSI` match `Carrier_IMEI/IMSI`? Does `Measured_Location` fall inside `JPMC_Policy_Boundary`?
+* **Logic:** Does `Measured_IMEI/IMSI` match `Carrier_IMEI/IMSI`? Does `Measured_Location` fall inside `ENTERPRISE_POLICY_BOUNDARY`?
 * **Artifact:** A 1KB **SNARK** (Sovereignty Receipt) embedded in the Agent SVID.
 
 ### Step 4: Verification (The Auditor)
@@ -175,9 +175,9 @@ fn main(
 
 ## 7. Strategic Value: The Sovereignty Receipt
 
-For a global firm like JPMC, this proposal replaces a massive manual audit log with a single, cryptographic receipt.
+For global financial services firms (e.g., JPMC, Citi), this proposal replaces a massive manual audit log with a single, cryptographic receipt.
 
-* **For the Auditor:** A 1KB proof that mathematically guarantees the workload was physically in the Chennai Sovereign Zone, running on JPMC-approved silicon.
+* **For the Auditor:** A 1KB proof that mathematically guarantees the workload was physically in the Chennai Sovereign Zone, running on enterprise-approved silicon.
 * **For the Provider:** Complete privacy of the data center's physical coordinates.
 * **For the Regulator:** Real-time evidence that the **EU AI Act** or other residency laws are being enforced by the silicon itself, not just by a contractual promise.
 
