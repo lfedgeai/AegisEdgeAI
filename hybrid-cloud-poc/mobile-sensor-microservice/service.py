@@ -22,6 +22,9 @@ Verifier can validate mobile sensor IDs via a REST API.
 """
 
 import argparse
+import base64
+import hashlib
+import json
 import logging
 import os
 import sqlite3
@@ -29,12 +32,21 @@ import sys
 import threading
 import time
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import requests
 from flask import Flask, jsonify, request, Response
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+
+# Gen 4: EdDSA signing for mock MNO endorsement
+try:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+    from cryptography.hazmat.primitives import serialization
+    EDDSA_AVAILABLE = True
+except ImportError:
+    EDDSA_AVAILABLE = False
 
 LOG = logging.getLogger("mobile_sensor_service")
 
@@ -324,6 +336,170 @@ class CamaraVerifier(LocationVerifier):
             return False
 
 
+# =============================================================================
+# Gen 4: Mock MNO Signing Service
+# Simulates signed CAMARA API responses for lab testing
+# =============================================================================
+
+class MNOSigningService:
+    """
+    Mock MNO Signing Service for Gen 4 ZKP.
+    
+    Generates EdDSA-signed endorsements that simulate what a real CAMARA
+    Premium Tier API would return. Used for lab testing when GPS is unavailable.
+    """
+    
+    KEY_ID = "lab-mno-signing-key-2026-01"
+    KEY_FILE_ENV = "MNO_SIGNING_KEY_FILE"
+    
+    def __init__(self):
+        if not EDDSA_AVAILABLE:
+            LOG.warning("Gen 4: cryptography library not available, signing disabled")
+            self._private_key = None
+            self._public_key = None
+            return
+        
+        # Try to load existing key or generate new one
+        key_file = os.getenv(self.KEY_FILE_ENV)
+        if key_file and Path(key_file).exists():
+            self._load_key(Path(key_file))
+        else:
+            self._generate_key()
+            if key_file:
+                self._save_key(Path(key_file))
+    
+    def _generate_key(self):
+        """Generate a new Ed25519 key pair."""
+        self._private_key = Ed25519PrivateKey.generate()
+        self._public_key = self._private_key.public_key()
+        LOG.info("Gen 4: Generated new EdDSA signing key (key_id=%s)", self.KEY_ID)
+    
+    def _load_key(self, path: Path):
+        """Load existing private key from file."""
+        try:
+            key_data = path.read_bytes()
+            self._private_key = serialization.load_pem_private_key(key_data, password=None)
+            self._public_key = self._private_key.public_key()
+            LOG.info("Gen 4: Loaded EdDSA signing key from %s", path)
+        except Exception as e:
+            LOG.warning("Gen 4: Failed to load key from %s: %s, generating new key", path, e)
+            self._generate_key()
+    
+    def _save_key(self, path: Path):
+        """Save private key to file."""
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            key_bytes = self._private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+            path.write_bytes(key_bytes)
+            LOG.info("Gen 4: Saved EdDSA signing key to %s", path)
+        except Exception as e:
+            LOG.warning("Gen 4: Failed to save key to %s: %s", path, e)
+    
+    def is_available(self) -> bool:
+        """Check if signing is available."""
+        return self._private_key is not None
+    
+    def get_public_key_pem(self) -> str:
+        """Get the public key in PEM format."""
+        if not self._public_key:
+            return ""
+        return self._public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode("utf-8")
+    
+    def get_public_key_base64(self) -> str:
+        """Get the public key in base64 format (raw bytes)."""
+        if not self._public_key:
+            return ""
+        raw_bytes = self._public_key.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw
+        )
+        return base64.b64encode(raw_bytes).decode("utf-8")
+    
+    def compute_device_id_hash(self, imei: str, imsi: str) -> str:
+        """Compute H(IMEI || IMSI) for device binding."""
+        data = f"{imei}||{imsi}".encode("utf-8")
+        return hashlib.sha256(data).hexdigest()
+    
+    def create_signed_endorsement(
+        self,
+        imei: str,
+        imsi: str,
+        nonce: str,
+        tower_id: str = "49201-LAB-001",
+        latitude: float = 0.0,
+        longitude: float = 0.0,
+        accuracy: float = 500.0
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Create a signed MNO endorsement.
+        
+        This simulates what a real CAMARA Premium Tier API would return.
+        The endorsement proves that the MNO has verified the device's
+        IMEI/IMSI binding and coarse location.
+        """
+        if not self.is_available():
+            LOG.error("Gen 4: Signing not available")
+            return None
+        
+        # Build endorsement payload (matches camara-hardware-location.md Section 7.2)
+        device_id_hash = self.compute_device_id_hash(imei, imsi)
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        endorsement = {
+            "tower_id": tower_id,
+            "device_id_hash": device_id_hash,
+            "imei_imsi_binding_valid": True,  # MNO verifies from HLR/HSS
+            "coarse_location": {
+                "latitude": latitude,
+                "longitude": longitude,
+                "accuracy_meters": accuracy
+            },
+            "timestamp": timestamp,
+            "nonce": nonce
+        }
+        
+        # Sign the endorsement
+        endorsement_bytes = json.dumps(endorsement, sort_keys=True).encode("utf-8")
+        signature = self._private_key.sign(endorsement_bytes)
+        signature_b64 = base64.b64encode(signature).decode("utf-8")
+        
+        LOG.info("Gen 4: Created signed endorsement for device_id_hash=%s", device_id_hash[:16] + "...")
+        
+        return {
+            "verified": True,
+            "endorsement": endorsement,
+            "signature": signature_b64,
+            "key_id": self.KEY_ID
+        }
+    
+    def get_signing_keys_jwks(self) -> Dict[str, Any]:
+        """
+        Get signing keys in JWKS-like format for /.well-known/mno-signing-keys.json
+        """
+        if not self.is_available():
+            return {"keys": []}
+        
+        return {
+            "keys": [
+                {
+                    "key_id": self.KEY_ID,
+                    "algorithm": "EdDSA",
+                    "public_key": self.get_public_key_base64(),
+                    "public_key_pem": self.get_public_key_pem(),
+                    "valid_from": "2026-01-01T00:00:00Z",
+                    "valid_until": "2027-01-01T00:00:00Z"
+                }
+            ]
+        }
+
+
 def create_app(db_path: Path) -> Flask:
     app = Flask(__name__)
     database = SensorDatabase(db_path)
@@ -421,6 +597,83 @@ def create_app(db_path: Path) -> Flask:
     def metrics():
         """Prometheus metrics endpoint."""
         return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
+    # =========================================================================
+    # Gen 4: Mock MNO Signing Endpoints
+    # =========================================================================
+    
+    # Initialize MNO signing service
+    mno_signer = MNOSigningService()
+    
+    @app.route("/signed-endorsement", methods=["POST"])
+    def signed_endorsement():
+        """
+        Gen 4: Create a signed MNO endorsement.
+        
+        This endpoint simulates what a real CAMARA Premium Tier API would return.
+        Used by Keylime Verifier to fetch signed MNO anchor at attestation-time.
+        
+        Request:
+            {
+                "imei": "356345043865103",
+                "imsi": "214070610960475",
+                "nonce": "<challenge_nonce_from_verifier>",
+                "tower_id": "49201-LAB-001",  # optional
+                "latitude": 40.33,             # optional
+                "longitude": -3.77             # optional
+            }
+        
+        Response:
+            {
+                "verified": true,
+                "endorsement": { ... },
+                "signature": "<base64 EdDSA signature>",
+                "key_id": "lab-mno-signing-key-2026-01"
+            }
+        """
+        if not mno_signer.is_available():
+            return jsonify({"error": "signing_not_available", "message": "EdDSA signing not configured"}), 503
+        
+        payload = request.get_json(force=True) or {}
+        
+        imei = payload.get("imei") or payload.get("sensor_imei") or _get_default_sensor_imei()
+        imsi = payload.get("imsi") or payload.get("sensor_imsi") or _get_default_sensor_imsi()
+        nonce = payload.get("nonce", "")
+        tower_id = payload.get("tower_id", "49201-LAB-001")
+        latitude = payload.get("latitude", _get_default_latitude())
+        longitude = payload.get("longitude", _get_default_longitude())
+        accuracy = payload.get("accuracy", 500.0)
+        
+        if not imei or not imsi:
+            return jsonify({"error": "missing_device_identifiers", "message": "IMEI and IMSI are required"}), 400
+        
+        if not nonce:
+            LOG.warning("Gen 4: No nonce provided, signed endorsement may be replayable")
+        
+        result = mno_signer.create_signed_endorsement(
+            imei=imei,
+            imsi=imsi,
+            nonce=nonce,
+            tower_id=tower_id,
+            latitude=latitude,
+            longitude=longitude,
+            accuracy=accuracy
+        )
+        
+        if result is None:
+            return jsonify({"error": "signing_failed"}), 500
+        
+        return jsonify(result)
+    
+    @app.route("/.well-known/mno-signing-keys.json", methods=["GET"])
+    def mno_signing_keys():
+        """
+        Gen 4: Distribute MNO public signing keys.
+        
+        Used by ZKP verifiers to validate MNO endorsement signatures.
+        Follows JWKS-style format for key rotation.
+        """
+        return jsonify(mno_signer.get_signing_keys_jwks())
 
     return app
 
