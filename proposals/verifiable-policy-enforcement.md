@@ -209,6 +209,24 @@ To prevent the high overhead of generating a new ZKP for every short-lived Workl
 | **Residency Hash** | `SubjectAlternativeName` (otherName) | `1.3.6.1.4.1.58156.1.2` |
 | **Hardware Evidence** | `Extension` (Keylime/TPM) | `1.3.6.1.4.1.55744.1.1` (Unified Identity) |
 
+### Residency Hash Algorithm
+
+To prevent "Proof Mirroring" (copying a valid SNARK from one agent to another):
+
+```
+H_res = SHA256(SNARK || Agent_SPIFFE_ID)
+```
+
+Including the Agent's SPIFFE ID cryptographically binds the receipt to that specific agent.
+
+### Envoy WASM Cache Logic
+
+The Envoy WASM filter caches ZKP verification results. If multiple workloads share the same `H_res`, Envoy verifies the SNARK once and stores the result in its shared-data store, avoiding redundant verification calls.
+
+### MNO Signing Key Rotation
+
+SPIRE Server fetches and rotates MNO public verification keys via a configured endpoint (e.g., `/.well-known/mno-keys.json`). Key rotation follows standard JWKS patterns with overlap periods to ensure continuity.
+
 ---
 
 ## 7. Strategic Value: The Sovereignty Receipt
