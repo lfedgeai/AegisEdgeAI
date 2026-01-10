@@ -10,6 +10,24 @@
 
 ---
 
+## Executive Summary
+
+**Problem:** Current cloud geofencing is contractual — enterprises rely on SLA promises, not cryptographic proof, that data stays in a specific region.
+
+**Solution:** AegisSovereignAI's **Verifiable Policy Enforcement (VPE)** generates a **Sovereignty Receipt** — a ZK-SNARK proof embedded in the workload's SVID that mathematically proves location compliance without revealing exact coordinates.
+
+**Key Innovation:**
+- **Gen 3 (Implemented):** TPM-attested sensors (GPS, Mobile) provide hardware-rooted evidence
+- **Gen 4 (This Proposal):** Noir ZK-Circuit wraps evidence into privacy-preserving compliance proof
+
+**Two Verification Layers:**
+1. **ZKP Compliance** — Proves location within policy boundary (privacy-preserving)
+2. **Hardware Integrity** — Proves sensors, TPM, OS are genuine (TPM-attested)
+
+**Result:** Workloads cannot communicate via mTLS unless they provide mathematical proof of physical residency. Non-compliant workloads are network-isolated ("Black Cloud").
+
+---
+
 ## 1. The Evolution of Sovereign Trust
 
 To understand the value of **AegisSovereignAI**, we must view it as the final evolution in the timeline of geofencing and residency.
