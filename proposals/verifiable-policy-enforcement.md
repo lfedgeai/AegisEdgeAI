@@ -86,6 +86,9 @@ The server captures its internal ground truth. The **TPM 2.0** measures and sign
 
 The **MNO** (Carrier) detects the server's network attachment and provides a **Signed Coarse-Location Packet**. This acts as a "sanity check" to ensure the hardware isn't spoofing its internal sensor data.
 
+> [!NOTE]
+> For true zero-trust, the MNO response must be **cryptographically signed**. See [camara-hardware-location.md](./camara-hardware-location.md) Section 7 for the signed endorsement format and IMEI-IMSI binding verification.
+
 ### Step 3: ZK-Proof Generation (SPIRE Server)
 
 The **AegisSovereignAI ZKP Plugin** on SPIRE Server runs the **Noir Logic**. It feeds in the private TPM evidence and the private MNO anchor.

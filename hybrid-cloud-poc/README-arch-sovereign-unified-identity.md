@@ -1592,6 +1592,10 @@ POST http://localhost:9050/verify
 
 > [!NOTE]
 > Gen 4 builds on the Gen 3 foundation. All TPM attestation, delegated certification, and unified identity infrastructure remains unchanged. Gen 4 adds a **privacy-preserving verification layer** via ZK-SNARKs.
+>
+> **Related Proposals:**
+> - [Verifiable Policy Enforcement (VPE)](../proposals/verifiable-policy-enforcement.md) — Full Gen 4 workflow, ZKP circuit design, dual-SVID pattern
+> - [CAMARA Hardware Location](../proposals/camara-hardware-location.md) — Premium Tier API extension, signed MNO endorsement format
 
 > [!IMPORTANT]
 > **Signed MNO Response Required for True Zero-Trust**
