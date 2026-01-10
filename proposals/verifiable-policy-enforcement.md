@@ -16,7 +16,7 @@
 
 **Two Verification Layers:**
 1. **ZKP Compliance** — Proves location within policy boundary (privacy-preserving)
-2. **Hardware Integrity** — Proves sensors, TPM, OS are genuine (TPM-attested)
+2. **Hardware Integrity** — TPM-attested mobile sensor (IMEI, IMSI), GPS sensor (serial, location), OS, SPIRE Agent
 
 **Result:** Workloads cannot communicate via mTLS unless they provide mathematical proof of physical residency. Non-compliant workloads are network-isolated ("Black Cloud").
 
