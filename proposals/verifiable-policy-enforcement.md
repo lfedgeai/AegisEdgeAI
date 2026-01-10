@@ -74,20 +74,26 @@ The server captures its internal ground truth. The **TPM 2.0** measures and sign
 
 The **MNO** (Carrier) detects the server's network attachment and provides a **Signed Coarse-Location Packet**. This acts as a "sanity check" to ensure the hardware isn't spoofing its internal sensor data.
 
-### Step 3: ZK-Proof Generation (AegisSovereignAI Sidecar)
+### Step 3: ZK-Proof Generation (SPIRE Server)
 
-The **AegisSovereignAI Sidecar** runs the **Noir Logic**. It feeds in the private TPM evidence and the private MNO anchor.
+The **AegisSovereignAI ZKP Plugin** on SPIRE Server runs the **Noir Logic**. It feeds in the private TPM evidence and the private MNO anchor.
 
 * **Logic:** Does `Measured_IMEI/IMSI` match `Carrier_IMEI/IMSI`? Does `Measured_Location` fall inside `ENTERPRISE_POLICY_BOUNDARY`?
-* **Artifact:** A 1KB **SNARK** (Sovereignty Receipt) embedded in the Agent SVID.
+* **Artifact:** A 1KB **SNARK** (Sovereignty Receipt).
 
-### Step 4: Verification (The Auditor)
+### Step 4: Identity-Residency Binding (SVID Issuance)
 
-The Auditor runs the `aegis-cli` to verify the SNARK. They receive a **"COMPLIANT"** status with 100% mathematical certainty, without ever seeing the raw GPS or IMEI/IMSI data.
+SPIRE Server embeds the Sovereignty Receipt in the Agent SVID claims. If the proof fails or expires, the SVID is not issued/renewed, effectively revoking the agent's ability to communicate via mTLS. This creates a hard link between **Physical Residency** and **Digital Identity**.
 
-### Step 5: Identity-Residency Binding
+### Step 5: Verification (Two Options)
 
-The SPIRE Agent treats the TPM-Signed ZKP as a mandatory **Selector**. If the proof fails or expires, the SVID is not issued/renewed, effectively revoking the agent's ability to communicate via mTLS. This creates a hard link between **Physical Residency** and **Digital Identity**.
+| Option | Use Case | Mechanism |
+|--------|----------|-----------|
+| **Automated (Envoy WASM)** | Real-time enforcement on every mTLS request | `zkp` verification mode in WASM filter |
+| **Manual (CLI)** | On-demand audit by external auditors | `aegis-cli verify-receipt <svid>` |
+
+* **Automated:** Envoy extracts `grc.sovereignty_receipt.*` from SVID, verifies SNARK → allows or blocks traffic.
+* **Manual:** External auditor runs CLI to verify receipt independently, receives **"COMPLIANT"** status without seeing raw GPS or IMEI/IMSI data.
 
 ---
 
