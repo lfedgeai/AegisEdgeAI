@@ -8,7 +8,7 @@
 
 **Problem:** Current cloud geofencing is contractual — enterprises rely on SLA promises, not cryptographic proof, that data stays in a specific region.
 
-**Solution:** AegisSovereignAI's **Verifiable Policy Enforcement (VPE)** generates a **Sovereignty Receipt** — a ZK-SNARK proof embedded in the workload's SVID that mathematically proves location compliance without revealing exact coordinates.
+**Solution:** AegisSovereignAI's **Verifiable Policy Enforcement (VPE)** combines **TPM-attested hardware evidence** with **ZK-SNARK proofs** to mathematically prove both sensor integrity and location compliance — without revealing exact coordinates.
 
 **Key Innovation:**
 - **Gen 3 (Implemented):** TPM-attested sensors (GPS, Mobile) provide hardware-rooted evidence
