@@ -1,4 +1,4 @@
-# Verifiable Policy Enforcement (VPE)
+# Verifiable Policy Enforcement for Data Sovereignty
 
 **Status:** Draft / RFC
 
