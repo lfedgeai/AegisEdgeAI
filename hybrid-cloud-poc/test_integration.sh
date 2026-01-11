@@ -345,7 +345,12 @@ test_zkp_verification() {
     run_on_onprem "sudo sed -i 's/\"verification_mode\": \".*\"/\"verification_mode\": \"Zkp\"/' /opt/envoy/envoy.yaml"
     
     echo "  Restarting Envoy with Zkp mode..."
-    run_on_onprem "sudo pkill -f 'envoy.*envoy.yaml' && sleep 1 && nohup sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 < /dev/null &"
+    # Kill existing Envoy first
+    run_on_onprem "sudo pkill -f 'envoy.*envoy.yaml' || true"
+    sleep 2
+    
+    # Start Envoy in a fully detached process using setsid
+    run_on_onprem "sudo setsid envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 < /dev/null &"
     
     # Wait for Envoy to start listening on port 8080
     echo "  Waiting for Envoy to start (max 15s)..."
