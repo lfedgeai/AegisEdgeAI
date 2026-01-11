@@ -20,6 +20,7 @@ import (
 	"github.com/spiffe/spire/pkg/server/keylime"
 	"github.com/spiffe/spire/pkg/server/policy"
 	"github.com/spiffe/spire/pkg/server/unifiedidentity"
+	"github.com/spiffe/spire/pkg/server/zkp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -287,6 +288,7 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 
 	// Convert MNO Endorsement to protobuf
 	var protoMNO *types.MNOEndorsement
+	var sovereigntyReceipt string
 	if keylimeClaims.MNOEndorsement != nil {
 		endorsementJSON, _ := json.Marshal(keylimeClaims.MNOEndorsement.Endorsement)
 		protoMNO = &types.MNOEndorsement{
@@ -295,11 +297,43 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 			Signature:       keylimeClaims.MNOEndorsement.Signature,
 			KeyId:           keylimeClaims.MNOEndorsement.KeyID,
 		}
+
+		// Gen 4: Generate ZKP Sovereignty Receipt if MNO endorsement is verified
+		if keylimeClaims.MNOEndorsement.Verified && keylimeClaims.Geolocation != nil {
+			prover, err := zkp.GetProver()
+			if err != nil {
+				logrus.Errorf("Unified-Identity: Failed to get ZKP prover: %v", err)
+			} else {
+				// Extract coarse location from MNO endorsement
+				var tlat, tlong, radius float64
+				if coarse, ok := keylimeClaims.MNOEndorsement.Endorsement["coarse_location"].(map[string]interface{}); ok {
+					tlat, _ = coarse["latitude"].(float64)
+					tlong, _ = coarse["longitude"].(float64)
+					radius, _ = coarse["accuracy_meters"].(float64)
+				}
+
+				// Generate receipt: Prove raw GPS (private) fits inside MNO coarse location (public)
+				receipt, err := prover.GenerateReceipt(
+					keylimeClaims.Geolocation.Latitude,
+					keylimeClaims.Geolocation.Longitude,
+					tlat,
+					tlong,
+					radius,
+				)
+				if err != nil {
+					logrus.Errorf("Unified-Identity: ZKP receipt generation failed: %v", err)
+				} else {
+					sovereigntyReceipt = receipt
+					logrus.Infof("Unified-Identity: Generated ZKP Sovereignty Receipt (len=%d)", len(receipt))
+				}
+			}
+		}
 	}
 
 	claims := &types.AttestedClaims{
-		Geolocation:    protoGeo,
-		MnoEndorsement: protoMNO,
+		Geolocation:        protoGeo,
+		MnoEndorsement:     protoMNO,
+		SovereigntyReceipt: sovereigntyReceipt,
 	}
 
 	// Build unified identity JSON

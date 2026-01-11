@@ -116,6 +116,14 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 			}
 		}
 
+		// Gen 4: Add sovereignty receipt (ZKP Proof) if present
+		if attestedClaims.SovereigntyReceipt != "" {
+			claims["grc.sovereignty_receipt"] = map[string]any{
+				"proof_b64": attestedClaims.SovereigntyReceipt,
+				"format":    "gnark-groth16-bn254",
+			}
+		}
+
 		if len(tpm) > 0 {
 			claims["grc.tpm-attestation"] = tpm
 		}
