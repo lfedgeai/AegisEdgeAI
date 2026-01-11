@@ -63,6 +63,13 @@ static_resources:
               config:
                 name: "sensor_verification"
                 root_id: "sensor_verification_root"
+                configuration:
+                  "@type": "type.googleapis.com/google.protobuf.StringValue"
+                  value: |
+                    {
+                      "verification_mode": "runtime",
+                      "sidecar_endpoint": "http://localhost:9050"
+                    }
                 vm_config:
                   vm_id: "sensor_verification_vm"
                   runtime: "envoy.wasm.runtime.v8"
