@@ -376,7 +376,7 @@ test_zkp_verification() {
         fi
         if [ $i -eq 10 ]; then
             echo "  (10s elapsed, forcing agent re-attestation to trigger ZKP...)"
-            run_on_agents "sudo pkill -f spire-agent && sleep 1 && cd ~/AegisSovereignAI/hybrid-cloud-poc && ./test_agents.sh --no-pause --no-build" >/dev/null 2>&1
+            run_on_agents "sudo pkill -x spire-agent && sleep 1 && cd ~/AegisSovereignAI/hybrid-cloud-poc && ./test_agents.sh --no-pause --no-build" >/dev/null 2>&1
         fi
         sleep 1
     done

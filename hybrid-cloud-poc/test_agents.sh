@@ -152,7 +152,7 @@ stop_agent_services_only() {
 
     # Stop SPIRE Agent (not Server)
     echo "     Stopping SPIRE Agent..."
-    pkill -f "spire-agent" >/dev/null 2>&1 || true
+    pkill -x "spire-agent" >/dev/null 2>&1 || true
 
     sleep 1
 
@@ -766,7 +766,7 @@ cleanup() {
     pkill -f "python.*keylime" >/dev/null 2>&1 || true
     pkill -f "keylime_agent" >/dev/null 2>&1 || true
     pkill -f "spire-server" >/dev/null 2>&1 || true
-    pkill -f "spire-agent" >/dev/null 2>&1 || true
+    pkill -x "spire-agent" >/dev/null 2>&1 || true
     pkill -f "tpm2-abrmd" >/dev/null 2>&1 || true
 }
 
