@@ -345,8 +345,17 @@ test_zkp_verification() {
     run_on_onprem "sudo sed -i 's/\"verification_mode\": \".*\"/\"verification_mode\": \"Zkp\"/' /opt/envoy/envoy.yaml"
     
     echo "  Restarting Envoy with Zkp mode..."
-    run_on_onprem "sudo pkill -f 'envoy.*envoy.yaml' && sleep 1 && nohup sudo env -i PATH=\"\$PATH\" envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 </dev/null &"
-    sleep 3
+    run_on_onprem "sudo pkill -f 'envoy.*envoy.yaml' && sleep 1 && nohup sudo envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 < /dev/null &"
+    
+    # Wait for Envoy to start listening on port 8080
+    echo "  Waiting for Envoy to start (max 15s)..."
+    for i in {1..15}; do
+        if run_on_onprem "nc -z localhost 8080" 2>/dev/null; then
+            echo -e "${GREEN}  ✓ Envoy is ready${NC}"
+            break
+        fi
+        sleep 1
+    done
 
     echo -e "${CYAN}Test 2: Verifying SVID contains Sovereignty Receipt (ZKP Proof)${NC}"
     # Wait for ZKP generation log in SPIRE Server
