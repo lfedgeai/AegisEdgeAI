@@ -1151,7 +1151,7 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         sudo chmod 666 /opt/envoy/logs/envoy.log 2>/dev/null
         # Start Envoy with output fully redirected to prevent terminal corruption
         # Use nohup to ensure clean background execution
-        nohup sudo env -i PATH="$PATH" envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 </dev/null &
+        sudo setsid envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 < /dev/null &
         ENVOY_PID=$!
         sleep 3
         if ps -p $ENVOY_PID > /dev/null 2>&1; then

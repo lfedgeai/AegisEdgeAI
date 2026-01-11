@@ -346,7 +346,8 @@ test_zkp_verification() {
     
     echo "  Restarting Envoy with Zkp mode..."
     # Kill existing Envoy first
-    run_on_onprem "sudo pkill -f 'envoy.*envoy.yaml' || true"
+    # Kill existing Envoy first (exact match to avoid killing test script)
+    run_on_onprem "sudo pkill -x envoy || true"
     sleep 2
     
     # Start Envoy in a fully detached process using setsid
