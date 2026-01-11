@@ -10,8 +10,8 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 )
 
-// SovereignReceiptCircuit defines the ZKP circuit for proving location proximity.
-// For this POC, we prove that the private (Lat, Long) is within a square of
+// SovereignReceiptCircuit defines the ZKP circuit for proving mobile device location.
+// For this POC, we prove that the device location (Lat, Long) is within a square of
 // size 2*Radius centered at (TowerLat, TowerLong).
 // All values should be multiplied by 1,000,000 to handle 6 decimal places as integers.
 type SovereignReceiptCircuit struct {

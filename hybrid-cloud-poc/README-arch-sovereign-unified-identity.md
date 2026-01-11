@@ -59,10 +59,10 @@ SPIRE SERVER and KEYLIME VERIFIER VERIFICATION PHASE:
 │ SPIRE Server │──────>│ Keylime      │──────>│   Keylime    │──────>│ Keylime      │──────>│ rust-keylime │──────>│ Mobile Sensor│──────>│ rust-keylime │──────>│ Keylime      │──────>│ SPIRE Server │
 │ Extract: App │       │ Verifier     │       │  Registrar   │       │ Verifier     │       │    Agent     │       │ Microservice │       │    Agent     │       │ Verifier     │       │ Issue Agent  │
 │ Key, Cert,   │       │ Verify App   │       │ Return: IP,  │       │ Verify AK    │       │ Generate     │       │ Verify       │       │ Return Quote │       │ Verify Quote │       │ SVID with    │
-│ Nonce, UUID  │       │ Key Cert     │       │ Port, AK,    │       │ Registration │       │ TPM Quote    │       │ Location     │       │ + Geolocation│       │ Verify Cert  │       │ BroaderClaims│
-└──────────────┘       │ Signature    │       │ mTLS Cert    │       │ (PoC Check)  │       │ (with geo)   │       │ (Optional)   │       └──────────────┘       │ Verify Geo   │       └──────────────┘
+│ Nonce, UUID  │       │ Key Cert     │       │ Port, AK,    │       │ Registration │       │ TPM Quote    │       │ Device Loc   │       │ + Location   │       │ Verify Cert  │       │ BroaderClaims│
+└──────────────┘       │ Signature    │       │ mTLS Cert    │       │ (PoC Check)  │       │ (with loc)   │       │ (Mock MNO)   │       └──────────────┘       │ Verify Loc   │       └──────────────┘
                        └──────────────┘       └──────────────┘       └──────────────┘       │  (PCR 15)    │                                                             │ Return       │
-                                                                                             └──────────────┘                                                             │ BroaderClaims│
+                                                                                            └──────────────┘                                                             │ BroaderClaims│
                                                                                                                                                                  └──────────────┘
 
 SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
@@ -88,9 +88,9 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
 **[9]** Lookup Agent: Verifier queries Registrar for agent info (IP, Port, AK, mTLS Cert)
 **[10]** Verify AK Registration: Verifier verifies TPM AK is registered with registrar/verifier (PoC security check - only registered AKs can attest)
 **[11]** Quote Request: Verifier requests fresh TPM quote with challenge nonce
-**[12]** Geolocation Detection: Agent detects mobile sensor, binds to PCR 15 with nonce
-**[13]** Geolocation Extraction: Verifier fetches geolocation via mTLS, validates nonce and PCR index*
-**[14]** Quote Response: Agent returns TPM quote and nonce-bound geolocation data
+**[12]** Location Detection: Agent detects mobile sensor, binds to PCR 15 with nonce
+**[13]** Location Extraction: Keylime Verifier initiates fetch of location via mTLS, validates nonce and PCR index*
+**[14]** Quote Response: Agent returns TPM quote and nonce-bound location data
 **[15]** Verification Result: Verifier returns BroaderClaims (geolocation, TPM attestation) → SPIRE Server
 **[16]** Agent SVID: Server issues agent SVID with BroaderClaims embedded → SPIRE Agent
 **[17]** Workload Request: Workload connects to Agent Workload API
@@ -143,11 +143,14 @@ SPIRE AGENT SVID ISSUANCE & WORKLOAD SVID ISSUANCE:
   - Keylime APIs are optional extensions (feature-flagged)
   - Keylime APIs are optional extensions (feature-flagged)
 - **Integration Components** (See **[UPSTREAM_MERGE_ROADMAP.md](UPSTREAM_MERGE_ROADMAP.md) Pillar 3**):
-  - Envoy WASM Plugin and Mobile Sensor Microservice to be released as standalone, reusable open source projects
+  - Envoy WASM Plugin and Mobile Sensor Microservice (Mock MNO) to be released as standalone, reusable open source projects
+- **Mobile Sensor Microservice (Mock MNO)**:
+  - Acts as the "Mock MNO" provider for verifying "Device Location" via CAMARA APIs.
+  - Verifier calls this service (conceptually) or verifies the ZKP receipt derived from it.
 - No breaking changes to either upstream project
 - Each component independently mergeable
 
-*The verifier fetches geolocation data via a secure mTLS connection from the agent, validating it against a fresh challenge nonce and PCR 15. No microservice call is made during attestation. When no TPM-reported Mobile/GNSS sensor is present, Sovereign SVIDs omit `grc.geolocation` in that case.*
+*The Keylime Verifier initiates the fetch of location data via a secure mTLS connection from the agent, validating it against a fresh challenge nonce and PCR 15. No microservice call is made during attestation. When no TPM-reported Mobile sensor is present, Sovereign SVIDs omit `grc.geolocation` in that case.*
 
 ---
 
@@ -371,9 +374,9 @@ unified_identity_enabled = true  # Default: false
     - The agent generates a geolocation response where the hash of (geolocation + nonce) is extended into **PCR 15**
     - The verifier validates that the returned nonce matches the request, providing a freshness guarantee (TOCTOU protection)
     - **TPM-Attested Data (Mobile)**: `sensor_id`, `sensor_imei`, `sim_imsi` only
-    - **TPM-Attested Data (GNSS)**: `sensor_id`, `sensor_serial_number`, `latitude`, `longitude`, `accuracy`
+    - **TPM-Attested Data (Location)**: `sensor_id`, `sensor_serial_number`, `latitude`, `longitude`, `accuracy`
     - **NOT TPM-Attested**: `sim_msisdn` (looked up from sidecar database using IMEI+IMSI composite key)
-    - **Note**: The verifier validates geolocation data as part of the hardware-backed attestation process. No additional microservice verification is performed during attestation.
+    - **Note**: The Keylime Verifier initiates this validation as part of the hardware-backed attestation process. No additional microservice verification is performed during attestation.
 
 14. **Verifier Retrieves Attested Claims**
    - The verifier calls the fact provider to get optional metadata (if available)
@@ -1618,7 +1621,7 @@ POST http://localhost:9050/verify
 ```mermaid
 sequenceDiagram
     participant Workload as Workload App
-    participant Hardware as TPM / Sensors / GNSS
+    participant Hardware as TPM / Sensors
     participant KAgent as Keylime Agent
     participant Agent as SPIRE Agent
     participant MNO as Mock MNO (Carrier)
@@ -1637,16 +1640,16 @@ sequenceDiagram
     
     Note right of Verifier: Host Integrity Check
     Verifier->>KAgent: Trigger: Fetch TPM Quote & Geo
-    KAgent->>Hardware: Read PCRs / Sensors
-    Hardware-->>KAgent: TPM-Signed Evidence
+    KAgent->>Hardware: Read PCRs
+    Hardware->>KAgent: TPM-Signed Evidence (IMEI, IMSI)
     KAgent-->>Verifier: Integrity Quote + Geo
     
-    Verifier->>MNO: Verify Device (IMEI, IMSI)
+    Verifier->>MNO: Verify Device Location (CAMARA API)
     MNO-->>Verifier: Signed MNO Endorsement
     Verifier-->>Server: Attested Claims + MNO Anchor
     
     Server->>Server: Run gnark ZKP Prover
-    Note right of Server: Prove: GNSS matches MNO Radius<br/>(Privacy-preserving)
+    Note right of Server: Prove: Location matches MNO Radius<br/>(Privacy-preserving)
     
     Server-->>Agent: Agent SVID + grc.sovereignty_receipt
     
@@ -1811,9 +1814,9 @@ Gen 4 (Target):     Keylime Verifier → CAMARA API (attestation-time, signed)
 // pkg/server/zkpplugin/circuit.go
 type SovereignResidencyCircuit struct {
     // Private Witnesses (from Gen 3 TPM evidence)
-    SecretGPS     frontend.Variable `gnark:",secret"`
-    SecretIMEI    frontend.Variable `gnark:",secret"`
-    SecretIMSI    frontend.Variable `gnark:",secret"`
+    SecretLocation frontend.Variable `gnark:",secret"` // e.g., Lat/Lon from device
+    SecretIMEI     frontend.Variable `gnark:",secret"`
+    SecretIMSI     frontend.Variable `gnark:",secret"`
     
     // Public Inputs
     PolicyZone    frontend.Variable `gnark:",public"`  // Bounding box hash
@@ -1826,8 +1829,8 @@ func (c *SovereignResidencyCircuit) Define(api frontend.API) error {
     deviceHash := api.Hash(c.SecretIMEI, c.SecretIMSI)
     api.AssertIsEqual(deviceHash, c.MNOAnchorHash)
     
-    // 2. Geofencing: GPS within PolicyZone
-    api.AssertIsEqual(api.InZone(c.SecretGPS, c.PolicyZone), 1)
+    // 2. Geofencing: Location within PolicyZone
+    api.AssertIsEqual(api.InZone(c.SecretLocation, c.PolicyZone), 1)
     
     return nil
 }
@@ -1851,7 +1854,7 @@ enum VerificationMode {
 2. Extract `grc.sovereignty_receipt.policy_zone` (public input)
 3. Route to ZKP verifier service (or inline if binary size permits)
 4. Allow if proof valid, deny otherwise
-5. **No raw coordinates ever visible to gateway**
+5. **No raw location data ever visible to gateway**
 
 ### Implementation Timeline
 

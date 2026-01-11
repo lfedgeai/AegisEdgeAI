@@ -331,7 +331,7 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 					radius, _ = coarse["accuracy_meters"].(float64)
 				}
 
-				// Generate receipt: Prove raw GPS (private) fits inside MNO coarse location (public)
+				// Generate receipt: Prove device location (private) fits inside MNO coarse location (public)
 				receipt, err := prover.GenerateReceipt(
 					keylimeClaims.Geolocation.Latitude,
 					keylimeClaims.Geolocation.Longitude,
