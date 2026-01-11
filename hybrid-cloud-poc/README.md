@@ -1,4 +1,4 @@
-<!-- Version: 0.1.0 | Last Updated: 2025-12-29 -->
+<!-- Version: 0.2.0 | Last Updated: 2026-01-11 -->
 # Sovereign Hybrid Cloud PoC
 **Demonstrating Verifiable Data Sovereignty across Public Cloud (e.g., Telefonica) and On-Premise Infrastructure**
 
@@ -46,7 +46,7 @@ The diagram shows the solution architecture with:
 The architecture includes:
 - **Workload Identity Manager** (SPIRE Server) and **Host Identity/Policy Manager** (Keylime) for continuous attestation
 - Cryptographic binding of workload identity, host hardware identity (TPM), platform policy, and location hardware identity (GNSS/mobile sensor) into unified SVIDs
-- Replacement of fragile bearer tokens with hardware-rooted **Proof of Residency (PoR)** and **Proof of Geofencing (PoG)**
+- Replacement of fragile bearer tokens with hardware-rooted **Proof of Residency (PoR)**, **Proof of Geofencing (PoG)**, and **Zero-Knowledge Proofs (ZKP)** (Gen 4)
 
 ## Unified Identity Architecture
 
