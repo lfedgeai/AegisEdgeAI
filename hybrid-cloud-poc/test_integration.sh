@@ -125,7 +125,7 @@ run_script() {
     echo ""
 
     # Prepare environment variables to pass to sub-scripts
-    local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
+    local env_vars="CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST} MNO_SERVICE_URL=http://${ONPREM_HOST}:9050"
 
     # Ensure log directory exists before writing logs (prevents error if cleanup deleted it)
     mkdir -p "${LOG_DIR}"
@@ -328,6 +328,84 @@ test_camara_caching_and_gps_bypass() {
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}CAMARA Caching and GPS Bypass Tests Completed!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
+# Step 6: Test Gen 4 Zero-Knowledge Proof (ZKP) Verification
+test_zkp_verification() {
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}Step 6: Testing Gen 4 Zero-Knowledge Proof (ZKP) Verification${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    echo -e "${CYAN}Test 1: Reconfiguring Envoy to Zkp Mode${NC}"
+    # Reconfigure Envoy to Zkp mode
+    run_on_onprem "sudo sed -i 's/\"verification_mode\": \".*\"/\"verification_mode\": \"Zkp\"/' /opt/envoy/envoy.yaml"
+    
+    echo "  Restarting Envoy with Zkp mode..."
+    run_on_onprem "sudo pkill -f 'envoy.*envoy.yaml' && sleep 1 && nohup sudo env -i PATH=\"\$PATH\" envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 </dev/null &"
+    sleep 3
+
+    echo -e "${CYAN}Test 2: Verifying SVID contains Sovereignty Receipt (ZKP Proof)${NC}"
+    # Wait for ZKP generation log in SPIRE Server
+    echo "  Waiting for SPIRE Server to generate ZKP proof (up to 30s)..."
+    ZKP_LOG=""
+    for i in {1..30}; do
+        ZKP_LOG=$(run_on_control_plane "grep 'Unified-Identity: Generated ZKP Sovereignty Receipt' /tmp/spire-server.log | tail -1" 2>/dev/null || echo "")
+        if [ -n "$ZKP_LOG" ]; then
+            echo -e "${GREEN}  ✓ SPIRE Server generated ZKP proof${NC}"
+            echo "    Log: $ZKP_LOG"
+            break
+        fi
+        if [ $i -eq 10 ]; then
+            echo "  (10s elapsed, forcing agent re-attestation to trigger ZKP...)"
+            run_on_agents "sudo pkill -f spire-agent && sleep 1 && cd ~/AegisSovereignAI/hybrid-cloud-poc && ./test_agents.sh --no-pause --no-build" >/dev/null 2>&1
+        fi
+        sleep 1
+    done
+
+    if [ -z "$ZKP_LOG" ]; then
+        echo -e "${RED}  ✗ SPIRE Server failed to generate ZKP proof within timeout${NC}"
+    fi
+
+    echo -0 ""
+    echo -e "${CYAN}Test 3: End-to-End Traffic with ZKP Verification${NC}"
+    # Wait for Envoy to be ready and SVID to be propagated
+    echo "  Waiting for SVID with ZKP receipt to propagate to agent (up to 30s)..."
+    for i in {1..30}; do
+        run_on_agents "cd ~/AegisSovereignAI/hybrid-cloud-poc && python3 fetch-spire-bundle.py --dump-only > /dev/null 2>&1"
+        if run_on_agents "grep -q 'grc.sovereignty_receipt' /tmp/svid-dump/attested_claims.json 2>/dev/null"; then
+            echo -e "${GREEN}  ✓ SVID now contains ZKP receipt${NC}"
+            break
+        fi
+        sleep 1
+    done
+
+    echo "  Making mTLS request through Envoy in Zkp mode..."
+    mTLS_ENV_VARS="SERVER_HOST=${ONPREM_HOST} SERVER_PORT=8080 CONTROL_PLANE_HOST=${CONTROL_PLANE_HOST} AGENTS_HOST=${AGENTS_HOST} ONPREM_HOST=${ONPREM_HOST}"
+    if run_on_agents "cd ~/AegisSovereignAI/hybrid-cloud-poc && env ${mTLS_ENV_VARS} ./test_mtls_client.sh" 2>/dev/null; then
+        echo -e "${GREEN}  ✓ Traffic ALLOWED with valid ZKP receipt${NC}"
+    else
+        echo -e "${RED}  ✗ Traffic BLOCKED unexpectedly in Zkp mode${NC}"
+        echo "  Checking Envoy logs for rejection reason..."
+        run_on_onprem "sudo tail -n 20 /opt/envoy/logs/envoy.log | grep Verification"
+    fi
+
+    echo ""
+    echo -e "${CYAN}Test 4: Verifying ZKP Claims in SVID Bundle${NC}"
+    # Final check of the claim content
+    if run_on_agents "grep -q 'grc.sovereignty_receipt' /tmp/svid-dump/attested_claims.json 2>/dev/null"; then
+        echo -e "${GREEN}  ✓ ZKP sovereignty receipt found in SVID claims${NC}"
+        run_on_agents "grep -A 5 'grc.sovereignty_receipt' /tmp/svid-dump/attested_claims.json | sed 's/^/    /'"
+    else
+        echo -e "${RED}  ✗ ZKP sovereignty receipt NOT found in SVID claims${NC}"
+    fi
+
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}Gen 4 ZKP Integration Tests Completed!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
@@ -584,6 +662,9 @@ main() {
         exit 1
     fi
 
+    # Step 6: Test Gen 4 ZKP Verification
+    test_zkp_verification
+
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}All Tests Completed!${NC}"
@@ -596,6 +677,7 @@ main() {
     echo "  ✓ Complete Integration Test: Completed"
     echo "  ✓ CAMARA Caching and GPS Bypass Tests: Completed"
     echo "  ✓ mTLS Client Test with IMEI/IMSI Validation: Completed"
+    echo "  ✓ Gen 4 ZKP Integration Test: Completed"
     echo ""
     echo -e "${CYAN}To check logs (Consolidated in ${LOG_DIR}):${NC}"
     if [ "${ON_CONTROL_PLANE_HOST}" != "true" ]; then

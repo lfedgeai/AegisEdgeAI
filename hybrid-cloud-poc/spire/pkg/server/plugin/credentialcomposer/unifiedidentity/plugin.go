@@ -61,10 +61,17 @@ type Plugin struct {
 	mu            sync.RWMutex
 	keylimeClient *keylime.Client
 	policyEngine  *policy.Engine
+
+	// Gen 4: Cache verified claims for workload inheritance
+	// Key: Agent SPIFFE ID
+	claimsCache map[string]*types.AttestedClaims
+	latestClaims *types.AttestedClaims
 }
 
 func New() *Plugin {
-	return &Plugin{}
+	return &Plugin{
+		claimsCache: make(map[string]*types.AttestedClaims),
+	}
 }
 
 func (p *Plugin) ComposeServerX509CA(context.Context, *credentialcomposerv1.ComposeServerX509CARequest) (*credentialcomposerv1.ComposeServerX509CAResponse, error) {
@@ -194,17 +201,29 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 	client := p.keylimeClient
 	engine := p.policyEngine
 	p.mu.RUnlock()
-
-	// Workload SVIDs are handled locally for scalability; only agent SVIDs go to Keylime
+	// Workload SVIDs inherit claims from the agent SVID (node attestation results)
 	if !isAgent {
-		logrus.Infof("Unified-Identity: Skipping Keylime verification for workload SVID (handled locally)")
-		// Build local claims without Keylime verification
-		claims := &types.AttestedClaims{}
-		unifiedJSON, err := buildLocalWorkloadClaims(sa, spiffeID, keySource)
-		if err != nil {
-			return nil, nil, status.Errorf(codes.Internal, "failed to build local workload claims: %v", err)
+		p.mu.RLock()
+		nodeID := ""
+		if sa != nil {
+			nodeID = sa.KeylimeAgentUuid
 		}
-		return claims, unifiedJSON, nil
+		cached, ok := p.claimsCache[nodeID]
+		if !ok && p.latestClaims != nil {
+			// Fallback to latest verified claims for POC (single node environment)
+			cached = p.latestClaims
+			ok = true
+		}
+		p.mu.RUnlock()
+
+		if ok {
+			logrus.Infof("Unified-Identity: Inheriting verified claims for workload %s from cache (node=%s)", spiffeID, nodeID)
+			unifiedJSON, err := unifiedidentity.BuildClaimsJSON(spiffeID, keySource, "", sa, cached)
+			return cached, unifiedJSON, err
+		}
+		logrus.Infof("Unified-Identity: No cached claims for node %s - workload SVID will have legacy claims only", nodeID)
+		unifiedJSON, err := unifiedidentity.BuildClaimsJSON(spiffeID, keySource, "", sa, nil)
+		return nil, unifiedJSON, err
 	}
 
 	if client == nil {
@@ -349,6 +368,14 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 	if err != nil {
 		return nil, nil, status.Errorf(codes.Internal, "failed to build claims JSON: %v", err)
 	}
+
+	// Cache verified claims for workloads on this node
+	p.mu.Lock()
+	if sa != nil && sa.KeylimeAgentUuid != "" {
+		p.claimsCache[sa.KeylimeAgentUuid] = claims
+	}
+	p.latestClaims = claims
+	p.mu.Unlock()
 
 	return claims, unifiedJSON, nil
 }

@@ -58,8 +58,15 @@ except ImportError:
     sys.exit(1)
 
 
+import argparse
+import json
+import base64
+
+# OID for Unified Identity Claims
+UNIFIED_IDENTITY_OID = "1.3.6.1.4.1.55744.1.1"
+
 def fetch_bundle_via_grpc(socket_path):
-    """Fetch trust bundle from SPIRE Agent via direct gRPC."""
+    """Fetch trust bundle and leaf SVID from SPIRE Agent via direct gRPC."""
     script_dir = Path(__file__).parent / "python-app-demo"
     workload_pb2_path = script_dir / "generated" / "spiffe" / "workload" / "workload_pb2.py"
     workload_pb2_grpc_path = script_dir / "generated" / "spiffe" / "workload" / "workload_pb2_grpc.py"
@@ -67,131 +74,70 @@ def fetch_bundle_via_grpc(socket_path):
     if not workload_pb2_path.exists() or not workload_pb2_grpc_path.exists():
         raise ImportError(f"Protobuf files not found: {workload_pb2_path}")
 
-    # Load protobuf modules - need to register in sys.modules to avoid conflicts
-    # Must create full module hierarchy in sys.modules before loading grpc module
+    # Load protobuf modules
     import types
     import sys
     
-    # Create placeholder modules for the hierarchy (to avoid importing system 'spiffe')
     if 'spiffe' not in sys.modules or hasattr(sys.modules.get('spiffe'), '__path__'):
-        # Only override if not already loaded, or if it's a real package
         spiffe_module = types.ModuleType('spiffe')
-        spiffe_module.__path__ = []  # Make it a package
+        spiffe_module.__path__ = []
         sys.modules['spiffe'] = spiffe_module
     
     if 'spiffe.workload' not in sys.modules:
         spiffe_workload = types.ModuleType('spiffe.workload')
         spiffe_workload.__path__ = []
         sys.modules['spiffe.workload'] = spiffe_workload
-        # Compatibility with different import styles
-        if hasattr(sys.modules['spiffe'], 'workload'):
-            sys.modules['spiffe'].workload = spiffe_workload
 
-    # Load workload_pb2 first
     spec_pb2 = importlib.util.spec_from_file_location("workload_pb2", workload_pb2_path)
     workload_pb2 = importlib.util.module_from_spec(spec_pb2)
     spec_pb2.loader.exec_module(workload_pb2)
-    
-    # Register in sys.modules so workload_pb2_grpc can find it
     sys.modules['spiffe.workload.workload_pb2'] = workload_pb2
     
-    # Now load workload_pb2_grpc
     spec_grpc = importlib.util.spec_from_file_location("workload_pb2_grpc", workload_pb2_grpc_path)
     workload_pb2_grpc = importlib.util.module_from_spec(spec_grpc)
     spec_grpc.loader.exec_module(workload_pb2_grpc)
 
-    # gRPC retry logic with exponential backoff
     max_attempts = 5
     attempt = 0
-    backoff = 1.0 # Start with 1 second
-
+    backoff = 1.0
     abs_socket_path = socket_path.replace('unix://', '')
+    response = None
 
     while attempt < max_attempts:
         attempt += 1
         try:
-            # Check if socket exists (optional, gRPC will fail anyway if missing)
             if not os.path.exists(abs_socket_path) and attempt < max_attempts:
-                # If socket doesn't exist yet, we can wait early
                 raise Exception(f"Socket not found at {abs_socket_path}")
 
             channel = grpc.insecure_channel(f'unix:{abs_socket_path}')
             stub = workload_pb2_grpc.SpiffeWorkloadAPIStub(channel)
             grpc_metadata = [('workload.spiffe.io', 'true')]
 
-            # Fetch SVID to get trust domain
             request = workload_pb2.X509SVIDRequest()
-            # Use smaller timeout for first attempts
             rpc_timeout = 5 if attempt < max_attempts else 15
             response_stream = stub.FetchX509SVID(request, metadata=grpc_metadata, timeout=rpc_timeout)
             response = next(response_stream)
 
-            if not response.svids:
+            if not response or not response.svids:
                 raise Exception("No SVIDs in response")
-            
-            # If we got here, we succeeded
             break
         except (grpc.RpcError, Exception) as e:
             if attempt < max_attempts:
                 wait_time = backoff + random.uniform(0, 0.5)
-                # Suppress loud error if it's the specific "socket not found" or "UNAVAILABLE"
-                err_msg = str(e)
-                if "Socket not found" in err_msg or "UNAVAILABLE" in err_msg:
-                    # Very quiet for expected startup wait
-                    pass
-                else:
-                    print(f"  ⚠ gRPC fetch attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
                 time.sleep(wait_time)
-                backoff *= 2 # Exponential backoff
+                backoff *= 2
             else:
-                # Final attempt failed
-                if "Socket not found" in str(e) or "UNAVAILABLE" in str(e):
-                    print(f"  ⚠ SPIRE Agent not ready after {max_attempts} attempts. Check if it is running.")
-                else:
-                    print(f"  ✗ gRPC fetch failed after {max_attempts} attempts: {e}")
-                sys.exit(1) # Final failure in this script is fatal for the test step
+                raise e
 
     svid_response = response.svids[0]
-    
-    # Get SPIFFE ID directly from response if available
-    spiffe_id_str = getattr(svid_response, 'spiffe_id', None)
-    if spiffe_id_str:
-        spiffe_id = SimpleSpiffeId(spiffe_id_str)
-    else:
-        # Fallback to parsing certificate if spiffe_id field is missing
-        cert_data = getattr(svid_response, 'x509_svid', getattr(svid_response, 'certificate', [None])[0])
-        if isinstance(cert_data, list): cert_data = cert_data[0]
-        
-        try:
-            cert = x509.load_der_x509_certificate(cert_data)
-        except ValueError as e:
-            # If it has extra data, it's likely a concatenated chain; try to ignore for ID extraction
-            # This is a hacky way to get the first cert's bytes if it's concatenated DER
-            # For extraction of the ID, we only need the first one.
-            pass
-            
-        # (ID extraction from cert logic removed as we prefer spiffe_id field)
-        raise Exception("Could not determine SPIFFE ID from response")
+    spiffe_id_str = getattr(svid_response, 'spiffe_id', "")
+    spiffe_id = SimpleSpiffeId(spiffe_id_str)
 
-    # The trust bundle is what we actually want to save
-    bundle_certs = []
-    bundle_data = getattr(svid_response, 'bundle', getattr(svid_response, 'trust_bundle', None))
-    if bundle_data:
-        if isinstance(bundle_data, (list, tuple)):
-            for b_der in bundle_data:
-                bundle_certs.append(x509.load_der_x509_certificate(b_der))
-        else:
-            # Singular bytes field - might be a single cert or concatenated
-            try:
-                bundle_certs.append(x509.load_der_x509_certificate(bundle_data))
-            except ValueError as e:
-                if "ExtraData" in str(e):
-                    # Handle concatenated DER bundle (common in some SPIRE versions)
-                    # We'll just take the first one or try a simple split if we can
-                    pass
+    # Extract leaf DER cert
+    leaf_cert_der = svid_response.x509_svid
+    # If it's a chain (concatenated DER), load_der_certs will handle it
     
     def load_der_certs(data):
-        """Load one or more DER certificates from bytes."""
         if not data: return []
         certs = []
         pos = 0
@@ -208,7 +154,6 @@ def fetch_bundle_via_grpc(socket_path):
                     if pos + n > len(data): break
                     length = int.from_bytes(data[pos:pos+n], 'big')
                     pos += n
-                
                 full_len = pos - start + length
                 cert_data = data[start:start+full_len]
                 cert = x509.load_der_x509_certificate(cert_data)
@@ -218,58 +163,94 @@ def fetch_bundle_via_grpc(socket_path):
                 break
         return certs
 
-
-
-    # Get trust bundle - try multiple places where it might be
-    bundle_certs = []
+    svid_certs = load_der_certs(leaf_cert_der)
     
-    # 1. Try bundle field in SVID response
-    svid_bundle = getattr(svid_response, 'bundle', getattr(svid_response, 'trust_bundle', None))
-    if svid_bundle:
-        if isinstance(svid_bundle, (list, tuple)):
-            for b_der in svid_bundle:
-                bundle_certs.extend(load_der_certs(b_der))
-        else:
-            bundle_certs.extend(load_der_certs(svid_bundle))
-            
-    # 2. Try FetchX509Bundles if SVID response didn't have it
-    if not bundle_certs:
-        try:
-            bundle_request = workload_pb2.X509BundlesRequest()
-            bundle_response_stream = stub.FetchX509Bundles(bundle_request, metadata=grpc_metadata, timeout=5)
-            bundle_response = next(bundle_response_stream)
-            for trust_domain, bundle_der in bundle_response.bundles.items():
-                if trust_domain == spiffe_id.trust_domain:
-                    bundle_certs.extend(load_der_certs(bundle_der))
-        except Exception:
-            pass
-
-    channel.close()
-    if not bundle_certs:
-        raise Exception("Could not retrieve trust bundle from SPIRE Agent")
+    bundle_certs = []
+    bundle_der = getattr(svid_response, 'bundle', None)
+    if bundle_der:
+        bundle_certs = load_der_certs(bundle_der)
         
-    return spiffe_id, bundle_certs
+    channel.close()
+    return spiffe_id, bundle_certs, svid_certs
 
+def dump_claims(svid_certs):
+    """Extract and dump Unified Identity claims from SVID."""
+    if not svid_certs:
+        return
+    
+    # Unified Identity can be in leaf or agent SVID (intermediate)
+    claims = {}
+    print(f"  Checking {len(svid_certs)} certificate(s) in SVID chain...")
+    for i, cert in enumerate(svid_certs):
+        spiffe_id = "unknown"
+        try:
+            for ext in cert.extensions:
+                if ext.oid._name == 'subjectAltName':
+                    for name in ext.value:
+                        if hasattr(name, 'value') and isinstance(name.value, str) and name.value.startswith('spiffe://'):
+                            spiffe_id = name.value
+                            break
+        except: pass
+        
+        print(f"  - Cert [{i}]: SPIFFE ID: {spiffe_id}")
+        
+        for ext in cert.extensions:
+            if ext.oid.dotted_string == UNIFIED_IDENTITY_OID:
+                print(f"    ✓ Found Unified Identity extension in cert [{i}]")
+                # Value is usually an octet string containing UTF-8 JSON
+                try:
+                    # Cryptography returns the raw extension value (DER octet string)
+                    # We need to unwrap the octet string if it's there, or just take bytes
+                    val = ext.value.value
+                    if isinstance(val, bytes):
+                        # Some versions of cryptography/SPIRE might wrap this
+                        # Try to parse as JSON directly
+                        try:
+                            claims = json.loads(val.decode('utf-8'))
+                        except:
+                            # Try to strip leading/trailing non-JSON if any
+                            s = val.decode('utf-8', errors='ignore')
+                            start = s.find('{')
+                            end = s.rfind('}')
+                            if start != -1 and end != -1:
+                                claims = json.loads(s[start:end+1])
+                    break
+                except Exception as e:
+                    print(f"  ⚠ Failed to parse claims from extension: {e}")
+        if claims:
+            break
+            
+    if claims:
+        dump_path = Path("/tmp/svid-dump/attested_claims.json")
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(dump_path, 'w') as f:
+            json.dump(claims, f, indent=2)
+        print(f"✓ Dumped SVID claims to {dump_path}")
+    else:
+        print("⚠ No Unified Identity claims found in SVID chain")
 
 def main():
-    raw_socket = os.environ.get('SPIRE_AGENT_SOCKET', '/tmp/spire-agent/public/api.sock')
-    output_path = os.environ.get('BUNDLE_OUTPUT_PATH', '/tmp/spire-bundle.pem')
+    parser = argparse.ArgumentParser(description='Fetch SPIRE Trust Bundle or Dump SVID Claims')
+    parser.add_argument('--dump-only', action='store_true', help='Dump SVID claims instead of fetching bundle')
+    parser.add_argument('--socket', default=os.environ.get('SPIRE_AGENT_SOCKET', '/tmp/spire-agent/public/api.sock'), help='SPIRE Agent socket path')
+    parser.add_argument('--output', default=os.environ.get('BUNDLE_OUTPUT_PATH', '/tmp/spire-bundle.pem'), help='Output path for bundle')
+    args = parser.parse_args()
 
+    raw_socket = args.socket
     if "://" in raw_socket:
         socket_path = raw_socket
     else:
         socket_path = f"unix://{raw_socket}"
 
-    print(f"Fetching SPIRE trust bundle from: {socket_path}")
-    print(f"Output path: {output_path}")
-    print("")
-
     try:
-        spiffe_id, bundle_certs = fetch_bundle_via_grpc(socket_path)
+        spiffe_id, bundle_certs, svid_certs = fetch_bundle_via_grpc(socket_path)
+
+        if args.dump_only:
+            dump_claims(svid_certs)
+            return
 
         print(f"Trust domain: {spiffe_id.trust_domain}")
         print(f"SPIFFE ID: {spiffe_id}")
-        print("")
 
         if not bundle_certs:
             print("Error: Trust bundle has no X509 authorities")
@@ -280,31 +261,21 @@ def main():
         for cert in bundle_certs:
             bundle_pem += cert.public_bytes(serialization.Encoding.PEM)
 
-        # Create output directory if needed
-        output_dir = os.path.dirname(output_path)
+        output_dir = os.path.dirname(args.output)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, mode=0o755, exist_ok=True)
 
-        with open(output_path, 'wb') as f:
+        with open(args.output, 'wb') as f:
             f.write(bundle_pem)
 
-        print(f"✓ Successfully extracted SPIRE trust bundle")
-        print(f"  Bundle file: {output_path}")
-        print(f"  Number of CA certificates: {len(bundle_certs)}")
-        print("")
-        print("You can now use this bundle file with:")
-        print(f"  export CA_CERT_PATH=\"{output_path}\"")
-        print("")
+        print(f"✓ Successfully extracted SPIRE trust bundle to {args.output}")
 
     except Exception as e:
-        # Suppress full traceback for common/expected connection errors during startup
-        if "StatusCode.UNAVAILABLE" in str(e) or "failed to connect" in str(e).lower():
-            print(f"Error: Could not connect to SPIRE Agent at {socket_path}. Ensure it is running.")
-        else:
-            print(f"Error: {e}")
-            import traceback
-            traceback.print_exc()
+        print(f"Error: {e}")
         sys.exit(1)
+
+if __name__ == '__main__':
+    main()
 
 if __name__ == '__main__':
     main()

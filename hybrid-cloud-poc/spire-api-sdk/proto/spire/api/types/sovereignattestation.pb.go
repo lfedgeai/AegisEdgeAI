@@ -119,11 +119,12 @@ func (x *SovereignAttestation) GetKeylimeAgentUuid() string {
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)
 // AttestedClaims contains verified facts from Keylime about the host.
 type AttestedClaims struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Geolocation    *Geolocation           `protobuf:"bytes,1,opt,name=geolocation,proto3" json:"geolocation,omitempty"`                             // Geolocation object with type, sensor_id, and optional value
-	MnoEndorsement *MNOEndorsement        `protobuf:"bytes,2,opt,name=mno_endorsement,json=mnoEndorsement,proto3" json:"mno_endorsement,omitempty"` // Gen 4: Signed MNO endorsement
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Geolocation        *Geolocation           `protobuf:"bytes,1,opt,name=geolocation,proto3" json:"geolocation,omitempty"`                                         // Geolocation object with type, sensor_id, and optional value
+	MnoEndorsement     *MNOEndorsement        `protobuf:"bytes,2,opt,name=mno_endorsement,json=mnoEndorsement,proto3" json:"mno_endorsement,omitempty"`             // Gen 4: Signed MNO endorsement
+	SovereigntyReceipt string                 `protobuf:"bytes,3,opt,name=sovereignty_receipt,json=sovereigntyReceipt,proto3" json:"sovereignty_receipt,omitempty"` // Gen 4: ZKP proof of proximity
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *AttestedClaims) Reset() {
@@ -168,6 +169,13 @@ func (x *AttestedClaims) GetMnoEndorsement() *MNOEndorsement {
 		return x.MnoEndorsement
 	}
 	return nil
+}
+
+func (x *AttestedClaims) GetSovereigntyReceipt() string {
+	if x != nil {
+		return x.SovereigntyReceipt
+	}
+	return ""
 }
 
 // Gen 4: MNOEndorsement represents a signed endorsement from a carrier
@@ -377,10 +385,11 @@ const file_spire_api_types_sovereignattestation_proto_rawDesc = "" +
 	"\x13app_key_certificate\x18\x03 \x01(\fR\x11appKeyCertificate\x12'\n" +
 	"\x0fchallenge_nonce\x18\x04 \x01(\tR\x0echallengeNonce\x12,\n" +
 	"\x12workload_code_hash\x18\x05 \x01(\tR\x10workloadCodeHash\x12,\n" +
-	"\x12keylime_agent_uuid\x18\x06 \x01(\tR\x10keylimeAgentUuid\"\x9a\x01\n" +
+	"\x12keylime_agent_uuid\x18\x06 \x01(\tR\x10keylimeAgentUuid\"\xcb\x01\n" +
 	"\x0eAttestedClaims\x12>\n" +
 	"\vgeolocation\x18\x01 \x01(\v2\x1c.spire.api.types.GeolocationR\vgeolocation\x12H\n" +
-	"\x0fmno_endorsement\x18\x02 \x01(\v2\x1f.spire.api.types.MNOEndorsementR\x0emnoEndorsement\"\x8c\x01\n" +
+	"\x0fmno_endorsement\x18\x02 \x01(\v2\x1f.spire.api.types.MNOEndorsementR\x0emnoEndorsement\x12/\n" +
+	"\x13sovereignty_receipt\x18\x03 \x01(\tR\x12sovereigntyReceipt\"\x8c\x01\n" +
 	"\x0eMNOEndorsement\x12\x1a\n" +
 	"\bverified\x18\x01 \x01(\bR\bverified\x12)\n" +
 	"\x10endorsement_json\x18\x02 \x01(\tR\x0fendorsementJson\x12\x1c\n" +

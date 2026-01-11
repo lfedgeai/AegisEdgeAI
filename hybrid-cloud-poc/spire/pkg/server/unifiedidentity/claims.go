@@ -104,6 +104,13 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 			claims["grc.geolocation"] = geoObj
 		}
 
+		if len(tpm) > 0 {
+			claims["grc.tpm-attestation"] = tpm
+		}
+	}
+	// For KeySourceWorkload: Include grc.workload AND Gen 4 ZKP claims if present (inherited from node)
+
+	if attestedClaims != nil {
 		// Gen 4: Add MNO endorsement claim if present
 		// This serves as the public anchor for the ZKP circuit
 		if attestedClaims.MnoEndorsement != nil && attestedClaims.MnoEndorsement.Verified {
@@ -123,12 +130,7 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 				"format":    "gnark-groth16-bn254",
 			}
 		}
-
-		if len(tpm) > 0 {
-			claims["grc.tpm-attestation"] = tpm
-		}
 	}
-	// For KeySourceWorkload: Only include grc.workload (no TPM attestation, no geolocation)
 
 	return json.Marshal(claims)
 }

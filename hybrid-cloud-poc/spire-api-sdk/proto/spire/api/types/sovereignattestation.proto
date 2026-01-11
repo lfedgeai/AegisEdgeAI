@@ -32,6 +32,7 @@ message SovereignAttestation {
 message AttestedClaims {
     Geolocation geolocation = 1;    // Geolocation object with type, sensor_id, and optional value
     MNOEndorsement mno_endorsement = 2; // Gen 4: Signed MNO endorsement
+    string sovereignty_receipt = 3;     // Gen 4: ZKP proof of proximity
 }
 
 // Gen 4: MNOEndorsement represents a signed endorsement from a carrier

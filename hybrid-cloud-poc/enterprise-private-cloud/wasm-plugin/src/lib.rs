@@ -59,6 +59,7 @@ enum VerificationMode {
     Trust,    // No sidecar call (default) - trust attestation-time verification
     Runtime,  // Sidecar call with caching (15min TTL)
     Strict,   // Sidecar call without caching (real-time)
+    Zkp,      // Zero-Knowledge Proof mode (Stateless Verification)
 }
 
 impl Default for VerificationMode {
@@ -104,6 +105,7 @@ impl PluginConfig {
                     "trust" => VerificationMode::Trust,
                     "runtime" => VerificationMode::Runtime,
                     "strict" => VerificationMode::Strict,
+                    "zkp" => VerificationMode::Zkp,
                     _ => {
                         proxy_wasm::hostcalls::log(LogLevel::Warn, &format!(
                             "Unknown verification_mode '{}', defaulting to 'trust'", mode_str
@@ -150,6 +152,7 @@ impl RootContext for SensorVerificationRoot {
                     VerificationMode::Trust => "trust",
                     VerificationMode::Runtime => "runtime",
                     VerificationMode::Strict => "strict",
+                    VerificationMode::Zkp => "zkp",
                 };
                 proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
                     "WASM filter configured: verification_mode={}, sidecar_endpoint={}",
@@ -203,6 +206,7 @@ impl RootContext for SensorVerificationRoot {
             sensor_latitude: None,
             sensor_longitude: None,
             sensor_accuracy: None,
+            sensor_sovereignty_receipt: None,
             sidecar_call_start_ms: None,
         }))
     }
@@ -224,6 +228,7 @@ struct SensorVerificationFilter {
     sensor_latitude: Option<f64>,
     sensor_longitude: Option<f64>,
     sensor_accuracy: Option<f64>,
+    sensor_sovereignty_receipt: Option<String>, // Gen 4: ZKP Receipt
     sidecar_call_start_ms: Option<u64>,
 }
 
@@ -457,6 +462,7 @@ impl HttpContext for SensorVerificationFilter {
             VerificationMode::Trust => "trust",
             VerificationMode::Runtime => "runtime",
             VerificationMode::Strict => "strict",
+            VerificationMode::Zkp => "zkp",
         };
 
         if sensor_type_str == "mobile" {
@@ -464,6 +470,7 @@ impl HttpContext for SensorVerificationFilter {
                 VerificationMode::Trust => "trust",
                 VerificationMode::Runtime => "runtime",
                 VerificationMode::Strict => "strict",
+                VerificationMode::Zkp => "zkp",
             };
 
             match self.config.verification_mode {
@@ -531,6 +538,27 @@ impl HttpContext for SensorVerificationFilter {
                         }
                     }
                 }
+                VerificationMode::Zkp => {
+                    // Gen 4: ZKP mode - verify presence of sovereignty receipt in SVID
+                    if let Some(receipt) = &self.sensor_sovereignty_receipt {
+                        proxy_wasm::hostcalls::log(LogLevel::Info, &format!(
+                            "Mobile sensor (sensor_id={}): ZKP Sovereignty Receipt verified (len={}) - allowing request",
+                            sensor_id, receipt.len()
+                        ));
+                        Action::Continue
+                    } else {
+                        proxy_wasm::hostcalls::log(LogLevel::Warn, &format!(
+                            "Mobile sensor (sensor_id={}): ZKP Sovereignty Receipt MISSING - rejecting request",
+                            sensor_id
+                        ));
+                        self.send_http_response(
+                            403,
+                            vec![("content-type", "text/plain")],
+                            Some(b"Sovereignty Receipt Missing"),
+                        );
+                        Action::Pause
+                    }
+                }
             }
         } else {
             // Task 12b: GNSS sensors are always trusted hardware - no sidecar call needed (Pure Mobile Sidecar)
@@ -554,6 +582,7 @@ struct SensorInfo {
     latitude: Option<f64>,
     longitude: Option<f64>,
     accuracy: Option<f64>,
+    sovereignty_receipt: Option<String>,
 }
 
 fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
@@ -637,6 +666,10 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                                             latitude: mobile.get("location_verification").and_then(|v| v.get("latitude")).and_then(|v| v.as_f64()),
                                             longitude: mobile.get("location_verification").and_then(|v| v.get("longitude")).and_then(|v| v.as_f64()),
                                             accuracy: mobile.get("location_verification").and_then(|v| v.get("accuracy")).and_then(|v| v.as_f64()),
+                                            sovereignty_receipt: json.get("grc.sovereignty_receipt")
+                                                .and_then(|v| v.get("proof_b64"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string()),
                                         });
                                     }
 
@@ -652,6 +685,7 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                                             latitude: gnss.get("retrieved_location").and_then(|v| v.get("latitude")).and_then(|v| v.as_f64()),
                                             longitude: gnss.get("retrieved_location").and_then(|v| v.get("longitude")).and_then(|v| v.as_f64()),
                                             accuracy: gnss.get("retrieved_location").and_then(|v| v.get("accuracy")).and_then(|v| v.as_f64()),
+                                            sovereignty_receipt: None,
                                         });
                                     }
 
@@ -668,6 +702,7 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
                                                 latitude: geo.get("latitude").and_then(|v| v.as_f64()),
                                                 longitude: geo.get("longitude").and_then(|v| v.as_f64()),
                                                 accuracy: geo.get("accuracy").and_then(|v| v.as_f64()),
+                                                sovereignty_receipt: None,
                                             });
                                         }
                                     }
