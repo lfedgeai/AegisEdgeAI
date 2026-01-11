@@ -168,53 +168,40 @@ fn main(
 
 To prevent the high overhead of generating a new ZKP for every short-lived Workload SVID (TTL ~1hr), AegisSovereignAI utilizes a **Dual-Identity Pattern**. The expensive ZK-Prover runs once for the SPIRE Agent to generate a **Long-Lived Residency Token (LLRT)**, which workloads then reference.
 
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                     SOVEREIGNTY RECEIPT DATA FLOW                          │
-├───────────────────────────────────────────────────────────────────────────┤
-│                                                                           │
-│  ┌─────┐  TPM-Signed GPS/IMEI/IMSI  ┌──────────────┐                     │
-│  │ TPM │ ──────────────────────────→│              │                     │
-│  └─────┘                            │    SPIRE     │                     │
-│                                     │    Server    │                     │
-│  ┌─────┐  Signed Tower ID           │              │                     │
-│  │ MNO │ ──────────────────────────→│  ┌────────┐  │                     │
-│  └─────┘                            │  │  ZKP   │  │  Noir    ┌───────┐  │
-│                                     │  │ Plugin │──┼─Prover──→│ SNARK │  │
-│                                     │  └────────┘  │          └───┬───┘  │
-│                                     └──────────────┘              │      │
-│                                            │                      │      │
-│                                            ▼                      ▼      │
-│                               ┌─────────────────────────────────────┐    │
-│                               │         Agent SVID (LLRT)            │    │
-│                               │  • Full SNARK (sovereignty_receipt)  │    │
-│                               │  • H(SNARK) = Residency Hash         │    │
-│                               └─────────────────────────────────────┘    │
-│                                            │                             │
-│                                            ▼                             │
-│                               ┌─────────────────────────────────────┐    │
-│                               │       Workload SVID (Lightweight)    │    │
-│                               │  • grc.residency_hash = H(SNARK)     │    │
-│                               │  • grc.compliance_zone (readable)    │    │
-│                               │  (inherits via claims - implemented) │    │
-│                               └─────────────────────────────────────┘    │
-│                                            │                             │
-│                                            ▼                             │
-│                               ┌─────────────────────────────────────┐    │
-│                               │         Envoy WASM                   │    │
-│                               │  (routes to ZKP verifier service)    │    │
-│                               └─────────────────────────────────────┘    │
-│                                                                           │
-└───────────────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant Hardware as TPM / Sensors
+    participant Agent as SPIRE Agent
+    participant MNO as Mock MNO (Carrier)
+    participant Verifier as Keylime Verifier
+    participant Server as SPIRE Server (ZKP Plugin)
+    participant Envoy as Envoy WASM Filter
+
+    Note over Hardware, Server: ATTESTATION-TIME
+    Hardware->>Agent: TPM-Signed Evidence (IMEI, IMSI, GPS)
+    Agent->>Verifier: Attestation Quote + Evidence
+    Verifier->>MNO: Verify Device (IMEI, IMSI)
+    MNO-->>Verifier: Signed MNO Endorsement
+    Verifier-->>Server: Attested Claims + MNO Anchor
+    
+    Server->>Server: Run gnark/Noir Prover
+    Note right of Server: Prove: Evidence matches Anchor<br/>AND Position inside Policy
+    
+    Server-->>Agent: SVID with grc.sovereignty_receipt.*
+    
+    Note over Agent, Envoy: RUNTIME
+    Agent->>Envoy: Request with SVID
+    Envoy->>Envoy: Check grc.sovereignty_receipt.* presence
+    Envoy->>Envoy: Validate SVID Chain (math verified at issuance)
+    Envoy-->>Agent: Allowed (Sovereign Traffic)
 ```
 
-**Flow Summary:**
-1. **SPIRE Agent** sends TPM-signed evidence to **SPIRE Server**
-2. **MNO** provides signed Tower ID anchor
-3. **SPIRE Server** runs Noir prover → generates **SNARK**
-4. **Agent SVID** contains full SNARK + `H(SNARK)` residency hash
-5. **Workload SVID** inherits lightweight `residency_hash` via claims (already implemented in [hybrid-cloud-poc](https://github.com/lfedgeai/AegisSovereignAI/tree/main/hybrid-cloud-poc))
-6. **Envoy** routes to ZKP verifier → allows or blocks traffic
+**Workflow Summary:**
+1. **SPIRE Agent** collects hardware-rooted evidence (TPM-signed GPS/IMEI/IMSI).
+2. **Keylime Verifier** fetches a **Signed MNO Endorsement** (Mock MNO in lab).
+3. **SPIRE Server (ZKP Plugin)** runs the zero-knowledge circuit to prove compliance without exposing raw location.
+4. **SVID** is issued containing the `grc.sovereignty_receipt.*` claims (Sovereignty Receipt).
+5. **Envoy WASM Filter** verifies the receipt presence and SVID signature at runtime, enforcing policy with zero exposure.
 
 ### X.509 Certificate Encoding (Interoperability)
 
