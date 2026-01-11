@@ -650,7 +650,27 @@ fn extract_sensor_info_from_cert(cert_pem: &[u8]) -> Option<SensorInfo> {
 
                         match serde_json::from_str::<serde_json::Value>(json_str) {
                             Ok(json) => {
-                                // 3. Parse Nested grc.geolocation (Refined Schema)
+                                // 3. Parse Nested grc.workload (Gen 4 Workload SVIDs)
+                                if let Some(workload) = json.get("grc.workload") {
+                                    proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found grc.workload claim", cert_idx));
+                                    return Some(SensorInfo {
+                                        sensor_id: workload.get("workload-id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+                                        sensor_type: Some("workload".to_string()),
+                                        sensor_imei: None,
+                                        sensor_imsi: None,
+                                        sensor_serial_number: None,
+                                        sensor_msisdn: None,
+                                        latitude: None,
+                                        longitude: None,
+                                        accuracy: None,
+                                        sovereignty_receipt: json.get("grc.sovereignty_receipt")
+                                            .and_then(|v| v.get("proof_b64"))
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string()),
+                                    });
+                                }
+
+                                // 4. Parse Nested grc.geolocation (Refined Schema)
                                 if let Some(geo) = json.get("grc.geolocation") {
                                     proxy_wasm::hostcalls::log(LogLevel::Info, &format!("Certificate {}: Found grc.geolocation claim", cert_idx));
 
