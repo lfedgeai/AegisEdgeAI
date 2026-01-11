@@ -1631,8 +1631,16 @@ sequenceDiagram
     
     Note over Hardware, Server: 2. NODE ATTESTATION (Zero-Knowledge)
     Agent->>KAgent: Request App Key Certification
-    Hardware->>KAgent: TPM-Signed Evidence (IMEI, IMSI, GNSS)
-    KAgent->>Verifier: Integrity Quote + App Key
+    KAgent-->>Agent: App Key Certificate
+    Agent->>Server: SovereignAttestation (App Key Cert)
+    Server->>Verifier: Verify Identity
+    
+    Note right of Verifier: Host Integrity Check
+    Verifier->>KAgent: Trigger: Fetch TPM Quote & Geo
+    KAgent->>Hardware: Read PCRs / Sensors
+    Hardware-->>KAgent: TPM-Signed Evidence
+    KAgent-->>Verifier: Integrity Quote + Geo
+    
     Verifier->>MNO: Verify Device (IMEI, IMSI)
     MNO-->>Verifier: Signed MNO Endorsement
     Verifier-->>Server: Attested Claims + MNO Anchor
