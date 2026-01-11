@@ -1588,10 +1588,12 @@ POST http://localhost:9050/verify
 
 ---
 
-## 🔮 Gen 4: Zero-Knowledge Proof Layer (Planned)
+## ✅ Gen 4: Zero-Knowledge Proof Layer (Implemented - POC)
 
 > [!NOTE]
-> Gen 4 builds on the Gen 3 foundation. All TPM attestation, delegated certification, and unified identity infrastructure remains unchanged. Gen 4 adds a **privacy-preserving verification layer** via ZK-SNARKs.
+> Gen 4 builds on the Gen 3 foundation. All TPM attestation, delegated certification, and unified identity infrastructure remains unchanged. Gen 4 adds a **privacy-preserving verification layer** via ZK-SNARKs using gnark (Groth16-BN254).
+>
+> **Implementation Status**: Gen 4 is **fully implemented** in the POC with a mock MNO service for lab testing. All components (gnark ZKP prover, WASM Zkp mode, claim inheritance) are operational.
 >
 > **Related Proposals:**
 > - [Verifiable Policy Enforcement (VPE)](../proposals/verifiable-policy-enforcement.md) — Full Gen 4 workflow, ZKP circuit design, dual-SVID pattern
@@ -1611,9 +1613,47 @@ POST http://localhost:9050/verify
 >
 > **Dependency:** Gen 4 true zero-trust requires the [camara-hardware-location.md](../proposals/camara-hardware-location.md) "Premium Tier" proposal for MNO signed endorsements.
 
+### Architecture Flow
+
+```mermaid
+sequenceDiagram
+    participant Workload as Workload App
+    participant Hardware as TPM / Sensors / GNSS
+    participant KAgent as Keylime Agent
+    participant Agent as SPIRE Agent
+    participant MNO as Mock MNO (Carrier)
+    participant Verifier as Keylime Verifier
+    participant Server as SPIRE Server (ZKP Plugin)
+    participant Envoy as Envoy WASM Filter
+
+    Note over Workload, Agent: 1. WORKLOAD REQUEST
+    Workload->>Agent: Request Workload SVID
+    
+    Note over Hardware, Server: 2. NODE ATTESTATION (Zero-Knowledge)
+    Agent->>KAgent: Request App Key Certification
+    Hardware->>KAgent: TPM-Signed Evidence (IMEI, IMSI, GNSS)
+    KAgent->>Verifier: Integrity Quote + App Key
+    Verifier->>MNO: Verify Device (IMEI, IMSI)
+    MNO-->>Verifier: Signed MNO Endorsement
+    Verifier-->>Server: Attested Claims + MNO Anchor
+    
+    Server->>Server: Run gnark ZKP Prover
+    Note right of Server: Prove: GNSS matches MNO Radius<br/>(Privacy-preserving)
+    
+    Server-->>Agent: Agent SVID + grc.sovereignty_receipt
+    
+    Note over Workload, Agent: 3. SVID ISSUANCE
+    Agent-->>Workload: Workload SVID (inherits ZKP claims)
+    
+    Note over Workload, Envoy: 4. RUNTIME VERIFICATION (Stateless)
+    Workload->>Envoy: mTLS Request with SVID Chain
+    Envoy->>Envoy: Extract & Verify ZKP Receipt
+    Envoy-->>Workload: Allowed (Verified Sovereign)
+```
+
 ### Evolution: Gen 3 → Gen 4
 
-| Aspect | Gen 3 (Current) | Gen 4 (Planned) |
+| Aspect | Gen 3 (Current) | Gen 4 (Implemented) |
 |--------|-----------------|-----------------|
 | **SVID Claims** | `grc.geolocation.*` (raw coordinates) | `grc.sovereignty_receipt.*` (ZKP) |
 | **Envoy Verification** | Raw hw-rooted evidence + location | **ZKP verification only** (no raw data) |
@@ -1633,7 +1673,7 @@ Verify via CAMARA API (mobile) or trust GNSS
 Allow/Deny
 ```
 
-**Gen 4 (Planned):**
+**Gen 4 (Implemented):**
 ```
 Envoy WASM Filter
     ↓
