@@ -738,7 +738,13 @@ fi
 # 4. Setup mobile location service
 echo -e "\n${GREEN}[4/7] Setting up mobile location service...${NC}"
 cd "$REPO_ROOT/mobile-sensor-microservice"
-if [ ! -d ".venv" ]; then
+if [ -d ".venv" ]; then
+    # Ensure we own the venv (fix for mixed sudo/non-sudo runs)
+    if [ ! -w ".venv" ] && command -v sudo >/dev/null; then
+        echo -e "${YELLOW}  ⚠ Fixing .venv permissions (owned by root?)...${NC}"
+        sudo chown -R $(id -u):$(id -g) .venv
+    fi
+else
     python3 -m venv .venv
 fi
 source .venv/bin/activate
