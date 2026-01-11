@@ -1152,9 +1152,10 @@ if [ "$IS_TEST_MACHINE" = "true" ]; then
         # Start Envoy with output fully redirected to prevent terminal corruption
         # Use nohup to ensure clean background execution
         sudo setsid envoy -c /opt/envoy/envoy.yaml > /opt/envoy/logs/envoy.log 2>&1 < /dev/null &
-        ENVOY_PID=$!
         sleep 3
-        if ps -p $ENVOY_PID > /dev/null 2>&1; then
+        # Check if Envoy is running using pgrep (since setsid changes PID)
+        ENVOY_PID=$(pgrep -x envoy | head -1)
+        if [ -n "$ENVOY_PID" ]; then
             printf '    [OK] Envoy started (PID: %s)\n' "$ENVOY_PID"
             # Restore terminal settings as Envoy/sudo might have messed them up (causing staircase output)
             stty sane 2>/dev/null || true
