@@ -104,6 +104,18 @@ func BuildClaimsJSON(spiffeID, keySource, workloadPublicKeyPEM string, sovereign
 			claims["grc.geolocation"] = geoObj
 		}
 
+		// Gen 4: Add MNO endorsement claim if present
+		// This serves as the public anchor for the ZKP circuit
+		if attestedClaims.MnoEndorsement != nil && attestedClaims.MnoEndorsement.Verified {
+			mno := attestedClaims.MnoEndorsement
+			claims["grc.mno_endorsement"] = map[string]any{
+				"verified":  mno.Verified,
+				"signature": mno.Signature,
+				"key_id":    mno.KeyId,
+				"data_b64":  base64.StdEncoding.EncodeToString([]byte(mno.EndorsementJson)),
+			}
+		}
+
 		if len(tpm) > 0 {
 			claims["grc.tpm-attestation"] = tpm
 		}

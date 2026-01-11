@@ -58,10 +58,19 @@ type Geolocation struct {
 	Accuracy           float64 `json:"accuracy,omitempty"`
 }
 
+// Gen 4: MNOEndorsement represents a signed endorsement from a carrier
+type MNOEndorsement struct {
+	Verified    bool                   `json:"verified"`
+	Endorsement map[string]interface{} `json:"endorsement"`
+	Signature   string                 `json:"signature"`
+	KeyID       string                 `json:"key_id"`
+}
+
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification
 // AttestedClaims represents verified facts from Keylime
 type AttestedClaims struct {
-	Geolocation *Geolocation `json:"geolocation,omitempty"` // Can be object or nil
+	Geolocation    *Geolocation    `json:"geolocation,omitempty"`
+	MNOEndorsement *MNOEndorsement `json:"grc.mno_endorsement,omitempty"` // Gen 4
 }
 
 // Unified-Identity - Verification: Hardware Integration & Delegated Certification

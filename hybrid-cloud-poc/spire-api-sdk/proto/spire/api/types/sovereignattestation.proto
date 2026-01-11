@@ -31,6 +31,15 @@ message SovereignAttestation {
 // AttestedClaims contains verified facts from Keylime about the host.
 message AttestedClaims {
     Geolocation geolocation = 1;    // Geolocation object with type, sensor_id, and optional value
+    MNOEndorsement mno_endorsement = 2; // Gen 4: Signed MNO endorsement
+}
+
+// Gen 4: MNOEndorsement represents a signed endorsement from a carrier
+message MNOEndorsement {
+    bool verified = 1;
+    string endorsement_json = 2; // JSON-encoded endorsement data
+    string signature = 3;        // EdDSA signature
+    string key_id = 4;           // Signing key ID
 }
 
 // Unified-Identity - Phase 1: SPIRE API & Policy Staging (Stubbed Keylime)

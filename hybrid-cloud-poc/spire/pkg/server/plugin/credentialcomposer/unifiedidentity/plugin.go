@@ -4,15 +4,16 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"sync"
 
 	"github.com/hashicorp/hcl"
 	"github.com/sirupsen/logrus"
+	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	credentialcomposerv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/server/credentialcomposer/v1"
 	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
-	"github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"github.com/spiffe/spire/pkg/common/catalog"
 	"github.com/spiffe/spire/pkg/common/pluginconf"
 	"github.com/spiffe/spire/pkg/server/credtemplate"
@@ -121,7 +122,7 @@ func (p *Plugin) ComposeAgentX509SVID(ctx context.Context, req *credentialcompos
 	attributes := req.Attributes
 	// Debug logging
 	logrus.Infof("Unified-Identity: ComposeAgentX509SVID called for %s", req.SpiffeId)
-	
+
 	claims, unifiedJSON, err := p.processSovereignAttestation(ctx, req.SpiffeId, req.PublicKey, unifiedidentity.KeySourceTPMApp, true)
 	if err != nil {
 		logrus.Errorf("Unified-Identity: processSovereignAttestation failed: %v", err)
@@ -190,7 +191,7 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 
 	p.mu.RLock()
 	client := p.keylimeClient
-    engine := p.policyEngine
+	engine := p.policyEngine
 	p.mu.RUnlock()
 
 	// Workload SVIDs are handled locally for scalability; only agent SVIDs go to Keylime
@@ -204,24 +205,24 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 		}
 		return claims, unifiedJSON, nil
 	}
-	
+
 	if client == nil {
 		logrus.Infof("Unified-Identity: Keylime Client is nil - skipping verification")
 		return nil, nil, nil
 	}
-    logrus.Infof("Unified-Identity: Proceeding to verify evidence with Keylime for agent SVID")
-    
-    // Debug: Inspect SovereignAttestation fields
-    logrus.Infof("Unified-Identity: Debug Payload - Quote Length: %d", len(sa.TpmSignedAttestation))
-    if len(sa.TpmSignedAttestation) > 50 {
-         logrus.Infof("Unified-Identity: Debug Payload - Quote Preview: %s...", sa.TpmSignedAttestation[:50])
-    } else {
-         logrus.Infof("Unified-Identity: Debug Payload - Quote Full: %s", sa.TpmSignedAttestation)
-    }
-    logrus.Infof("Unified-Identity: Debug Payload - AppKeyPublic Length: %d", len(sa.AppKeyPublic))
-    logrus.Infof("Unified-Identity: Debug Payload - AppKeyCertificate Length: %d", len(sa.AppKeyCertificate))
-    logrus.Infof("Unified-Identity: Debug Payload - ChallengeNonce: %s", sa.ChallengeNonce)
-    logrus.Infof("Unified-Identity: Debug Payload - WorkloadCodeHash: %s", sa.WorkloadCodeHash)
+	logrus.Infof("Unified-Identity: Proceeding to verify evidence with Keylime for agent SVID")
+
+	// Debug: Inspect SovereignAttestation fields
+	logrus.Infof("Unified-Identity: Debug Payload - Quote Length: %d", len(sa.TpmSignedAttestation))
+	if len(sa.TpmSignedAttestation) > 50 {
+		logrus.Infof("Unified-Identity: Debug Payload - Quote Preview: %s...", sa.TpmSignedAttestation[:50])
+	} else {
+		logrus.Infof("Unified-Identity: Debug Payload - Quote Full: %s", sa.TpmSignedAttestation)
+	}
+	logrus.Infof("Unified-Identity: Debug Payload - AppKeyPublic Length: %d", len(sa.AppKeyPublic))
+	logrus.Infof("Unified-Identity: Debug Payload - AppKeyCertificate Length: %d", len(sa.AppKeyCertificate))
+	logrus.Infof("Unified-Identity: Debug Payload - ChallengeNonce: %s", sa.ChallengeNonce)
+	logrus.Infof("Unified-Identity: Debug Payload - WorkloadCodeHash: %s", sa.WorkloadCodeHash)
 
 	// Build Keylime request
 	keylimeReq, err := keylime.BuildVerifyEvidenceRequest(&keylime.SovereignAttestationProto{
@@ -284,8 +285,21 @@ func (p *Plugin) processSovereignAttestation(ctx context.Context, spiffeID strin
 		}
 	}
 
+	// Convert MNO Endorsement to protobuf
+	var protoMNO *types.MNOEndorsement
+	if keylimeClaims.MNOEndorsement != nil {
+		endorsementJSON, _ := json.Marshal(keylimeClaims.MNOEndorsement.Endorsement)
+		protoMNO = &types.MNOEndorsement{
+			Verified:        keylimeClaims.MNOEndorsement.Verified,
+			EndorsementJson: string(endorsementJSON),
+			Signature:       keylimeClaims.MNOEndorsement.Signature,
+			KeyId:           keylimeClaims.MNOEndorsement.KeyID,
+		}
+	}
+
 	claims := &types.AttestedClaims{
-		Geolocation: protoGeo,
+		Geolocation:    protoGeo,
+		MnoEndorsement: protoMNO,
 	}
 
 	// Build unified identity JSON

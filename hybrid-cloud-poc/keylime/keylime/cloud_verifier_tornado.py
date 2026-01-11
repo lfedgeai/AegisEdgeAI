@@ -2456,6 +2456,40 @@ class VerifyEvidenceHandler(BaseHandler):
                 if sensor_msisdn:
                     mapped_geo['sensor_msisdn'] = sensor_msisdn
 
+            # Gen 4: Fetch Signed MNO Endorsement for ZKP Anchor
+            # This endorsement will be used as a public anchor in the ZKP circuit
+            if geo_type == 'mobile':
+                mno_endorsement = None
+                mno_service_url = os.getenv('MNO_SERVICE_URL', sidecar_url)
+                try:
+                    mno_payload = {
+                        'imei': mapped_geo.get('sensor_imei'),
+                        'imsi': mapped_geo.get('sensor_imsi'),
+                        'nonce': nonce,
+                        'tower_id': '49201-LAB-001',
+                        'latitude': mapped_geo.get('latitude'),
+                        'longitude': mapped_geo.get('longitude'),
+                        'accuracy': mapped_geo.get('accuracy'),
+                    }
+                    mno_res = requests.post(
+                        f"{mno_service_url}/signed-endorsement",
+                        json=mno_payload,
+                        timeout=5
+                    )
+                    if mno_res.status_code == 200:
+                        mno_result = mno_res.json()
+                        if mno_result.get('verified'):
+                            mno_endorsement = mno_result
+                            logger.info(
+                                "Gen 4: Signed MNO endorsement fetched successfully for IMEI %s",
+                                mapped_geo.get('sensor_imei')
+                            )
+                except Exception as e:
+                    logger.warning("Gen 4: Failed to fetch signed MNO endorsement: %s", e)
+                
+                if mno_endorsement:
+                    attested_claims['grc.mno_endorsement'] = mno_endorsement
+
             # Set the claim with the correct SPIRE prefix
             attested_claims['grc.geolocation'] = mapped_geo
             
